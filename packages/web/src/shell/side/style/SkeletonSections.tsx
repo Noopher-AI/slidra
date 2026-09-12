@@ -1,10 +1,10 @@
 /**
- * Table／Chart／Image-caption 骨架 (#200 開工前對帳 §1/§2): the repo has no
+ * Table/Chart/Image-caption skeletons (§1/§2): the repo has no
  * table or chart element kind at all (`SlideElementKind` — `format.ts`), and
  * no image-caption data representation either — nothing here can accept a
- * command. These three sections exist only so the panel's "每個型別各一張
- * 截圖" acceptance criterion has something to render; every control in them
- * is permanently `disabled` and none of them are wired to any command.
+ * command. These three sections exist only so the panel's "one screenshot
+ * per type" acceptance criterion has something to render; every control in
+ * them is permanently `disabled` and none of them are wired to any command.
  */
 
 export function TableSkeletonSection() {

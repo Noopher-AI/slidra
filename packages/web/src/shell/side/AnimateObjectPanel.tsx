@@ -11,18 +11,20 @@ export interface AnimateObjectPanelProps {
 }
 
 /**
- * 動畫 › Object（NOOP-66/#206 §4.5）：清單視圖（`useSlideEffects` 供卡片
- * 資料），每個操作即時送出對應的 `effect` 命令並立即
- * 入歷史（D14：一次命令＝一次 `writePresentationFile`＝一筆 undo，這裡不寫
- * 任何 undo 程式碼）。命令成功後呼叫 `refresh()` 重新讀檔——不等下一次不
- * 相干的 reload() 才看到自己剛做的改動。
+ * Animate > Object (§4.5): the list view (`useSlideEffects` supplies the
+ * card data); each action immediately sends the corresponding `effect`
+ * command and lands in history right away (D14: one command = one
+ * `writePresentationFile` = one undo entry, so no undo code is written
+ * here). Calls `refresh()` to re-read the file after a command succeeds —
+ * it doesn't wait for the next unrelated reload() to see its own change.
  */
 export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProps) {
   const { effects, targetInfo, refresh } = useSlideEffects(state);
   const slidePath = state.currentIndex >= 0 ? state.slides[state.currentIndex] : null;
 
-  // Esc during Preview returns to the view immediately (GUI table: "預覽中
-  // 按 Esc 或點畫面 -> 立即 exitPreview()") — the runtime's own
+  // Esc during Preview returns to the view immediately (GUI table: "pressing
+  // Esc or clicking the screen while previewing -> exitPreview() right away")
+  // — the runtime's own
   // "preview-done" already handles the "let it finish playing" path;
   // this is the user-cancel path on top of it.
   useEffect(() => {

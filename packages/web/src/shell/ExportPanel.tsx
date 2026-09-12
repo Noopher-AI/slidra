@@ -4,12 +4,12 @@ import { useCloseFloatingLayer } from "./use-floating-layer.js";
 import type { ExportFormat } from "../live-reload.js";
 
 /**
- * The Export dropdown's own UI state (NOOP-93 §4.7's table), derived by
- * App.tsx from `export` SSE events (`live-reload.ts`'s `ExportSseEvent`) —
- * `queued` and `running` are both shown as "匯出中…" (an unknown/zero
- * frame count reads the same to an author as one just starting), and there
- * is deliberately no state that survives a page reload (§4.7's last row:
- * "重新整理頁面後 → 進度狀態消失", no job-status GET to reseed from).
+ * The Export dropdown's own UI state, derived by App.tsx from `export` SSE
+ * events (`live-reload.ts`'s `ExportSseEvent`) — `queued` and `running` are
+ * both shown with the same "exporting…" copy (an unknown/zero frame count
+ * reads the same to an author as one just starting), and there is
+ * deliberately no state that survives a page reload (progress resets to
+ * idle on reload, since there is no job-status GET to reseed from).
  */
 export type ExportUiState =
   | { kind: "idle" }
@@ -22,7 +22,7 @@ export interface ExportPanelProps {
   onToggle(): void;
   onClose(): void;
   onPick(format: ExportFormat): void;
-  /** Export 按鈕的停用條件與 Play 的 canPlay 共用同一個判斷（§4.7：「沒有投影片」）。 */
+  /** The Export button's disabled condition shares the same check as Play's canPlay ("no slides"). */
   canExport: boolean;
   state: ExportUiState;
   /** Clears the done/error strip back to idle — it has no other way out (busy clears itself via the next SSE event). */
@@ -34,7 +34,7 @@ const EXPORT_ITEMS: ReadonlyArray<{ format: ExportFormat; tag: string; label: st
   { format: "pdf-frames", tag: "PDF+", label: "By-frame PDF", desc: "One page per animation step" },
 ];
 
-/** NOOP-93 §4.7 — the Export dropdown, its two format rows, and the progress/done/error strip beneath it. */
+/** The Export dropdown, its two format rows, and the progress/done/error strip beneath it. */
 export function ExportPanel({ open, onToggle, onClose, onPick, canExport, state, onDismiss }: ExportPanelProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);

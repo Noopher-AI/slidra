@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
-   右欄 (New v3 skeleton): 3 個主分頁（對話/樣式/動畫）+ 樣式/動畫底下的
-   Page/Object 子分頁 (SidePanel.tsx 的狀態機)。兩層分頁都是原型的
-   segmented control（surface.1 軌 + 白色選中片 + shadow.seg），只差尺寸。
+   Right side panel (New v3 skeleton): 3 main tabs (Chat/Style/Animate) +
+   Page/Object sub-tabs under Style/Animate (SidePanel.tsx's state machine).
+   Both tab levels are the prototype's segmented control (surface.1 track +
+   white selected chip + shadow.seg), differing only in size.
    ═══════════════════════════════════════════════════════════════ */
 
 .side-panel {
@@ -56,7 +57,8 @@
   outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
 }
-/* 選中同時吃底色、陰影與文字色（不能只靠一種線索分辨）。 */
+/* Selected state combines background, shadow, and text color — never a
+   single cue alone. */
 .side-panel-tab[aria-selected="true"] {
   background: var(--surface-white);
   color: var(--ink-900);
@@ -106,8 +108,9 @@
   }
 }
 
-/* 動畫的 Page/Object 空容器（未來票的內容） — 佔滿分頁區，方便未來票直接
-   在裡面鋪東西，不用回來改這個檔案的版面規則。 */
+/* Empty Page/Object containers for animation content, to be filled in
+   later — they fill the tab area so future work can lay content inside
+   without touching this file's layout rules. */
 .animate-page-panel,
 .animate-object-panel {
   flex: 1;

@@ -23,7 +23,7 @@ export interface TableCellRect extends CellAddress {
   rect: Rect;
 }
 
-/** A rectangular cell range, always normalised so `r0<=r1` and `c0<=c1` (plan §4.5: "範圍一律正規化成 r0<=r1, c0<=c1"). */
+/** A rectangular cell range, always normalised so `r0<=r1` and `c0<=c1` (plan §4.5: "a range is always normalised to r0<=r1, c0<=c1"). */
 export interface CellRange {
   r0: number;
   c0: number;
@@ -95,10 +95,10 @@ export function tabTarget(current: CellAddress, rowCount: number, colCount: numb
  * table's own box left edge), one per boundary between adjacent columns
  * plus the trailing edge — `col`'s handle is the boundary between column
  * `col` and `col+1`. `previewColumn` overrides one column's width for the
- * live-drag preview (plan §4.5 "拖曳期間只即時移動格線"), leaving every
+ * live-drag preview (plan §4.5 "only the grid line moves live during drag"), leaving every
  * other column's contribution unchanged.
  */
-/** Mirrors `packages/core/src/table/layout.ts`'s MIN_COL_WIDTH (the web bundle no longer depends on core at all, F8/NOOP-289): the narrowest a boundary drag may squeeze either column to. */
+/** Mirrors `packages/core/src/table/layout.ts`'s MIN_COL_WIDTH (the web bundle no longer depends on core at all): the narrowest a boundary drag may squeeze either column to. */
 export const MIN_COL_WIDTH = 40;
 
 export function columnBoundaryPositions(
@@ -127,20 +127,20 @@ export interface TabbableCell extends CellAddress {
   generated: boolean;
 }
 
-/** The template row's own row index for `col` — the `repeat` cell sharing that column, or `null` when none exists. Mirrors selection-runtime.js's `findTemplateCellForColumn` (架構: "雙擊編輯的是模板列"), so a Tab-in-editing landing on a generated cell resolves the same write target a double-click on it would. */
+/** The template row's own row index for `col` — the `repeat` cell sharing that column, or `null` when none exists. Mirrors selection-runtime.js's `findTemplateCellForColumn` (architecture: "double-click always edits the template row"), so a Tab-in-editing landing on a generated cell resolves the same write target a double-click on it would. */
 export function templateRowForColumn(cells: readonly TabbableCell[], col: number): number | null {
   return cells.find((cell) => cell.col === col && cell.repeat)?.row ?? null;
 }
 
 /**
- * Tab/⇧Tab's next cell while a table cell is being edited (F-09, NOOP-399,
- * plan §4/§7.2) — navigates OWN (display) addresses via `tabTarget`,
+ * Tab/⇧Tab's next cell while a table cell is being edited
+ * (plan §4/§7.2) — navigates OWN (display) addresses via `tabTarget`,
  * re-resolving each candidate against `cells` (never rects, never
  * `rowSpan`/`colSpan` arithmetic — plan §7.5) and skipping any address with
  * no cell of its own (a merge's covered interior) or whose cell is a
  * hidden template row (`repeat`). The loop always terminates: `tabTarget`
  * clamps at the grid's edges, so once advancing stops changing the address
- * this returns `null` — "stay put", the same "原地不動、不加列" contract
+ * this returns `null` — "stay put, never add a row", the same contract
  * `tabTarget` itself already has, now surfaced through the skip loop too.
  * The returned `row` is the WRITE address: for an ordinary cell that is
  * its own row, but for a `generated` cell it is the template row sharing

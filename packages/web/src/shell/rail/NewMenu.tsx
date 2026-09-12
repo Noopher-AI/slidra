@@ -13,9 +13,10 @@ export interface NewMenuProps {
 }
 
 /**
- * New 面板：`From outline…` ＋ `Layouts`（Blank ＋ 範本清單）。T3 plan §2
- * 邊界 3/4/5：`From outline…` 只開 `OutlineModal`，本身不送任何命令；範本
- * 只套用，沒有 Rename/Delete。⌘N 提示字刻意不印（§2 邊界 11）。
+ * The New panel: `From outline…` + `Layouts` (Blank + the template list).
+ * `From outline…` only opens `OutlineModal` and doesn't send any command
+ * itself; templates only get applied, with no Rename/Delete. The ⌘N hint
+ * text is deliberately not printed.
  */
 export function NewMenu({ menuRef, runCommand, onSelectBlank, onSelectTemplate, onOpenOutline }: NewMenuProps) {
   const templateList = useTemplateList(runCommand);

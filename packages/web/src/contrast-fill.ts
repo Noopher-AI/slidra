@@ -1,5 +1,5 @@
 /**
- * Shared "no accent set" fallback for inserted elements (NOOP-353 拍板決定
+ * Shared "no accent set" fallback for inserted elements (decision
  * 7, verbatim): a dark page gets a light `fill`/`stroke`, a light page gets
  * a dark one, so the element is never invisible against its own page
  * background. Consumed by `ShapeMenu.tsx` (rect/ellipse `fill`, line

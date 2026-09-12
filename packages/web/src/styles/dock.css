@@ -1,8 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
-   底部玻璃工具列 (New v3 skeleton). 02-DESIGN_DOC.md §6「玻璃：所有舞台浮
-   層統一材質」——`.floating-layer` 是那個共用材質 + 由 dock 正上方中央長
-   出的動畫，Dock 底下每一種面板/選單（ZoomMenu 是唯一整個可用的；其餘是
-   空容器）都套這一個 class，不各自重寫一份動畫。
+   Bottom glass toolbar (New v3 skeleton). 02-DESIGN_DOC.md §6, "Glass: one
+   unified material for all stage floating layers" — `.floating-layer` is
+   that shared material plus the animation growing out from top-center of
+   the dock; every panel/menu under the Dock (ZoomMenu is the only one
+   fully functional; the rest are empty containers) applies this one
+   class rather than each reimplementing its own animation.
    ═══════════════════════════════════════════════════════════════ */
 
 .dock {
@@ -26,9 +28,10 @@
   box-shadow: var(--shadow-glass);
 }
 
-/* 群組內按鈕彼此貼合（原型：Text 的右緣就是 Shape 的左緣），只有 ✋ 與縮放
-   之間留 4px；整列量出來 ≈700px，正是 02-DESIGN_DOC.md §8 說的「工具列
-   最寬 ≈ 700px，在 728px 舞台欄內置中」。 */
+/* Buttons within a group sit flush against each other (Text's right edge is
+   Shape's left edge), with a 4px gap only between the hand tool and zoom.
+   The whole row measures ≈700px, matching 02-DESIGN_DOC.md §8's "toolbar
+   max width ≈700px, centered within the 728px stage column". */
 .dock-left,
 .dock-center,
 .dock-right {
@@ -53,8 +56,9 @@
   flex: none;
 }
 
-/* Dock 內按鈕高度 = 玻璃列 46px 扣掉上下各 7px（原型量測 32px），介於
-   --control-h（30）與 --control-h-compact（28）之外，故從 --toolbar-h 推。 */
+/* Dock button height = glass bar 46px minus 7px top and bottom (prototype
+   measures 32px), which falls outside --control-h (30) and
+   --control-h-compact (28), so it's derived from --toolbar-h instead. */
 .dock-hand-button {
   width: var(--control-h);
   height: calc(var(--toolbar-h) - var(--space-6));
@@ -93,7 +97,7 @@
   align-items: center;
   gap: calc(var(--space-2) / 2);
   height: calc(var(--toolbar-h) - var(--space-6));
-  padding-inline: calc(var(--space-1) - 1px); /* 3px：本機字型比原型略寬，4px 會讓整列超過舞台欄 */
+  padding-inline: calc(var(--space-1) - 1px); /* 3px: local fonts render slightly wider than the prototype's; 4px would push the row past the stage column */
   border-radius: var(--radius-sm);
   font-size: var(--text-xs-hint);
   font-weight: 600;
@@ -106,9 +110,9 @@
   color: var(--ink-900);
 }
 
-/* ── 成組／解組提示（[E2.T15]/#205 D3/D4，原型 comotion-logic-v3.js:446 的
-   toast()，位置抄自 CoMotion (New v3).dc.html:427）── 固定顯示在 dock 正上
-   方，2500ms 後由 Dock.tsx 的計時器自動收掉，不堆疊、不可關閉。 */
+/* Group/ungroup toast — always shown fixed above the dock, auto-dismissed
+   after 2500ms by Dock.tsx's timer, never stacks, and cannot be dismissed
+   manually. */
 .dock-toast {
   position: absolute;
   left: 50%;
@@ -126,9 +130,10 @@
   pointer-events: none;
 }
 
-/* ── 共用浮層材質 + 動畫（02-DESIGN_DOC.md §2.3「一律從同一個地方長出」） ──
-   每一個 Dock 浮層（面板／選單，含 ZoomMenu）都套這個 class：由 dock 正
-   上方中央長出，8px-up + scale(.96→1)，用 --dur-fast/--ease-out。 */
+/* ── Shared floating-layer material + animation (02-DESIGN_DOC.md §2.3,
+   "always grows from the same spot") — every Dock floating layer (panel or
+   menu, including ZoomMenu) uses this class: it grows out from top-center
+   of the dock, 8px-up + scale(.96→1), using --dur-fast/--ease-out. ── */
 .floating-layer {
   position: absolute;
   left: 50%;
@@ -154,15 +159,16 @@
   }
 }
 
-/* [E2.T17] 之後每個 Dock 浮層都已經有真正的內容——這條只是一個共用的最小
-   尺寸底線，讓內容較少的浮層（例如 ShapeMenu）仍有看得出邊界的大小。 */
+/* Every Dock floating layer now has real content — this rule is just a
+   shared minimum-size floor so lighter-content layers (e.g. ShapeMenu)
+   still have a visibly bounded size. */
 .dock-panel,
 .dock-menu {
   min-width: calc(var(--panel-w) * 0.7);
   min-height: calc(var(--control-h) * 3);
 }
 
-/* ── 縮放選單（唯一完整可用的浮層） ────────────────────────────────── */
+/* ── Zoom menu (the only fully functional floating layer) ─────────────── */
 .zoom-menu {
   display: flex;
   align-items: center;
@@ -211,7 +217,7 @@
   color: var(--brand-red);
 }
 
-/* ── Arrange 選單 (NOOP-90/T2 §3.9) — 三欄 Align / Distribute / Order ── */
+/* ── Arrange menu — three columns: Align / Distribute / Order ── */
 .arrange-menu {
   display: flex;
   padding: var(--space-2);
@@ -250,8 +256,9 @@
   font-size: var(--text-xs-hint);
 }
 
-/* ── Shape 選單 ([E2.T17] plan §4.1) — Rectangle/Ellipse/Line 直接送命令，
-   不開第二層面板，姿態接近 Arrange 選單的單欄版本。 ──────────────────── */
+/* ── Shape menu — Rectangle/Ellipse/Line send commands directly, without
+   opening a second-level panel; visually a single-column variant of the
+   Arrange menu. ──────────────────────────────────────────────────────── */
 .shape-menu {
   display: flex;
   flex-direction: column;
@@ -273,8 +280,8 @@
   cursor: default;
 }
 
-/* ── Image/Video/Audio 插入面板 ([E2.T17] plan §4.2) — 三個面板共用同一份
-   樣式：拖放區、URL 欄、caption 欄、Insert 按鈕。 ───────────────────── */
+/* ── Image/Video/Audio insert panels — all three panels share one set of
+   styles: dropzone, URL field, caption field, and Insert button. ─────── */
 .media-panel {
   width: var(--panel-w);
   padding: var(--space-5);
@@ -334,7 +341,7 @@
   cursor: default;
 }
 
-/* ── Text 插入面板 (NOOP-65 §3.8/A9) ─────────────────────────────────── */
+/* ── Text insert panel ─────────────────────────────────────────────────── */
 .text-panel {
   width: var(--panel-w);
   padding: var(--space-8);
@@ -384,9 +391,11 @@
   font-weight: 700;
   line-height: 1;
 }
-/* 四個樣式預設各自的「Aa」字級（原型 comotion-logic-v3.js:203 的相對比例，
-   換算成面板本身固定的字級，不吃簡報 canvas 尺寸 — 那個換算只在真正插入
-   時才對 controller.insertTextBox 的輸入做，見 TextPanel.tsx）。 */
+/* The "Aa" sample size for each of the four style presets uses a relative
+   ratio converted to the panel's own fixed font size, independent of the
+   presentation canvas size — that conversion against the presentation's
+   actual scale only happens when inserting, on controller.insertTextBox's
+   input (see TextPanel.tsx). */
 .text-panel-preset[data-preset="title"] .text-panel-preset-sample {
   font-size: var(--text-lg);
 }
@@ -434,7 +443,7 @@
   cursor: default;
 }
 
-/* ── Chart 插入面板 (E2.T12 plan §4.2/AC-1) ──────────────────────────── */
+/* ── Chart insert panel ────────────────────────────────────────────────── */
 .chart-panel {
   width: var(--panel-w);
   padding: var(--space-5);

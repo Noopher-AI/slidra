@@ -1,10 +1,9 @@
 import { IDENTITY, multiplyMatrix, type Matrix } from "./geometry.js";
 
 /**
- * Reads slide markup with the browser's own `DOMParser` — the web's own
- * copy of core's slide-format `parseSlide`/`SlideModel` shape (F8,
- * NOOP-289 決定 M1/G1). Produces the SAME type shape `canvas.ts` already
- * consumes, but:
+ * Reads slide markup with the browser's own `DOMParser`, producing the
+ * same slide-format shape `parseSlide`/`SlideModel` describes. Produces
+ * the SAME type shape `canvas.ts` already consumes, but:
  *
  *  - no compliance check (`assertSlideCompliant` does not come along —
  *    the browser is a viewer now, not a gate; a slide it cannot make sense

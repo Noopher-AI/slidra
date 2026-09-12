@@ -4,29 +4,29 @@ import type { AgentCardView, AgentConnection, AgentModelOption, AgentUiStatus } 
 import { useCloseFloatingLayer } from "../use-floating-layer.js";
 
 export interface AgentPickerProps {
-  /** `GET /api/agent` seen through agent-status.ts；`loading`／`error` 沒有卡片可畫，agent 膠囊只顯示連線燈。 */
+  /** `GET /api/agent` seen through agent-status.ts; `loading`/`error` have no card to draw, so the agent pill only shows the connection dot. */
   agent: AgentUiStatus;
-  /** `/api/chat/stream` 的連線狀態，畫在 agent 膠囊左側那顆燈上。 */
+  /** Connection state of `/api/chat/stream`, drawn as the dot on the left side of the agent pill. */
   agentConnection: AgentConnection;
   /** True while a `GET /api/agent` or `POST /api/agent/probe` is in flight. */
   probing: boolean;
-  /** agent 持有編輯鎖：切換 agent 會殺掉正在編輯的 session，選單裡的項目先鎖住。 */
+  /** Agent holds the editing lock: switching agents would kill the session mid-edit, so menu items are locked first. */
   editingFrozen: boolean;
-  /** 正在 `POST /api/agent/select` 的目標；沒有就是 null。 */
+  /** The target currently in `POST /api/agent/select`; null when none. */
   switchingKind: AgentKind | null;
-  /** 上一次切換／偵測失敗的錯誤（409 editing、400、500、斷線）；null 就不顯示。 */
+  /** Error from the last switch/probe attempt (409 editing, 400, 500, disconnect); null hides it. */
   actionError: string | null;
   onSelectAgent(kind: AgentKind): void;
   onProbe(): void;
-  /** 可切換的模型（`GET /api/agent` 的 `models`）與目前的 id；清單為空代表 session 還沒建。 */
+  /** Switchable models (the `models` field of `GET /api/agent`) plus the current id; an empty list means the session hasn't been created yet. */
   modelOptions: readonly AgentModelOption[];
   modelId: string | null;
-  /** agent 回覆中（或停止中）不讓作者改模型；server 也會擋，這只是不讓人白按。 */
+  /** Blocks model changes while the agent is replying (or stopping); the server enforces this too, this just avoids a wasted click. */
   modelsLocked: boolean;
   onSelectModel(modelId: string): void;
-  /** 模型選單第一次打開、清單還是空的時候：`POST /api/agent/session` 先把 session 建起來。 */
+  /** When the model menu opens for the first time and the list is still empty: `POST /api/agent/session` creates the session first. */
   onLoadModels(): void;
-  /** 測試用：一開始就展開哪個選單（純 props→markup 的測試打不開 state）。 */
+  /** For tests: which menu starts open (a pure props->markup test can't open state). */
   defaultOpen?: "agent" | "model" | null;
 }
 
@@ -36,9 +36,10 @@ function cardsFor(status: AgentUiStatus): AgentCardView[] {
   return status.kind === "unset" || status.kind === "unauthenticated" || status.kind === "ready" ? status.agents : [];
 }
 
-// 連線燈的文字逐字沿用舊的標題列／對話框：e2e/helpers/launch.ts 等到
-// `.agent-dot-connected` 的文字變成 agent 名稱才算連線完成，中間的
-// "Agent connected" 是它明說要跳過的過渡態。
+// The connection dot's text keeps the exact wording from the old title bar/dialog:
+// e2e/helpers/launch.ts waits for the `.agent-dot-connected` text to become the
+// agent name before treating the connection as complete; "Agent connected" is the
+// transitional state it explicitly skips past.
 const CONNECTION_LABEL: Record<AgentConnection, string> = {
   connecting: "Agent connecting…",
   connected: "Agent connected",
@@ -57,10 +58,12 @@ function cardDetail(card: AgentCardView, probing: boolean): string {
 }
 
 /**
- * 對話框下方的兩顆膠囊：左邊是 agent、右邊是模型，各自按了往上彈一個小
- * 選單。膠囊平時只寫「目前是誰」，選項與說明都收在選單裡——這取代了狀態列
- * 右下角的齒輪與整個 Settings 對話框。純 props→markup 加一個「哪個選單開
- * 著」的本地 state；所有 HTTP 呼叫都在 App.tsx。
+ * The two pills below the dialog: agent on the left, model on the right, each
+ * popping open a small menu above it when clicked. The pill itself only shows
+ * "who's current"; options and details live in the menu — this replaces the
+ * gear in the bottom-right of the status bar and the whole Settings dialog.
+ * Pure props->markup plus one piece of local state for "which menu is open";
+ * all HTTP calls live in App.tsx.
  */
 export function AgentPicker({
   agent,
@@ -111,8 +114,9 @@ export function AgentPicker({
             disabled={switchingKind !== null || cards.length === 0}
             onClick={() => toggle("agent")}
           >
-            {/* `.agent-dot` 的結構與 class 逐字沿用（e2e/helpers/launch.ts 靠
-                `.agent-dot-connected` 的文字判斷連線完成）。 */}
+            {/* The `.agent-dot` structure and class names are kept verbatim
+                (e2e/helpers/launch.ts relies on the `.agent-dot-connected`
+                text to detect connection completion). */}
             <span className={`agent-dot agent-dot-${agentConnection}`}>
               <i />
               {switchingKind !== null ? "切換中…" : agent.kind === "unset" ? "選擇 agent" : connectionText(agentConnection, label)}

@@ -21,7 +21,7 @@ export interface StyleFieldProps {
   note?: string | null;
   current: StyleReadResult;
   /**
-   * Identity of "what does 現值 mean right now" — the draft resets to
+   * Identity of "what does the current value mean right now" — the draft resets to
    * `current`'s display value whenever this changes (a different
    * selection/slide, or the value moving under a live reload), never on a
    * bare re-render (5f8709a's own reviewed contract).
@@ -42,7 +42,7 @@ function placeholderOf(result: StyleReadResult): string | undefined {
 }
 
 /**
- * One Style panel field (#200 §3.3): draft state that resets on
+ * One Style panel field (§3.3): draft state that resets on
  * `resetKey`, commits on blur/Enter (or immediately on change for a
  * select), reverts to the original value on an empty/unchanged submit or a
  * failed command. Shared by every Style › Object field and Style › Page's

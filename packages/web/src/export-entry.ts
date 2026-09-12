@@ -1,5 +1,5 @@
 /**
- * 匯出頁 (NOOP-93 §1/§3.4/§3.5). Loaded directly by `export/render.ts`'s
+ * Export page (§1/§3.4/§3.5). Loaded directly by `export/render.ts`'s
  * headless Chromium (both the CLI path and — via the same shared
  * `export/server.ts` — the GUI's `POST /api/export` path use this exact
  * page, so both produce the same PDF).
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   // Every slide's markup and plan is read/derived before any iframe is
   // created — a malformed effect list (the `/api/effects/` fetch rejecting)
   // fails the whole export here, before a single frame exists, matching
-  // the CLI's "不產生半份 PDF" contract (§4.3's table).
+  // the CLI's "never produce a half-finished PDF" contract (§4.3's table).
   const frames: FrameSpec[] = [];
   for (const slidePath of presentation.slides) {
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);

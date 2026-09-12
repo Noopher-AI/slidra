@@ -29,32 +29,34 @@ import {
 } from "./stage-view.js";
 
 export interface StageProps {
-  /** canvas.ts 掛載 iframe 的容器。這個 DOM 節點的身分與位置永遠不能變。 */
+  /** The container canvas.ts mounts the iframe into. This DOM node's identity and position must never change. */
   canvasRef: RefObject<HTMLDivElement | null>;
-  /** 舞台底＝全螢幕目標＝播放黑幕容器＝縮放/平移的滾輪與拖曳事件來源。 */
+  /** The stage floor = fullscreen target = play-mode black backdrop container = the source of zoom/pan wheel and drag events. */
   wellRef: RefObject<HTMLDivElement | null>;
-  /** 舞台比例來源；null 時吃 CSS 的 16/9 fallback。 */
+  /** Source of the stage's aspect ratio; falls back to CSS's 16/9 default when null. */
   canvasSize: { width: number; height: number } | null;
   state: CanvasState;
   /**
-   * NOOP-83 §2.1/§4：投影片本體上的滾輪縮放/平移、抓取模式拖曳、Space 暫時
-   * 抓取都經由 canvas.ts 的 `subscribeStageInput`/`setStageHandMode`/
-   * `clearSelection` 轉發（selection-runtime.js 是實際來源）。`null`（首次
-   * render，比照既有 `PlayChrome` 的 `controllerRef.current` 用法）時舞台
-   * 導航僅在留白區生效，不報錯、等下一次 render 拿到非 null 的值。
+   * Wheel zoom/pan on the slide body itself, hand-mode dragging, and Space's
+   * temporary grab are all forwarded through canvas.ts's
+   * `subscribeStageInput`/`setStageHandMode`/`clearSelection` (the actual
+   * source is selection-runtime.js). `null` (the first render, following
+   * `PlayChrome`'s existing `controllerRef.current` pattern) means stage
+   * navigation only works over the empty margin, without erroring, until
+   * the next render gets a non-null value.
    */
   controller: CanvasController | null;
-  /** [E2.T7]：情境列的 Edit animation 按鈕——只切右欄到 Animate › Object，狀態owner 是 App.tsx（D10）。 */
+  /** The context bar's Edit animation button — only switches the right rail to Animate › Object; state is owned by App.tsx. */
   onEditAnimation(): void;
-  /** #200 §4.5：情境列的 Edit style 按鈕——只切右欄到 Style › Object，同樣由 App.tsx 持有狀態。 */
+  /** The context bar's Edit style button — only switches the right rail to Style › Object; state is likewise owned by App.tsx. */
   onEditStyle(): void;
-  /** [E2.T7]/D9：右欄目前停在哪個主分頁——只用來決定舞台動畫徽章要不要顯示（見 OverlayLayer 的 showBadges）。 */
+  /** Which main tab the right rail currently sits on — used only to decide whether the stage animation badges show (see OverlayLayer's showBadges). */
   side: SideId;
-  /** T3/NOOP-142 既有的拖放匯入媒體 overlay（與這張骨架票無關，維持原樣）。 */
+  /** The existing drag-and-drop media import overlay (unrelated to this skeleton, kept as-is). */
   dropOverlay: { active: boolean; onDragOver: (event: DragEvent) => void; onDrop: (event: DragEvent) => void; onDragLeave: (event: DragEvent) => void };
-  /** [E2.T8]：留言 pin／留言框狀態，整包轉交給 `OverlayLayer`（App.tsx 是唯一解析選取與留言清單的地方）。 */
+  /** Comment pin/comment box state, handed over wholesale to `OverlayLayer` (App.tsx is the only place that resolves selection and the comment list). */
   comment: CommentOverlayProps;
-  /** 播放通知與 PlayChrome。必須渲染在全螢幕目標之內，否則全螢幕時點不到。 */
+  /** Play notifications and PlayChrome. Must render inside the fullscreen target, or they won't be clickable in fullscreen. */
   children?: ReactNode;
 }
 
@@ -63,50 +65,59 @@ function isTextInputTarget(target: EventTarget | null): boolean {
   return !!el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
 }
 
-/** Dock／舞台疊層自己的按鈕與浮層——落在這些容器裡的 mousedown 不該被當成「點空白」而觸發平移。 */
+/** The Dock's and stage overlay's own buttons and floating layers — a mousedown landing in these containers must not be treated as "clicked on empty space" and trigger a pan. */
 function isOnStageChrome(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   return !!el?.closest(".dock, .stage-geometry, .stage-widgets");
 }
 
-/** mousedown→mouseup 之間的位移超過這個門檻（px）才算「拖曳」而非「點」，供 F-05 的舞台外圈清除選取判斷用。 */
+/** A mousedown→mouseup movement past this threshold (px) counts as a "drag" rather than a "click", used to decide whether clicking the stage's outer ring clears the selection. */
 const STAGE_CLICK_THRESHOLD_PX = 3;
 
 /**
- * 舞台 (New v3 skeleton)：深色 well → 縮放/平移 transform frame → 既有的
- * `.canvas` div（身分不變）→ 疊層堆疊（空容器，見 stage-overlays/）。縮放/
- * 平移/抓取模式狀態全部委派給 stage-view.ts 的純函式（見該檔案與
- * packages/web/test/stage-view.test.ts）——這個元件只負責接 DOM 事件、換算
- * 一次座標、呼叫那些函式。
+ * The stage (New v3 skeleton): dark well → zoom/pan transform frame → the
+ * existing `.canvas` div (identity unchanged) → the overlay stack (empty
+ * containers, see stage-overlays/). Zoom/pan/hand-mode state is entirely
+ * delegated to stage-view.ts's pure functions (see that file and
+ * packages/web/test/stage-view.test.ts) — this component only wires up DOM
+ * events, converts coordinates once, and calls those functions.
  *
- * `canvasRef` 的 div 在這裡的 JSX 位置與條件完全沒變（還是 `.stage` 底下唯
- * 一、無條件渲染的子節點，沒有新的 `key`）——canvas.ts 的 `mountCanvas`
- * 只跑一次並永遠抓著這個節點，弄丟身分等於讓掛進去的 iframe 靜默變成孤兒
- * （白畫面、不報錯）。`.stage` 本身現在多了一個 inline `transform`
- * （平移+縮放），這對 canvas.ts 完全透明——它的座標數學全部發生在 iframe
- * 自己的文件座標系裡，祖先層的 CSS transform 不影響那個座標系。
+ * `canvasRef`'s div keeps the exact same JSX position and conditions here
+ * (still the one and only unconditionally-rendered child under `.stage`,
+ * with no new `key`) — canvas.ts's `mountCanvas` runs exactly once and
+ * holds onto this node forever; losing its identity would silently orphan
+ * the mounted iframe (a blank screen, no error). `.stage` itself now also
+ * carries an inline `transform` (pan + zoom), which is completely
+ * transparent to canvas.ts — all of its coordinate math happens in the
+ * iframe's own document coordinate space, which an ancestor's CSS
+ * transform does not affect.
  */
 export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, controller, onEditAnimation, onEditStyle, side, comment, children }: StageProps) {
   const [zoomPan, setZoomPan] = useState<ZoomPanState>(initialZoomPan);
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; startPan: ZoomPanState["pan"] } | null>(null);
-  // 播放模式時舞台導航整個停用（比照 comotion-logic-v3.js 的 wellWheel/
-  // wellDown 兩者都對 `mode === "play"` 提前 return），Dock／疊層也跟著
-  // shellVisible 一起從 DOM 消失，比照 App.tsx 對 Titlebar/Rail/側欄的既有
-  // 作法（播放模式時整組不掛載，不是 CSS 隱藏）。
+  // Stage navigation is fully disabled in play mode (mirroring the
+  // prototype's `wellWheel`/`wellDown`, both of which return early for
+  // `mode === "play"`); the Dock/overlays disappear from the DOM together
+  // with `shellVisible`, matching App.tsx's existing approach for the
+  // Titlebar/Rail/side panel (unmounted entirely in play mode, not just
+  // hidden with CSS).
   const shellVisible = state.mode !== "play";
 
-  // 給 stage-input relay 用的「最新值」讀取口——effect 只在 controller 變
-  // 動時重新訂閱一次（見下方），訂閱期間收到的每個事件都要讀到當下的
-  // zoomPan，不是訂閱那一刻的舊值，所以用 ref 而非直接關閉 zoomPan 這個
-  // state 變數。
+  // A "latest value" read port for the stage-input relay — the effect below
+  // only re-subscribes when `controller` changes, but every event received
+  // during that subscription needs to read the current `zoomPan`, not the
+  // stale value from subscription time, hence a ref rather than closing
+  // directly over the `zoomPan` state variable.
   const zoomPanRef = useRef(zoomPan);
   zoomPanRef.current = zoomPan;
 
-  // Space 暫時抓取 (05-INTERACTIONS.feature「暫時抓取」)：按住等同抓取模
-  // 式，放開恢復原本的 hand 狀態；視窗失焦視同放開（不會卡在抓取模式）；
-  // 焦點在輸入框時不啟用（比照 App.tsx 既有 ⌘Z 的 focus guard）。
+  // Space's temporary grab (05-INTERACTIONS.feature's "temporary grab"):
+  // holding it is equivalent to hand mode, releasing restores the previous
+  // hand state; losing window focus is treated the same as releasing (so
+  // it can never get stuck in grab mode); disabled while focus is on a
+  // text input (mirroring App.tsx's existing ⌘Z focus guard).
   useEffect(() => {
     if (!shellVisible) return;
     function onKeyDown(event: KeyboardEvent): void {
@@ -132,10 +143,12 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     };
   }, [shellVisible]);
 
-  // ⌘0／⌘+／⌘=／⌘− (05-INTERACTIONS.feature「縮放選單」/06-KEYBOARD 表)：
-  // 同一組數學搬到鍵盤入口，不重寫——ZoomMenu 的 +/− 按鈕也是同樣不帶錨點
-  // 的 `setZoom(current, current.zoom * 1.25)`，Fit 是 `zoomFit`。播放模式
-  // 沒有舞台縮放的概念，跟著 shellVisible 一起停用（同上面 Space 效果）。
+  // ⌘0/⌘+/⌘=/⌘- (05-INTERACTIONS.feature's "zoom menu"/the keyboard table):
+  // the same math moved to a keyboard entry point, not rewritten — the
+  // ZoomMenu's +/- buttons use the same anchorless
+  // `setZoom(current, current.zoom * 1.25)`, and Fit is `zoomFit`. Play
+  // mode has no concept of stage zoom, so this is disabled together with
+  // `shellVisible` (same as the Space effect above).
   useEffect(() => {
     if (!shellVisible) return;
     function onKeyDown(event: KeyboardEvent): void {
@@ -161,33 +174,40 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [shellVisible]);
 
-  // 抓取模式（✋ 或 Space 暫時抓取）狀態變動時同步推給 canvas.ts——它是唯一
-  // 知道要不要把這個狀態重推給 selection-runtime.js（切頁後、
-  // "runtime-ready"）的一方，這裡只管把最新值交給它（NOOP-83 §2.1(c)）。
+  // Whenever hand mode (✋ or Space's temporary grab) changes, push it to
+  // canvas.ts right away — it's the only party that knows whether to
+  // re-push this state to selection-runtime.js (after switching slides, or
+  // on "runtime-ready"); this effect only hands it the latest value.
   useEffect(() => {
     controller?.setStageHandMode(isHandActive(hand));
   }, [controller, hand]);
 
-  // 縮放/平移後疊層（名稱標籤、情境列、右鍵選單）要跟著投影片走：runtime 回
-  // 報的座標是 iframe 自己的 client px，不受 `.stage` 的 transform 影響，只
-  // 有父文件這邊的換算會過期，所以 zoomPan 一變就請 controller 用新的 frame
-  // 位置重算一次（useEffect 在 transform 已 commit 之後跑）。
+  // After a zoom/pan, the overlays (name label, context bar, right-click
+  // menu) need to track the slide: the coordinates the runtime reports are
+  // the iframe's own client px, unaffected by `.stage`'s transform — only
+  // the parent-document side of the conversion goes stale, so whenever
+  // zoomPan changes this asks the controller to recalculate from the new
+  // frame position (the effect runs after the transform has already
+  // committed).
   useEffect(() => {
     if (!shellVisible) return;
     controller?.refreshOverlay();
   }, [controller, shellVisible, zoomPan]);
 
-  // [E2.T17]：嵌入播放器的疊層在播放模式也活著（EmbedLayer 不在 shellVisible
-  // 的閘門後面），所以它的重算不能跟上面那個一起被 `!shellVisible` 擋掉——
-  // 進出播放模式正是 `.stage` transform 換掉、frame 位置整個改變的時候。
+  // The embedded player overlay stays alive in play mode too (EmbedLayer
+  // isn't behind the `shellVisible` gate), so its own recalculation cannot
+  // be blocked by `!shellVisible` along with the effect above — entering
+  // or leaving play mode is exactly when `.stage`'s transform swaps and the
+  // frame position changes entirely.
   useEffect(() => {
     controller?.refreshEmbeds();
   }, [controller, shellVisible, zoomPan]);
 
-  // 投影片本體上的滾輪縮放/平移、抓取模式拖曳（NOOP-83 §2/§4，Dev-Leader
-  // 裁決核准的擴大範圍）：canvas.ts 已經把 selection-runtime.js 回報的
-  // iframe 內座標換算成這個文件的 client 座標，所以下面的數學跟
-  // handleWheel／handleMouseDown 對留白區做的完全一樣，不重寫一份。
+  // Wheel zoom/pan and hand-mode dragging on the slide body itself:
+  // canvas.ts has already converted selection-runtime.js's reported iframe-
+  // internal coordinates into this document's client coordinates, so the
+  // math below is identical to what handleWheel/handleMouseDown do for the
+  // empty margin — not rewritten as a separate copy.
   useEffect(() => {
     if (!controller || !shellVisible) return;
     return controller.subscribeStageInput((event) => {
@@ -231,16 +251,18 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   }, [controller, shellVisible, wellRef]);
 
   /**
-   * 留白區（`.canvas-area` 的 padding 背景）自己的滾輪/拖曳處理——投影片
-   * 本體上的同一批操作走上面 `subscribeStageInput` 的 relay，見該 effect
-   * 的註解。兩條路徑共用這裡的縮放/平移數學，沒有重複一份。
+   * The empty margin's (`.canvas-area`'s padding background) own wheel/drag
+   * handling — the same operations on the slide body itself go through the
+   * `subscribeStageInput` relay above, see that effect's own comment. Both
+   * paths share the zoom/pan math here rather than duplicating it.
    */
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>): void {
     if (!shellVisible || isOnStageChrome(event.target)) return;
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
-      // 錨點是相對 well 中心的偏移量（比照 comotion-logic-v3.js 的
-      // wellWheel），因為 `.stage` 的置中／平移／縮放全部疊在同一個原點上。
+      // The anchor is an offset relative to the well's center (mirroring
+      // the prototype's `wellWheel`), because `.stage`'s centering/pan/zoom
+      // are all stacked on the same origin.
       const rect = wellRef.current?.getBoundingClientRect();
       const anchor = rect
         ? { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 }
@@ -263,9 +285,11 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     const startPan = zoomPan.pan;
     dragRef.current = { startX, startY, startPan };
     setDragging(true);
-    // F-05：舞台外圈（`.canvas-area` 但落在 `.stage` 之外的深灰底）點一下要
-    // 清除選取（06-KEYBOARD_AND_GESTURES.md「點空白取消」）；拖曳（平移畫
-    // 布）收尾的 mouseup 不算「點」，靠 `moved` 分辨——超過門檻視為拖曳。
+    // Clicking the stage's outer ring (`.canvas-area`'s dark-gray backdrop
+    // outside `.stage`) should clear the selection (per
+    // 06-KEYBOARD_AND_GESTURES.md's "click empty space to deselect"); the
+    // mouseup ending a pan drag must not count as a "click" — `moved`
+    // distinguishes the two, past the threshold counts as a drag.
     let moved = false;
     function onMove(moveEvent: globalThis.MouseEvent): void {
       const drag = dragRef.current;
@@ -293,8 +317,8 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     const { state: next, selectionCleared } = toggleHand(hand);
     setHand(next);
     if (selectionCleared) {
-      // 05-INTERACTIONS.feature「抓取模式」：開啟時清除目前選取
-      // (NOOP-83 §2.1(b)/§4.5)。
+      // 05-INTERACTIONS.feature's "hand mode": turning it on clears the
+      // current selection.
       controller?.clearSelection();
     }
   }
@@ -302,10 +326,12 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   const aspectStyle: CSSProperties = canvasSize
     ? { aspectRatio: `${canvasSize.width} / ${canvasSize.height}` }
     : { visibility: "hidden" };
-  // 播放模式（!shellVisible）永遠以 identity transform 呈現，忽略當下存的
-  // zoomPan——#29 既有的全螢幕回歸契約（e2e/player-fullscreen.test.ts 斷言
-  // frameSize[0] === screenSize[0]）優先於編輯模式的縮放/平移狀態；zoomPan
-  // 本身不清空，回到檢視模式時原本的縮放/平移原封不動恢復。
+  // Play mode (!shellVisible) always renders with an identity transform,
+  // ignoring the currently stored zoomPan — the existing fullscreen
+  // regression contract (e2e/player-fullscreen.test.ts asserts
+  // frameSize[0] === screenSize[0]) takes priority over the edit mode's
+  // zoom/pan state; zoomPan itself is never cleared, so returning to view
+  // mode restores the original zoom/pan exactly as it was.
   // `translate(-50%, -50%)` is the self-centering half of stage.css's
   // `top/left: 50%` trick (undoing the offset against `.stage`'s own size)
   // — always present, even during play, or `.stage` would jump to the
@@ -335,9 +361,11 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     >
       <div className="stage" style={stageStyle} data-empty={deckEmpty ? "true" : undefined}>
         <div ref={canvasRef} className="canvas" />
-        {/* 一頁都還沒有的簡報：舞台上不該有一張白紙假裝那是空白投影片
-            （iframe 這時是透明的，見 canvas.ts 的 EMPTY_DECK_DOCUMENT），
-            井底直接透出來，只留這一行白字。 */}
+        {/* A deck with zero slides: the stage should not show a blank white
+            sheet pretending to be an empty slide (the iframe is transparent
+            at this point, see canvas.ts's EMPTY_DECK_DOCUMENT) — the well's
+            floor shows through directly, with only this one line of white
+            text. */}
         {deckEmpty && <p className="stage-empty">No slides now</p>}
         {/* T3/NOOP-142: pointer-events stays "none" until App.tsx sets
             `active` true — otherwise this div would sit over the iframe at

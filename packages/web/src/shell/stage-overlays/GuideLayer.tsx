@@ -4,9 +4,10 @@ export interface GuideLayerProps {
 }
 
 /**
- * 拖曳吸附輔助線（NOOP-90/T2 ADR-0011 amend）：畫在父文件了，不再是
- * selection-runtime.js 裡的 `.guide`（那份實作已移除，見 selection-runtime.js
- * 的 `bounds`/`preview` 訊息與這裡的 `OverlayState.guides`）。
+ * Drag-snap alignment guides: now drawn in the parent document instead of
+ * as the `.guide` in selection-runtime.js (that implementation has been
+ * removed — see selection-runtime.js's `bounds`/`preview` messages and
+ * this component's `OverlayState.guides`).
  */
 export function GuideLayer({ guides }: GuideLayerProps) {
   return (

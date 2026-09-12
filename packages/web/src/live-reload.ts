@@ -1,10 +1,10 @@
 import type { SlashCommandOption } from "./slash-commands.js";
 
-/** core's own `SaveState` shape (`workspace.ts`), restated here rather than imported (F8, NOOP-289): the browser bundle no longer depends on core at all. */
+/** core's own `SaveState` shape (`workspace.ts`), restated here rather than imported: the browser bundle no longer depends on core at all. */
 export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
 
 /**
- * NOOP-93 §4.4 — restated here rather than imported: `@comotion/server`'s
+ * Restated here rather than imported: `@comotion/server`'s
  * `export/job.ts` owns the canonical shape, but it is a Node-only package
  * (Playwright, `node:*`) the browser bundle must never depend on. Same
  * pattern `presentation.ts`'s `TemplateInfo` already uses for core's
@@ -12,15 +12,15 @@ export type SaveState = { known: true; dirty: boolean; fileName: string } | { kn
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@comotion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
+/** The two adapters `AgentManager` ever reports — restated here (not imported from `@comotion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
 export type AgentKind = "claude" | "codex";
 
-/** [E3.T5] NOOP-230 §4.4: the `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
+/** The `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
 export interface AgentChangedEvent {
   kind: AgentKind;
   label: string;
 }
-/** `agent-model-changed`：`POST /api/agent/model` 真的切換了模型之後，server 對每個分頁廣播。 */
+/** `agent-model-changed`: the server broadcasts this to every tab once `POST /api/agent/model` has actually switched the model. */
 export interface AgentModelChangedEvent {
   kind: AgentKind;
   modelId: string;
@@ -43,7 +43,7 @@ export type ExportSseEvent =
   | { jobId: string; format: ExportFormat; state: "error"; message: string };
 
 /**
- * Live reload (ticket #5): opens a one-way `/api/events` stream and calls
+ * Live reload: opens a one-way `/api/events` stream and calls
  * `onChange` whenever the server reports the presentation changed on disk.
  * Push is server-to-client only — this module never writes back over the
  * stream, and the event carries no payload, so `onChange` is the caller's
@@ -76,12 +76,12 @@ const CHANGE_EVENT = "presentation-changed";
 // its own, gets an explicit HTTP error back, and silently keeps trying
 // forever with nothing on screen.
 const WATCH_ERROR_EVENT = "presentation-watch-error";
-// T5 (NOOP-93/#110): the single-editor lock's own two events, fanned out
+// The single-editor lock's own two events, fanned out
 // over this same /api/events stream rather than a second one (see
 // packages/server/src/changes.ts's `broadcast`).
 const EDITING_FROZEN_EVENT = "editing-frozen";
 const EDITING_UNFROZEN_EVENT = "editing-unfrozen";
-// NOOP-93 §4.2: fanned out over this same stream by `POST /api/save` and
+// Fanned out over this same stream by `POST /api/save` and
 // `POST /api/open` — never by the generic disk watcher that feeds
 // `presentation-changed` (changes.ts stays untouched, see save-state.ts's
 // own comment). An ordinary edit (e.g. via /api/command) is instead picked
@@ -89,18 +89,18 @@ const EDITING_UNFROZEN_EVENT = "editing-unfrozen";
 // itself, the same GET-refetch shape `onChange` already uses for
 // `/api/presentation`.
 const SAVE_STATE_EVENT = "save-state";
-// NOOP-93 §4.4: every state transition of the (at most one) active export
-// job, fanned out over this same stream. No GET counterpart exists for
-// this one (§4.7's table, "重新整理頁面後" row) — a reload deliberately
-// loses in-flight job UI state, so there is nothing to seed on mount.
+// Every state transition of the (at most one) active export job, fanned
+// out over this same stream. No GET counterpart exists for this one —
+// a reload deliberately loses in-flight job UI state, so there is
+// nothing to seed on mount.
 const EXPORT_EVENT = "export";
-// [E3.T3] #232/#236: fanned out by serve.ts whenever the agent sends a
+// Fanned out by serve.ts whenever the agent sends a
 // fresh `available_commands_update` — same "no replay, GET for the initial
 // value" contract as editing-frozen/save-state above (`GET
 // /api/agent/commands` is the caller's own initial fetch, made once on
 // mount the same way `/api/editing` is).
 const AGENT_COMMANDS_EVENT = "agent-commands";
-// [E3.T5] NOOP-230 §4.4: fanned out by `AgentManager.select()` whenever it
+// Fanned out by `AgentManager.select()` whenever it
 // actually swaps to a different agent kind (never for a same-kind
 // settings-only select) — same "no replay, GET for the initial value"
 // contract as the other events on this stream (`GET /api/agent` is the

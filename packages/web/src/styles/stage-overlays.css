@@ -1,22 +1,31 @@
-/* 舞台覆蓋層兩層 ([E5.T3] 兩層化)：
-   - `.stage-geometry`（z1）：只顯示、不接受操作的東西——吸附輔助線、動畫編
-     號徽章。整層與其所有子孫節點一律 `pointer-events: none !important`，
-     子元件沒有辦法把自己開回可點——這是把 F-16（顯示用徽章誤開 auto、擋
-     住 iframe 裡的縮放把手）在結構上變成寫不出來的地方，不是每個元件的
-     個別決定。
-   - `.stage-widgets`（z2）：所有要按的東西——名稱／群組標籤與留言 pin、情
-     境列、留言框、表格編輯框／欄寬把手／右鍵選單、Chart 資料視窗、第三
-     方播放器 iframe。容器本身 `pointer-events: none`，由
-     `.stage-widgets > *` 統一開回；個別元件不需要、也不應該再自己宣告。
-   widget 層的規則：widget 不得蓋住投影片內容，或自己處理 hover（情境列
-   走後者，抓取模式下讓路，見下方 `[data-grab]` 規則）。顯示用例外是封閉
-   清單、不得再加第四個：`.selection-label-row`（標籤與留言 pin 是同一個
-   flex row 的兩個子項，拆開換不到任何好處）、`.embed-layer`（容器本身不
-   吃事件，個別 iframe 依模式各自決定）、`.table-range-box`（純顯示的選取
-   範圍框）——三者都用 `.stage-widgets > .X` 明確覆蓋回 `none`。第三方播
-   放器 iframe 因為 sandbox（ADR-0011）被迫留在父文件，是這一層裡明示的
-   例外。`CommentLayer`（[E2.T8]）不是空容器，渲染 `.comment-composer` 時
-   自帶定位，不需要額外的滿版容器層。 */
+/* Two stage overlay layers:
+   - `.stage-geometry` (z1): display-only elements that never take input —
+     snap guides, animation-number badges. The whole layer and all its
+     descendants always have `pointer-events: none !important`, so no child
+     component can re-enable itself as clickable — this makes it
+     structurally impossible to reintroduce a display-only badge that
+     accidentally opens up to `auto` and blocks an iframe's resize handle,
+     rather than relying on every component to remember to opt out.
+   - `.stage-widgets` (z2): everything clickable — name/group labels and
+     comment pins, the context bar, the comment composer, table edit
+     box/column-width handles/right-click menu, the chart data window, and
+     third-party player iframes. The container itself is
+     `pointer-events: none`, re-enabled uniformly by `.stage-widgets > *`;
+     individual components don't need to (and shouldn't) declare their own.
+   Rules for the widget layer: a widget must not cover slide content, or it
+   must handle hover itself (the context bar takes this second path,
+   stepping aside in grab mode — see the `[data-grab]` rule below). The
+   display-only exceptions are a closed list, not to be extended with a
+   fourth: `.selection-label-row` (the label and comment pin are two
+   children of the same flex row — splitting them buys nothing),
+   `.embed-layer` (the container itself takes no events; individual
+   iframes decide per mode), and `.table-range-box` (a purely visual
+   selection-range box) — all three explicitly override back to `none` via
+   `.stage-widgets > .X`. Third-party player iframes are forced to live in
+   the parent document due to sandboxing (ADR-0011), making them the one
+   explicit exception in this layer. `CommentLayer` is not an empty
+   container — when it renders `.comment-composer` it carries its own
+   positioning, so it needs no extra full-cover container layer. */
 .stage-geometry {
   position: absolute;
   inset: 0;
@@ -49,10 +58,11 @@
   pointer-events: none;
 }
 
-/* 名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取」；色值取自原型
-   docs/design/prototype 的選取標籤）。[E2.T8] 把定位從 `.selection-label`
-   本身移到這個新的 row 容器，讓留言 pin 能以 flex row 的第二個子項出現在
-   標籤右側（同一列，`comotion-logic-v3.js`.dc.html:219-224）。 */
+/* Name/group/drill-in-path label (see 05-INTERACTIONS.feature "Selection";
+   color values taken from the prototype's selection label). Positioning
+   was moved from `.selection-label` itself to this new row container, so
+   the comment pin can appear as the flex row's second child, to the
+   label's right, on the same line. */
 .selection-label-row {
   position: absolute;
   transform: translateY(-100%);
@@ -70,7 +80,8 @@
   font-weight: 700;
   white-space: nowrap;
 }
-/* [E2.T8]：留言 pin，標籤同一列、右側（見上方 .selection-label-row）。 */
+/* Comment pin, on the same line as the label, to its right (see
+   .selection-label-row above). */
 .comment-pin {
   pointer-events: auto;
   display: grid;
@@ -87,8 +98,8 @@
   cursor: pointer;
 }
 
-/* 拖曳吸附輔助線 — 畫在父文件（ADR-0011 amend），取代舊版 iframe 內
-   selection-runtime.js 的 `.guide`。 */
+/* Drag-snap guide line — drawn in the parent document (ADR-0011 amendment),
+   replacing the old in-iframe `.guide` from selection-runtime.js. */
 .guide {
   position: absolute;
   background: var(--guide);
@@ -105,10 +116,12 @@
   right: 0;
 }
 
-/* 選取框下方的情境列（NOOP-90/T2 §0.3：外觀照原型，內容含原右鍵選單的 Order／Duplicate；
-   Comment to AI／Edit style 由 NOOP-67/69 接功能）。材質與尺寸照原型的情境列：
-   按鈕高 --control-h-compact（28px）、容器高 36px（與 ContextBar.tsx 的 BAR_HEIGHT 一致）、
-   玻璃底 --glass-bg-soft、blur、薄外框 --glass-border（不加陰影）、圓角 --radius-lg。 */
+/* Context bar below the selection box: appearance follows the prototype,
+   content includes the old right-click menu's Order/Duplicate, plus
+   Comment to AI/Edit style. Material and sizing match the prototype's
+   context bar: --control-h-compact (28px) buttons, 36px container height
+   (matching ContextBar.tsx's BAR_HEIGHT), --glass-bg-soft glass background,
+   blur, thin --glass-border (no shadow), --radius-lg corners. */
 .context-bar {
   position: absolute;
   display: flex;
@@ -125,15 +138,18 @@
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   animation: context-bar-in var(--dur-fast) var(--ease-out);
-  /* [E5.T7]/F-17 決定 8：未 hover 時半透明——底下被壓住的內容仍可點得到、
-     加選得到（`pointer-events` 由下面 `.stage-widgets > .context-bar` 這條
-     更高 specificity 的規則決定，這裡只管外觀）。 */
+  /* Semi-transparent while not hovered — content underneath stays clickable
+     and selectable (`pointer-events` is decided by the higher-specificity
+     `.stage-widgets > .context-bar` rule below; this rule only controls
+     appearance). */
   opacity: 0.55;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
-/* [E5.T7]/F-17：情境列自己處理 hover（OverlayLayer 的 createHoverSolidifier），
-   預設 `pointer-events: none`（0,2,0，蓋過 `.stage-widgets > *` 的 auto），
-   停留滿 HOVER_SOLIDIFY_MS 後加上 `.is-solid`（0,3,0）才開回 auto。 */
+/* The context bar handles hover itself (OverlayLayer's
+   createHoverSolidifier): defaults to `pointer-events: none` (0,2,0,
+   overriding `.stage-widgets > *`'s auto), and only opens back up to
+   `auto` once `.is-solid` (0,3,0) is added after HOVER_SOLIDIFY_MS of
+   sustained hover. */
 .stage-widgets > .context-bar {
   pointer-events: none;
 }
@@ -143,10 +159,11 @@
 .context-bar.is-solid {
   opacity: 1;
 }
-/* 抓取模式（✋／按住 Space）：情境列讓路，讓從它上面開始的拖曳穿透到投影片去平
-   移——即使當下已經 solid 也一樣。這條要排在 `.is-solid` 規則之後：兩者
-   specificity 相同 (0,3,0)，後到先的規則勝出，抓取模式才能在兩者都成立時
-   仍然贏。 */
+/* Grab mode (hand tool / holding Space): the context bar steps aside so a
+   drag starting on top of it passes through to pan the slide — even while
+   it's currently solid. This rule must come after the `.is-solid` rule:
+   both have the same specificity (0,3,0), and the later rule wins, so grab
+   mode still wins when both conditions are true. */
 .canvas-area[data-grab="true"] .context-bar {
   pointer-events: none;
 }
@@ -200,12 +217,14 @@
   background: var(--glass-divider);
 }
 
-/* [E2.T8] 玻璃留言框：材質照 ContextBar 的玻璃容器（同一套 --glass-* 令牌），
-   定位由 CommentComposer.tsx 的 useLayoutEffect 算好後直接寫 style.left/top。 */
+/* Glass comment composer: material matches ContextBar's glass container
+   (the same set of --glass-* tokens); positioning is computed by
+   CommentComposer.tsx's useLayoutEffect and written directly to
+   style.left/top. */
 .comment-composer {
   position: absolute;
-  /* widget 層內部排序（驗收條件第 1 條「widget 層內部除外」的那一項）：留
-     言框要蓋在情境列與嵌入播放器之上。 */
+  /* Ordering within the widget layer: the comment composer must sit above
+     the context bar and embedded players. */
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -273,9 +292,10 @@
   cursor: not-allowed;
 }
 
-/* [E2.T17] 第三方嵌入播放器（YouTube）。與其他疊層不同，這一層在播放模式
-   也要留著——嵌入的影片必須在播放與全螢幕下繼續播。容器本身不吃事件；
-   個別 iframe 的 pointer-events 由 EmbedLayer 依模式決定。 */
+/* Third-party embedded player (YouTube). Unlike other overlay layers, this
+   one must stay present in play mode — an embedded video needs to keep
+   playing through playback and fullscreen. The container itself takes no
+   events; each iframe's pointer-events is decided by EmbedLayer per mode. */
 .embed-layer {
   position: absolute;
   inset: 0;

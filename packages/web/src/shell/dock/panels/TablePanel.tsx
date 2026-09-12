@@ -21,10 +21,11 @@ const THEMES: { value: TableTheme; label: string }[] = [
 ];
 
 /**
- * Table 插入面板（plan §3.10/§5 E1-E3）：8×6 格線 hover 預覽、click 鎖定尺寸，
- * 三個主題按鈕，表頭開關，Insert 送出 `table create`。位置固定在畫布左上
- * 10%/20% 處——CLI 的 `--x`/`--y` 沒有預設值，這是 GUI 自己的插入慣例，
- * 与 `table create`本身的行為無關（不確定與保留事項見 PR 說明）。
+ * Table insert panel: an 8x6 grid with hover preview, click to lock in the
+ * size, three theme buttons, a header toggle, Insert sends `table create`.
+ * Position is fixed at 10%/20% from the canvas's top-left — the CLI's
+ * `--x`/`--y` have no default, this is purely the GUI's own insertion
+ * convention and unrelated to `table create`'s own behaviour.
  */
 export function TablePanel({ onClose, controller, canvasSize, slidePath }: TablePanelProps) {
   const [hover, setHover] = useState<{ row: number; col: number } | null>(null);

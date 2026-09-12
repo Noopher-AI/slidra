@@ -21,7 +21,7 @@ import { AnimatePanel } from "./panels/AnimatePanel.js";
  * behaviour that ticket shipped (see ZoomMenu.tsx); every insert panel and
  * the shape/arrange menus are empty containers — their contents are a
  * future ticket (see the PR report). There is no `"group"` entry: Group/
- * Ungroup ([E2.T15]/#205) is not a floating layer — it sends `element
+ * Ungroup is not a floating layer — it sends `element
  * group`/`element ungroup` straight through `controller.runCommand` and
  * shows a toast, it never opens anything under `openLayer`.
  */
@@ -34,13 +34,13 @@ export interface DockProps {
   onToggleHand(): void;
   selection: CanvasSelection;
   controller: CanvasController | null;
-  /** [E2.T7]：Add animation 送出的 `effect add` 需要目前投影片的路徑；沒有投影片時是 null。 */
+  /** The `effect add` sent by Add animation needs the current slide's path; it's null when there is no slide. */
   slidePath: string | null;
-  /** [E2.T7]：Add animation 成功後把右欄切到 Animate › Object（GUI 行為表）。 */
+  /** Switches the right column to Animate › Object after Add animation succeeds (per the GUI behaviour table). */
   onAnimationAdded(): void;
   /** The presentation's own canvas size (project.json's `canvas`) — TextPanel converts the prototype's percentage-based defaults into real pixels against it, instead of assuming 1280×720. `null` before `presentationInfo` has loaded. */
   canvasSize: { width: number; height: number } | null;
-  /** [E2.T17] plan §4.1, extended by NOOP-353 拍板決定 7: ShapeMenu's rect/ellipse fill, line stroke, and TextPanel's text fill all default to the current slide's own accent colour when set. Without an accent, all three compute a contrast colour off `pageStyle.background` instead (`contrast-fill.ts`) — never omitted, never a design-token fallback. `null` before a slide has loaded, or when the slide declares no page style at all, reaches that computation as a `null` background. */
+  /** ShapeMenu's rect/ellipse fill, line stroke, and TextPanel's text fill all default to the current slide's own accent colour when set. Without an accent, all three compute a contrast colour off `pageStyle.background` instead (`contrast-fill.ts`) — never omitted, never a design-token fallback. `null` before a slide has loaded, or when the slide declares no page style at all, reaches that computation as a `null` background. */
   pageStyle: { background: string | null; accent: string | null } | null;
 }
 
@@ -65,7 +65,7 @@ const EDIT_COMMANDS: CommandDef[] = [
   { key: "arrange", label: "Arrange", icon: "arrange" },
 ];
 
-/** 05-INTERACTIONS.feature「停用態」：沒有選取時 Animate/Arrange 半透明不可按；Insert 群組不受選取影響。 */
+/** Disabled state: Animate/Arrange are dimmed and unclickable without a selection; the Insert group is unaffected by selection. */
 function isCommandDisabled(key: DockLayer, hasSelection: boolean): boolean {
   return (key === "animate" || key === "arrange") && !hasSelection;
 }
@@ -77,7 +77,7 @@ export interface GroupButtonState {
 
 /**
  * D5: Group/Ungroup is one button that flips label by what's selected
- * (03-UI_RATIONALE.md §D). 05-INTERACTIONS.feature「停用態」requires ≥2
+ * (03-UI_RATIONALE.md §D). The disabled state requires ≥2
  * elements, or exactly one group, to enable it; a `null` entry in
  * `selection.elements` (a reload racing the selection) is treated as "not
  * a group", never as a group.
@@ -115,13 +115,15 @@ export function DockToast({ text }: { text: string }) {
 }
 
 /**
- * 底部玻璃工具列 (New v3 skeleton)。left/center/right 三段：✋ + 縮放（left）、
- * Insert 群組（center）、Edit 群組（right）。互斥規則（02-DESIGN_DOC.md §4.3）
- * 用單一 `openLayer` state 天然滿足：開一個就是把 state 設成別的值，不需要
- * 額外協調。目前開啟的那一層一律當 `.dock` 的直接子節點渲染（不巢狀在各自
- * 的按鈕格子裡），這樣 `.floating-layer` 的絕對定位才是相對整個 dock 置中，
- * 不是相對觸發它的那顆按鈕（05-INTERACTIONS.feature「縮放選單」／
- * 02-DESIGN_DOC.md §2.3「一律從同一個地方長出」）。
+ * The bottom glass toolbar (New v3 skeleton). Three sections, left/center/right:
+ * hand + zoom (left), Insert group (center), Edit group (right). The mutual-
+ * exclusion rule (02-DESIGN_DOC.md §4.3) falls out naturally from a single
+ * `openLayer` state: opening one layer just sets the state to a different
+ * value, no extra coordination needed. Whichever layer is currently open is
+ * always rendered as a direct child of `.dock` (never nested inside its own
+ * button cell), so `.floating-layer`'s absolute positioning centers against
+ * the whole dock, not against the button that triggered it (per
+ * 02-DESIGN_DOC.md §2.3: "always grows from the same place").
  */
 export function Dock({
   zoomPan,
@@ -251,7 +253,7 @@ export function Dock({
       </div>
       <span className="dock-divider" />
       <div className="dock-center">{INSERT_COMMANDS.map(renderCommand)}</div>
-      {/* Insert 與 Edit 群組之間沒有分隔線（03-UI_RATIONALE.md §D：右段三者「不加分隔線以表示同類」，原型也只在 ✋/縮放後面畫一條）。 */}
+      {/* No divider between the Insert and Edit groups (03-UI_RATIONALE.md §D: the three right-side items skip the divider to signal they're the same kind; the prototype only draws one after hand/zoom). */}
       <div className="dock-right">
         {EDIT_COMMANDS.map(renderCommand)}
         <button

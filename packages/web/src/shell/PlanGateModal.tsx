@@ -12,21 +12,21 @@ export interface PlanGateModalProps {
   outline: PlanOutline;
   /** Sends one chat message through the same path a hand-typed message takes (App.tsx's `sendChatText`). */
   onSend: (text: string) => void;
-  /** 放棄：runs `plan delete` (whole `plan/`) through the one canvas write path; the gate closes when the refetch finds no file. */
+  /** Discard: runs `plan delete` (whole `plan/`) through the one canvas write path; the gate closes when the refetch finds no file. */
   onDiscard: () => void;
 }
 
 /**
- * #303: the plan-confirmation gate — ppt-master's "⛔ BLOCKING" gate as a
- * product feature. `comotion-plan` writes `plan/outline.md` with
- * `status: draft` and its `questions`; this dialog shows the page plan
- * read-only, one block per question with the agent's recommendation
- * preselected, and three exits (contract §4): 確認並建置 → `/comotion-build
- * 【計畫確認】…`, 重新規劃 → `/comotion-plan 【重做】…` (a reason is
- * required), 放棄 → `plan delete`. Deliberately blocking: no close button,
- * Esc does nothing, focus stays inside — the author decided (grilling on
- * #303) that a plan must be answered, not dismissed; 放棄 is the one exit
- * that needs no agent.
+ * The plan-confirmation gate — ppt-master's "⛔ BLOCKING" gate as a product
+ * feature. `comotion-plan` writes `plan/outline.md` with `status: draft`
+ * and its `questions`; this dialog shows the page plan read-only, one block
+ * per question with the agent's recommendation preselected, and three
+ * exits (contract §4): "確認並建置" (Confirm and build) →
+ * `/comotion-build 【計畫確認】…`, "重新規劃" (Redo) →
+ * `/comotion-plan 【重做】…` (a reason is required), "放棄" (Discard) →
+ * `plan delete`. Deliberately blocking: no close button, Esc does nothing,
+ * focus stays inside — a plan must be answered, not dismissed; "放棄" is
+ * the one exit that needs no agent.
  */
 export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps) {
   const [choices, setChoices] = useState<Record<string, string>>(() =>
@@ -120,7 +120,7 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
                 {outline.pages.map((page) => (
                   <tr key={page.n}>
                     <td>{page.n}</td>
-                    {/* #303 §A': the relationship is what the planner decided; the
+                    {/* The relationship is what the planner decided; the
                         page type is only filled in when a known solution fits,
                         so most rows show a dash there. */}
                     <td>{RELATIONSHIP_LABELS[page.relationship]}</td>

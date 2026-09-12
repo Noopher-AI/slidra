@@ -35,7 +35,7 @@ export interface TableOverlayProps {
 export function TableOverlay({ controller, wellRef, slidePath, tableId, table }: TableOverlayProps) {
   const [cellData, setCellData] = useState<{ cells: TableCellRect[]; box: { x: number; y: number; width: number; height: number } } | null>(null);
   const [range, setRange] = useState<CellRange | null>(null);
-  /** `row`/`col` address the cell whose text is edited; `atRow` is where the editor is drawn — they differ for a generated cell, which edits its hidden template row (架構: "雙擊編輯的是模板列"). */
+  /** `row`/`col` address the cell whose text is edited; `atRow` is where the editor is drawn — they differ for a generated cell, which edits its hidden template row (architecture note: "double-click editing targets the template row"). */
   const [editing, setEditing] = useState<{ row: number; col: number; atRow: number; text: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);

@@ -1,4 +1,4 @@
-/* Table 插入面板 / Style › Object 表格段 / 舞台儲存格疊層 (E2.T14 plan §4.5) —
+/* Table insert panel / Style › Object table section / stage cell overlay —
    same glass/floating-layer material every other Dock panel and stage
    overlay already uses (tokens.css), nothing new invented here. */
 
@@ -67,7 +67,7 @@
   cursor: default;
 }
 
-/* ── Style › Object 表格段 ─────────────────────────────────────────── */
+/* ── Style › Object table section ──────────────────────────────────── */
 .table-section {
   padding: var(--space-5);
   display: flex;
@@ -150,7 +150,7 @@
   background: var(--surface-1);
 }
 
-/* ── 舞台儲存格疊層：範圍框、編輯輸入框、欄寬拖曳把手 ──────────────── */
+/* ── Stage cell overlay: range box, edit input, column-width drag handle ── */
 .table-range-box {
   pointer-events: none;
   border: calc(var(--focus-ring-width) * 2) solid var(--brand-red);
@@ -177,7 +177,7 @@
   background: var(--glass-hover);
 }
 
-/* ── 儲存格右鍵選單 ─────────────────────────────────────────────────── */
+/* ── Cell right-click menu ─────────────────────────────────────────── */
 .table-cell-menu {
   z-index: 20;
   pointer-events: auto;

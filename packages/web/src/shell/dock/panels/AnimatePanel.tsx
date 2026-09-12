@@ -14,14 +14,18 @@ export interface AnimatePanelProps {
 const FAMILIES: readonly EffectFamily[] = ["enter", "emphasis", "exit", "path", "media"];
 
 /**
- * Animate 插入面板（NOOP-66/#206 §4.5）：效果卡（依家族分頁，循環預覽用
- * CSS，不走 runtime——見 animate.css 的 `.animate-panel-effect-preview`）、
- * Start／Duration／Delay，`family="path"` 多一個 `d` 欄位（D3：其餘家族沒有
- * d，一給就不合法，這裡直接不渲染那個欄位而不是渲染後禁用它）。按 Add
- * animation 送一次 `effect add`，`elementIds` 是目前選取的全部元素——多選時
- * 對應 feature「群組動畫」的散元素情境（D5：core 端自動讓第一筆帶這裡選的
- * start，其餘 with-previous），選取單一群組 `<g>` 時是同一條命令、只是
- * `elementIds` 剛好只有一個 id，core 端自然只產生一筆項目。
+ * Animate insert panel: effect cards (tabbed by family, looping previews use
+ * CSS instead of the runtime — see `.animate-panel-effect-preview` in
+ * animate.css), Start / Duration / Delay, and one extra `d` field when
+ * `family="path"` (other families don't have `d`, and supplying it would be
+ * invalid, so the field is simply not rendered rather than rendered and
+ * disabled). Add animation sends a single `effect add` with `elementIds`
+ * set to every currently selected element — for a multi-selection this
+ * covers the "group animation" scattered-elements case (the core side
+ * automatically gives the first entry the chosen start, the rest
+ * with-previous); selecting a single group `<g>` goes through the same
+ * command, just with `elementIds` happening to contain one id, so the core
+ * side naturally produces a single entry.
  */
 export function AnimatePanel({ selection, controller, slidePath, onAdded, onClose }: AnimatePanelProps) {
   const [family, setFamily] = useState<EffectFamily>("enter");

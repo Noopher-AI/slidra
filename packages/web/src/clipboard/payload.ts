@@ -1,20 +1,20 @@
 /**
- * Same marker core's `element-clipboard.ts` writes onto a
+ * Same marker `element-clipboard.ts` writes onto a
  * copied selection's root `<svg>` and reads back to recognise one
  * (`CLIPBOARD_MARKER_ATTR`/`_VALUE`) — duplicated here rather than
- * imported (F8, NOOP-289 決定 C1): the web bundle no longer depends on
- * core at all.
+ * imported (decision C1): the web bundle no longer depends on
+ * that package at all.
  */
 const CLIPBOARD_MARKER_ATTR = "data-comot-clipboard";
 const CLIPBOARD_MARKER_VALUE = "elements";
 
 /**
  * Classifies whatever text a `paste` event (or `navigator.clipboard.readText()`)
- * handed the app — the front half of [E2.T18]'s paste behaviour table (計畫
+ * handed the app — the front half of the paste behaviour table (plan
  * §4.3). Recognition is deliberately shallow: only the root `<svg>`'s own
  * marker attribute is checked with the browser's native `DOMParser` —
  * `sourceSlidePath`/`viewBox`/sanitize-worthy content are NOT this module's
- * concern any more (決定 C1/(d)): a payload that looks like comotion
+ * concern any more (decision C1/(d)): a payload that looks like comotion
  * clipboard content but is actually malformed (e.g. carries `onload`) is
  * still classified as `comotion-elements` and sent straight through to
  * `element paste`, which the CLI's own three-layer validation rejects —

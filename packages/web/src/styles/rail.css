@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
-   左欄 (New v3 skeleton): New/Templates 按鈕 + 縮圖 rail。
-   `.overview*` 系列 class 名稱是 overview.ts 自己的既有契約（不因這張骨架
-   票重新命名），這裡只把顏色/間距換成新 token 集合。
+   Left rail (New v3 skeleton): New/Templates buttons + thumbnail rail.
+   The `.overview*` family of class names is overview.ts's own existing
+   contract (not renamed for this skeleton work) — this only swaps
+   colors/spacing over to the new token set.
    ═══════════════════════════════════════════════════════════════ */
 
 .rail {
@@ -100,11 +101,13 @@
   gap: var(--space-3);
 }
 
-/* 03-UI_RATIONALE.md §B「頁碼圓點：當前頁紅底白字」；整列（不是縮圖）以底色
-   標示目前頁，縮圖本身另外加紅色外框。 */
+/* 03-UI_RATIONALE.md §B, "page-number dot: red background, white text for
+   the current page"; the whole row (not just the thumbnail) uses a
+   background to mark the current page, and the thumbnail itself also
+   gets a red outline. */
 .overview-item {
   display: grid;
-  grid-template-columns: calc(var(--space-4) * 2) 1fr; /* 20px 頁碼圓點直徑（原型量測） */
+  grid-template-columns: calc(var(--space-4) * 2) 1fr; /* 20px page-number dot diameter (prototype-measured) */
   gap: var(--space-3);
   align-items: start;
   padding: var(--space-1);
@@ -153,8 +156,9 @@
 .overview-thumb:focus-visible {
   box-shadow: 0 0 0 var(--space-1) var(--brand-red-ring);
 }
-/* 目前頁的紅框用 outline（跟著 border-radius 走），不疊進 box-shadow —
-   design-contract 只允許 box-shadow 整值來自 token。 */
+/* The current page's red frame uses outline (which follows
+   border-radius), not stacked into box-shadow — design-contract only
+   allows a box-shadow value to come entirely from a token. */
 .overview-item-current .overview-thumb {
   outline: calc(var(--space-1) / 2) solid var(--brand-red);
 }
@@ -166,12 +170,16 @@
   pointer-events: none;
 }
 
-/* [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B「頁碼圓點｜…；✦ n 標示
-   該頁動畫數」）。可見度只看「這頁有沒有效果」，不像留言鈕那樣滑入才顯
-   示——這是規劃時就想看到的資訊，不是操作後的回饋，所以恆亮。沿用
-   `.overview-comment-button` 已驗證過的「疊在縮圖上的實色 chip」處理
-   （而非設計原型量測稿裡的半透明玻璃），同一組 token、同一種視覺語言，
-   只是換到左下角。空字串時 `:empty` 直接不佔位、不畫底色。 */
+/* ✦ n animation-count badge (03-UI_RATIONALE.md §B, "page-number dot |
+   …; ✦ n marks this page's animation count"). Visibility depends only on
+   "does this page have any effects", unlike the comment button which
+   only shows on hover — this is information you want to see while
+   planning, not feedback after an action, so it's always on. Reuses
+   `.overview-comment-button`'s already-validated "solid chip layered on
+   the thumbnail" treatment (rather than the semi-transparent glass in the
+   design prototype's mockup), the same token set and visual language,
+   just moved to the bottom-left corner. When the string is empty,
+   `:empty` simply takes up no space and paints no background. */
 .overview-effect-badge {
   position: absolute;
   left: calc(var(--space-1) + var(--space-3));
@@ -193,8 +201,8 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   T3 [E2.T3]：New/Templates 選單項目、縮圖右鍵選單、拖曳插入線、留言鈕
-   入口、From outline… 對話框。
+   New/Templates menu items, thumbnail right-click menu, drag-insert
+   line, comment-button entry point, From outline… dialog.
    ═══════════════════════════════════════════════════════════════ */
 
 .rail-menu-item {
@@ -239,15 +247,18 @@
   color: var(--brand-red);
 }
 
-/* 縮圖右上留言鈕入口（T3 plan §2 邊界 2，[E2.T8] 接上功能）。
-   可見度依 03-UI_RATIONALE.md B 表「滑入才顯示，避免噪音」與原型
-   comotion-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1；
-   該頁已有留言時（.has-comments）恆亮且底色轉紅，是第二個恆亮條件。
-   常駐可見會改變 rail 的靜止外觀，讓 shell-v3／selection 的既有基準
-   全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）——
-   所以「沒有留言」的縮圖仍然維持滑入才顯示，只有 .has-comments 例外。 */
-/* 定位相對 `.overview-item`（含 --space-1 內距），所以要再加上原型量測的
-   縮圖內縮 8px，才會落在縮圖裡面而不是壓在縮圖圓角外緣。 */
+/* Comment-button entry point at the thumbnail's top-right. Visibility
+   follows 03-UI_RATIONALE.md table B, "only show on hover, to avoid
+   noise", matching the prototype's pinOpacity behavior — 0 at rest, 1
+   only once hovering that thumbnail; when the page already has comments
+   (.has-comments), it's always on with a red background, a second
+   always-on condition. Making it always visible would change the rail's
+   resting appearance and turn the existing shell-v3/selection baselines
+   red — so a thumbnail with "no comments" still only shows on hover,
+   with .has-comments as the sole exception. */
+/* Positioned relative to `.overview-item` (which has --space-1 padding),
+   so this also adds the prototype-measured 8px inset, so it lands inside
+   the thumbnail rather than sitting on the thumbnail's rounded outer edge. */
 .overview-comment-button {
   position: absolute;
   top: calc(var(--space-1) + var(--space-3));
@@ -263,22 +274,26 @@
   box-shadow: var(--shadow-seg);
   pointer-events: auto;
 }
-/* 用 `.overview-item .overview-comment-button` 的兩層 class 選擇器（而非單一
-   class）維持既有的優先度慣例（見上方原本的理由：一律用兩層 class，不靠
-   單一 class 去蓋 shell.css 的全域規則）。 */
+/* Uses the two-level class selector `.overview-item
+   .overview-comment-button` (rather than a single class) to keep the
+   existing specificity convention (see the rationale above: always use
+   two-level classes rather than relying on a single class to override
+   shell.css's global rules). */
 .overview-item .overview-comment-button {
   opacity: 0;
 }
 .overview-item:hover .overview-comment-button {
   opacity: 1;
 }
-/* [E2.T8]：該頁已有留言 → 恆亮、紅底白圖示（原型 :601 的 pinBg/pinOpacity）。 */
+/* Page already has comments → always on, red background with white icon
+   (matches the prototype's pinBg/pinOpacity behavior). */
 .overview-item .overview-comment-button.has-comments {
   opacity: 1;
   background: var(--brand-red);
   color: var(--surface-1);
 }
-/* 原型：11px 圖示放在 20px 的鈕裡（不是側欄的 15px 內嵌圖示，那會塞滿整顆）。 */
+/* Prototype: an 11px icon inside a 20px button (not the side panel's 15px
+   inline icon, which would fill the whole button). */
 .overview-comment-button svg {
   width: calc(var(--space-4) + 1px);
   height: calc(var(--space-4) + 1px);
@@ -287,7 +302,7 @@
   transform: translateX(-1px);
 }
 
-/* 拖曳插入線（T3 plan §3.8）：畫在放置目標項的上緣。 */
+/* Drag-insert line: drawn along the top edge of the drop-target item. */
 .overview-drop-line {
   height: var(--space-1);
   margin: 0 var(--space-1);
@@ -297,7 +312,9 @@
   list-style: none;
 }
 
-/* 縮圖右鍵選單：與 .rail-menu 相同的浮層外觀，但用 position:fixed 錨在游標位置（inline style 提供 left/top）。 */
+/* Thumbnail right-click menu: same floating-layer appearance as
+   .rail-menu, but anchored to the cursor position with position:fixed
+   (inline style provides left/top). */
 .thumb-context-menu {
   z-index: 30;
   min-width: calc(var(--panel-w) * 0.55);
@@ -324,7 +341,7 @@
   background: var(--brand-red-tint);
 }
 
-/* From outline… 對話框。 */
+/* "From outline…" dialog. */
 .outline-modal-mask {
   position: fixed;
   inset: 0;
@@ -390,9 +407,11 @@
   color: var(--surface-white);
 }
 
-/* 縮圖右鍵選單「Save as template」對話框——mask/dialog/actions 骨架與
-   `.outline-modal-*` 同形（settings-dialog-* 已有先例：同形重命名，不共用
-   class），只有輸入改成單行 `<input>` 而非 textarea。 */
+/* The thumbnail right-click menu's "Save as template" dialog — its
+   mask/dialog/actions skeleton has the same shape as `.outline-modal-*`
+   (settings-dialog-* already set the precedent: same shape, renamed,
+   without sharing classes); the only difference is the input becomes a
+   single-line `<input>` instead of a textarea. */
 .save-template-modal-mask {
   position: fixed;
   inset: 0;

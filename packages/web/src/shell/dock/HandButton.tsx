@@ -6,7 +6,7 @@ export interface HandButtonProps {
   onToggle(): void;
 }
 
-/** ✋ 抓取模式切換 (05-INTERACTIONS.feature「抓取模式」)。 */
+/** Toggles hand/grab mode. */
 export function HandButton({ active, onToggle }: HandButtonProps) {
   return (
     <button

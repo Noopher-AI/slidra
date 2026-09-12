@@ -9,7 +9,7 @@ export interface ContextBarProps {
   /** Hidden while a drag is in progress (`OverlayState.dragging`). */
   dragging: boolean;
   /**
-   * [E5.T7]/F-17: whether the bar has "solidified" (`OverlayLayer`'s own
+   * Whether the bar has "solidified" (`OverlayLayer`'s own
    * `createHoverSolidifier`, driven by hover position) — adds `.is-solid`,
    * which is what actually flips `pointer-events` back to `auto`
    * (`stage-overlays.css`). Defaults to `false` (ghost) so every existing
@@ -17,7 +17,7 @@ export interface ContextBarProps {
    */
   solid?: boolean;
   /**
-   * [E5.T7]/F-17: lets `OverlayLayer` read this element's own
+   * Lets `OverlayLayer` read this element's own
    * `getBoundingClientRect()` to compare against the tracked pointer
    * position — the placement `useLayoutEffect` below already needs its own
    * ref for the same node, so when the caller supplies one this replaces
@@ -25,16 +25,16 @@ export interface ContextBarProps {
    * existing call site is unaffected.
    */
   barRef?: RefObject<HTMLDivElement | null>;
-  /** [E2.T7]: `OverlayState.hasAnimation` — whether Edit animation renders at all (not merely disabled) next to Edit style. */
+  /** `OverlayState.hasAnimation` — whether Edit animation renders at all (not merely disabled) next to Edit style. */
   hasAnimation: boolean;
-  /** [E2.T7]: switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
+  /** Switches the right rail to Animate › Object. Never called when `hasAnimation` is false (the button does not render). */
   onEditAnimation(): void;
-  /** #200 §4.5: switches the right rail to Style › Object. No command is sent, no selection changes. */
+  /** Switches the right rail to Style › Object. No command is sent, no selection changes. */
   onEditStyle(): void;
-  /** [E2.T8]: "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
+  /** "Comment to AI" click — the caller (`OverlayLayer`) resolves target (single element vs "page" for 2+) and add-vs-edit mode from the live selection, this button only signals the click itself. */
   onComment(): void;
   onOrder(direction: "front" | "up" | "down" | "back"): void;
-  /** [E2.T18]: Copy/Cut always render (parity with Duplicate/Delete) — same "disabled state doesn't exist here, no selection means no bar at all" posture the rest of this component already has (`union === null` hides the whole bar). */
+  /** Copy/Cut always render (parity with Duplicate/Delete) — same "disabled state doesn't exist here, no selection means no bar at all" posture the rest of this component already has (`union === null` hides the whole bar). */
   onCopy(): void;
   onCut(): void;
   onPaste(): void;
@@ -66,19 +66,26 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
 ];
 
 /**
- * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決，issue 198 review 修訂）。外觀照原型
- * `CoMotion (New v3).dc.html` 的 ctx bar；內容是原型情境列加上原本元素右鍵選單
- * 的項目（review 決定拿掉右鍵選單、全部併到左鍵這一列）：
- * 「Comment to AI ｜ Edit style ｜ Edit animation（僅選取元素有動畫時）｜
- * 前後層四項（只有圖示） ｜ Copy／Cut／Paste（[E2.T18] 新增）｜ Duplicate ｜ Delete」。
- * Order／Duplicate／Delete 接到 controller 的同一組方法（鍵盤與 Arrange 選單
- * 共用）；Comment to AI 是佈局佔位按鈕，功能屬 NOOP-67；Edit style（#200/NOOP-69）
- * 只切右欄到 Style › Object，不送任何命令、不改選取。
- * [E2.T7]：Edit animation 只在 `hasAnimation` 為 true 時渲染（不是 disabled——
- * 07-DISCUSSION_LOG.md「無動畫時不顯示 Edit animation」），插入點固定在 Edit
- * style 的 `</button>` 之後、下一個 divider 之前（單一插入點，見 NOOP-124 計畫
- * 對 [E2.T8] 同時改這個檔案的衝突提醒），點擊只切右欄到 Animate › Object，不
- * 送任何命令、不改選取。 */
+ * The context bar below the selection box. Its look follows the prototype's
+ * `CoMotion (New v3).dc.html` ctx bar; its content is the prototype's context
+ * bar plus the items from the original element right-click menu (the
+ * right-click menu was dropped in favor of folding everything into this
+ * left-click bar):
+ * "Comment to AI | Edit style | Edit animation (only when the selected
+ * element has animation) | the four layer-order items (icon-only) |
+ * Copy/Cut/Paste | Duplicate | Delete".
+ * Order/Duplicate/Delete hook into the same controller methods used by the
+ * keyboard shortcuts and the Arrange menu; Comment to AI is a layout
+ * placeholder button whose actual functionality lives elsewhere; Edit style
+ * only switches the right rail to Style › Object, sending no command and
+ * changing no selection.
+ * Edit animation only renders when `hasAnimation` is true (not merely
+ * disabled — it should not show at all when there is no animation), its
+ * insertion point fixed right after Edit style's `</button>` and before the
+ * next divider (a single insertion point, so any future edit to this file
+ * doesn't conflict with an edit elsewhere in the same spot); clicking it
+ * only switches the right rail to Animate › Object, sending no command and
+ * changing no selection. */
 export function ContextBar({ union, bounds, dragging, hasAnimation, solid = false, barRef: externalBarRef, onEditAnimation, onEditStyle, onComment, onOrder, onCopy, onCut, onPaste, onDuplicate, onDelete }: ContextBarProps) {
   const internalBarRef = useRef<HTMLDivElement | null>(null);
   const barRef = externalBarRef ?? internalBarRef;

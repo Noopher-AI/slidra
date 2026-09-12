@@ -6,7 +6,7 @@ export interface ZoomControlProps {
   onToggle(): void;
 }
 
-/** 工具列的百分比按鈕；點擊開/關 ZoomMenu (05-INTERACTIONS.feature「縮放選單」)。 */
+/** The toolbar's percentage button; clicking toggles the ZoomMenu open/closed. */
 export function ZoomControl({ zoom, open, onToggle }: ZoomControlProps) {
   return (
     <button

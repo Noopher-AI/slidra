@@ -17,14 +17,14 @@ export interface PresentationInfo {
   name: string;
   canvas: { width: number; height: number };
   /**
-   * `project.json`'s `templates` (NOOP-141's 新增投影片 menu, [E4.T7]'s
+   * `project.json`'s `templates` (the "new slide" menu and the
    * template management dialog). Absent, or not an array, is treated as
    * "declared no templates" — a `[]`, not a format error: `project-json.ts`
    * already rejects a genuinely malformed `templates` field server-side, so
    * anything this loose check lets through here is honestly untyped, not
    * corrupt.
    *
-   * `templates` entries may be either a pre-[E4.T7] bare string or a
+   * `templates` entries may be either a legacy bare string or a
    * post-upgrade `{ file, name }` object (`project-json.ts`'s
    * `TemplateEntry`) — this restates `readTemplateEntries`'s normalization
    * (a bare string, or a missing/non-string `name`, becomes the file's

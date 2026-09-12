@@ -1,5 +1,5 @@
 /**
- * 總覽: a vanilla DOM module, same style and trust posture as canvas.ts
+ * Overview: a vanilla DOM module, same style and trust posture as canvas.ts
  * (ADR-0001, ADR-0010). React hands it the aside container once and never
  * renders into it again.
  *
@@ -17,13 +17,13 @@ import { fetchSlideEffectPlan } from "./effects.js";
 import { slidePaintKey } from "./slide-paint-key.js";
 
 /**
- * [E2.T3]: the two behaviours that need a React tree to render into
- * (the right-click menu, and — in a later ticket — the comment thread the
+ * The two behaviours that need a React tree to render into
+ * (the right-click menu, and the comment thread the
  * top-right button opens) get reported up through here rather than grown a
  * second DOM-manipulation path of their own. Drag/drop reordering does NOT
  * need a hook — `canvas` (the `CanvasController` this module already holds)
  * already has `runCommand`/`reload`/`showSlide`, everything a `slide move`
- * needs (T3 plan §7 決定 7).
+ * needs.
  */
 export interface OverviewHooks {
   /** A thumbnail was right-clicked. `x`/`y` are the event's clientX/clientY, for a fixed-position menu. */
@@ -62,9 +62,10 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   list.className = "overview-list";
   container.appendChild(list);
 
-  // [E2.T3] 拖曳排序狀態（本模組自己的 closure state，不進 React）。
+  // Drag-and-drop reorder state (this module's own closure state, kept
+  // out of React).
   // `dragFromIndex` is the authoritative "from" — read out of
-  // `dataTransfer` at drop time (T3 plan §4.2's "格式錯誤" row), not just
+  // `dataTransfer` at drop time, not just
   // trusted from whatever dragstart happened to set, so a drop whose
   // dataTransfer genuinely carries no parseable index is treated as a
   // format error and abandoned rather than guessed at.
@@ -110,8 +111,8 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     if (from === null) return;
     void commitMove(from, items.length);
   });
-  // Leaving the rail entirely while dragging (T3 plan §4.2's "拖曳中途離開
-  // rail" row) clears the line — `relatedTarget` is null when the pointer
+  // Leaving the rail entirely while dragging clears the line —
+  // `relatedTarget` is null when the pointer
   // leaves the browser window outright, which `!contains(null)` already
   // treats as "outside".
   container.addEventListener("dragleave", (event) => {
@@ -151,7 +152,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   void applyAspectRatio();
 
   let slides: string[] = [];
-  // [E2.T8]: the last set App.tsx handed `setSlidesWithComments` — kept
+  // The last set App.tsx handed `setSlidesWithComments` — kept
   // across a `rebuildList` so a slide add/delete/move doesn't lose the
   // red-dot state until the next comment reload happens to run.
   let slidesWithComments = new Set<number>();
@@ -183,7 +184,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   // rebuildList(): a new list means new iframes that have painted nothing.
   const paintedKeys: (string | undefined)[] = [];
 
-  // [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B）。One badge per slide,
+  // The "✦ n" animation-count badge. One badge per slide,
   // populated independently of the lazy thumbnail load above — "does this
   // page have animations" is plan-time information the reader wants before
   // ever scrolling a thumbnail into view, so loadEffectCount() below is
@@ -292,7 +293,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     return a.length === b.length && a.every((path, index) => path === b[index]);
   }
 
-  /** Reads dragstart's own payload back out, rather than trusting the closure's `dragFromIndex` alone (T3 plan §4.2's "格式錯誤" row — a `dataTransfer` that carries no parseable index is a format error, not a guess). */
+  /** Reads dragstart's own payload back out, rather than trusting the closure's `dragFromIndex` alone — a `dataTransfer` that carries no parseable index is a format error, not a guess. */
   function dropSourceIndex(event: DragEvent): number | null {
     const raw = event.dataTransfer?.getData("text/plain");
     if (!raw) return null;
@@ -313,7 +314,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     const slidePath = slides[from];
     const result = await canvas.runCommand("slide move", { slidePath, newIndex });
     if (result.ok) {
-      // T3 plan §7 決定 6: an order-changing command always follows with an
+      // An order-changing command always follows with an
       // explicit reload()+showSlide() — plain reload() only clamps
       // currentIndex into range, it never targets a specific page, and
       // waiting for the write's own /api/events-triggered reload instead
@@ -329,8 +330,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   function rebuildList(nextSlides: string[]): void {
     observer.disconnect();
     // An external edit landing mid-drag invalidates whatever the gesture
-    // was pointed at (T3 plan §4.2's "拖曳中投影片被 /api/events 通知變更"
-    // row) — the gesture is abandoned, not applied on top of a deck that
+    // was pointed at — the gesture is abandoned, not applied on top of a deck that
     // has already moved out from under it.
     clearDragState();
     list.replaceChildren();
@@ -368,7 +368,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       button.setAttribute("aria-label", `Slide ${index + 1}`);
       button.addEventListener("click", () => void canvas.showSlide(index));
 
-      // Comment entry point (T3 plan §2 邊界 2, wired by [E2.T8]).
+      // Comment entry point.
       const commentButton = document.createElement("button");
       commentButton.type = "button";
       commentButton.className = "overview-comment-button";
@@ -378,7 +378,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       commentButton.innerHTML =
         '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3 4h14v9H9l-4 3v-3H3z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
 
-      // [E5.T11]: ✦ n 動畫數徽章。Starts empty — loadEffectCount() below
+      // The "✦ n" animation-count badge. Starts empty — loadEffectCount() below
       // fills it in once the fetch resolves, after the whole list has been
       // built (so `effectBadges[index]` is already populated by then).
       const effectBadge = document.createElement("span");

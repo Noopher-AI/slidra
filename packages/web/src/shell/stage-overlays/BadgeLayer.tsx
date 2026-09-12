@@ -12,7 +12,7 @@ export interface BadgeLayerProps {
 }
 
 /**
- * [E2.T7]/D9: the stage's numbered animation badges — one per element that
+ * The stage's numbered animation badges — one per element that
  * has at least one effect on the current slide, positioned at that
  * element's own top-left corner (CSS centres the circle on the point via
  * `transform`, see `animate.css`). Rendered only while the right rail sits

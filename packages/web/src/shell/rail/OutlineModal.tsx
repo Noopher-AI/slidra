@@ -2,14 +2,15 @@ import { useEffect, useState, type MouseEvent } from "react";
 
 export interface OutlineModalProps {
   onClose: () => void;
-  /** [E2.T8]／#303：`Plan with agent` 送出大綱原文（未加前綴——App.tsx 組 `/comotion-plan` 的固定前綴並送出聊天訊息，架構拍板：不解析大綱、不自己插頁；建置要等計畫閘門確認）。呼叫端負責關閉這個 modal。 */
+  /** `Plan with agent` sends the raw outline text (no prefix added — App.tsx assembles `/comotion-plan`'s fixed prefix and sends it as a chat message; by design this component doesn't parse the outline or insert pages itself, and building waits for the plan gate to confirm). The caller is responsible for closing this modal. */
   onSubmit: (outline: string) => void;
 }
 
 /**
- * `From outline…`／`New slides from outline…` 的輸入 UI（T3 plan §2 邊界
- * 3，[E2.T8] 接上送出）。Cancel／Esc／點遮罩一律關閉並丟棄草稿，不保留到
- * 下次開啟——每次掛載都是全新的 `useState("")`，卸載即遺忘。
+ * The input UI for `From outline…`/`New slides from outline…`. Cancel/Esc/
+ * clicking the mask all close it and discard the draft rather than keeping
+ * it for the next time it's opened — every mount starts from a fresh
+ * `useState("")`, forgotten on unmount.
  */
 export function OutlineModal({ onClose, onSubmit }: OutlineModalProps) {
   const [draft, setDraft] = useState("");

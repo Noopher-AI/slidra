@@ -17,7 +17,7 @@ export interface SlideEffectsState {
 }
 
 /**
- * [E2.T7]/[E4.T7]: `AnimateObjectPanel`'s own data source. Deliberately
+ * `AnimateObjectPanel`'s own data source. Deliberately
  * independent of `CanvasState`/`OverlayState` — `canvas.ts`'s minimal-touch
  * scope (`hasAnimation`/`badges`/preview) does not extend to exposing a
  * general "current slide's parsed effect list" field, and the panel does
@@ -43,10 +43,10 @@ export function useSlideEffects(state: CanvasState): SlideEffectsState {
     }
     let cancelled = false;
     setEffects(null);
-    // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse shows an
+    // A slide whose effect list fails to parse shows an
     // empty list here too — same posture as OverlayState.hasAnimation/
-    // badges and the GUI behaviour table's "效果清單剖析失敗 -> 當成空清單，
-    // 不彈錯誤" row.
+    // badges and the GUI behaviour table's "effect list parse failure ->
+    // treat as empty list, no error popup" row.
     const effectsPromise = fetchSlideEffectPlan(slidePath)
       .then((plan) => plan.effects)
       .catch(() => []);

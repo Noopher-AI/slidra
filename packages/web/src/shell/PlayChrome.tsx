@@ -1,50 +1,51 @@
 import { useEffect, useState } from "react";
 import type { CanvasController, CanvasState } from "../canvas.js";
 
-// 離開播放/全螢幕 stay text buttons, matching the pre-existing (pre-#48)
-// play chrome verbatim — see the class comment below. base-shell.html's
-// icon-only 全螢幕/離開播放 buttons are not adopted for these two: the
-// 裁決 2 freeze (既有 e2e 的文字選擇器，見下方註解) still applies to them.
-// 上一步/下一步 are new elements no existing test depends on the shape
-// of, so *those two* do follow the template's own SVG verbatim (fleet
-// commander's 裁決 A, 2026-08-25) — see the buttons below.
+// The "退出全螢幕/全螢幕" (exit fullscreen / fullscreen) and "離開播放"
+// (leave play) buttons stay text buttons, matching the pre-existing play
+// chrome verbatim — see the class comment below. base-shell.html's
+// icon-only fullscreen/leave-play buttons are not adopted for these two:
+// the text-selector freeze (existing e2e locates them by their text, see
+// the comment below) still applies to them. "上一步/下一步" (previous/next
+// step) are new elements no existing test depends on the shape of, so
+// *those two* do follow the template's own SVG verbatim — see the buttons
+// below.
 
-/** 游標與控制列一起隱去前的閒置時間 (#54 AC3)。 */
+/** Idle time before the cursor and control bar hide together. */
 const IDLE_MS = 2500;
 
 export interface PlayChromeProps {
   state: CanvasState;
   controller: CanvasController | null;
   isFullscreen: boolean;
-  /** 全螢幕失敗訊息；與播放錯誤同列堆疊，不互相覆蓋。 */
+  /** Fullscreen failure message; stacks alongside the playback error notice without overlapping it. */
   fullscreenError: string | null;
   onToggleFullscreen(): void;
   onExitPlay(): void;
 }
 
 /**
- * Play-mode chrome: the floating notices and the 離開播放/全螢幕 controls.
- * Renders nothing outside 播放模式. Classes and copy are moved verbatim
- * from App.tsx's pre-existing play nav — see the round 1/2/3/4 review-gate
+ * Play-mode chrome: the floating notices and the leave-play/fullscreen
+ * controls. Renders nothing outside play mode. Classes and copy are moved
+ * verbatim from App.tsx's pre-existing play nav — see the review-gate
  * comments below, each fixing a real bug this markup used to have.
  *
- * gate round 2, medium finding: 全螢幕 is available from the ribbon in
- * 檢視模式 too (#0.2 item 2's ruling — orthogonal to play mode), but this
- * component used to return null outright whenever `state.mode !== "play"`.
- * That left a successful 檢視模式 fullscreen request with no in-app way
- * back out (only the browser's own Esc), and a *rejected* request with no
- * visible error at all — a silent failure, which this project's own
- * posture ("寧可拋錯也不要靜默") forbids. The two blocks below split
- * cleanly on `isPlayMode`: the 播放模式 block is untouched, byte-for-byte,
- * from before this fix; the 檢視模式 block is new and only ever renders
- * the fullscreen exit control and/or its own error notice — never the
- * play-only error notice or 離開播放, which have no meaning outside
- * 播放模式.
+ * Fullscreen is also available from the ribbon in view mode (orthogonal to
+ * play mode), but this component used to return null outright whenever
+ * `state.mode !== "play"`. That left a successful view-mode fullscreen
+ * request with no in-app way back out (only the browser's own Esc), and a
+ * *rejected* request with no visible error at all — a silent failure,
+ * which this project's own posture (raise errors, never fail silently)
+ * forbids. The two blocks below split cleanly on `isPlayMode`: the
+ * play-mode block is untouched, byte-for-byte, from before this fix; the
+ * view-mode block is new and only ever renders the fullscreen exit control
+ * and/or its own error notice — never the play-only error notice or the
+ * leave-play button, which have no meaning outside play mode.
  */
 export function PlayChrome({ state, controller, isFullscreen, fullscreenError, onToggleFullscreen, onExitPlay }: PlayChromeProps) {
   const isPlayMode = state.mode === "play";
 
-  // 游標與控制列一起隱去 (#54 AC3/AC4)：`awake` toggles both — this
+  // The cursor and control bar hide together: `awake` toggles both — this
   // component's own `.play-bar.awake` class (opacity, styles/play.css) and,
   // via play.css's `:has(.play-bar.awake)` selector on `.app[data-mode=
   // "play"]`, the ancestor cursor. App.tsx is frozen beyond two narrow
@@ -72,10 +73,10 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
   }, [isPlayMode]);
 
   if (!isPlayMode) {
-    // 檢視模式: only fullscreen (state and/or its error) is this
-    // component's concern here — 離開播放 and state.error (播放中的效果
-    // 清單錯誤) only mean something in 播放模式 and must not render
-    // outside it.
+    // View mode: only fullscreen (state and/or its error) is this
+    // component's concern here — the leave-play button and state.error
+    // (a play-mode effect-list error) only mean something in play mode
+    // and must not render outside it.
     if (!isFullscreen && !fullscreenError) return null;
     return (
       <>
@@ -104,50 +105,64 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
 
   return (
     <>
-      {/* gate round 1 (2026-08-25), high finding: 投影片 iframe 佔了播放
-          畫面約 87% 面積（指揮官量測，1440×900 下 iframe box 1415×796），
-          滑鼠在 iframe 內移動時瀏覽器把 mousemove 直接派送給 iframe 自己
-          的文件，不會冒泡到上層——這是跨 document/frame 邊界事件的既有
-          限制，不是這裡新引入的 bug，但原本的 e2e 測試繞開了它而不是
-          回報它，這正是被抓到的問題（見 play-appearance.test.ts 的對照
-          表）。這一層透明覆蓋層鋪在 `.canvas`（iframe 所在，z-index
-          auto）之上、`.player-notices`/`.play-bar`（皆 z-index:2，見
-          style.css/shell.css）之下（見 play.css 的 z-index:1），讓
-          mousemove 落在上層文件本身，冒泡到上面 `awake` 那個 effect 已有
-          的 `document` 監聽器——不需要另外接 onMouseMove，冒泡本來就會到。
+      {/* The slide iframe covers about 87% of the play-mode viewport
+          (measured at 1440×900, iframe box 1415×796). When the mouse moves
+          inside the iframe, the browser dispatches mousemove directly to
+          the iframe's own document — it never bubbles up to the parent.
+          That's an existing limitation of cross-document/frame event
+          boundaries, not a new bug here, but the original e2e test worked
+          around it instead of reporting it, which is what got caught (see
+          play-appearance.test.ts's comparison table). This transparent
+          overlay sits above `.canvas` (where the iframe lives, z-index
+          auto) and below `.player-notices`/`.play-bar` (both z-index:2,
+          see style.css/shell.css) — see play.css's z-index:1 — so the
+          mousemove lands on the parent document itself and bubbles up to
+          the `document` listener the `awake` effect above already has; no
+          separate onMouseMove wiring is needed, since bubbling already
+          reaches it.
 
-          攔下 pointer 事件的代價是原生的「點 iframe 給它瀏覽器焦點」不再
-          發生：`player-runtime.js` 全 spec 凍結，已核對它只有
-          keydown/resize/focus/blur/message 五個監聽器，不處理 click，
-          效果清單解析失敗的靜態降級頁更是完全沒有 runtime，所以這裡沒有
-          任何既有的 click 行為要保；用既有的 `controller.focusPlayer()`
-          （全螢幕切換等處已在用的同一支函式）補回鍵盤焦點即可。 */}
+          The cost of intercepting pointer events is that the native
+          "clicking the iframe gives it browser focus" behavior no longer
+          happens: `player-runtime.js` is fully spec-frozen, and it's been
+          verified to have only five listeners (keydown/resize/focus/blur/
+          message) that don't handle click; the static fallback page for a
+          failed effect-list parse has no runtime at all, so there's no
+          existing click behavior to preserve here — calling the existing
+          `controller.focusPlayer()` (the same function already used
+          elsewhere, e.g. on fullscreen toggle) restores keyboard focus. */}
       <div
         className="play-mousemove-catcher"
         onClick={() => {
-          // [E2.T11] §4.8: clicking the stage also advances a step now
-          // (原型「點畫面前進」) — focusPlayer() itself is unchanged from
-          // before this ticket, still needed so the very next arrow key
-          // takes the runtime's own path.
+          // Clicking the stage also advances a step now (the template's
+          // "click screen to advance") — focusPlayer() itself is
+          // unchanged, still needed so the very next arrow key takes the
+          // runtime's own path.
           controller?.stepPlayer("advance");
           controller?.focusPlayer();
         }}
       />
-      {/* [E2.T11] §4.8: 頂部置中提示，跟 .play-bar 共用 awake 狀態一起
-          隱去/浮現。純資訊列，`pointer-events: none` 讓它不擋在
-          .play-mousemove-catcher（下方，z-index:1）或 .player-notices/
-          .play-bar（同層，z-index:2）之上搶走點擊。 */}
+      {/* Top-centered hint bar, shares the `awake` state with .play-bar so
+          it hides/shows together with it. Purely informational — `pointer-
+          events: none` keeps it from stealing clicks over
+          .play-mousemove-catcher (below it, z-index:1) or .player-notices/
+          .play-bar (same layer, z-index:2). */}
       <div className={awake ? "play-hint awake" : "play-hint"}>← → 或點畫面前進 · Esc 離開播放</div>
-      {/* 播放模式的浮動通知：播放錯誤與全螢幕錯誤可能同時成立（效果清單
-          解析失敗又剛好全螢幕請求也失敗），過去各自用同一組絕對定位互相
-          疊在一起，後渲染的會蓋住先渲染的（review gate round 1, P2）。這個
-          wrapper 把它們收進同一個 flex column，各自的樣式只留背景／文字，
-          定位與間距交給 wrapper，讓它們並排堆疊而不互相覆蓋。
+      {/* Floating notices for play mode: the playback error and the
+          fullscreen error can both be true at once (an effect-list parse
+          failure coinciding with a rejected fullscreen request); they used
+          to share the same absolute positioning and stack on top of each
+          other, with whichever rendered later covering the one before it.
+          This wrapper collects them into one flex column, leaving each
+          notice's own styling to background/text only, and lets the
+          wrapper own positioning and spacing so they stack side by side
+          without overlapping.
 
-          焦點提示曾經是這裡的第三則（#54）。#68 撤掉了它：它要求正在播報
-          的人先用滑鼠去點一顆按鈕，才能繼續按方向鍵——而走得到它的路徑
-          （按一次 Tab，實測確認）本身就是純鍵盤操作。現在失焦時方向鍵照樣
-          推進（見 App.tsx 的 keydown 轉發），提示因此無事可報。 */}
+          A focus hint used to be a third item here. It was removed: it
+          required whoever was presenting to click a button with the mouse
+          before they could continue using arrow keys — but the path that
+          reaches it (pressing Tab once, verified) is itself pure keyboard
+          use. Arrow keys already advance even when unfocused (see App.tsx's
+          keydown forwarding), so the hint had nothing left to report. */}
       {(state.error || fullscreenError) && (
         <div className="player-notices">
           {state.error && (
@@ -162,21 +177,26 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           )}
         </div>
       )}
-      {/* #68: 播放器是否真的握著鍵盤焦點，過去只能從焦點提示在不在 DOM 裡
-          反推。提示撤掉後這個狀態仍然要看得見——e2e 用它當「焦點已經交出去
-          了」的同步點，否則測試只能睡固定秒數去賭。這是狀態的實話，不是給
-          使用者看的介面，所以是 data 屬性而非任何可見元素。 */}
+      {/* Whether the player actually holds keyboard focus used to be
+          inferred only from whether the focus hint was in the DOM. Now
+          that the hint is gone, this state still needs to be visible —
+          e2e uses it as a sync point for "focus has already been handed
+          over", otherwise tests would have to sleep a fixed duration and
+          hope. This is a plain fact about state, not UI meant for the
+          user, so it's a data attribute rather than any visible element. */}
       <nav className={awake ? "play-bar awake" : "play-bar"} data-player-focus={state.playerHasFocus}>
-        {/* 上一步／下一步是換頁，不是換效果步驟 (裁決 3): 效果清單解析失敗
-            時沒有任何 runtime 活著回應方向鍵，這兩顆鈕是 #54 要求的換頁
-            替代途徑，接的是 controller.previous()/next()（＝
-            showSlide(currentIndex±1)），不是 player-runtime.js 的步驟推進。
-            兩顆鈕的 SVG 逐字照抄 base-shell.html:420-421 的 path（fleet
-            指揮官 裁決 A，2026-08-25）：這兩個是本票新增的元素，沒有任何
-            既有測試依賴它們的形狀，裁決 2 的文字選擇器凍結只涵蓋既有的
-            離開播放/全螢幕，不涵蓋這兩顆——不再沿用 StatusBar 的
-            `.slide-nav-button`（那組樣式是給文字 ‹/› 用的，圖示鈕改用
-            `.play-bar` 自己的 button 樣式，見 play.css）。 */}
+        {/* Previous/next step change pages, not effect steps: when the
+            effect list fails to parse there is no live runtime to respond
+            to arrow keys, so these two buttons are the page-change
+            fallback, calling controller.previous()/next() (i.e.
+            showSlide(currentIndex±1)), not player-runtime.js's step
+            advance. Both buttons' SVGs copy base-shell.html:420-421's path
+            verbatim: these are new elements, and no existing test depends
+            on their shape, so the frozen text-selector set for the leave-
+            play/fullscreen buttons doesn't cover them — they don't reuse
+            StatusBar's `.slide-nav-button` (that style is for the text
+            ‹/› arrows; the icon buttons use `.play-bar`'s own button
+            style, see play.css). */}
         <button
           type="button"
           className="play-nav-button"
@@ -188,11 +208,13 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
             <path d="M10 3 L5 8 L10 13" />
           </svg>
         </button>
-        {/* 頁碼：樣板的 `N / M` 形式（base-shell.html:422 的 `.pos`），不是
-            狀態列的「第 N 頁，共 M 頁」——那句是 #53 給狀態列的規定，播放
-            時狀態列已不在 DOM 裡，兩者不衝突（fleet 指揮官 裁決 A）。
-            [E2.T11] §4.8：順序改為原型的「上一步 → 頁碼 → 下一步」，pos 從
-            兩顆按鈕之後移到中間——裁決 2 凍結的是文字/class，不含順序。 */}
+        {/* Page number: the template's `N / M` form (base-shell.html:422's
+            `.pos`), not the status bar's "page N of M" — that phrasing is
+            the status bar's own rule, and the status bar isn't in the DOM
+            during play mode, so the two don't conflict. Order follows the
+            template's "previous → page number → next", with the position
+            indicator moved to the middle after the two buttons — the
+            frozen text/class covers only the button labels, not ordering. */}
         <span className="play-bar-position">
           {state.currentIndex >= 0 ? `${state.currentIndex + 1} / ${state.slides.length}` : "– / –"}
         </span>
@@ -208,14 +230,15 @@ export function PlayChrome({ state, controller, isFullscreen, fullscreenError, o
           </svg>
         </button>
         <span className="play-bar-divider" />
-        {/* gate round 2 (2026-08-25), medium finding: 樣板
-            (base-shell.html:419-426，波指揮官在 1440×900 用 Playwright
-            量過的順序) 是「全螢幕、離開播放」，這裡原本反了。裁決 2 凍結
-            的是這兩顆的 class 與文字（既有 e2e 用 button:has-text() 這類
-            文字選擇器抓它們），不含順序，所以純粹搬動 JSX 區塊、class 與
-            文字一個字不動，不牴觸 裁決 2。
-            全螢幕開關 (ticket #29): 是否全螢幕由作者決定，工具不預設強制
-            (settled decision #6). */}
+        {/* The template's order (base-shell.html:419-426, measured with
+            Playwright at 1440×900) is "fullscreen, leave play" — this was
+            previously reversed. The frozen text-selector set covers only
+            these two buttons' class and text (existing e2e locates them
+            with button:has-text() style selectors), not ordering, so
+            purely moving the JSX blocks with class and text untouched
+            doesn't conflict with that freeze.
+            Whether to go fullscreen is left to the author's choice; the
+            tool doesn't force it by default. */}
         <button type="button" className="fullscreen-toggle-button" onClick={() => void onToggleFullscreen()}>
           {isFullscreen ? "退出全螢幕" : "全螢幕"}
         </button>

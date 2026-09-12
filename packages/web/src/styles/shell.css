@@ -9,7 +9,7 @@
    not a mechanical find/replace of the old file.
    ═══════════════════════════════════════════════════════════════ */
 
-/* Named grid areas (not row auto-placement): 播放模式 drops titlebar/
+/* Named grid areas (not row auto-placement): play mode drops titlebar/
    notices/status to just `.body`, and `.app-notices` itself is conditional
    even outside play mode — a fixed N-track grid would misassign rows the
    moment the child count isn't exactly N. An absent child just leaves its
@@ -30,15 +30,15 @@
   background: var(--surface-1);
 }
 
-/* Global disabled-state convention (02-DESIGN_DOC.md §7: "停用態以 disabled
-   + 40% 透明"), one rule for every control in the New v3 shell instead of
+/* Global disabled-state convention (02-DESIGN_DOC.md §7: "disabled state is
+   disabled + 40% opacity"), one rule for every control in the New v3 shell instead of
    repeating `opacity` per component. */
 button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-/* ── 標題列 ───────────────────────────────────────────────────── */
+/* ── Titlebar ─────────────────────────────────────────────────────── */
 .titlebar {
   grid-area: titlebar;
   height: var(--titlebar-h);
@@ -57,7 +57,7 @@ button:disabled {
   flex: none;
 }
 .mark {
-  font-size: calc(var(--text-lg-dialog) - 1px); /* 16px：原型量測值，沒有剛好對應的字級 token */
+  font-size: calc(var(--text-lg-dialog) - 1px); /* 16px: prototype-measured value, no exact matching text-size token */
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--brand-red);
@@ -218,7 +218,7 @@ button:disabled {
   background: var(--brand-red-hover);
 }
 
-/* ── 全域通知 (未改動的既有行為，見 App.tsx) ─────────────────────── */
+/* ── Global notices (unchanged existing behavior, see App.tsx) ────── */
 .app-notices {
   grid-area: notices;
   display: flex;
@@ -233,7 +233,7 @@ button:disabled {
   font-size: var(--text-sm);
 }
 
-/* ── 中段三欄（Rail｜Main｜Side panel） ───────────────────────────── */
+/* ── Middle three columns (Rail | Main | Side panel) ──────────────── */
 .body {
   grid-area: body;
   min-width: 0;
@@ -248,9 +248,10 @@ button:disabled {
   min-height: 0;
 }
 
-/* 舞台底＝全螢幕目標＝播放黑幕容器 (#29 契約，見 App.tsx 的 wellRef 註解)。
-   `.stage`（styles/stage.css）鋪在這裡面；`--well-bg` 是設計包定義的深色
-   中性灰（02-DESIGN_DOC.md §6：「舞台：#3A3A3D 中性灰」）。 */
+/* Stage well = fullscreen target = play-mode black-backdrop container (see
+   App.tsx's wellRef comment). `.stage` (styles/stage.css) sits inside this;
+   `--well-bg` is the dark neutral gray defined by the design package
+   (02-DESIGN_DOC.md §6: "stage: #3A3A3D neutral gray"). */
 /* `display: grid` + implicit stretch alignment (NOT `place-items: center` /
    flex `align-items: center`) is load-bearing here, not a style choice: an
    empty box with only `aspect-ratio` + `max-width/max-height: 100%` (no
@@ -286,7 +287,7 @@ button:disabled {
   background: var(--well-play);
 }
 
-/* ── 狀態列 ───────────────────────────────────────────────────── */
+/* ── Status bar ───────────────────────────────────────────────────── */
 .status {
   grid-area: status;
   min-height: var(--statusbar-h);
@@ -350,7 +351,7 @@ button:disabled {
   font-weight: 700;
 }
 
-/* ── 共用互動狀態 ─────────────────────────────────────────────── */
+/* ── Shared interaction states ─────────────────────────────────────── */
 .titlebar-icon-button,
 .titlebar-button,
 .play-button,

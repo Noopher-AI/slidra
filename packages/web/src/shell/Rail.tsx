@@ -19,31 +19,33 @@ export interface ThumbContextMenuRequest {
 }
 
 export interface RailProps {
-  /** overview.ts 掛載用的容器。App 只掛一次，React 不再渲染其內容(ADR-0001/0002)。 */
+  /** Container overview.ts mounts into. App mounts it once; React never renders its contents (ADR-0001/0002). */
   containerRef: RefObject<HTMLElement | null>;
-  /** 「Slides」標題右側的頁數（原型：`SLIDES 7`）。 */
+  /** Slide count shown to the right of the "Slides" heading (template: `SLIDES 7`). */
   slideCount: number;
-  /** project.json 的 slides 順序——右鍵選單的 Duplicate/Move/Delete 需要目標頁的虛擬路徑。 */
+  /** project.json's slide order — the context menu's Duplicate/Move/Delete need the target slide's virtual path. */
   slides: readonly string[];
   currentIndex: number;
   runCommand: RunCommand;
   runPageCommand: RunPageCommand;
-  /** overview.ts 的縮圖右鍵事件，掛載在 App.tsx（見它自己的 mountOverview hooks 注解）。 */
+  /** overview.ts's thumbnail context-menu event, mounted in App.tsx (see its own mountOverview hooks comment). */
   contextMenuRequest: ThumbContextMenuRequest | null;
   onCloseContextMenu: () => void;
-  /** [E2.T8] §4.8：`OutlineModal`「Draft with agent」——送出大綱原文，App.tsx 組固定前綴並送出聊天訊息。 */
+  /** `OutlineModal`'s "Draft with agent" — sends the raw outline text; App.tsx assembles the fixed prefix and sends it as a chat message. */
   onDraftWithAgent: (outline: string) => void;
 }
 
 type RailMenu = "new" | "templates" | null;
 
 /**
- * 左欄（T3 [E2.T3]）：New/Templates 按鈕 + 縮圖 rail。`overview.ts`（既有
- * 的 vanilla DOM 模組）繼續掛在 `.overview` 節點裡，class 名稱刻意保留。
+ * The left column: New/Templates buttons + the thumbnail rail.
+ * `overview.ts` (the existing vanilla DOM module) keeps mounting inside the
+ * `.overview` node, and its class names are deliberately kept as-is.
  *
- * New／Templates／縮圖右鍵選單三個浮層互斥（02-DESIGN_DOC.md §4.3）：任一
- * 開啟時關掉其他，一律用既有的 `useCloseFloatingLayer`，不自己寫第二套
- * outside-click。
+ * The New/Templates/thumbnail-context-menu floating layers are mutually
+ * exclusive (02-DESIGN_DOC.md §4.3): opening any one closes the others,
+ * always via the existing `useCloseFloatingLayer`, never a second
+ * outside-click implementation.
  */
 export function Rail({
   containerRef,
@@ -67,7 +69,7 @@ export function Rail({
   useCloseFloatingLayer(menu !== null, [menuRef, newButtonRef, templatesButtonRef], () => setMenu(null));
   useCloseFloatingLayer(contextMenuRequest !== null, [contextMenuRef], onCloseContextMenu);
 
-  // 浮層互斥（02-DESIGN_DOC.md §4.3）：縮圖右鍵選單一開，New/Templates 選單跟著關。
+  // Floating layers are mutually exclusive (02-DESIGN_DOC.md §4.3): opening the thumbnail context menu closes New/Templates too.
   useEffect(() => {
     if (contextMenuRequest !== null) setMenu(null);
   }, [contextMenuRequest]);
@@ -102,7 +104,7 @@ export function Rail({
     setOutlineOpen(true);
   }
 
-  /** `SaveTemplateModal`「Save」——不像 `addSlideAt` 系列，這不改變頁面順序或 currentIndex，所以走 `runCommand`（非 `runPageCommand`），不 reload/showSlide。成功才關 modal；失敗留著輸入，讓既有的 `CanvasState.error` 橫幅顯示原因（同 `runCommand` 對其他 Ribbon 寫入失敗的既有作法）。 */
+  /** `SaveTemplateModal`'s "Save" — unlike the `addSlideAt` family, this doesn't change page order or currentIndex, so it goes through `runCommand` (not `runPageCommand`), with no reload/showSlide. The modal only closes on success; on failure the input stays, letting the existing `CanvasState.error` banner show the reason (the same existing pattern `runCommand` uses for other Ribbon write failures). */
   async function onSaveTemplateSubmit(name: string): Promise<void> {
     if (saveTemplateIndex === null) return;
     const result = await runCommand("template add", { from: slides[saveTemplateIndex], name });
@@ -181,9 +183,10 @@ export function Rail({
           <TemplatesMenu menuRef={menuRef} runCommand={runCommand} onSelectTemplate={onSelectTemplate} />
         )}
       </div>
-      {/* [E2.T5r2] tabIndex=-1：不進 Tab 循序順序，但點擊會成為
-          document.activeElement，讓 App.tsx 的鍵盤 Delete／⌘D handler能用
-          `activeElement.closest(".rail")` 判斷「焦點確實在 rail」。 */}
+      {/* tabIndex=-1: excluded from the Tab sequence, but a click still
+          makes it document.activeElement, letting App.tsx's keyboard
+          Delete/⌘D handler use `activeElement.closest(".rail")` to
+          determine that focus is genuinely inside the rail. */}
       <div className="rail-slides-label" tabIndex={-1}>
         Slides
         <span className="rail-slides-count">{slideCount}</span>

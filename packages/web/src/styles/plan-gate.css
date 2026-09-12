@@ -1,6 +1,8 @@
-/* #303 計畫確認閘門（PlanGateModal）——擋住整個 shell 的對話框。mask 與
-   dialog 骨架同 settings-dialog（同形不共用 class，沿用 rail.css 的先例）；
-   z-index 比 settings/outline 的 40 高一階，計畫閘門必須蓋在其他對話框上。 */
+/* Plan confirmation gate (PlanGateModal) — a dialog that blocks the whole
+   shell. The mask and dialog skeleton have the same shape as
+   settings-dialog (same shape, no shared class, following rail.css's
+   precedent); z-index is one step above settings/outline's 40, since the
+   plan gate must sit above other dialogs. */
 .plan-gate-mask {
   position: fixed;
   inset: 0;

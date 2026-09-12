@@ -11,7 +11,7 @@ export interface StyleObjectPanelProps {
   controller: CanvasController | null;
 }
 
-/** #200 §4.1: everything that isn't `text`/`group` counts as a shape for the panel's Shape section. */
+/** §4.1: everything that isn't `text`/`group` counts as a shape for the panel's Shape section. */
 const SHAPE_KINDS = new Set(["rect", "ellipse", "circle", "line", "path", "compound"]);
 
 const ALIGN_OPTIONS = [
@@ -37,16 +37,16 @@ function anchorResultAsAlign(result: StyleReadResult): StyleReadResult {
 }
 
 /**
- * Style › Object (#200 §4.1): segmented by the selection's element kind —
+ * Style › Object (§4.1): segmented by the selection's element kind —
  * Text / Shape / Appearance (always) / Image caption, Table, Chart
  * (skeletons, always). Every field is one `element style set` / `textbox
- * align` call = one history entry (#200 決定 8: no draft batching).
+ * align` call = one history entry (decision 8: no draft batching).
  */
 export function StyleObjectPanel({ state, controller }: StyleObjectPanelProps) {
   const elements = state.selection.elements.filter((element): element is SlideElement => element !== null);
   const selectionKey = state.selection.ids.join(",");
 
-  // E2.T14 plan §0(b): a single selected table renders `TableSection` instead
+  // §0(b): a single selected table renders `TableSection` instead
   // of the generic sections — every other selection shape falls through.
   const single = state.selection.ids.length === 1 ? elements[0] : null;
   if (single && single.kind === "table" && single.table !== null) {

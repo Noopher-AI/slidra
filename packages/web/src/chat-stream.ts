@@ -133,8 +133,8 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
     options.updateMessages((previous) =>
       appendCommandMessage(previous, options.nextMessageId(), toolCallId, command, status, cli ?? true),
     );
-    // Whatever the agent was saying ended where the command began ("現在
-    // 來修改文字："). Anything it says after the command is a new
+    // Whatever the agent was saying ended where the command began ("Now
+    // let's edit the text:"). Anything it says after the command is a new
     // paragraph, not a continuation of the sentence the command
     // interrupted — so the next chunk starts a fresh agent message.
     activeReplyId = null;

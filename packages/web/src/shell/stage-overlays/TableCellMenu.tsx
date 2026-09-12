@@ -22,10 +22,11 @@ export interface TableCellMenuProps {
 }
 
 /**
- * 儲存格右鍵選單（E2.T14, plan §4.5, docs/design/docs/05-INTERACTIONS.feature
- * 「表格儲存格」）：Edit／Bold／插列插欄／合併或取消合併／刪列刪欄／Clear。
- * 同 `ThumbContextMenu.tsx` 的形狀——`position: fixed` 錨定在觸發右鍵的座
- * 標，父層用 `useCloseFloatingLayer` 管開關。
+ * The table cell's right-click menu: Edit/Bold/insert row or column/merge
+ * or unmerge/delete row or column/Clear. Shaped the same way as
+ * `ThumbContextMenu.tsx` — `position: fixed` anchored at the right-click's
+ * coordinates, with the parent using `useCloseFloatingLayer` to manage
+ * open/close.
  */
 export function TableCellMenu({
   menuRef,
