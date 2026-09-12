@@ -1,44 +1,44 @@
-# 06 · 快捷鍵與手勢
+# 06 · Keyboard Shortcuts and Gestures
 
-## 鍵盤
-| 鍵 | 動作 |
+## Keyboard
+| Key | Action |
 |---|---|
-| ← → / PageUp PageDown | 上一頁 / 下一頁（播放中：上一步 / 下一步） |
-| Space（播放中） | 下一步 |
-| Space（編輯，按住） | 暫時抓取模式 |
-| Esc | 逐層關閉：播放 → 插入面板 → 圖表視窗 → 儲存格範圍 → 其餘浮層與選取 |
-| Enter | 單選文字 → 進入編輯 |
-| Delete / Backspace | 有選取 → 刪元素；儲存格範圍 → 清空；無選取 → 刪頁 |
+| ← → / PageUp PageDown | Previous / next page (during playback: previous / next step) |
+| Space (during playback) | Next step |
+| Space (editing, held) | Temporary grab mode |
+| Esc | Closes overlays one layer at a time: playback → insert panel → chart window → cell range → remaining overlays and selection |
+| Enter | Single text selected → enter edit mode |
+| Delete / Backspace | Selection exists → delete element; cell range selected → clear; no selection → delete page |
 | ⌘Z / ⇧⌘Z | Undo / Redo |
-| ⌘C | 複製選取元素／儲存格範圍到系統剪貼簿 |
-| ⌘X | 剪下選取元素／儲存格範圍到系統剪貼簿 |
-| ⌘V | 貼上：系統剪貼簿是本應用的元素 → 貼元素；純文字且有儲存格範圍選取 → 貼進儲存格；其餘無反應 |
-| ⌘D | 複製選取元素（無選取時複製頁） |
-| ⌘A | 全選本頁元素 |
-| ⌘S | 儲存 |
-| ⌘B | 儲存格粗體 |
-| ⌘] / ⌘[ | 上移一層 / 下移一層 |
-| ⌘⇧] / ⌘⇧[ | 移到最上層 / 最下層 |
-| ⌘0 / ⌘+ / ⌘− | Zoom to fit / 放大 / 縮小 |
-| ⌘↵ | 送出聊天 / 儲存留言 |
-| Tab（儲存格編輯中） | 下一格 |
+| ⌘C | Copy selected element(s) / cell range to the system clipboard |
+| ⌘X | Cut selected element(s) / cell range to the system clipboard |
+| ⌘V | Paste: system clipboard holds this app's elements → paste elements; plain text with a cell range selected → paste into cells; otherwise no-op |
+| ⌘D | Duplicate selected element(s) (duplicates the page if nothing is selected) |
+| ⌘A | Select all elements on the current page |
+| ⌘S | Save |
+| ⌘B | Bold for cell |
+| ⌘] / ⌘[ | Move up one layer / down one layer |
+| ⌘⇧] / ⌘⇧[ | Move to front / to back |
+| ⌘0 / ⌘+ / ⌘− | Zoom to fit / zoom in / zoom out |
+| ⌘↵ | Send chat message / save comment |
+| Tab (while editing a cell) | Next cell |
 
-## 滑鼠 / 觸控板
-| 手勢 | 動作 |
+## Mouse / trackpad
+| Gesture | Action |
 |---|---|
-| 點 | 選取（元素／儲存格）；點空白取消 |
-| ⇧點 | 加選 / 延伸儲存格範圍 |
-| 拖曳空白 | 框選 |
-| 拖曳元素 / 選框 | 移動（吸附；⌥ 不吸附） |
-| 拖曳四角 | 縮放 |
-| 雙擊 | 編輯文字 / 開圖表資料 / 鑽入群組 |
-| 右鍵 | 元素、儲存格、縮圖各自的選單 |
-| 滾輪 | 平移畫布 |
-| ⌘滾輪 / 觸控板縮放 | 縮放畫布 |
-| 中鍵拖曳 / Space 拖曳 / ✋ 模式拖曳 | 平移畫布 |
-| 拖曳縮圖 | 重排頁 |
-| 拖曳表格欄界 | 調欄寬 |
-| 拖曳圖表視窗標題 | 移動視窗 |
-| 拖放檔案到插入面板 | 選檔 |
+| Click | Select (element / cell); click empty space to deselect |
+| ⇧ + click | Add to selection / extend cell range |
+| Drag on empty space | Marquee selection |
+| Drag an element / selection box | Move (snaps; ⌥ disables snapping) |
+| Drag a corner handle | Resize |
+| Double-click | Edit text / open chart data / drill into a group |
+| Right-click | Context menu, specific to element, cell, or thumbnail |
+| Wheel | Pan the canvas |
+| ⌘ + wheel / trackpad pinch | Zoom the canvas |
+| Middle-click drag / Space + drag / ✋ mode drag | Pan the canvas |
+| Drag a thumbnail | Reorder pages |
+| Drag a table column border | Resize column |
+| Drag the chart window's title bar | Move the window |
+| Drag and drop a file onto the insert panel | Pick a file |
 
-空白指沒有元素的區域；背景屬於頁面（`slide style set --background`），滿版矩形只是一個普通元素，點它選中、拖它搬移。
+"Empty space" means an area with no element. The background belongs to the page (`slide style set --background`); a full-bleed rectangle is just an ordinary element — click it to select, drag it to move.

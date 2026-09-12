@@ -1,27 +1,27 @@
-# 08 · 已知缺口與建議路線
+# 08 · Known Gaps and Suggested Roadmap
 
-## 原型刻意未做／模擬的部分
-| 項目 | 現況 | 建議 |
+## What the prototype deliberately leaves out or simulates
+| Item | Current state | Suggestion |
 |---|---|---|
-| Open / Save / Export | toast 模擬 | 接 §04 REST + job 進度 |
-| Agent 回覆 | 聊天只送出使用者訊息；大綱草擬為 1.4s 模擬 | WebSocket 事件流；指令卡狀態由後端驅動 |
-| Paste / Cut / Copy | 未提供（鍵盤層級） | 系統剪貼簿 + 跨頁貼上 |
-| Slide number、Transitions 舊項 | 已移除 | — |
-| 圖片以外的媒體 | 占位框（顯示檔名） | 真實 `<video>/<audio>` 與播放控制 |
-| 文字框 | 單行、不自動換行 | 多行、自動高度、富文字（粗斜體、列表） |
-| 樣式面板 | 值為唯讀顯示（除表格） | 可編輯字級／顏色／對齊、形狀填色與描邊 |
-| Templates 對話框 | Rename／Delete 未接 | 範本 CRUD |
-| 播放 | 無全螢幕 API、無講者視圖 | Fullscreen API；雙螢幕講者視圖（備忘稿＋下一頁） |
-| 響應式 | 最小 1280px | 右欄可收合、工具列在窄寬退化為圖示 |
-| 無障礙 | 有 aria-label；焦點順序未特調 | 鍵盤可達的選單、焦點陷阱、螢幕閱讀器測試 |
-| 歷史 | 頁尺寸不入歷史；留言不入歷史 | 統一 |
-| 群組 | 無群組層級的位置／尺寸屬性；無群組整體縮放 | 群組 bbox 縮放連動成員 |
-| 動畫 | 只有進場；無強調／退場；無自動觸發（After 僅序列） | Emphasis／Exit；時間軸視圖；路徑動畫 |
-| 圖表 | 單一 y 軸、無負值刻度細調 | 雙軸、堆疊、資料匯入 CSV |
+| Open / Save / Export | Simulated with a toast | Wire up to the §04 REST + job progress |
+| Agent replies | Chat only sends the user's message; outline drafting is a 1.4s simulation | WebSocket event stream; command-card state driven by the backend |
+| Paste / Cut / Copy | Not provided (at the keyboard level) | System clipboard + cross-page paste |
+| Slide number, legacy Transitions | Already removed | — |
+| Media other than images | Placeholder box (shows the filename) | Real `<video>/<audio>` with playback controls |
+| Text box | Single line, no auto-wrap | Multi-line, auto height, rich text (bold/italic, lists) |
+| Style panel | Values are read-only display (except tables) | Editable font size/color/alignment, shape fill and stroke |
+| Templates dialog | Rename/Delete not wired up | Full template CRUD |
+| Playback | No Fullscreen API, no presenter view | Fullscreen API; dual-screen presenter view (notes + next slide) |
+| Responsiveness | Minimum 1280px | Collapsible right rail; toolbar degrades to icons at narrow widths |
+| Accessibility | Has aria-labels; focus order not specially tuned | Keyboard-reachable menus, focus traps, screen-reader testing |
+| History | Page size not in history; comments not in history | Unify these |
+| Groups | No group-level position/size property; no whole-group proportional resize | Group bbox resize should cascade to members |
+| Animation | Entrance only; no emphasis/exit; no auto-trigger (After is sequence-only) | Emphasis/Exit; timeline view; motion paths |
+| Charts | Single y-axis, no fine control over negative-value ticks | Dual axis, stacking, CSV data import |
 
-## 建議下一步（依影響度）
-1. **Agent diff 預覽與 Accept/Reject**：agent 改動以並排縮圖呈現，可逐項接受；這是人機協作信任核心。
-2. **Pin 閉環**：open → 已讀 → 處理中 → resolved；agent 回覆掛在 pin 下。
-3. **樣式面板可編輯** + 富文字。
-4. **後端契約落地**（§04）並以 BDD（§05）作為驗收測試。
-5. 講者視圖與匯出（By-frame PDF）。
+## Suggested next steps (by impact)
+1. **Agent diff preview with Accept/Reject**: show the agent's changes as side-by-side thumbnails that can be accepted item by item — this is the core of trust in human-agent collaboration.
+2. **Closing the pin loop**: open → read → in progress → resolved; agent replies attach under the pin.
+3. **Editable style panel** + rich text.
+4. **Land the backend contract** (§04) and use the BDD spec (§05) as acceptance tests.
+5. Presenter view and export (By-frame PDF).

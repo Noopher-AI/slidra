@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>投影片播放器設計 — 使用者訪談紀錄</title>
+<title>Slide Player Design — User Interview Record</title>
 <style>
   :root {
     --bg: #fbfaf8; --fg: #23201d; --muted: #6b645d; --rule: #e2ddd6;
@@ -64,276 +64,276 @@
 <body>
 <main>
 
-  <h1>投影片播放器設計</h1>
-  <p class="meta">使用者訪談紀錄 · 2026-08-23 · CoMotion（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
+  <h1>Slide Player Design</h1>
+  <p class="meta">User interview record · 2026-08-23 · CoMotion (an SVG-first presentation editor) · source: session transcript</p>
 
   <div class="summary">
-    <h2>本次做成的決定</h2>
+    <h2>Decisions made in this session</h2>
     <ul>
-      <li><b>ADR-0007</b>：播放 <code>.comot</code> 需要安裝 CoMotion；分享靠匯出（Export HTML / PDF / PPTX），不靠傳檔。取代 ADR-0005「runtime 不得依賴 server」。</li>
-      <li><b>步驟作用域是頁內的</b>，不是貫穿整份簡報；總步數用算的，不存起來。</li>
-      <li><b>投影片的靜態長相＝所有效果都跑完的最終狀態</b>。隱藏是 runtime 在播放時才做的事，永遠不寫進檔案；沒有效果的元素從一開始就在畫面上。</li>
-      <li><b>ADR-0009</b>：動畫是投影片 SVG <code>&lt;metadata&gt;</code> 裡一份有序的效果清單，用自訂 XML 命名空間表示——仿 PowerPoint 的 <code>&lt;p:timing&gt;</code> 樹與 Keynote 的 build list，不是元素身上的屬性。步驟由清單推導，不另外儲存。</li>
-      <li><b>ADR-0008</b>：一張投影片自成一體；對調兩頁不需要動任何第三個檔案。</li>
-      <li>音訊必須掛在一個可見元素上（那是它的選取握把），維持「每個效果都指向一個元素」的不變式。</li>
-      <li><b>ADR-0010</b>：投影片內容不可信。檢視模式不跑 script；播放模式才加 <code>allow-scripts</code>，絕不加 <code>allow-same-origin</code>。鍵盤必須由 runtime 自己接住，因為 transient activation 過不了 <code>postMessage</code>。</li>
-      <li>側邊總覽用零 token 的 sandbox iframe 顯示真實縮圖，延遲載入。</li>
-      <li>這一輪只做播放：沒有任何寫入命令、沒有 agent 參與；測試簡報刻意手寫，誠實檢驗格式是否對人友善。</li>
+      <li><b>ADR-0007</b>: playing a <code>.comot</code> file requires CoMotion to be installed; sharing happens through export (Export HTML / PDF / PPTX), not by handing over the file. This supersedes ADR-0005's rule that "the runtime must not depend on a server."</li>
+      <li><b>Step scope is per-page</b>, not continuous across the whole deck; the total step count is computed, never stored.</li>
+      <li><b>A slide's static appearance is the end state with every effect already played out.</b> Hiding elements is something the runtime does only during playback, and is never written to the file; elements with no effect are visible from the very start.</li>
+      <li><b>ADR-0009</b>: animation is an ordered list of effects inside the slide SVG's <code>&lt;metadata&gt;</code>, expressed with a custom XML namespace — modeled on PowerPoint's <code>&lt;p:timing&gt;</code> tree and Keynote's build list, rather than as attributes on the element. Steps are derived from the list, not stored separately.</li>
+      <li><b>ADR-0008</b>: a single slide is self-contained; swapping two pages requires touching no third file.</li>
+      <li>Audio must be attached to a visible element (that's its selection handle), preserving the invariant that "every effect points at an element."</li>
+      <li><b>ADR-0010</b>: slide content is untrusted. View mode never runs scripts; only play mode adds <code>allow-scripts</code>, and never <code>allow-same-origin</code>. The runtime must capture keyboard input itself, since transient activation doesn't survive a <code>postMessage</code> hop.</li>
+      <li>The sidebar overview shows real thumbnails using zero-token sandboxed iframes, lazily loaded.</li>
+      <li>This round covers playback only: no write commands, no agent involvement; the test deck was deliberately handwritten, as an honest check of whether the format is human-friendly.</li>
     </ul>
   </div>
 
   <p class="preamble">
-    （session 開頭是例行的路由與現況盤點：使用者問「以目前基礎接下來要做什麼」，AI 查了 spec 與 issues 現況，回報曳光彈 #1 已驗證、四張硬化票都收掉了，只剩兩張非急件的 open issue，建議下一顆子彈打「步驟驅動動畫」。使用者選了這個方向。AI 準備開始 grill 前，先查了 <code>canvas.ts</code> 的現況，並提出第一個問題——這顆子彈該打穿 ADR-0005 對 runtime「不得依賴 server」的那句硬約束。這個問題還沒被回答，方向就整個被下面這則使用者訊息蓋過去了。以下從那裡開始。）
+    (The session opens with routine orientation and status-taking: the user asks what to work on next given the current foundation. The AI checked the spec and open issues, reported that the first tracer bullet had already been validated, that all four hardening items were closed, and that only two non-urgent open issues remained, and suggested the next tracer bullet should be "step-driven animation." The user picked this direction. Before starting to grill, the AI checked the current state of <code>canvas.ts</code> and raised its first question — whether this bullet should break the hard constraint in ADR-0005 that the runtime "must not depend on a server." That question was never answered; the direction was overtaken entirely by the user message below. The record picks up from there.)
   </p>
 
-  <h2>轉向：從步驟動畫到播放器</h2>
+  <h2>A pivot: from step-driven animation to a player</h2>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>我決定了，接下來下一個大的方向，我要在 CoMotion 這邊實現一個功能、一個樣態——它就像是一個投影片的編輯器。投影片編輯器的基礎功能都先不用，只要是說這個投影片，你可以看到它的側邊總覽，點下去之後可以看到每一頁的投影片，然後按播放之後放到全螢幕，按下一頁的方向鍵，就可以往下一個投影片走，用這樣的樣態去做。</p>
-    <p>至於在編輯方面，我先不要做編輯，只要能播放就好。播放也包含影像跟音訊的播放，還有圖片的播放。這邊也要實現一些動畫，最簡單的就是我按下一鍵，第一個 object 出現，再按下一鍵，第二個 object 出現。或者是到下一頁之後，我原本影片是靜止的，我按下一頁，影片就開始播放。或者是一個音訊檔案在這個 slide 裡面，我按下之後，它就會播放這個音檔。</p>
-    <p>所以就是實現一個可以呈現投影片的介面。這些內容全部都要來自我這個特製的 <code>.comot</code> 副檔名底下，要包含在這個裡面，然後被播放出來。</p>
-    <p>我希望你不要悶著頭就直接開始做了。我覺得你應該要去上網查一下，有沒有網路上的資訊可以拿來使用或參考，如果可以的話就把它拉下來參考。</p>
+    <div class="who">User</div>
+    <p>I've decided — the next big direction is to build a feature in CoMotion, a mode that behaves like a slide-deck player. Skip all the editor basics for now: you should be able to see a sidebar overview of the deck, click into it to see each slide, hit play to go fullscreen, and press the arrow key to advance to the next slide. That's the shape I want.</p>
+    <p>As for editing, let's not build that yet — playback is enough for now. Playback should include video, audio, and image playback. I also want some animation here, the simplest case being: I press next, the first object appears; I press next again, the second object appears. Or, once I move to the next page, a video that was static starts playing when I advance. Or an audio file on the slide starts playing once I press next.</p>
+    <p>So the goal is an interface that can present a deck. All of this content should come from my custom <code>.comot</code> file format — it needs to live inside that, and be played back from it.</p>
+    <p>I don't want you to just dive in and start building. I think you should look online first to see if there's existing prior art you can draw on, and pull it in for reference if it's useful.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>收到，方向轉了：下一個大方向是「播放器」，不是編輯器。先照指示去查資料，再開始 grill。</p>
-    <p>查完了，研究發現三個直接可參考的前案：</p>
+    <p>Understood — the direction has shifted: the next big target is a "player," not an editor. Following the instruction, research first, then grill.</p>
+    <p>Research turned up three directly relevant prior projects:</p>
     <table>
-      <tr><th></th><th>本體</th><th>runtime 住哪</th><th>授權</th><th>對我們的價值</th></tr>
-      <tr><td>JessyInk</td><td>SVG</td><td>JS 內嵌進 SVG 檔本身</td><td>未明確</td><td>最接近我們，但「JS 塞進 SVG」違反 ADR-0001</td></tr>
-      <tr><td>Sozi</td><td>SVG</td><td>匯出成獨立 <code>.sozi.html</code>，SVG 原檔不動</td><td>MPL-2.0</td><td>「不動原檔、runtime 在外面」正是 ADR-0005 想要的形狀</td></tr>
-      <tr><td>reveal.js</td><td>HTML</td><td>函式庫</td><td>MIT</td><td>本體不是 SVG，但媒體與 fragment 的行為設計是現成教科書</td></tr>
+      <tr><th></th><th>Format</th><th>Where the runtime lives</th><th>License</th><th>Value to us</th></tr>
+      <tr><td>JessyInk</td><td>SVG</td><td>JS embedded inside the SVG file itself</td><td>Unclear</td><td>Closest to our approach, but "JS embedded in SVG" violates ADR-0001</td></tr>
+      <tr><td>Sozi</td><td>SVG</td><td>Exported as a standalone <code>.sozi.html</code>, the original SVG untouched</td><td>MPL-2.0</td><td>"Leave the original file alone, keep the runtime external" is exactly the shape ADR-0005 wants</td></tr>
+      <tr><td>reveal.js</td><td>HTML</td><td>A library</td><td>MIT</td><td>Not SVG-based, but its media and fragment behavior design is a ready-made reference</td></tr>
     </table>
-    <p>reveal.js 的媒體語意特別值得抄：<code>data-autoplay</code>、離開投影片自動暫停、<code>data-ignore</code>、<code>data-src</code> 延遲載入。</p>
-    <p>兩個會直接掐死設計的技術事實：SVG 1.1 沒有 <code>&lt;video&gt;</code>/<code>&lt;audio&gt;</code>，<code>&lt;foreignObject&gt;</code> 又已被 ADR-0005 否決，所以影音只能是疊在 SVG 上的 HTML 元素——runtime 必須活在一份 HTML 文件裡。自動播放需要使用者手勢，但 <code>keydown</code> 算數，操作模型「按下一鍵才播」剛好天然繞過這個坑。</p>
-    <p>現有程式碼裡，<code>canvas.ts</code> 把投影片跑在零 token 的 sandbox iframe（不准跑 script），註解已預先寫給這顆子彈看：<code>allow-scripts</code> 單獨加是安全的，但絕不能配上 <code>allow-same-origin</code>。</p>
-    <p><b>問題 1：播放器是一份「獨立的 HTML 文件」，還是編輯器裡的一個模式？</b> AI 的建議：獨立、對 server 一無所知的 HTML 文件——就是未來 <code>export --html</code> 要吐出來的東西，理由是讓 ADR-0005「runtime 不依賴 server」從紙上變成可驗收的條件，並收窄信任邊界。</p>
+    <p>reveal.js's media semantics are especially worth borrowing: <code>data-autoplay</code>, auto-pause on leaving a slide, <code>data-ignore</code>, and lazy loading via <code>data-src</code>.</p>
+    <p>Two technical facts that constrain the design directly: SVG 1.1 has no <code>&lt;video&gt;</code>/<code>&lt;audio&gt;</code>, and <code>&lt;foreignObject&gt;</code> was already ruled out by ADR-0005 — so video and audio can only be HTML elements layered on top of the SVG, meaning the runtime has to live inside an HTML document. Autoplay needs a user gesture, but <code>keydown</code> counts, and the "press next to play" interaction model happens to sidestep this naturally.</p>
+    <p>In the existing code, <code>canvas.ts</code> already runs slides inside a zero-token sandboxed iframe (no scripts allowed), with a comment already written in anticipation of this exact bullet: adding <code>allow-scripts</code> alone is safe, but it must never be paired with <code>allow-same-origin</code>.</p>
+    <p><b>Question 1: is the player a standalone HTML document, or a mode inside the editor?</b> The AI's recommendation: a standalone HTML document with zero knowledge of any server — exactly what a future <code>export --html</code> would produce — reasoning that this turns ADR-0005's "runtime doesn't depend on a server" from a paper principle into something testable, and narrows the trust boundary.</p>
     <div class="reversed">
-      <b>此處後來整個作廢。</b>這個問題從未被 A / B 選過——使用者下一則訊息直接撤銷了 ADR-0005 那句硬約束本身：CoMotion 變成播放 <code>.comot</code> 的必要條件，播放器就是同一個 web app 的一個模式，不是獨立產物。問題 1 因此被繞過，而不是被回答。
+      <b>This was later thrown out entirely.</b> Question 1 was never chosen between A and B — the user's next message directly retracted the hard constraint in ADR-0005 itself: having CoMotion installed became a requirement for playing a <code>.comot</code> file, and the player became a mode of the same web app, not a standalone artifact. Question 1 was bypassed rather than answered.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>這邊我想要撤銷對於 ADR-0005 的這段描述。我想要改成：其實你的電腦裡面要安裝 CoMotion，你才能播放我這個檔案，所以反而是會有依賴，一定要 CoMotion 的。CoMotion 現在是一個 server——你在執行的時候用 server mode 把它打開來，到相應的 port 把網頁打開，那就是一個編輯器可以使用。接下來你把 <code>.comot</code> 副檔名的檔案放進去這個播放器或編輯器，就可以開始使用了。未來也還會進一步把它改成一個 Mac app，打開一個 app 之後就可以去使用 CoMotion。所以這邊要修改 ADR-0005。</p>
+    <div class="who">User</div>
+    <p>I want to walk back that part of ADR-0005. Here's the change: you actually need CoMotion installed on your machine to play my file — so there is a dependency after all, and it must be CoMotion. CoMotion is now a server — you launch it in server mode, open the corresponding port in a browser, and that's the editor you can use. Then you load a <code>.comot</code> file into this player-slash-editor, and you're up and running. Down the line this will further become a Mac app — you open the app, and that gives you access to CoMotion. So this part of ADR-0005 needs to change.</p>
   </div>
 
-  <h2>ADR-0007：播放需要 CoMotion</h2>
+  <h2>ADR-0007: playback requires CoMotion</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這是個大轉向，先把帳算清楚。</p>
-    <p><b>買到的</b>：runtime 可以依賴 server，影音走 <code>/api/raw</code> 串流、HTTP Range（#13 到這裡才第一次有意義）；播放器與編輯器共用同一個 web app；未來 Mac app 只是把 server 藏起來，架構不用再動。</p>
-    <p><b>賠掉的</b>：<code>export --html</code> 這扇門關上；<code>.comot</code> 寄給沒裝 CoMotion 的人＝廢檔，跟 ADR-0003「簡報可以複製、寄送、備份」的出發點有張力；上台要在那台電腦上裝 CoMotion。唯一剩下的逃生口——單獨用瀏覽器打開一張投影片 SVG 必須看到正常靜態畫面——因此升級成最後的相容性保證，之後不能再被侵蝕。</p>
+    <p>This is a major pivot — let's tally the trade-offs clearly.</p>
+    <p><b>Gained</b>: the runtime can now depend on a server, so video/audio can stream through <code>/api/raw</code> with HTTP Range support (this is where that capability first becomes meaningful); the player and the editor share the same web app; a future Mac app just hides the server, with no architectural change needed.</p>
+    <p><b>Lost</b>: the door to <code>export --html</code> closes; sending a <code>.comot</code> file to someone without CoMotion installed produces a dead file, which is in tension with ADR-0003's premise that "a deck can be copied, sent, and backed up." Presenting on a given machine now requires CoMotion installed there. The one remaining escape hatch — that opening a single slide SVG directly in a browser must still show a correct static image — is therefore promoted to a final compatibility guarantee that can no longer be eroded.</p>
     <div class="reversed">
-      <b>此處框架後來被使用者整個推翻。</b>下一則訊息裡使用者指出：並沒有賠掉「分享」，因為未來可以在 CoMotion 裡實作 Export HTML / Export PDF / Export PPTX，仍然能轉成別的格式分享給別人——只有 <code>.comot</code> 本身是 CoMotion 專屬。ADR 最終照這個框架寫：不是「不能分享」，是「分享靠匯出，不靠傳檔」。
+      <b>This framing was later overturned entirely by the user.</b> In the next message the user pointed out that "sharing" isn't actually lost, because CoMotion could later implement Export HTML / Export PDF / Export PPTX, still allowing conversion to other formats to share with others — only the <code>.comot</code> file itself is CoMotion-exclusive. The ADR was ultimately written around this framing: not "can't be shared," but "shared via export, not via handing over the file."
     </div>
-    <p><b>問題 2：記錄方式</b>——寫一份新的 ADR-0007 去 supersede ADR-0005 的那一段，還是直接改 ADR-0005 原文？AI 建議前者，理由是 ADR 是決策紀錄不是規格書，抹掉舊決策的脈絡，未來的人（和 agent）會看不到當初權衡過什麼。</p>
+    <p><b>Question 2: how to record this</b> — write a new ADR-0007 that supersedes that part of ADR-0005, or edit ADR-0005's text directly? The AI recommended the former, reasoning that an ADR is a decision record, not a spec — erasing the context of a past decision means future readers (human or agent) lose sight of what tradeoffs were actually weighed.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>好，我同意你的建議，你就這樣修改吧。另外我要補充一下——其實沒有賠掉什麼，因為我未來可以在 CoMotion 裡面的 app 或 server 裡，實作 Export HTML、Export PDF，甚至 Export PPTX，這些都可以實現。所以並沒有賠掉這些東西，仍然可以轉換成其他檔案格式分享給別人，只是針對 <code>.comot</code> 這個副檔名，只有在 CoMotion 裡面能跑。</p>
+    <div class="who">User</div>
+    <p>Agreed, go ahead and make that change. One more thing to add — nothing is actually lost, because in the future I can implement Export HTML, Export PDF, even Export PPTX inside the CoMotion app or server. All of that is achievable. So none of that capability is lost; it can still be converted to other file formats to share with others — it's specifically the <code>.comot</code> extension that only runs inside CoMotion.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這個補充把代價欄改寫了：不是「不能分享」，是「分享靠匯出，不靠傳檔」，<code>.comot</code> 是工作格式不是交付格式。</p>
-    <p>一個張力先標記、不現在處理：ADR-0001 白紙黑字寫「CoMotion 不匯入也不匯出 PPTX」，跟剛才把 PPTX 列進未來匯出選項牴觸。判斷是先不動 ADR-0001，真要做匯出 PPTX 時再開一份新 ADR 去撞它。</p>
-    <p>ADR-0007 寫好，ADR-0005 加上取代註記（理由留在原地），README 兩處同步。問題 1 因此被這個決定回答掉：播放器不是獨立產物，是同一個 web app 的一個模式。</p>
+    <p>This addition rewrites the cost column: it's not "can't be shared," it's "shared via export, not via handing over the file" — <code>.comot</code> is a working format, not a delivery format.</p>
+    <p>One tension flagged but deferred: ADR-0001 states plainly that "CoMotion neither imports nor exports PPTX," which conflicts with just having listed PPTX as a future export option. The call is to leave ADR-0001 untouched for now, and open a new ADR against it when PPTX export actually gets built.</p>
+    <p>ADR-0007 was written, ADR-0005 got a superseded-by note (with its original reasoning left in place), and the README was updated in two spots. Question 1 is answered by this decision: the player isn't a standalone artifact, it's a mode of the same web app.</p>
   </div>
 
-  <h2>步驟作用域（問題 3）</h2>
+  <h2>Step scope (question 3)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>「步驟」的作用域是一頁之內，還是貫穿整份簡報？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Is a "step" scoped to a single page, or continuous across the whole deck?</b></p>
     <ul>
-      <li><b>A. 頁內作用域（建議）</b> — 每頁的 step 都從 1 重新算。</li>
-      <li><b>B. 全域連續</b> — 整份簡報的步驟編號一路連號。</li>
+      <li><b>A. Per-page scope (recommended)</b> — each page's steps recount from 1.</li>
+      <li><b>B. Global continuity</b> — step numbers run continuously across the whole deck.</li>
     </ul>
-    <p>建議 A：ADR-0001 說一張 SVG 沒有更權威的表示法，全域連號會讓單獨開啟一張投影片時的 step 數字無法自我解釋；ADR-0003 已經為同一件事（用明確的 <code>slides</code> 陣列而非檔名排序）做過同樣的選擇，避免調整順序時大量重編。代價：「總共幾步」不存在於任何單一檔案，得由 runtime 算出來——這是對的，存起來就是快取，快取就會不同步。</p>
+    <p>Recommending A: ADR-0001 says an SVG has no more authoritative representation, so global numbering would make a step number meaningless when a single slide is opened on its own; ADR-0003 already made the same call for an equivalent problem (using an explicit <code>slides</code> array instead of filename ordering), to avoid mass renumbering when reordering. The cost: the "total step count" doesn't live in any single file — it has to be computed by the runtime — which is correct, since storing it would just be a cache, and caches drift out of sync.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>A</p>
   </div>
 
-  <h2>隱藏狀態放哪裡（問題 4）</h2>
+  <h2>Where hidden state lives (question 4)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>「還沒出現的元素」的隱藏狀態，存在檔案裡還是只存在 runtime 裡？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Does the "not yet appeared" hidden state of an element live in the file, or only in the runtime?</b></p>
     <ul>
-      <li><b>A</b> — 存進檔案，元素帶 <code>display="none"</code> 或 <code>opacity="0"</code>。</li>
-      <li><b>B（建議）</b> — 只存在 runtime 裡：檔案裡所有元素都是可見的最終狀態，runtime 在播放開始時才藏起來、再逐步放出來。</li>
+      <li><b>A</b> — stored in the file, with the element carrying <code>display="none"</code> or <code>opacity="0"</code>.</li>
+      <li><b>B (recommended)</b> — only lives in the runtime: every element in the file is in its visible, final state, and the runtime hides then progressively reveals them at playback time.</li>
     </ul>
-    <p>建議 B，且認為 A 根本不合法：A 之下，用 Illustrator 開一份有動畫的投影片會看到幾乎空白的頁面，正是 ADR-0001 那條靜態相容性驗收標準所禁止的畫面，而 ADR-0007 之後這條保證是沒裝 CoMotion 的人唯一還能看到內容的途徑。B 之下靜態長相＝所有步驟跑完的最終狀態，編輯模式免費得到正確畫面，<code>data-comot-step</code> 退化成純粹標記、不影響渲染。順帶定下：沒有標註的元素屬於第 0 步，進入該頁就已在畫面上。代價是實作上要先藏再放，中間可能有一瞬間 FOUC，是已知可解的問題。</p>
+    <p>Recommending B, and arguing A is outright invalid: under A, opening an animated slide in Illustrator would show a nearly blank page — exactly the picture ADR-0001's static-compatibility acceptance criterion forbids, and after ADR-0007 this guarantee is the only way left for someone without CoMotion installed to see any content at all. Under B, the static appearance equals the end state after all steps have played, so edit mode gets the correct picture for free, and <code>data-comot-step</code> degrades to a pure marker with no effect on rendering. Also settled in passing: an element with no annotation belongs to step 0, and is already on screen when the page loads. The cost is that the implementation has to hide-then-reveal, which can cause a momentary FOUC — a known, solvable problem.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>B</p>
   </div>
 
-  <h2>進場的定義——第一次問錯了高度（問題 5）</h2>
+  <h2>Defining "enter" — the first version asked at the wrong altitude (question 5)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>影音的「播放」跟元素的「進場」是同一件事，還是兩件事？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Is media "playback" the same thing as an element's "entrance," or are they two separate things?</b></p>
     <ul>
-      <li><b>A（建議）</b> — 合而為一：一種機制，對靜態圖形表現＝出現，對影音資產表現＝開始播放，runtime 依元素型別分派。</li>
-      <li><b>B</b> — 分成兩套：出現用一組屬性，媒體觸發用另一組。</li>
+      <li><b>A (recommended)</b> — unify them: a single mechanism that means "appear" for static graphics and "start playing" for media assets, with the runtime dispatching by element type.</li>
+      <li><b>B</b> — split into two: one set of attributes for appearance, another for media triggers.</li>
     </ul>
-    <p>建議 A，代價是要修訂 CONTEXT.md 對「進場」的定義，從「出現方式」放寬成「元素被觸發時的表現，對靜態元素是出現、對影音資產是開始播放」。</p>
+    <p>Recommending A, at the cost of revising CONTEXT.md's definition of "enter" — loosening it from "how something appears" to "what an element does when triggered: appearing for static elements, starting playback for media assets."</p>
     <div class="reversed">
-      <b>此處後來被判定問錯了高度，定義的放寬也被撤回。</b>使用者沒有在 A/B 之間選，而是要求先研究 PowerPoint、Keynote 的資料模型以求未來擴充性。AI 隨後承認這一題「問錯了高度」——真正的問題不是「進場要不要涵蓋媒體」，而是「動畫資訊該存在元素屬性上、還是一份有序清單裡」。進場的定義因此不用放寬，退回去只管靜態元素的出現；媒體播放另成一個效果家族。見下方問題 5（重問）。
+      <b>This was later judged to have asked the question at the wrong altitude, and the loosened definition was withdrawn.</b> The user didn't choose between A and B, but instead asked for research into PowerPoint's and Keynote's data models first, for future extensibility. The AI subsequently admitted this question was "asked at the wrong altitude" — the real question wasn't "should entrance cover media," but "should animation data live on the element's attributes, or in an ordered list." The definition of "enter" therefore didn't need loosening after all — it reverts to covering only the appearance of static elements, with media playback becoming its own separate effect family. See question 5 (revisited) below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>這邊我想要跟你討論一下，因為以後會有更多的動畫轉場，也不是只有出現，以後也會有更多投影片播放的狀態。所以我想要你多多思考一下 PowerPoint、Keynote 這一類投影片播放軟體的設計應該是怎麼設計的，對未來的擴充性會比較好。</p>
+    <div class="who">User</div>
+    <p>I want to discuss this with you, because there will be more animation transitions down the line, not just "appear" — there will be more presentation-playback states in the future too. So I want you to think more carefully about how presentation software like PowerPoint and Keynote is designed, so this holds up better for future extensibility.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>查了 PowerPoint 與 Keynote 實際的資料模型。PowerPoint 的動畫存在 <code>&lt;p:timing&gt;</code> 裡，是一棵跟形狀樹完全分開的樹，透過 <code>&lt;p:spTgt spid="3"&gt;</code> 反過來指向形狀，效果分家族（進場、強調、退場、路徑），媒體的播放／暫停／停止就是清單裡的效果項，不是另一套機制，每項還帶起始方式（On Click / With Previous / After Previous）。Keynote 同構：Build In / Build Out / Action。關鍵發現：「按一下」跟「一項動畫」不是一對一——`With Previous` 就是為了讓多項動畫共用同一次按鍵。也就是說，「步驟」不該被儲存，它是從一份有序效果清單推導出來的。</p>
-    <p><b>問題 5（重問）：動畫資訊住在元素身上，還是住在投影片的一份有序清單裡？</b></p>
+    <p>Looked into PowerPoint's and Keynote's actual data models. PowerPoint's animation lives in <code>&lt;p:timing&gt;</code>, a tree completely separate from the shape tree, pointing back at shapes via <code>&lt;p:spTgt spid="3"&gt;</code>; effects are grouped into families (entrance, emphasis, exit, motion path), and media play/pause/stop are just effect entries in the same list rather than a separate mechanism — each entry also carries a start mode (On Click / With Previous / After Previous). Keynote is isomorphic: Build In / Build Out / Action. The key finding: "one click" and "one animation" are not one-to-one — `With Previous` exists precisely so multiple animations can share a single click. In other words, a "step" shouldn't be stored at all — it should be derived from an ordered effect list.</p>
+    <p><b>Question 5 (revisited): does animation data live on the element itself, or in an ordered list on the slide?</b></p>
     <ul>
-      <li><b>A</b> — 住在元素身上（ADR-0005 現在的寫法）。</li>
-      <li><b>B（建議）</b> — 住在 <code>&lt;metadata&gt;</code> 裡一份有序清單，每項指向一個元素 id。</li>
+      <li><b>A</b> — lives on the element (ADR-0005's current wording).</li>
+      <li><b>B (recommended)</b> — an ordered list inside <code>&lt;metadata&gt;</code>, with each entry pointing at an element id.</li>
     </ul>
-    <p>建議 B：A 有結構性天花板——一個元素只能有一個效果，容不下「第 2 步出現、第 5 步強調、第 7 步退場」；順序的論證跟問題 3 贏的是同一個，清單讓插入一個效果變成 splice，屬性讓它變成重編後面所有 step；<code>&lt;metadata&gt;</code> 是合法 SVG，其他工具會忽略它，不影響 ADR-0001。代價：孤兒效果項（刪元素要連帶清理指向它的效果）、元素與動畫分居兩處（但 ADR-0002 下 CLI 會封裝掉這件事）。這一輪的實作範圍：結構完整支援四家族與三種起始方式，但只實作起始方式＝按一下、效果家族＝進場與媒體播放。</p>
+    <p>Recommending B: A has a structural ceiling — an element can only carry one effect, which can't express "enters at step 2, is emphasized at step 5, exits at step 7." The ordering argument is the same one that won question 3 — a list turns inserting an effect into a splice, whereas attributes would mean renumbering every step after it. <code>&lt;metadata&gt;</code> is valid SVG and other tools ignore it, so it doesn't conflict with ADR-0001. The cost: orphaned effect entries (deleting an element requires cleaning up effects that point at it), and animation and elements now live in two places (though under ADR-0002 the CLI wraps this away). Scope for this round: the structure fully supports all four families and all three start modes, but only "on click" as a start mode and "entrance" plus "media playback" as effect families are actually implemented.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>B</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>B。動畫住在清單裡，跟 PowerPoint／Keynote 同構。</p>
+    <p>B. Animation lives in a list, isomorphic to PowerPoint/Keynote.</p>
   </div>
 
-  <h2>Runtime 環境、全螢幕與焦點（問題 6）</h2>
+  <h2>Runtime environment, fullscreen, and focus (question 6)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p>先查了兩個會決定答案的技術事實：transient activation 不會透過 <code>postMessage</code> 傳遞（主文件監聽方向鍵、postMessage 給 iframe 播音檔會失敗），所以按鍵必須被 runtime 自己接到；父文件可以對自己的 iframe 元素呼叫 <code>requestFullscreen()</code>，不必授予 iframe 全螢幕權限。</p>
-    <p><b>runtime 跑在 sandbox iframe 內，還是放棄 iframe？</b></p>
+    <div class="who">AI (asking)</div>
+    <p>First checked two technical facts that would decide the answer: transient activation does not survive a <code>postMessage</code> hop (if the parent document listens for the arrow key and posts a message to the iframe to play audio, it will fail), so key presses must be captured by the runtime itself; and a parent document can call <code>requestFullscreen()</code> on its own iframe element without needing to grant the iframe fullscreen permission.</p>
+    <p><b>Should the runtime run inside a sandboxed iframe, or should the iframe be abandoned?</b></p>
     <ul>
-      <li><b>A（建議）</b> — 維持 iframe，播放時加 <code>allow-scripts</code>（絕不加 <code>allow-same-origin</code>），鍵盤由 runtime 自己監聽。</li>
-      <li><b>B</b> — 放棄 iframe，SVG 直接 inline 進主文件，改用伺服器端消毒擋不可信內容。</li>
+      <li><b>A (recommended)</b> — keep the iframe, add <code>allow-scripts</code> during playback (never <code>allow-same-origin</code>), with the runtime listening for the keyboard itself.</li>
+      <li><b>B</b> — abandon the iframe, inline the SVG directly into the parent document, and rely on server-side sanitization to block untrusted content instead.</li>
     </ul>
-    <p>建議 A：檢視模式維持零 token，播放模式才開 script；而且播放永遠全螢幕，螢幕上沒有東西會跟 iframe 搶焦點，「按空白鍵沒反應」的經典 bug 在這個設計下不存在。</p>
+    <p>Recommending A: view mode stays zero-script, and only play mode enables scripts; also, since playback is always fullscreen, nothing on screen would compete with the iframe for focus, so the classic "pressing space does nothing" bug can't happen under this design.</p>
     <div class="reversed">
-      <b>此處的推論後來被使用者的下一則訊息推翻。</b>使用者堅持全螢幕必須是使用者自己選的，不能寫死在程式裡；於是「播放永遠全螢幕，所以焦點不會被搶走」這個論證不成立了。AI 承認焦點問題回來了，並在同一次回應中拒絕了「主文件也監聽方向鍵當備援」的補救方案——因為那對純視覺步驟能動、對影音步驟會因 transient activation 過不了 postMessage 而失敗，結果是有些步驟能按有些不能，比壞掉更糟。最終收斂為：檢視／播放兩種模式，全螢幕是播放模式上的一個開關，可隨時切換，不是另一種模式；焦點不在播放器上時畫面要明確講出來、可點回去，絕不無聲失效。
+      <b>This reasoning was later overturned by the user's next message.</b> The user insisted fullscreen must be something the user explicitly chooses, not hardcoded into the app — which invalidates the argument that "playback is always fullscreen, so focus can never be stolen." The AI acknowledged the focus problem was back, and in the same response rejected a proposed fix — having the parent document also listen for the arrow key as a fallback — because that would work for pure visual steps but fail for media steps (since transient activation can't survive the postMessage hop), leaving some steps that respond to a key press and others that don't, which is worse than an outright failure. The final resolution: view and play remain the two modes, and fullscreen becomes a toggle within play mode that can be switched anytime, not a separate mode; when focus isn't on the player, the screen must say so explicitly and offer a way to click back in — it must never silently fail.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>我想要採用 A 方案，但是播放影片的時候一定要全螢幕，這個應該是要讓使用者可以自己選的。也可以不全螢幕，就直接在那個位置上面播放，也可以全螢幕播放，這應該是讓使用者自己選，而不是 default 刻在程式碼裡面的。</p>
+    <div class="who">User</div>
+    <p>I want to go with option A, but fullscreen during video playback should be something the user can choose for themselves. It could play inline right where it is without fullscreen, or it could play fullscreen — that choice should belong to the user, not be a default baked into the code.</p>
   </div>
 
-  <h2>側邊總覽：真實縮圖（問題 7）</h2>
+  <h2>Sidebar overview: real thumbnails (question 7)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>先講一個查到、很誘人但用不了的事實：SVG 透過 <code>&lt;img src="..."&gt;</code> 載入時，瀏覽器會強制它進入靜態安全模式——不跑 script（正是要的），但也不載入任何外部資源（致命）。</p>
+    <p>First, a fact that looked tempting during research but turns out unusable: when an SVG is loaded via <code>&lt;img src="..."&gt;</code>, the browser forces it into a static, safe mode — no scripts run (which is what we want), but no external resources load either (which is fatal here).</p>
     <div class="reversed">
-      <b>這個選項在同一段話裡被自己否決。</b>放了照片或影片 poster 的投影片，用 <code>&lt;img&gt;</code> 縮圖會缺一塊——簡報工具的縮圖缺圖等於沒有縮圖，所以這條看似零成本安全的路被排除。
+      <b>This option was ruled out within the same passage it was raised in.</b> A slide containing a photo or a video poster would show a gap in its <code>&lt;img&gt;</code> thumbnail — and in a presentation tool, a thumbnail missing its image is the same as having no thumbnail at all — so this seemingly zero-cost, safe route was ruled out.
     </div>
-    <p><b>側邊總覽顯示真實縮圖，還是頁碼清單？</b></p>
+    <p><b>Should the sidebar overview show real thumbnails, or just a list of page numbers?</b></p>
     <ul>
-      <li><b>A（建議）</b> — 每頁一個零 token 的 sandbox iframe，跟現在 <code>canvas.ts</code> 同一套姿態，縮小顯示；資產正常載入，安全邊界不變。</li>
-      <li><b>B</b> — 頁碼＋名稱清單，便宜但看不出哪頁是哪頁。</li>
+      <li><b>A (recommended)</b> — one zero-token sandboxed iframe per page, the same posture as the current <code>canvas.ts</code>, scaled down; assets load normally, and the trust boundary is unchanged.</li>
+      <li><b>B</b> — a list of page numbers and names, cheap but gives no visual sense of which page is which.</li>
     </ul>
-    <p>建議 A：縮圖是總覽存在的全部理由。代價是每頁一個 iframe，解法是 reveal.js 已給的延遲載入（只實體化視窗附近幾頁）。</p>
+    <p>Recommending A: the thumbnail is the entire reason the overview exists. The cost is one iframe per page, addressed with the lazy loading pattern reveal.js already provides (only instantiating the pages near the viewport).</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>A</p>
   </div>
 
-  <h2>效果清單的檔案格式（問題 8）</h2>
+  <h2>File format for the effect list (question 8)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>位置不算選擇題：ADR-0003 說 <code>project.json</code> 只放 SVG 表達不了的東西，同一個理由適用——效果清單放進 <code>project.json</code>，單獨開啟一張投影片就會缺動畫，所以它住在該張投影片 SVG 的 <code>&lt;metadata&gt;</code> 裡。真正的選擇是格式：</p>
+    <p>The location isn't really a choice: ADR-0003 says <code>project.json</code> only holds what SVG can't express, and the same reasoning applies here — putting the effect list in <code>project.json</code> would mean opening a single slide loses its animation, so it belongs inside that slide SVG's own <code>&lt;metadata&gt;</code>. The real choice is format:</p>
     <ul>
-      <li><b>A（建議）</b> — 自訂命名空間的 XML 元素，例如 <code>&lt;comot:effect target="el-a3f2c1" family="enter" effect="fade" start="on-click"/&gt;</code>。</li>
-      <li><b>B</b> — JSON 塞在 <code>&lt;metadata&gt;</code> 的文字節點裡。</li>
+      <li><b>A (recommended)</b> — XML elements in a custom namespace, e.g. <code>&lt;comot:effect target="el-a3f2c1" family="enter" effect="fade" start="on-click"/&gt;</code>.</li>
+      <li><b>B</b> — JSON packed into a text node inside <code>&lt;metadata&gt;</code>.</li>
     </ul>
-    <p>建議 A，理由是 ADR-0004（hand-readable、對 agent 友善）：整份檔案維持單一語法。</p>
+    <p>Recommending A, citing ADR-0004 (hand-readable, agent-friendly): it keeps the whole file in a single syntax.</p>
     <div class="reversed">
-      <b>此處論證在同一段話裡被自己收回。</b>AI 原本想拿「XML 的 git diff 逐行可讀」當理由，隨即在同一則訊息裡撤回：<code>.comot</code> 是 zip、工作目錄在 <code>~/.comotion/work/</code>，根本不進 git，這條論證不成立。真正的代價講清楚：XML 屬性值全是字串，未來加 duration、delay 要自己轉型別，JSON 是免費的；而且要自己寫一個小讀寫器。
+      <b>This argument was retracted within the same passage.</b> The AI initially wanted to cite "XML diffs cleanly line by line in git" as a reason, then immediately withdrew it in the same message: a <code>.comot</code> file is a zip, and the working directory lives in <code>~/.comotion/work/</code> — none of it goes into git, so that argument doesn't hold. The real cost was stated plainly instead: XML attribute values are all strings, so adding duration or delay later means writing your own type coercion, which JSON gets for free — and a small custom reader/writer would still need to be built either way.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>對的，選 A 是正確的。我想要讓一個 SVG 裡面就擁有這個 SVG 的重要功能，包含這些動畫的切換，應該都在這個 SVG 裡面能找得到。為什麼呢？今天如果我把兩個投影片對調，假設外面有一個 JSON 檔，那對調的時候，還要改那個裡面的東西嗎？所以讓 SVG 自成一個體系是一個很好的決策，未來要交換什麼都會比較容易。</p>
+    <div class="who">User (answer)</div>
+    <p>Right, A is the correct choice. I want a single SVG to carry all of its own important behavior, including these animation transitions — all of it should be findable inside that one SVG. Why? Because if I swap two slides today, and there's a separate JSON file out there, would I also need to update whatever's in it? So making the SVG a self-contained system is a good decision — it'll make it much easier to exchange things going forward.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>正是這個理由，而且比原本給的都硬：投影片自成一體，對調兩頁不需要動任何第三個檔案。這是「明確順序、不重編號」這條線第四次出現了（<code>slides</code> 陣列、頁內步驟作用域、效果清單、現在是自成一體），值得記成一份 ADR（ADR-0008）。</p>
+    <p>That's exactly the reasoning, and stronger than what was originally given: a slide is self-contained, so swapping two pages requires touching no third file. This is the fourth time the same principle — explicit ordering, never renumbering — has come up (the <code>slides</code> array, per-page step scope, the effect list, and now self-containment). It's worth recording as its own ADR (ADR-0008).</p>
   </div>
 
-  <h2>音訊的把手（問題 9）</h2>
+  <h2>A handle for audio (question 9)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p>影片有 poster <code>&lt;image&gt;</code> 當佔位，看得見。音訊沒有天然的樣子，而效果清單模型的核心不變式是每一項都指向一個元素。</p>
+    <div class="who">AI (asking)</div>
+    <p>Video has a poster <code>&lt;image&gt;</code> as a placeholder, so it's visible. Audio has no natural visual form, yet the core invariant of the effect-list model is that every entry points at an element.</p>
     <ul>
-      <li><b>A（建議）</b> — 音訊也必須掛在一個可見元素上（例如喇叭圖示）。</li>
-      <li><b>B</b> — 音訊是不可見的節點。</li>
-      <li><b>C</b> — 音訊不是元素，而是效果清單裡直接寫 <code>src</code> 的特例。</li>
+      <li><b>A (recommended)</b> — audio must also be attached to a visible element (e.g. a speaker icon).</li>
+      <li><b>B</b> — audio is an invisible node.</li>
+      <li><b>C</b> — audio isn't an element at all, but a special case in the effect list that carries a <code>src</code> directly.</li>
     </ul>
-    <p>建議 A：保住不變式（C 會讓清單長出第二種項）；看不見的東西沒有把手，未來視覺編輯要能點選、刪除、看到它在第幾步，PowerPoint 的喇叭圖示不是裝飾，是選取用的握把；agent 需要能指名它。代價：畫面上會有個喇叭圖示，播放時也在，未來再用「放映時隱藏」旗標解決。</p>
+    <p>Recommending A: it preserves the invariant (C would introduce a second kind of list entry); something invisible has no handle, and future visual editing needs to be able to click it, delete it, and see which step it's on — PowerPoint's speaker icon isn't decoration, it's a selection handle, and the agent needs to be able to refer to it by name. The cost: a speaker icon will be visible on screen, including during playback — to be addressed later with a "hide during presentation" flag.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>A</p>
   </div>
 
-  <h2>這一輪的邊界（問題 10）</h2>
+  <h2>Scope for this round (question 10)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p>這顆子彈要驗證的假設：一份手寫的效果清單，加上一個對簡報內容一無所知的 runtime，就能播出 PowerPoint 等級的步驟推進——而且那份清單手寫起來不痛。這一輪沒有任何命令會去寫效果清單，所以測試簡報必須手工寫，這正是對 ADR-0004「hand-readable」最誠實的檢驗。</p>
-    <p><b>含</b>：多頁支援、總覽縮圖（延遲載入）、檢視／播放兩種模式、全螢幕開關、效果清單的讀取與執行、進場（先只做 fade 和 appear）、媒體播放效果、圖片、影片、音訊。</p>
-    <p><b>不含</b>：任何寫入命令、agent 參與、強調／退場／路徑家族、with-previous／after-previous、投影片間轉場、暫停與倒退媒體、進度指示。</p>
-    <p>建議一起做的兩件事：#13（HTTP Range，沒有它 Safari 可能直接拒播 MP4）、server 拒絕 <code>Origin: null</code> 的請求（問題 6 開了 <code>allow-scripts</code> 才第一次真正存在的盲寫缺口）。標記一個風險：這一輪完全沒有 agent 參與，是專案第一次；這是使用者明確的選擇，下一輪應補上寫入命令。</p>
+    <div class="who">AI (asking)</div>
+    <p>The hypothesis this bullet needs to validate: a handwritten effect list, combined with a runtime that knows nothing about the deck's content, can play back PowerPoint-grade step progression — and writing that list by hand isn't painful. No command in this round writes to the effect list, so the test deck has to be handwritten by hand, which is the most honest possible test of ADR-0004's "hand-readable" promise.</p>
+    <p><b>In scope</b>: multi-page support, overview thumbnails (lazily loaded), view/play modes, a fullscreen toggle, reading and executing the effect list, entrance effects (fade and appear only for now), media playback effects, images, video, audio.</p>
+    <p><b>Out of scope</b>: any write commands, agent involvement, emphasis/exit/motion-path families, with-previous/after-previous, transitions between slides, pausing and rewinding media, progress indicators.</p>
+    <p>Two things recommended alongside this: HTTP Range support (without it, Safari may simply refuse to play MP4), and having the server reject requests with <code>Origin: null</code> (a blind spot that only became real the moment question 6 turned on <code>allow-scripts</code>). One risk flagged: this round has no agent involvement at all, a first for the project; that's a deliberate choice by the user, and write commands should be added in the next round.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
+    <div class="who">User (answer)</div>
     <p>agree with you</p>
   </div>
 
-  <h2>這輪 grilling 的成果</h2>
+  <h2>Outcome of this grilling round</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
     <table>
-      <tr><th></th><th>決定</th><th>取代</th></tr>
-      <tr><td>ADR-0007</td><td>播放 <code>.comot</code> 需要安裝 CoMotion，分享靠匯出</td><td>ADR-0005 的「runtime 不得依賴 server」</td></tr>
-      <tr><td>ADR-0008</td><td>一張投影片自成一體</td><td>—</td></tr>
-      <tr><td>ADR-0009</td><td>動態是有序的效果清單，不是元素屬性</td><td>ADR-0005 的屬性設計</td></tr>
-      <tr><td>ADR-0010</td><td>投影片內容不可信：檢視不跑 script，播放才開 allow-scripts</td><td>—</td></tr>
+      <tr><th></th><th>Decision</th><th>Supersedes</th></tr>
+      <tr><td>ADR-0007</td><td>Playing a <code>.comot</code> file requires CoMotion installed; sharing happens via export</td><td>ADR-0005's "runtime must not depend on a server"</td></tr>
+      <tr><td>ADR-0008</td><td>A single slide is self-contained</td><td>—</td></tr>
+      <tr><td>ADR-0009</td><td>Animation is an ordered effect list, not an element attribute</td><td>ADR-0005's attribute design</td></tr>
+      <tr><td>ADR-0010</td><td>Slide content is untrusted: view mode never runs scripts, only play mode enables allow-scripts</td><td>—</td></tr>
     </table>
-    <p>ADR-0005 保留原文，加上兩處取代註記——核心判斷（步驟驅動、不用 SMIL／CSS、不用 <code>&lt;foreignObject&gt;</code>）仍然成立。CONTEXT.md 新增三個詞：效果、效果清單、總覽；修訂三個：步驟（改為推導、頁內作用域）、進場（收窄成一個家族）、播放（全螢幕不屬於定義）。README 兩處同步。</p>
-    <p><b>貫穿全場的那條線</b>：同一個原則贏了四次——明確的順序，不重編號。<code>slides</code> 陣列（ADR-0003）→ 頁內步驟作用域 → 效果清單而非屬性 → 投影片自成一體。四次都是把順序放在一個明確的地方，讓插入與對調變成 splice，而不是重編後面所有東西。</p>
-    <p><b>一個仍未踩過的地雷</b>：父文件對 opaque origin 的 sandbox iframe 呼叫 <code>requestFullscreen()</code>，規格說可以，但這是個邊角，撐著「全螢幕」整條路徑，卻還沒有人實測過。建議是拆票時的第一張票，或先跑一個十行的 prototype——如果它不成立，全螢幕的做法要換，會改變好幾張票的形狀。</p>
+    <p>ADR-0005 keeps its original text with two superseded-by notes added (its original reasoning stays in place) — its core judgment (step-driven, no SMIL/CSS, no <code>&lt;foreignObject&gt;</code>) still holds. CONTEXT.md gained three new terms: effect, effect list, overview; and three revised ones: step (now derived, per-page scope), enter (narrowed to a single family), and play (fullscreen isn't part of its definition). The README was updated in two places.</p>
+    <p><b>The thread running through the whole session</b>: the same principle won four separate times — explicit ordering, never renumbering. The <code>slides</code> array (ADR-0003) → per-page step scope → an effect list instead of attributes → a self-contained slide. All four times, putting ordering in one explicit place turned insertion and swapping into a splice, instead of renumbering everything that follows.</p>
+    <p><b>One landmine still unverified</b>: the spec says a parent document can call <code>requestFullscreen()</code> on an opaque-origin sandboxed iframe, but this is an edge case that the entire fullscreen path rests on, and nobody has actually tested it yet. The recommendation is to make it the first ticket when this work is broken down, or to run a ten-line prototype first — if it doesn't hold up, the fullscreen approach will need to change, reshaping several other tickets.</p>
   </div>
 
 </main>
