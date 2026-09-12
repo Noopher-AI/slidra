@@ -24,7 +24,7 @@ import { compareScreenshot } from "./helpers/screenshot.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/object-animation-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/object-animation");
@@ -67,16 +67,16 @@ interface TestServer {
 }
 
 async function startServerFor(): Promise<TestServer> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-anim-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-anim-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-anim-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-anim-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -99,10 +99,10 @@ async function startServerFor(): Promise<TestServer> {
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
   };
 }
@@ -149,7 +149,7 @@ async function readEffects(registry: CommandRegistry, presentationId: string): P
   if (!result.ok) return [];
   const svg = result.data!.content;
   const attr = (tag: string, name: string): string | undefined => new RegExp(`${name}="([^"]*)"`).exec(tag)?.[1];
-  return [...svg.matchAll(/<comot:effect\b[^>]*\/>/g)].map((match) => {
+  return [...svg.matchAll(/<slidra:effect\b[^>]*\/>/g)].map((match) => {
     const tag = match[0];
     const row: EffectRow = {
       target: attr(tag, "target")!,
@@ -625,7 +625,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
     // 還沒按 Apply to all slides——第二頁不受影響。
     expect(
       (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: secondSlidePath })).data!.content,
-    ).not.toContain("comot:transition");
+    ).not.toContain("slidra:transition");
 
     await panel.locator(".animate-page-apply-all").click();
 

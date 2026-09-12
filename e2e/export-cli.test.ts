@@ -13,8 +13,8 @@ import { requireBuilt } from "./helpers/launch.js";
 import { loadPdf } from "./helpers/pdf.js";
 
 /**
- * `comotion export` (#210 條件 2/4, NOOP-93 §4.3/§4.5). Spawns the real
- * compiled `comotion` binary (§6.2's "公開邊界二" — never `runExportCli`
+ * `slidra export` (#210 條件 2/4, NOOP-93 §4.3/§4.5). Spawns the real
+ * compiled `slidra` binary (§6.2's "公開邊界二" — never `runExportCli`
  * called in-process, that would skip the exact bin-dispatch branch this
  * ticket had to get right; [E4.T12]: this is now the strongest form of that
  * boundary — the Rust binary itself execs Node for `export`, closer to a
@@ -24,7 +24,7 @@ import { loadPdf } from "./helpers/pdf.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const coMotionBinPath = path.join(rootDir, "target/release/comotion");
+const slidraBinPath = path.join(rootDir, "target/release/slidra");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const brokenEffectsDeckDir = path.join(rootDir, "e2e/fixtures/broken-effects-deck");
 const backdropFilterDeckDir = path.join(rootDir, "e2e/fixtures/backdrop-filter-deck");
@@ -38,7 +38,7 @@ interface CliResult {
 function runCli(args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     execFile(
-      coMotionBinPath,
+      slidraBinPath,
       args,
       { cwd: options.cwd, env: options.env ?? process.env, maxBuffer: 64 * 1024 * 1024 },
       (error, stdout, stderr) => {
@@ -64,48 +64,48 @@ afterAll(async () => {
   await browser.close();
 });
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let registry: CommandRegistry;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-export-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-export-files-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-export-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-export-files-"));
   registry = createDefaultRegistry();
   // openFixture() below dispatches "open"/"new" through `registry`, which
   // ([E4.T12]: the deleted TypeScript engine's in-process registry is gone)
   // now shells out to the real compiled binary via
-  // `packages/server/src/comotion/bin.ts`'s `resolveCoMotionBin()` — it
+  // `packages/server/src/slidra/bin.ts`'s `resolveSlidraBin()` — it
   // reads `process.env` directly, not the `env()` object below (that one
   // only covers the separately-spawned `runCli` child), so both variables
   // must be set here too, or `registry.dispatch` fails before `runCli` is
   // ever reached.
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
 });
 
 afterEach(async () => {
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 function env(): NodeJS.ProcessEnv {
-  // [E4.T9]/F7/[E4.T12]: `comotion export`'s `runExportCli` spawns the
+  // [E4.T9]/F7/[E4.T12]: `slidra export`'s `runExportCli` spawns the
   // Rust binary itself (`loadProject`) for CLI-driven exports — in
-  // production `COMOTION_BIN` is always set by the Rust launcher before it
-  // execs into the Node entry point (`crates/comotion/src/node_entry.rs`);
+  // production `SLIDRA_BIN` is always set by the Rust launcher before it
+  // execs into the Node entry point (`crates/slidra/src/node_entry.rs`);
   // this test now goes through that exact launcher too (`runCli` spawns
-  // `coMotionBinPath` directly), so setting it here mirrors a real
+  // `slidraBinPath` directly), so setting it here mirrors a real
   // invocation rather than working around one.
-  return { ...process.env, COMOTION_HOME: coMotionHome, COMOTION_BIN: coMotionBinPath };
+  return { ...process.env, SLIDRA_HOME: slidraHome, SLIDRA_BIN: slidraBinPath };
 }
 
 async function openFixture(deckDir: string): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   return opened.data!.id;
 }
 
@@ -150,7 +150,7 @@ describe("argv validation (#210 條件 2, NOOP-93 §4.3's table) — no browser 
 describe("匯出成功（#210 條件 2/4）", () => {
   it("--format pdf：每張投影片一頁", async () => {
     const id = await openFixture(exportDeckDir);
-    const outPath = path.join(comotDir, "out.pdf");
+    const outPath = path.join(slidraDir, "out.pdf");
     const result = await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
 
     expect(result.stderr).toBe("");
@@ -168,7 +168,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
 
   it("--format pdf-frames：頁數 = Σ(步數+1)（NOOP-93 §4.5）", async () => {
     const id = await openFixture(exportDeckDir);
-    const outPath = path.join(comotDir, "out-frames.pdf");
+    const outPath = path.join(slidraDir, "out-frames.pdf");
     const result = await runCli(["export", id, "--format", "pdf-frames", "--out", outPath], { env: env() });
 
     expect(result.code).toBe(0);
@@ -201,7 +201,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
     const id = await openFixture(exportDeckDir);
     // realpath: macOS's tmpdir is a symlink (/var → /private/var) and the
     // CLI prints the resolved path.
-    const workDir = await realpath(await mkdtemp(path.join(tmpdir(), "comotion-export-cwd-")));
+    const workDir = await realpath(await mkdtemp(path.join(tmpdir(), "slidra-export-cwd-")));
     try {
       const result = await runCli(["export", id, "--format", "pdf"], { env: env(), cwd: workDir });
       expect(result.code).toBe(0);
@@ -216,7 +216,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
 
   it("同名輸出檔案直接覆寫", async () => {
     const id = await openFixture(exportDeckDir);
-    const outPath = path.join(comotDir, "overwrite.pdf");
+    const outPath = path.join(slidraDir, "overwrite.pdf");
     await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
     const firstBytes = await readFile(outPath);
     expect(firstBytes.length).toBeGreaterThan(0);
@@ -235,7 +235,7 @@ describe("匯出成功（#210 條件 2/4）", () => {
 
 describe("失敗時不產生半份 PDF（#210 條件 2）", () => {
   it("簡報沒有投影片", async () => {
-    const emptyDeckDir = await mkdtemp(path.join(tmpdir(), "comotion-export-empty-"));
+    const emptyDeckDir = await mkdtemp(path.join(tmpdir(), "slidra-export-empty-"));
     try {
       await mkdir(path.join(emptyDeckDir, "slides"), { recursive: true });
       await mkdir(path.join(emptyDeckDir, "assets"), { recursive: true });
@@ -244,7 +244,7 @@ describe("失敗時不產生半份 PDF（#210 條件 2）", () => {
         JSON.stringify({ formatVersion: 1, name: "空白簡報", canvas: { width: 1280, height: 720 }, slides: [] }),
       );
       const id = await openFixture(emptyDeckDir);
-      const outPath = path.join(comotDir, "should-not-exist.pdf");
+      const outPath = path.join(slidraDir, "should-not-exist.pdf");
       const result = await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
 
       expect(result.code).toBe(1);
@@ -257,14 +257,14 @@ describe("失敗時不產生半份 PDF（#210 條件 2）", () => {
 
   it("投影片的效果清單壞掉時，exit 1、原始錯誤訊息、不產生檔案", async () => {
     const id = await openFixture(brokenEffectsDeckDir);
-    const outPath = path.join(comotDir, "should-not-exist-either.pdf");
+    const outPath = path.join(slidraDir, "should-not-exist-either.pdf");
     const result = await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
 
     expect(result.code).toBe(1);
     // slides/001.svg 的第一個（也是唯一一個）壞損：media 效果缺少
-    // data-comot-media（player-plan.ts 的 mediaCuesFor 丟出的原文）。
+    // data-slidra-media（player-plan.ts 的 mediaCuesFor 丟出的原文）。
     expect(result.stderr).toContain("el-speaker");
-    expect(result.stderr).toContain("data-comot-media");
+    expect(result.stderr).toContain("data-slidra-media");
     await expect(stat(outPath)).rejects.toThrow();
   }, 60_000);
 });
@@ -287,7 +287,7 @@ describe("已知限制：backdrop-filter 不會出現在匯出的 PDF（NOOP-93 
   // compareScreenshot 處理「渲染敏感比對」的方式一致，同一個理由。
   it("有無 backdrop-filter 的兩張投影片，匯出 PDF 光柵化後視覺上相同", async () => {
     const id = await openFixture(backdropFilterDeckDir);
-    const outPath = path.join(comotDir, "backdrop.pdf");
+    const outPath = path.join(slidraDir, "backdrop.pdf");
     const result = await runCli(["export", id, "--format", "pdf", "--out", outPath], { env: env() });
     expect(result.code).toBe(0);
 

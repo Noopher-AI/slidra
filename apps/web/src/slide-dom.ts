@@ -62,7 +62,7 @@ export interface SlideElement {
   textWidth: number | null;
   textHeight: number | null;
   textAlign: "left" | "center" | "right";
-  /** `data-comot-lock="true"` — furniture the author cannot select or move (ADR-0013); today only the page background image. */
+  /** `data-slidra-lock="true"` — furniture the author cannot select or move (ADR-0013); today only the page background image. */
   locked: boolean;
   table: TableModel | null;
 }
@@ -77,7 +77,7 @@ export interface PageStyle {
  * on purpose — a background COLOR and a background IMAGE are independent
  * mechanisms (a page can have either, both, or neither), mirroring the
  * Rust side's own split between `facts.background` and
- * `facts.has_background` (`crates/comotion/src/validate/mod.rs`).
+ * `facts.has_background` (`crates/slidra/src/validate/mod.rs`).
  */
 export interface BackgroundImage {
   /** Virtual path from the presentation root, e.g. "assets/bg.svg" — the slide-relative "../" prefix stripped. */
@@ -121,15 +121,15 @@ export interface TableModel {
   cells: TableCell[];
 }
 
-const TEXT_WIDTH_ATTRIBUTE = "data-comot-text-width";
-const TEXT_HEIGHT_ATTRIBUTE = "data-comot-text-height";
-const TEXT_ALIGN_ATTRIBUTE = "data-comot-text-align";
+const TEXT_WIDTH_ATTRIBUTE = "data-slidra-text-width";
+const TEXT_HEIGHT_ATTRIBUTE = "data-slidra-text-height";
+const TEXT_ALIGN_ATTRIBUTE = "data-slidra-text-align";
 const CHART_CONTAINER_TYPE = "chart";
 const TABLE_CONTAINER_TYPE = "table";
 // `Element.localName` strips the namespace prefix (unlike core's
 // byte-offset scanner, which never resolves namespaces at all and so
-// keeps "comot:" on `ScannedNode.tag`) — the bare local name is what a
-// DOMParser-parsed `<comot:source>` actually reports here.
+// keeps "slidra:" on `ScannedNode.tag`) — the bare local name is what a
+// DOMParser-parsed `<slidra:source>` actually reports here.
 const TABLE_SOURCE_TAG = "source";
 
 const ARITY: Record<string, readonly number[]> = {
@@ -232,7 +232,7 @@ function readTextAlign(container: Element): "left" | "center" | "right" {
   return raw;
 }
 
-/** Rebuilds a `<text>`'s content string the same way `readTextBoxRuns` did: line tspans joined, a hard-break tspan (`data-comot-break="1"`) contributing a `\n`. Run styling (nested bold/italic tspans) is intentionally not tracked — see `SlidePrimitive.runs`'s doc comment. */
+/** Rebuilds a `<text>`'s content string the same way `readTextBoxRuns` did: line tspans joined, a hard-break tspan (`data-slidra-break="1"`) contributing a `\n`. Run styling (nested bold/italic tspans) is intentionally not tracked — see `SlidePrimitive.runs`'s doc comment. */
 function readTextContent(textEl: Element): { text: string; tspanCount: number } {
   const lineTspans = childElements(textEl).filter((child) => localName(child) === "tspan");
   if (lineTspans.length === 0) {
@@ -241,7 +241,7 @@ function readTextContent(textEl: Element): { text: string; tspanCount: number } 
   let text = "";
   for (const line of lineTspans) {
     text += line.textContent ?? "";
-    if (line.getAttribute("data-comot-break") === "1") text += "\n";
+    if (line.getAttribute("data-slidra-break") === "1") text += "\n";
   }
   return { text, tspanCount: lineTspans.length };
 }
@@ -263,8 +263,8 @@ function toElement(el: Element): SlideElement {
   const id = el.getAttribute("id") ?? "";
   const transform = el.getAttribute("transform");
   const children = childElements(el).filter((child) => !IGNORED_CHILD_TAGS.has(localName(child)));
-  const isTable = el.getAttribute("data-comot-type") === TABLE_CONTAINER_TYPE;
-  const isChart = el.getAttribute("data-comot-type") === CHART_CONTAINER_TYPE;
+  const isTable = el.getAttribute("data-slidra-type") === TABLE_CONTAINER_TYPE;
+  const isChart = el.getAttribute("data-slidra-type") === CHART_CONTAINER_TYPE;
   const isGroup = !isTable && !isChart && children.length > 0 && children.every((child) => localName(child) === "g");
 
   const primitives: SlidePrimitive[] = isGroup || isTable || isChart ? [] : children.map(toPrimitive);
@@ -277,7 +277,7 @@ function toElement(el: Element): SlideElement {
   else kind = "compound";
 
   // Decision (e): unlike core's own reader (which throws — a write-time
-  // guarantee its writers must uphold), a bad `data-comot-text-width`/
+  // guarantee its writers must uphold), a bad `data-slidra-text-width`/
   // `-height` here degrades to `null` (== "not a text box") rather than
   // failing the WHOLE slide's parse — the browser is a viewer now, and bad
   // data on one element should only cost that element's editability, not
@@ -298,8 +298,8 @@ function toElement(el: Element): SlideElement {
 
   return {
     id,
-    name: el.getAttribute("data-comot-name"),
-    media: el.getAttribute("data-comot-media"),
+    name: el.getAttribute("data-slidra-name"),
+    media: el.getAttribute("data-slidra-media"),
     kind,
     transform,
     matrix: parseTransform(transform),
@@ -308,7 +308,7 @@ function toElement(el: Element): SlideElement {
     textWidth,
     textHeight,
     textAlign: readTextAlign(el),
-    locked: el.getAttribute("data-comot-lock") === "true",
+    locked: el.getAttribute("data-slidra-lock") === "true",
     table: isTable ? readTableModel(el) : null,
   };
 }
@@ -337,38 +337,38 @@ function readCellText(cellEl: Element): string {
   const tspans = childElements(textEl).filter((child) => localName(child) === "tspan");
   if (tspans.length === 0) return "";
   return tspans
-    .map((tspan) => (tspan.getAttribute("data-comot-break") === "1" ? `${tspan.textContent ?? ""}\n` : tspan.textContent ?? ""))
+    .map((tspan) => (tspan.getAttribute("data-slidra-break") === "1" ? `${tspan.textContent ?? ""}\n` : tspan.textContent ?? ""))
     .join("");
 }
 
 /** DOM version of core's table `readTableModel` — reads only (no `validateTableModel` write-time re-check: a table this loose to read is still shown, the CLI is what refuses to write one). A cell whose shape is unreadable is simply skipped rather than failing the whole slide parse. */
 function readTableModel(container: Element): TableModel {
   const id = container.getAttribute("id") ?? "";
-  const colsRaw = container.getAttribute("data-comot-cols");
-  const rowsRaw = container.getAttribute("data-comot-rows");
-  if (!colsRaw || !rowsRaw) throw new Error(`元素 ${id} 缺少 data-comot-cols 或 data-comot-rows`);
-  const cols = parseNumberList(colsRaw, id, "data-comot-cols");
-  const rows = parseNumberList(rowsRaw, id, "data-comot-rows");
+  const colsRaw = container.getAttribute("data-slidra-cols");
+  const rowsRaw = container.getAttribute("data-slidra-rows");
+  if (!colsRaw || !rowsRaw) throw new Error(`元素 ${id} 缺少 data-slidra-cols 或 data-slidra-rows`);
+  const cols = parseNumberList(colsRaw, id, "data-slidra-cols");
+  const rows = parseNumberList(rowsRaw, id, "data-slidra-rows");
 
-  const header = container.getAttribute("data-comot-header") === "1";
-  const theme = requireEnum(container.getAttribute("data-comot-theme") ?? "dark", TABLE_THEMES, `元素 ${id} 的 data-comot-theme`);
+  const header = container.getAttribute("data-slidra-header") === "1";
+  const theme = requireEnum(container.getAttribute("data-slidra-theme") ?? "dark", TABLE_THEMES, `元素 ${id} 的 data-slidra-theme`);
 
   const sourceEl = childElements(container).find((child) => localName(child) === TABLE_SOURCE_TAG);
   const source = sourceEl?.getAttribute("src") ?? null;
 
-  const cellEls = childElements(container).filter((child) => child.hasAttribute("data-comot-cell"));
+  const cellEls = childElements(container).filter((child) => child.hasAttribute("data-slidra-cell"));
   const cells: TableCell[] = cellEls.map((cellEl) => {
-    const address = /^(\d+),(\d+)$/.exec(cellEl.getAttribute("data-comot-cell")!);
-    if (!address) throw new Error(`元素 ${id} 的儲存格位址格式錯誤：${cellEl.getAttribute("data-comot-cell")}`);
+    const address = /^(\d+),(\d+)$/.exec(cellEl.getAttribute("data-slidra-cell")!);
+    if (!address) throw new Error(`元素 ${id} 的儲存格位址格式錯誤：${cellEl.getAttribute("data-slidra-cell")}`);
     const row = Number(address[1]);
     const col = Number(address[2]);
 
-    const spanRaw = cellEl.getAttribute("data-comot-span");
+    const spanRaw = cellEl.getAttribute("data-slidra-span");
     let rowSpan = 1;
     let colSpan = 1;
     if (spanRaw !== null) {
       const match = /^(\d+),(\d+)$/.exec(spanRaw);
-      if (!match) throw new Error(`元素 ${id} 的 data-comot-span 格式錯誤：${spanRaw}`);
+      if (!match) throw new Error(`元素 ${id} 的 data-slidra-span 格式錯誤：${spanRaw}`);
       rowSpan = Number(match[1]);
       colSpan = Number(match[2]);
     }
@@ -379,7 +379,7 @@ function readTableModel(container: Element): TableModel {
     const fillOpacityRaw = rectEl?.getAttribute("fill-opacity") ?? null;
     const textFill = textEl?.getAttribute("fill") ?? "#000000";
     const fontWeightRaw = textEl?.getAttribute("font-weight") ?? null;
-    const align = requireEnum(cellEl.getAttribute("data-comot-align") ?? "left", ["left", "center", "right"] as const, `儲存格 (${row},${col}) 的 data-comot-align`);
+    const align = requireEnum(cellEl.getAttribute("data-slidra-align") ?? "left", ["left", "center", "right"] as const, `儲存格 (${row},${col}) 的 data-slidra-align`);
 
     return {
       row,
@@ -392,8 +392,8 @@ function readTableModel(container: Element): TableModel {
       fontWeight: fontWeightRaw !== null ? Number(fontWeightRaw) : 400,
       rowSpan,
       colSpan,
-      repeat: cellEl.getAttribute("data-comot-repeat") === "row",
-      generated: cellEl.getAttribute("data-comot-generated") === "1",
+      repeat: cellEl.getAttribute("data-slidra-repeat") === "row",
+      generated: cellEl.getAttribute("data-slidra-generated") === "1",
     };
   });
 
@@ -401,7 +401,7 @@ function readTableModel(container: Element): TableModel {
 }
 
 const BACKGROUND_PROPERTY = "background-color";
-const ACCENT_PROPERTY = "--comot-accent";
+const ACCENT_PROPERTY = "--slidra-accent";
 
 function parseStyleDeclarations(style: string | null): Map<string, string> {
   const declarations = new Map<string, string>();
@@ -424,13 +424,13 @@ function readPageStyle(svgRoot: Element): PageStyle {
   };
 }
 
-const BACKGROUND_ROLE_ATTRIBUTE = "data-comot-role";
+const BACKGROUND_ROLE_ATTRIBUTE = "data-slidra-role";
 const BACKGROUND_ROLE = "background";
 
 /**
- * Finds the page's locked background `<g data-comot-role="background">`
+ * Finds the page's locked background `<g data-slidra-role="background">`
  * and reads its `<image>`'s `href`/`opacity`, mirroring the Rust side's
- * `find_background` (`crates/comotion/src/slide/background.rs`). The href
+ * `find_background` (`crates/slidra/src/slide/background.rs`). The href
  * is always written as `../assets/x.svg` (slides live in `slides/`) — the
  * `../` is stripped so callers get the same presentation-root-relative
  * path `slide background set --asset` and `/api/assets` both use.

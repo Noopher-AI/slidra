@@ -119,10 +119,10 @@ function stubWebAnimations(win: Window): StubAnimation[] {
 
 /** Boots the runtime inside `iframe`'s own window/document with the given plan. */
 function boot(plan: StubPlan, elementIds: string[]): { win: Window; doc: Document; animations: StubAnimation[] } {
-  const win = iframe.contentWindow as Window & { __COMOT_PLAN__?: StubPlan };
+  const win = iframe.contentWindow as Window & { __SLIDRA_PLAN__?: StubPlan };
   const doc = iframe.contentDocument as Document;
   const hideSelectors = plan.hideSelectors ?? Object.fromEntries(plan.hidden.map((id) => [id, `#${id}`]));
-  // `<style id="comot-hide">`, PRE-POPULATED with every hidden id's rule, is
+  // `<style id="slidra-hide">`, PRE-POPULATED with every hidden id's rule, is
   // normally injected by canvas.ts's wrapPlayDocument — it is
   // player-plan.ts's renderHideStyle() output, baked into the srcdoc HTML
   // before this script ever runs. These tests eval the runtime directly,
@@ -131,9 +131,9 @@ function boot(plan: StubPlan, elementIds: string[]): { win: Window; doc: Documen
   // content, only rewrites it afterwards (D7).
   const initialRules = plan.hidden.map((id) => `${hideSelectors[id]}{opacity:0 !important}`).join("");
   doc.body.innerHTML =
-    `<style id="comot-hide">${initialRules}</style>` + elementIds.map((id) => `<div id="${id}"></div>`).join("");
+    `<style id="slidra-hide">${initialRules}</style>` + elementIds.map((id) => `<div id="${id}"></div>`).join("");
   const animations = stubWebAnimations(win);
-  win.__COMOT_PLAN__ = { ...plan, hideSelectors };
+  win.__SLIDRA_PLAN__ = { ...plan, hideSelectors };
   (win as unknown as { eval: (source: string) => void }).eval(runtimeSource);
   return { win, doc, animations };
 }
@@ -143,9 +143,9 @@ function press(win: Window, key: string): void {
   win.document.dispatchEvent(new KeyboardEventCtor("keydown", { key }));
 }
 
-/** Whether `<style id="comot-hide">` still carries a rule for `id` — the D7 replacement for reading `el.style.opacity` directly (WAAPI keyframes aren't reflected in `.style` at all). */
+/** Whether `<style id="slidra-hide">` still carries a rule for `id` — the D7 replacement for reading `el.style.opacity` directly (WAAPI keyframes aren't reflected in `.style` at all). */
 function hideStyleContains(doc: Document, id: string): boolean {
-  const styleEl = doc.getElementById("comot-hide");
+  const styleEl = doc.getElementById("slidra-hide");
   return !!styleEl && (styleEl.textContent ?? "").indexOf(`#${id}{`) !== -1;
 }
 
@@ -157,7 +157,7 @@ function lastKeyframe(call: StubAnimation): Record<string, unknown> {
   return call.keyframes[call.keyframes.length - 1];
 }
 
-/** Collects every `comot-player` message posted to the outer (test) window. */
+/** Collects every `slidra-player` message posted to the outer (test) window. */
 function collectMessages(): { messages: unknown[]; stop: () => void } {
   const messages: unknown[] = [];
   const handler = (event: MessageEvent) => messages.push(event.data);
@@ -180,7 +180,7 @@ describe("player-runtime.js", () => {
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-player", event: "ready" });
+    expect(messages).toContainEqual({ source: "slidra-player", event: "ready" });
   });
 
   it("ArrowRight 推進一步時，同一步的多個元素一起出現（各自送出 el.animate，keyframes 最終 opacity 為 1）", () => {
@@ -276,7 +276,7 @@ describe("player-runtime.js", () => {
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
+    expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
   });
 
   it("ArrowLeft 從第 2 步退回第 1 步：第 1 步的元素仍解除隱藏，第 2 步的元素恢復隱藏", () => {
@@ -511,7 +511,7 @@ describe("player-runtime.js", () => {
 
     expect(hideStyleContains(doc, "el-a")).toBe(false);
     expect(hideStyleContains(doc, "el-b")).toBe(false);
-    expect(messages[messages.length - 1]).toEqual({ source: "comot-player", event: "ready" });
+    expect(messages[messages.length - 1]).toEqual({ source: "slidra-player", event: "ready" });
   });
 
   it("ArrowLeft 在投影片第一步（尚未按過任何鍵）時，送出 retreat-past-start，畫面不變", async () => {
@@ -525,7 +525,7 @@ describe("player-runtime.js", () => {
 
     expect(hideStyleContains(doc, "el-a")).toBe(true);
     expect(animations).toHaveLength(0);
-    expect(messages).toContainEqual({ source: "comot-player", event: "retreat-past-start" });
+    expect(messages).toContainEqual({ source: "slidra-player", event: "retreat-past-start" });
   });
 
   it("沒有步驟的投影片：第一次 ArrowRight 就直接送出 advance-past-end", async () => {
@@ -536,7 +536,7 @@ describe("player-runtime.js", () => {
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
+    expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
   });
 
   // [E2.T11] §3.8/§4.5: Space/PageDown mirror ArrowRight (「前進一步」),
@@ -584,7 +584,7 @@ describe("player-runtime.js", () => {
       await tick();
       stop();
 
-      expect(messages).toContainEqual({ source: "comot-player", event: "advance-past-end" });
+      expect(messages).toContainEqual({ source: "slidra-player", event: "advance-past-end" });
     });
 
     it("Escape 送出 exit-play——不是 advance/retreat，也不直接改變任何步驟狀態", async () => {
@@ -596,7 +596,7 @@ describe("player-runtime.js", () => {
       await tick();
       stop();
 
-      expect(messages).toContainEqual({ source: "comot-player", event: "exit-play" });
+      expect(messages).toContainEqual({ source: "slidra-player", event: "exit-play" });
       // Escape 本身不改變揭露狀態——它是父文件的事，不是 runtime 的效果推進。
       expect(hideStyleContains(doc, "el-a")).toBe(true);
     });
@@ -619,7 +619,7 @@ describe("player-runtime.js", () => {
     });
   });
 
-  it("推進到 media 效果的步驟時，建立對齊佔位元素的 <video>，src 是原始 data-comot-media 值", () => {
+  it("推進到 media 效果的步驟時，建立對齊佔位元素的 <video>，src 是原始 data-slidra-media 值", () => {
     const plan: StubPlan = {
       steps: [{ effects: [media("el-video")] }],
       hidden: [],
@@ -701,7 +701,7 @@ describe("player-runtime.js", () => {
     stop();
 
     expect(messages).toContainEqual(
-      expect.objectContaining({ source: "comot-player", event: "error", message: expect.stringContaining("el-video") }),
+      expect.objectContaining({ source: "slidra-player", event: "error", message: expect.stringContaining("el-video") }),
     );
   });
 
@@ -715,7 +715,7 @@ describe("player-runtime.js", () => {
       called = true;
     };
 
-    win.postMessage({ source: "comot-host", command: "focus" }, "*");
+    win.postMessage({ source: "slidra-host", command: "focus" }, "*");
     await tick();
 
     expect(called).toBe(true);
@@ -772,10 +772,10 @@ describe("player-runtime.js", () => {
 
       expect(animationsFor(animations, "el-a")).toHaveLength(0);
       expect(animationsFor(animations, "el-b")).toHaveLength(1);
-      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+      expect(messages).toContainEqual({ source: "slidra-player", event: "preview-done" });
       // "ready" is still the boot sequence's own last message — preview-done
       // is a distinct, later message, not a replacement for it.
-      expect(messages[0]).toEqual({ source: "comot-player", event: "ready" });
+      expect(messages[0]).toEqual({ source: "slidra-player", event: "ready" });
     });
 
     it("plan.preview.effectIndices 為 null 時，依序播放整份簡報每一步，最後送出 preview-done", async () => {
@@ -797,7 +797,7 @@ describe("player-runtime.js", () => {
 
       expect(animationsFor(animations, "el-a")).toHaveLength(1);
       expect(animationsFor(animations, "el-b")).toHaveLength(1);
-      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+      expect(messages).toContainEqual({ source: "slidra-player", event: "preview-done" });
     });
 
     it("preview 為空清單（沒有步驟）時，立刻送出 preview-done", async () => {
@@ -808,7 +808,7 @@ describe("player-runtime.js", () => {
       await wait(100);
       stop();
 
-      expect(messages).toContainEqual({ source: "comot-player", event: "preview-done" });
+      expect(messages).toContainEqual({ source: "slidra-player", event: "preview-done" });
     });
   });
 });

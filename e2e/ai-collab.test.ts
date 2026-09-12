@@ -29,7 +29,7 @@ import { waitForAgentConnected } from "./helpers/launch.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
@@ -89,20 +89,20 @@ async function startServerFor(
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
-  comotPath: string;
+  slidraPath: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-deck-"));
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-deck-"));
   // [E3.T3] #232/#236: never resolve against the real machine's
   // `~/.claude/skills` — a real skill directory happening to exist on
   // whatever machine runs this suite would silently leak into `/` list
   // assertions (Plan §6.3). Always temp dirs, populated per-test via
   // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
   // skill directory name) when a test needs a deterministic entry.
-  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-bundled-"));
-  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-user-"));
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-ai-collab-user-"));
   for (const [dir, entries] of [
     [bundledSkillsDir, skills.bundled] as const,
     [userSkillsDir, skills.user] as const,
@@ -113,18 +113,18 @@ async function startServerFor(
       await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
     }
   }
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -149,13 +149,13 @@ async function startServerFor(
     server,
     registry,
     presentationId,
-    comotPath,
+    slidraPath,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
       await rm(bundledSkillsDir, { recursive: true, force: true });
       await rm(userSkillsDir, { recursive: true, force: true });
@@ -431,8 +431,8 @@ it("#303：送出後 Send 鈕變成停止鍵，按下去這一輪以 cancelled �
 });
 
 /**
- * #303: `From outline…` now goes 大綱 → `/comotion-plan` → `plan set`（假 agent）
- * → 計畫閘門（`.plan-gate`，擋住式）→ 確認並建置 → `/comotion-build 【計畫確認】`
+ * #303: `From outline…` now goes 大綱 → `/slidra-plan` → `plan set`（假 agent）
+ * → 計畫閘門（`.plan-gate`，擋住式）→ 確認並建置 → `/slidra-build 【計畫確認】`
  * → `slide add`（假 agent）。Running 指令卡的截圖（舊 AC6）不再在這裡驗：這條
  * 路的第一條命令是一整份 `plan set '…'`，卡片文字與舊基準 `running-command-card`
  * 完全不同；那張基準隨這次改動作廢。
@@ -453,9 +453,9 @@ it("從大綱規劃：走真實 UI 入口，計畫閘門彈出、建議選項預
 
     await openOutlineAndSubmit(page, "第一步\n第二步");
 
-    // 送出的是 /comotion-plan 加固定位置行（契約 §4），不是舊的 slide add 前綴。
+    // 送出的是 /slidra-plan 加固定位置行（契約 §4），不是舊的 slide add 前綴。
     const authored = page.locator(".chat-message-author").last();
-    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/comotion-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/slidra-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
 
     // 假 agent 的 `plan set` 落地 → live reload → 閘門開；不用重新整理。
     const gate = page.locator(".plan-gate");
@@ -478,7 +478,7 @@ it("從大綱規劃：走真實 UI 入口，計畫閘門彈出、建議選項預
     await gate.locator(".plan-gate-confirm").click();
     await expect.poll(() => gate.count(), { timeout: 5000 }).toBe(0);
     const confirmMessage = page.locator(".chat-message-author").last();
-    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/comotion-build 【計畫確認】");
+    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/slidra-build 【計畫確認】");
     expect(await confirmMessage.textContent()).toContain("mode=narrative");
     expect(await confirmMessage.textContent()).toContain("mode.note=用故事線");
     expect(await confirmMessage.textContent()).toContain("補充：整體再精簡");
@@ -508,9 +508,9 @@ it("從大綱規劃：閘門的「放棄」直接刪掉 plan/，閘門消失、a
 
     const outlineFile = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "plan/outline.md" });
     expect(outlineFile.ok).toBe(false);
-    // 沒有送任何聊天訊息：最後一則作者訊息仍是原本的 /comotion-plan。
+    // 沒有送任何聊天訊息：最後一則作者訊息仍是原本的 /slidra-plan。
     const authored = page.locator(".chat-message-author").last();
-    expect(await authored.textContent()).toContain("/comotion-plan");
+    expect(await authored.textContent()).toContain("/slidra-plan");
     expect(await page.locator(".overview-item").count()).toBe(2);
   } finally {
     await cleanup();
@@ -518,7 +518,7 @@ it("從大綱規劃：閘門的「放棄」直接刪掉 plan/，閘門消失、a
 });
 
 it("AC7：留言經 Save／Open 往返後仍在", async () => {
-  const { server, registry, comotPath, cleanup } = await startServerFor();
+  const { server, registry, slidraPath, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
@@ -537,7 +537,7 @@ it("AC7：留言經 Save／Open 往返後仍在", async () => {
     // reasoning helpers/screenshot.ts's settleForScreenshot documents.
     await page.waitForTimeout(500);
 
-    const reopened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const reopened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const comments = await listComments(registry, reopened.data!.id, "slides/001.svg");
     expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "存檔後應該還在" })]);
   } finally {
@@ -641,23 +641,23 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
 it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
   const { server, cleanup } = await startServerFor(
     {},
-    { bundled: { "comotion-plan": "---\nname: comotion-plan\ndescription: 從大綱規劃投影片\n---\n" } },
+    { bundled: { "slidra-plan": "---\nname: slidra-plan\ndescription: 從大綱規劃投影片\n---\n" } },
   );
   try {
     const page = await openApp(server, { waitForAgent: true });
     const input = page.locator(".chat-input textarea");
 
-    // "comotion-plan" comes from the bundled skill directory, which is
+    // "slidra-plan" comes from the bundled skill directory, which is
     // populated before the server ever starts — no need to wait for the
     // agent's own report (which does not exist yet, see the test above) to
     // complete this one. A shipped skill's directory name carries the
-    // `comotion-` namespace itself, so what the author types is exactly
+    // `slidra-` namespace itself, so what the author types is exactly
     // what the agent has registered (#248).
-    await input.fill("/comotion-pl");
+    await input.fill("/slidra-pl");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");
     const completed = await input.inputValue();
-    expect(completed).toBe("/comotion-plan ");
+    expect(completed).toBe("/slidra-plan ");
 
     // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
     await input.fill(`${completed}這是參數`);
@@ -665,7 +665,7 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     await page.locator(".chat-input button:not([disabled])").click();
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-plan 這是參數");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/slidra-plan 這是參數");
   } finally {
     await cleanup();
   }

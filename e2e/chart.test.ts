@@ -24,7 +24,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/chart-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/chart");
@@ -67,16 +67,16 @@ interface TestServer {
 }
 
 async function startServerFor(): Promise<TestServer> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-chart-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-chart-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -99,10 +99,10 @@ async function startServerFor(): Promise<TestServer> {
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
   };
 }
@@ -156,12 +156,12 @@ async function createChartViaCli(
   return result.data!.elementId;
 }
 
-/** The `<comot:chart …>…</comot:chart>` substring for `elementId`, independent of its container `<g id>` (which legitimately differs between two elements) — AC-8's own comparison unit. */
+/** The `<slidra:chart …>…</slidra:chart>` substring for `elementId`, independent of its container `<g id>` (which legitimately differs between two elements) — AC-8's own comparison unit. */
 function extractChartData(svg: string, elementId: string): string {
   const containerStart = svg.indexOf(`id="${elementId}"`);
   if (containerStart === -1) throw new Error(`找不到元素：${elementId}`);
-  const dataStart = svg.indexOf("<comot:chart", containerStart);
-  const dataEnd = svg.indexOf("</comot:chart>", dataStart) + "</comot:chart>".length;
+  const dataStart = svg.indexOf("<slidra:chart", containerStart);
+  const dataEnd = svg.indexOf("</slidra:chart>", dataStart) + "</slidra:chart>".length;
   return svg.slice(dataStart, dataEnd);
 }
 
@@ -181,12 +181,12 @@ it("AC-1: 插入面板：選類型／系列數／類別數／調色盤後插入�
     await panel.locator('[data-palette="cool"]').click();
     await panel.locator(".chart-panel-insert").click();
 
-    await expect.poll(async () => (await readSlide(registry, presentationId)).includes('data-comot-type="chart"')).toBe(true);
+    await expect.poll(async () => (await readSlide(registry, presentationId)).includes('data-slidra-type="chart"')).toBe(true);
     const svg = await readSlide(registry, presentationId);
     expect(svg).toContain('type="line"');
     expect(svg).toContain('palette="cool"');
-    expect((svg.match(/<comot:series/g) ?? []).length).toBe(2);
-    expect(svg).toMatch(/<comot:categories values="C1,C2,C3,C4,C5,C6,C7"\/>/);
+    expect((svg.match(/<slidra:series/g) ?? []).length).toBe(2);
+    expect(svg).toMatch(/<slidra:categories values="C1,C2,C3,C4,C5,C6,C7"\/>/);
   } finally {
     await cleanup();
   }
@@ -256,7 +256,7 @@ it("AC-2: 資料視窗：雙擊開啟、拖曳標題移動、Esc 關閉", async 
   }
 });
 
-it("AC-3: 資料視窗改數值：blur 後送出 chart data set，SVG 與 comot:chart 同步更新", async () => {
+it("AC-3: 資料視窗改數值：blur 後送出 chart data set，SVG 與 slidra:chart 同步更新", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const elementId = await createChartViaCli(registry, presentationId);
@@ -335,16 +335,16 @@ it("AC-5/AC-6: 雙軸開關與堆疊開關各自送出 chart axis set／chart st
   }
 });
 
-// AC-7 (CSV 匯入：--csv-asset 與 --csv 兩條路都得到同一份 comot:chart) was
+// AC-7 (CSV 匯入：--csv-asset 與 --csv 兩條路都得到同一份 slidra:chart) was
 // removed here (NOOP-299/F5 test-budget prune): it never opened a browser
 // (only `registry.dispatch` calls, same as `packages/cli/test/chart.test.ts`),
 // so it belonged at the cheaper CLI-layer, not in `e2e/`. Its one assertion
 // beyond what that file's existing `--csv`/`--csv-asset` tests already cover
-// — that the two input paths produce byte-identical `<comot:chart>` data —
+// — that the two input paths produce byte-identical `<slidra:chart>` data —
 // now lives at `packages/cli/test/chart.test.ts`'s "--csv 與 --csv-asset
-// 對等內容產出的 <comot:chart> 資料位元組相同".
+// 對等內容產出的 <slidra:chart> 資料位元組相同".
 
-it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:chart 位元組相同", async () => {
+it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，slidra:chart 位元組相同", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     // CLI 這一側：chart create -> chart type set -> chart data set -> chart palette set.
@@ -361,9 +361,9 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
     const slideFrame = await canvasFrame(page);
     await openInsertPanel(page);
     await page.locator(".chart-panel-insert").click();
-    await expect.poll(async () => (await readSlide(registry, presentationId)).match(/data-comot-type="chart"/g)?.length).toBe(2);
+    await expect.poll(async () => (await readSlide(registry, presentationId)).match(/data-slidra-type="chart"/g)?.length).toBe(2);
     const svgAfterInsert = await readSlide(registry, presentationId);
-    const guiId = [...svgAfterInsert.matchAll(/<g id="([^"]+)" data-comot-type="chart"/g)].map((m) => m[1]).find((id) => id !== cliId)!;
+    const guiId = [...svgAfterInsert.matchAll(/<g id="([^"]+)" data-slidra-type="chart"/g)].map((m) => m[1]).find((id) => id !== cliId)!;
 
     await chartShape(slideFrame, guiId).dblclick();
     const win = page.locator(".chart-window");
@@ -383,7 +383,7 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
     const lastValueInput = rows.nth(1).locator('input[type="number"]');
     await lastValueInput.fill("20");
     await lastValueInput.blur();
-    await expect.poll(async () => extractChartData(await readSlide(registry, presentationId), guiId)).toMatch(/<comot:categories values="A,B"\/>/);
+    await expect.poll(async () => extractChartData(await readSlide(registry, presentationId), guiId)).toMatch(/<slidra:categories values="A,B"\/>/);
 
     await win.locator('.chart-window-palette-swatch[data-palette="warm"]').click();
     await expect.poll(async () => extractChartData(await readSlide(registry, presentationId), guiId)).toMatch(/palette="warm"/);
@@ -430,11 +430,11 @@ it("AC-8: GUI 與 CLI 等價：同一組操作分別用 GUI 與 CLI 做，comot:
 
 it("AC-9: 內嵌 svg 切出來單獨開啟，畫面與投影片內的圖表區域一致", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
-  const tmpDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-chart-standalone-"));
+  const tmpDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-chart-standalone-"));
   try {
     await createChartViaCli(registry, presentationId, { width: 400, height: 250 });
     const svg = await readSlide(registry, presentationId);
-    const dataEnd = svg.indexOf("</comot:chart>") + "</comot:chart>".length;
+    const dataEnd = svg.indexOf("</slidra:chart>") + "</slidra:chart>".length;
     const svgStart = svg.indexOf("<svg", dataEnd);
     const svgEnd = svg.indexOf("</svg>", svgStart) + "</svg>".length;
     const standaloneSvg = svg.slice(svgStart, svgEnd);
@@ -498,7 +498,7 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
       clip: { x: 0, y: 0, width: VIEWPORT.width, height: Math.round(statusBarBox.y) },
     });
     const singleBox = (await slideFrame.locator(`#${singleAxisId}`).boundingBox())!;
-    // AC-r3-3：單軸 comot:chart 屬性與內嵌 svg 的刻度節點數（左軸 5、右軸 0）。
+    // AC-r3-3：單軸 slidra:chart 屬性與內嵌 svg 的刻度節點數（左軸 5、右軸 0）。
     const singleAxisData = extractChartData(await readSlide(registry, presentationId), singleAxisId);
     expect(singleAxisData).toMatch(/axes="single"/);
     expect(await slideFrame.locator(`#${singleAxisId} svg text[text-anchor="end"]`).count()).toBe(5);
@@ -515,10 +515,10 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
     await page.waitForTimeout(300);
     const dualBox = (await slideFrame.locator(`#${dualAxisId}`).boundingBox())!;
     await settleForScreenshot(page);
-    // AC-r3-4：雙軸 comot:chart 屬性（至少一個 series 標 axis="right"）與右軸刻度節點數（5）。
+    // AC-r3-4：雙軸 slidra:chart 屬性（至少一個 series 標 axis="right"）與右軸刻度節點數（5）。
     const dualAxisData = extractChartData(await readSlide(registry, presentationId), dualAxisId);
     expect(dualAxisData).toMatch(/axes="dual"/);
-    expect(dualAxisData).toMatch(/<comot:series[^>]*axis="right"/);
+    expect(dualAxisData).toMatch(/<slidra:series[^>]*axis="right"/);
     expect(await slideFrame.locator(`#${dualAxisId} svg text[text-anchor="start"]`).count()).toBe(5);
     await compareScreenshot(page, {
       name: "dual-axis",
@@ -531,7 +531,7 @@ it("基準截圖 5 張（Chart 面板／資料視窗／單軸／雙軸／堆疊�
     await page.waitForTimeout(300);
     const stackedBox = (await slideFrame.locator(`#${stackedId}`).boundingBox())!;
     await settleForScreenshot(page);
-    // AC-r3-5：stacked comot:chart 屬性，以及 12 根長條依 x 分成 6 組、每組上面那根的
+    // AC-r3-5：stacked slidra:chart 屬性，以及 12 根長條依 x 分成 6 組、每組上面那根的
     // y+height 精確等於下面那根的 y（不重算幾何，只斷首尾相接）。
     const stackedData = extractChartData(await readSlide(registry, presentationId), stackedId);
     expect(stackedData).toMatch(/stacked="true"/);

@@ -52,7 +52,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/direct-manipulation-deck");
@@ -137,12 +137,12 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-dm-deck-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-dm-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-dm-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-dm-deck-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   // Copy the checked-in fixture into a throwaway staging dir, then inject
   // the real embedded-font bytes (see this file's header comment) — the
@@ -155,9 +155,9 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -180,10 +180,10 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
     },
   };
@@ -213,9 +213,9 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-/** `<COMOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — 驗收條件第四條「拖曳 100 次不產生 100 筆歷史；一次拖曳一筆」的直接讀法。`startServerFor` sets `process.env.COMOTION_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
+/** `<SLIDRA_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — 驗收條件第四條「拖曳 100 次不產生 100 筆歷史；一次拖曳一筆」的直接讀法。`startServerFor` sets `process.env.SLIDRA_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.COMOTION_HOME!;
+  const home = process.env.SLIDRA_HOME!;
   try {
     const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
     return (JSON.parse(raw).undo ?? []).length;
@@ -428,9 +428,9 @@ function rotateVector(v: { x: number; y: number }, deltaDeg: number): { x: numbe
   return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
 }
 
-/** The page-viewport bounding box (center point) of one of selection-runtime.js's `data-comot-handle` elements — Playwright's locator pierces the open shadow root and translates the nested-iframe coordinate system automatically. */
+/** The page-viewport bounding box (center point) of one of selection-runtime.js's `data-slidra-handle` elements — Playwright's locator pierces the open shadow root and translates the nested-iframe coordinate system automatically. */
 async function handleCenter(page: Page, name: string): Promise<{ x: number; y: number }> {
-  const handle = page.frameLocator("iframe.slide-frame").locator(`[data-comot-handle="${name}"]`);
+  const handle = page.frameLocator("iframe.slide-frame").locator(`[data-slidra-handle="${name}"]`);
   const box = await handle.boundingBox();
   if (!box) throw new Error(`量不到把手 ${name} 的邊界框（可能還沒顯示）`);
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -732,8 +732,8 @@ it("Shift 點兩個元素後一起拖曳：兩個元素各自的位移量相同�
     // click-time check.
     const frameForHandles = await canvasFrame(page);
     const visibleHandleCount = await frameForHandles.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
-      const handles = host?.shadowRoot?.querySelectorAll("[data-comot-handle]") ?? [];
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
+      const handles = host?.shadowRoot?.querySelectorAll("[data-slidra-handle]") ?? [];
       return [...handles].filter((el) => (el as HTMLElement).style.display !== "none").length;
     });
     expect(visibleHandleCount).toBe(0);
@@ -788,7 +788,7 @@ it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer r
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    // el-text: translate(950 100), a text BOX (data-comot-text-width="300")
+    // el-text: translate(950 100), a text BOX (data-slidra-text-width="300")
     // whose bounds start at its local origin (bbox.ts's textBounds doc) —
     // roughly 950..1250 x, 100..~160 y.
     //
@@ -809,7 +809,7 @@ it("框選涵蓋文字元素：文字元素本身可被框選選中（Reviewer r
     await dragBy(page, { x: 900, y: 50 }, { x: 370, y: 150 }); // -> (1270, 200)
 
     const selName = page.locator(".status-selection-chip");
-    // el-text carries no `data-comot-name`, so the status bar falls back to
+    // el-text carries no `data-slidra-name`, so the status bar falls back to
     // the raw id (StatusBar.tsx).
     await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("Selected: el-text");
   } finally {
@@ -1283,7 +1283,7 @@ it("雙擊進入縮放群組後拖曳子元素的旋轉把手：原點套用祖�
   }
 });
 
-it("拖曳文字框左把手放手：data-comot-text-width 變成新寬度、tspan 行數不多於放手前、每行實際渲染寬度都在新寬度內、font-size 不變", async () => {
+it("拖曳文字框左把手放手：data-slidra-text-width 變成新寬度、tspan 行數不多於放手前、每行實際渲染寬度都在新寬度內、font-size 不變", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -1302,7 +1302,7 @@ it("拖曳文字框左把手放手：data-comot-text-width 變成新寬度、tsp
     await dragPageTo(page, leftHandle, nowPage);
 
     const after = await readSlide(registry, presentationId);
-    const widthMatch = /<g id="el-text" data-comot-text-width="([\d.]+)"/.exec(after);
+    const widthMatch = /<g id="el-text" data-slidra-text-width="([\d.]+)"/.exec(after);
     expect(widthMatch).not.toBeNull();
     const newWidth = Number(widthMatch![1]);
     expect(newWidth).toBeCloseTo(360, 0);
@@ -1482,7 +1482,7 @@ it("⌘D 複製選取，位移是 viewBox 的 +3%/+4%，新元素成為選取，
     // el-c is at translate(550 500); +3%/+4% of the 1280x720 viewBox is
     // (38.4, 28.8). generateElementId's ids are base64url, which includes
     // "-"/"_" — the id charclass below must allow both.
-    // `element duplicate` carries the source's `data-comot-name` along, so
+    // `element duplicate` carries the source's `data-slidra-name` along, so
     // the new `<g>` has it between `id` and `transform` — do not anchor the
     // two attributes as adjacent.
     const newIdMatch = /<g id="(el-[A-Za-z0-9_-]+)"[^>]*transform="translate\(588\.4 528\.8\)"/.exec(after);

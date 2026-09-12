@@ -7,18 +7,18 @@
 // needs an agent that actually edits the deck, because the whole point of
 // the test is that an edit made by the agent reaches the SVG on the canvas.
 //
-// What it does on the author's first message (prompt index 0 is CoMotion's
+// What it does on the author's first message (prompt index 0 is Slidra's
 // 編輯規約, so the author's message is index 1) depends on the message text
 // (T5/NOOP-110 follow-up, e2e/freeze.test.ts):
 //   - default (any text without one of the keywords below, including the
 //     original "改標題"): unchanged since #16/#8 —
 //     1. reads `slides/001.svg` through the ACP client's fs/read_text_file,
 //        the same way a real agent discovers the element id;
-//     2. asks for permission to run a `comotion text set` shell command,
+//     2. asks for permission to run a `slidra text set` shell command,
 //        so the server's allowlist is really exercised;
 //     3. if permission is granted, runs that command through `sh -c`,
-//        resolving `comotion` from PATH — the exact step that was broken
-//        during #8's manual acceptance (`command not found: comotion`);
+//        resolving `slidra` from PATH — the exact step that was broken
+//        during #8's manual acceptance (`command not found: slidra`);
 //     4. streams one reply chunk back.
 //   - "兩步": same read/permission/hold dance, then TWO `text set` commands
 //     in the same turn (second one appends "（第二步）") — exercises one
@@ -105,7 +105,7 @@ class EditingFakeAgent {
 
     const titles = authorText.includes("兩步") ? [newTitle, `${newTitle}（第二步）`] : [newTitle];
     for (const title of titles) {
-      const command = `comotion text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
+      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
       const permission = await this.connection.requestPermission({
         sessionId: params.sessionId,
         toolCall: { toolCallId: "e2e-text-set", title: "修改標題文字", rawInput: { command } },
@@ -150,7 +150,7 @@ function extractTextElementId(svg) {
 
 function runShellCommand(command, cwd) {
   return new Promise((resolve, reject) => {
-    // `sh -c` with `comotion` resolved from PATH, exactly as a real agent
+    // `sh -c` with `slidra` resolved from PATH, exactly as a real agent
     // would run it — so a PATH that cannot reach the CLI fails here loudly.
     execFile("/bin/sh", ["-c", command], { cwd }, (error, stdout, stderr) => {
       if (error) {

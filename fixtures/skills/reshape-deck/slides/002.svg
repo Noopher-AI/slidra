@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:comments xmlns:comot="https://co-motion.dev/ns">
-      <comot:comment id="c-02" target="el-p2-bullets" author="作者" created="2026-09-01T00:01:00.000Z">第二點刪掉</comot:comment>
-      <comot:comment id="c-04" target="page" author="作者" created="2026-09-01T00:02:00.000Z">這頁配一張我上週在東京拍的照片</comot:comment>
-    </comot:comments>
+    <slidra:comments xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:comment id="c-02" target="el-p2-bullets" author="作者" created="2026-09-01T00:01:00.000Z">第二點刪掉</slidra:comment>
+      <slidra:comment id="c-04" target="page" author="作者" created="2026-09-01T00:02:00.000Z">這頁配一張我上週在東京拍的照片</slidra:comment>
+    </slidra:comments>
   </metadata>
-  <g id="el-p2-bullets" data-comot-name="要點" transform="translate(0 0)">
+  <g id="el-p2-bullets" data-slidra-name="要點" transform="translate(0 0)">
     <text x="80" y="220" font-family="Noto Sans TC" font-size="24" xml:space="preserve"><tspan x="80" y="220">第一點</tspan><tspan x="80" y="260">第二點</tspan><tspan x="80" y="300">第三點</tspan></text>
   </g>
 </svg>

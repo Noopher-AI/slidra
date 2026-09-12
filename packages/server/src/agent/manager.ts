@@ -1,5 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { CoMotionError } from "../comotion/errors.js";
+import { SlidraError } from "../slidra/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
 import type { EditingLock } from "../editing-lock.js";
@@ -48,7 +48,7 @@ export interface AgentStatus {
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
-export class AgentSwitchLockedError extends CoMotionError {
+export class AgentSwitchLockedError extends SlidraError {
   constructor() {
     super("agent 正在編輯中，請稍候");
   }
@@ -289,7 +289,7 @@ export class AgentManager {
       throw new AgentSwitchLockedError();
     }
     if (this.current === null) {
-      throw new CoMotionError("尚未選擇 agent，沒有可以重開的對話");
+      throw new SlidraError("尚未選擇 agent，沒有可以重開的對話");
     }
 
     const previousSession = this.session;
@@ -306,7 +306,7 @@ export class AgentManager {
   /** Establishes the current agent's session ahead of the first message (`POST /api/agent/session`), so `status().models` fills in. */
   async warmSession(): Promise<AgentStatus> {
     if (!this.session) {
-      throw new CoMotionError("尚未選擇 agent，無法建立對話");
+      throw new SlidraError("尚未選擇 agent，無法建立對話");
     }
     await this.session.warm();
     return this.status();
@@ -315,12 +315,12 @@ export class AgentManager {
   /**
    * Switches the current session's model and remembers the pick for this
    * kind (settings.json), so a later "new session", reconnect or restart
-   * comes back on the same model. Throws `CoMotionError` when no agent is
+   * comes back on the same model. Throws `SlidraError` when no agent is
    * selected, mid-turn, or for a model the adapter does not offer.
    */
   async setModel(modelId: string): Promise<AgentStatus> {
     if (!this.session || this.current === null) {
-      throw new CoMotionError("尚未選擇 agent，無法切換模型");
+      throw new SlidraError("尚未選擇 agent，無法切換模型");
     }
     const kind = this.current;
     await this.session.setModel(modelId);
@@ -334,7 +334,7 @@ export class AgentManager {
   /** Sends the author's message on the current session. Throws if no agent is selected — callers must gate with a 409 first (§4.4). */
   sendMessage(text: string): void {
     if (!this.session) {
-      throw new CoMotionError("尚未選擇 agent，無法傳送訊息");
+      throw new SlidraError("尚未選擇 agent，無法傳送訊息");
     }
     this.session.sendMessage(text);
   }
@@ -342,7 +342,7 @@ export class AgentManager {
   /** #303: stops the current session — the turn in flight plus every message queued behind it (see `AgentChatSession.cancel`). Throws when no agent is selected or there is nothing to stop. */
   async cancel(): Promise<void> {
     if (!this.session) {
-      throw new CoMotionError("尚未選擇 agent，沒有可以停止的回合");
+      throw new SlidraError("尚未選擇 agent，沒有可以停止的回合");
     }
     await this.session.cancel();
   }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CanvasState } from "../../../canvas.js";
 import { fetchSlideEffectPlan, type SlideTransition } from "../../../effects.js";
 
-/** Same "this page never had one set" meaning a slide with no `<comot:transition>` reads as server-side — reused here so a fetch failure degrades to the identical values. */
+/** Same "this page never had one set" meaning a slide with no `<slidra:transition>` reads as server-side — reused here so a fetch failure degrades to the identical values. */
 const DEFAULT_TRANSITION: SlideTransition = {
   enter: { effect: "none", duration: 0.6 },
   exit: { effect: "none", duration: 0.5 },
@@ -42,7 +42,7 @@ export function useSlideTransition(state: CanvasState): SlideTransitionState {
     setTransition(null);
     // §4.2/§4.7: a slide whose transition cannot be read shows the panel's
     // default values rather than an error — the play-mode error banner is
-    // the one surface for a genuinely malformed `<comot:transition>`.
+    // the one surface for a genuinely malformed `<slidra:transition>`.
     void fetchSlideEffectPlan(slidePath)
       .then((plan) => {
         if (!cancelled) setTransition(plan.transition);

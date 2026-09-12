@@ -6,13 +6,13 @@ import { scanDocument, type ScannedNode } from "./metadata-scan.js";
  * Deliberately does NOT use `DOMParser` (unlike `effects.ts`'s
  * `parseEffects`): `DOMParser().parseFromString(..., "image/svg+xml")`
  * treats an unbound XML namespace prefix as a fatal parse error, and notes
- * written before this ticket's `xmlns:comot` fix (core's
+ * written before this ticket's `xmlns:slidra` fix (core's
  * `setSlideNotes`) are still sitting on disk without one. `scanDocument` is
  * a byte-offset scanner with no notion of namespace binding, so it reads
  * both old and new files the same way.
  */
 
-const NOTES_TAG = "comot:notes";
+const NOTES_TAG = "slidra:notes";
 const METADATA_TAG = "metadata";
 
 export type SlideNotesRead = { ok: true; text: string } | { ok: false; error: string };
@@ -31,7 +31,7 @@ function findChild(node: ScannedNode, tag: string): ScannedNode | undefined {
 }
 
 /**
- * `svgMarkup` with no `<comot:notes>` (missing `<metadata>`, missing the
+ * `svgMarkup` with no `<slidra:notes>` (missing `<metadata>`, missing the
  * tag, or an empty tag) all read as `{ ok: true, text: "" }` — the three
  * cases are indistinguishable in the UI (02-DESIGN_DOC, T3 plan §4.1).
  * Markup that isn't a well-formed slide (unparseable, or no `<svg>` root)
@@ -60,7 +60,7 @@ export function readSlideNotes(svgMarkup: string): SlideNotesRead {
 
   // Attributes (including a namespace declaration) never appear inside
   // content, so reading raw content by offset is unaffected by whether
-  // this particular <comot:notes> carries `xmlns:comot` or not.
+  // this particular <slidra:notes> carries `xmlns:slidra` or not.
   const raw = svgMarkup.slice(notes.contentStart, notes.contentEnd);
   return { ok: true, text: unescapeXmlText(raw) };
 }

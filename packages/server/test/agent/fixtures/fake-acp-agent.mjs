@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A scripted fake ACP agent speaking real JSON-RPC over stdio — Seam B's
 // counterparty (issue #1's Testing Decisions). It simulates Claude Code; it
-// is not a CoMotion module, so driving it over stdio is scripting a
+// is not a Slidra module, so driving it over stdio is scripting a
 // protocol boundary, not self-verification.
 //
 // Behaviour is configured entirely through environment variables so each
@@ -55,7 +55,7 @@
 //                            requestPermissionOnPromptIndex: at this prompt
 //                            index, call session/request_permission before
 //                            streaming replies. permissionCommand (string,
-//                            default "comotion ls") becomes
+//                            default "slidra ls") becomes
 //                            toolCall.rawInput.command — this is where
 //                            ticket #7's allowlist reads the shell command
 //                            from. The outcome is logged as
@@ -80,7 +80,7 @@
 //                            as session/update notifications (ticket #17):
 //                            a `tool_call` carrying
 //                            rawInput.command = toolCallCommand (default
-//                            "comotion text set ..."), then a
+//                            "slidra text set ..."), then a
 //                            `tool_call_update` moving it to in_progress,
 //                            then a final `tool_call_update` whose status is
 //                            toolCallOutcome ("completed" by default,
@@ -179,7 +179,7 @@ class FakeAgent {
   async newSession(params) {
     // Logged so tests can assert on exactly what cwd the client sent
     // (ticket #6 fix 1: never a real project path, never under
-    // COMOTION_HOME).
+    // SLIDRA_HOME).
     log({ newSessionCwd: params.cwd });
     sessionCwd = params.cwd;
 
@@ -261,7 +261,7 @@ class FakeAgent {
           // where the command cannot be read out of it at all (a shell
           // shape this client does not know) but a protected path is still
           // sitting in there somewhere.
-          rawInput: config.permissionRawInput ?? (config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "comotion ls" }),
+          rawInput: config.permissionRawInput ?? (config.permissionOmitCommand ? {} : { command: config.permissionCommand ?? "slidra ls" }),
         },
         // permissionOptions: overrides the default option list below (ticket
         // #7 fix 2) — used to script an adapter that offers only
@@ -317,7 +317,7 @@ class FakeAgent {
           status: "pending",
           rawInput: config.toolCallOmitCommand
             ? { description: "not a shell command" }
-            : { command: config.toolCallCommand ?? "comotion text set --id p1 --element-id el-1 --text 新標題" },
+            : { command: config.toolCallCommand ?? "slidra text set --id p1 --element-id el-1 --text 新標題" },
         },
       });
       // permissionForToolCall: ask permission for *this* tool call, between
@@ -418,12 +418,12 @@ class FakeAgent {
               title: "遲到的命令",
               kind: "execute",
               status: "pending",
-              rawInput: { command: "comotion ls late" },
+              rawInput: { command: "slidra ls late" },
             },
           });
           const response = await this.connection.requestPermission({
             sessionId: params.sessionId,
-            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "comotion ls late" } },
+            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "slidra ls late" } },
             options: [
               { kind: "allow_once", name: "允許", optionId: "allow" },
               { kind: "reject_once", name: "拒絕", optionId: "reject" },

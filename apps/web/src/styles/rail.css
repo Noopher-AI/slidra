@@ -241,7 +241,7 @@
 
 /* 縮圖右上留言鈕入口（T3 plan §2 邊界 2，[E2.T8] 接上功能）。
    可見度依 03-UI_RATIONALE.md B 表「滑入才顯示，避免噪音」與原型
-   comotion-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1；
+   slidra-logic-v3.js:601 的 pinOpacity——靜止態 0，滑入該縮圖才 1；
    該頁已有留言時（.has-comments）恆亮且底色轉紅，是第二個恆亮條件。
    常駐可見會改變 rail 的靜止外觀，讓 shell-v3／selection 的既有基準
    全部轉紅（round 2 FAIL-A，CI run 33986827570 的 7 條 ×788 像素）——

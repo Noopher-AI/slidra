@@ -17,17 +17,17 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *
  * Everything here is real except the agent: a real `startServe`, the real
  * built `apps/web/dist` bundle, a real Chromium, a real presentation
- * created through the real `new`/`open` commands, and a real `comotion`
+ * created through the real `new`/`open` commands, and a real `slidra`
  * binary resolved from PATH. Only the agent is a fake ACP subprocess, so
  * the test needs neither Claude Code installed nor any API quota.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-// Where npm's workspace linking puts the `comotion` executable. This is
+// Where npm's workspace linking puts the `slidra` executable. This is
 // the PATH the fake agent's shell command resolves through — the same
 // lookup that failed during #8's manual acceptance.
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -35,8 +35,8 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 const NEW_TITLE = "煙霧測試改過的標題";
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let registry: CommandRegistry;
 let server: RunningServer;
 
@@ -52,16 +52,16 @@ beforeAll(async () => {
   // rather than leaving "a browser was involved" to be taken on trust.
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await registry.dispatch("new", { path: comotPath, name: "煙霧測試簡報" });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await registry.dispatch("new", { path: slidraPath, name: "煙霧測試簡報" });
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
   // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
   await registry.dispatch("slide add", { id: presentationId });
@@ -75,7 +75,7 @@ beforeAll(async () => {
       // Deliberately NOT `${binDir}:${process.env.PATH}`. The ambient PATH
       // npm sets up also contains every ancestor directory's
       // node_modules/.bin — including the main checkout's, when this runs
-      // in a git worktree — so inheriting it lets `comotion` resolve to
+      // in a git worktree — so inheriting it lets `slidra` resolve to
       // some *other* copy of this project and hides a broken link in this
       // one. The only two entries the agent's shell command legitimately
       // needs are this workspace's bin directory and the directory holding
@@ -102,12 +102,12 @@ afterAll(async () => {
   // happened not to hit it; running it after other e2e files did.
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
   // Guarded: beforeAll can fail before these exist (e.g. no build output),
   // and an unguarded rm(undefined) here would bury that error under its own.
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
 it("在瀏覽器裡送出訊息後，畫布上的 SVG 文字真的變了", async () => {
@@ -136,7 +136,7 @@ it("在瀏覽器裡送出訊息後，畫布上的 SVG 文字真的變了", async
   await page.locator(".chat-input button").click();
 
   // The whole chain in one assertion: POST /api/chat -> fake agent ->
-  // fs/read_text_file -> permission allowlist -> `comotion text set` off
+  // fs/read_text_file -> permission allowlist -> `slidra text set` off
   // PATH -> file watcher -> /api/events -> canvas reload -> new SVG text.
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(NEW_TITLE);
 

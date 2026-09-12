@@ -65,14 +65,14 @@
 <main>
 
   <h1>編輯功能 spec 設計</h1>
-  <p class="meta">使用者訪談紀錄 · 2026-08-25 · CoMotion（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
+  <p class="meta">使用者訪談紀錄 · 2026-08-25 · Slidra（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
 
   <div class="summary">
     <h2>本次做成的決定</h2>
     <ul>
       <li><b>範圍</b>：一份大 spec，收「物件／幾何／樣式／組織」骨幹——插入刪除、搬移縮放旋轉、樣式、疊置順序、群組、對齊、剪貼簿、投影片增刪複製重排、復原、範本。表格、圖表另開票；轉場效果全簡報只有一種，存 <code>project.json</code>。</li>
       <li><b>幾何模型</b>：每個元素包一層 <code>&lt;g transform&gt;</code>「相框」——搬移、旋轉、群組一個機制解決，任何軟體原樣打開都正確。</li>
-      <li><b>文字框</b>：CoMotion 自己算斷行，寫成多行 <code>&lt;tspan&gt;</code> 存進 SVG。</li>
+      <li><b>文字框</b>：Slidra 自己算斷行，寫成多行 <code>&lt;tspan&gt;</code> 存進 SVG。</li>
       <li><b>縮放語意</b>：Keynote 做法——拉邊改框寬文字重排，拉角等比縮放含字級，群組一律等比。</li>
       <li><b>SVG 合規性</b>：嚴格格式，不合規拋錯；另有使用者主動執行的 <code>normalize</code> 轉換命令。</li>
       <li><b>復原模型</b>：一條時間軸，人的每個操作一格，agent 一回合綁成一格；用快照實作，關檔就清空。</li>
@@ -86,7 +86,7 @@
       <li><b>複製與效果</b>：效果跟著元素走，插在目標清單最後。</li>
       <li><b>剪貼簿範圍</b>：只在同一份簡報內＋支援從系統剪貼簿貼入圖片。</li>
       <li><b>換範本</b>：不提供，讓 agent 幫忙搬內容。</li>
-      <li><b>另開的票</b>：字型打包進 <code>.comot</code>、表格、圖表、跨簡報搬運。</li>
+      <li><b>另開的票</b>：字型打包進 <code>.slidra</code>、表格、圖表、跨簡報搬運。</li>
     </ul>
   </div>
 
@@ -114,7 +114,7 @@
     <ul>
       <li><b>編輯基座＋一條薄垂直切片（推薦）</b> — 只定幾何模型、undo 模型、直接操作↔命令對應，配一條選取→搬移→縮放→改文字→刪除的切片驗證。</li>
       <li><b>完整編輯功能一份大 spec</b> — 一票到底寫完插入、樣式、排列、群組、對齊、投影片增刪、undo，再拆成十幾張 issue。</li>
-      <li><b>照功能區分頁切</b> — 對齊 #48 已做的外殼，但切法來自 PowerPoint 介面而非 CoMotion 模型。</li>
+      <li><b>照功能區分頁切</b> — 對齊 #48 已做的外殼，但切法來自 PowerPoint 介面而非 Slidra 模型。</li>
     </ul>
   </div>
 
@@ -144,13 +144,13 @@
     <div class="who">AI</div>
     <p>進最深一層：幾何模型。這是整份——</p>
     <div class="reversed">
-      <b>此處被使用者立刻打斷並推翻。</b>下一則訊息裡使用者直接引用 AI 自己說過的話「CoMotion 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo」，回一句「我全都要」——把邊界從「骨幹（明確不含版面配置）」擴大成含群組、transform、z-order、版面配置、剪貼簿、undo 全部收進來。版面配置／母片因為正面撞上 ADR-0003 與 ADR-0008，被標記為需要一份新 ADR 另外處理。
+      <b>此處被使用者立刻打斷並推翻。</b>下一則訊息裡使用者直接引用 AI 自己說過的話「Slidra 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo」，回一句「我全都要」——把邊界從「骨幹（明確不含版面配置）」擴大成含群組、transform、z-order、版面配置、剪貼簿、undo 全部收進來。版面配置／母片因為正面撞上 ADR-0003 與 ADR-0008，被標記為需要一份新 ADR 另外處理。
     </div>
   </div>
 
   <div class="turn user">
     <div class="who">使用者</div>
-    <p>「CoMotion 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo。」我全都要。</p>
+    <p>「Slidra 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo。」我全都要。</p>
   </div>
 
   <h2>還有這三族：表格、圖表、轉場（問題 3）</h2>
@@ -245,7 +245,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這個要求直接把答案選出來了——而且選的是方案一。<code>&lt;g&gt;</code> 與 transform 是 SVG 核心語法，不是 CoMotion 發明的，任何軟體打開都是正確樣子，包括旋轉。方案二會壞掉：自創屬性別的軟體會直接忽略，轉了 15 度的標題打開是正的。唯一要留意的是字型——那是另一題。</p>
+    <p>這個要求直接把答案選出來了——而且選的是方案一。<code>&lt;g&gt;</code> 與 transform 是 SVG 核心語法，不是 Slidra 發明的，任何軟體打開都是正確樣子，包括旋轉。方案二會壞掉：自創屬性別的軟體會直接忽略，轉了 15 度的標題打開是正的。唯一要留意的是字型——那是另一題。</p>
   </div>
 
   <div class="turn assistant">
@@ -260,14 +260,14 @@
 
   <div class="turn user">
     <div class="who">使用者（回答）</div>
-    <p>採用方案一。另開一張票把字型打包進 <code>.comot</code> 中。</p>
+    <p>採用方案一。另開一張票把字型打包進 <code>.slidra</code> 中。</p>
   </div>
 
   <h2>文字框（問題 6）</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>SVG 的 <code>&lt;text&gt;</code> 不會自動換行，這是規格不是實作偷懶。PPT／Keynote 的文字框會自動折行，是使用者的基本預期。三條路：A 自己實作文字框（CoMotion 算斷行寫成多行 tspan，別的軟體打開也正確；代價是每次改文字都要重算斷行，風險已被「字型打包」那票關掉）；B 一行一個元素（誠實但打一段話會痛不欲生）；C <code>&lt;foreignObject&gt;</code>（已被 ADR-0005 擋掉，不用考慮）。</p>
+    <p>SVG 的 <code>&lt;text&gt;</code> 不會自動換行，這是規格不是實作偷懶。PPT／Keynote 的文字框會自動折行，是使用者的基本預期。三條路：A 自己實作文字框（Slidra 算斷行寫成多行 tspan，別的軟體打開也正確；代價是每次改文字都要重算斷行，風險已被「字型打包」那票關掉）；B 一行一個元素（誠實但打一段話會痛不欲生）；C <code>&lt;foreignObject&gt;</code>（已被 ADR-0005 擋掉，不用考慮）。</p>
   </div>
 
   <div class="turn assistant">
@@ -349,7 +349,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>CoMotion 現在一條 undo 都沒有。ADR-0002 定死「一次操作＝一條命令＝一步 undo」，沒定的是「上一步」是誰的上一步。C（人、agent 各自獨立堆疊）直接排除——selective undo 沒有正確解。</p>
+    <p>Slidra 現在一條 undo 都沒有。ADR-0002 定死「一次操作＝一條命令＝一步 undo」，沒定的是「上一步」是誰的上一步。C（人、agent 各自獨立堆疊）直接排除——selective undo 沒有正確解。</p>
   </div>
 
   <div class="turn assistant">
@@ -372,7 +372,7 @@
     <ul>
       <li><b>快照＋關檔就清空（推薦）</b> — 每條命令前存副本，寫一次永遠正確，行為跟 PPT/Keynote 一致。</li>
       <li><b>反向命令＋關檔就清空</b> — 省空間，但每新增一條命令就多一份容易寫錯的反向邏輯。</li>
-      <li><b>快照＋寫進 .comot 永久保存</b> — .comot 會一直變大，還要決定「留幾步」。</li>
+      <li><b>快照＋寫進 .slidra 永久保存</b> — .slidra 會一直變大，還要決定「留幾步」。</li>
     </ul>
   </div>
 
@@ -385,7 +385,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>「改母片全部一起變」天生違反 ADR-0003＋ADR-0008（投影片自成一體）。第一輪提三案：A 版面配置是起始範本（複製一次，之後獨立，ADR 不動，「改一次全部變」交給 agent）；B 真正的母片（顯示時合成，但單獨打開缺背景，推翻 ADR-0001）；C 母片是真的但改時烘焙進每頁（體驗像 PPT，代價是要逐屬性記錄「母片給的還是使用者改的」，這是整份 spec 最容易做壞的部分）。AI 推 A：CoMotion 有 agent，「改全簡報底色」對它是一句話，不需要用複雜的繼承機制去買一個 agent 已經免費給的東西。</p>
+    <p>「改母片全部一起變」天生違反 ADR-0003＋ADR-0008（投影片自成一體）。第一輪提三案：A 版面配置是起始範本（複製一次，之後獨立，ADR 不動，「改一次全部變」交給 agent）；B 真正的母片（顯示時合成，但單獨打開缺背景，推翻 ADR-0001）；C 母片是真的但改時烘焙進每頁（體驗像 PPT，代價是要逐屬性記錄「母片給的還是使用者改的」，這是整份 spec 最容易做壞的部分）。AI 推 A：Slidra 有 agent，「改全簡報底色」對它是一句話，不需要用複雜的繼承機制去買一個 agent 已經免費給的東西。</p>
   </div>
 
   <div class="turn assistant">
@@ -428,7 +428,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>對，這一招確實把「讀」的問題解掉了，而且很便宜——一個 <code>data-comot-from="layout"/"slide"</code> 屬性，token 成本幾乎零。但它解掉的是「讀」的問題，沒解掉「寫」的問題：使用者動了一個來自版面配置的元素之後，下次烘焙要不要蓋掉他？這個標籤只有兩個值，回答不了逐屬性的問題。</p>
+    <p>對，這一招確實把「讀」的問題解掉了，而且很便宜——一個 <code>data-slidra-from="layout"/"slide"</code> 屬性，token 成本幾乎零。但它解掉的是「讀」的問題，沒解掉「寫」的問題：使用者動了一個來自版面配置的元素之後，下次烘焙要不要蓋掉他？這個標籤只有兩個值，回答不了逐屬性的問題。</p>
     <p>提出折衷版 <b>C′：碰過就脫離</b>——使用者一旦動到來自版面配置的元素，它立刻整個脫離（標籤翻成 slide），之後烘焙永遠不再碰它。規則一句話，但顆粒度很粗：挪兩公分，代價是從此不再跟著版面配置走，且沒有任何提示。</p>
   </div>
 
@@ -519,7 +519,7 @@
   <div class="turn assistant">
     <div class="who">AI</div>
     <p>懂了，我剛才確實想歪了。範本是死的：一份起始 SVG，套用時整份複製貼上到那一頁，之後這一頁跟範本再無關係。「可改／不可改」是元素身上一個標記，跟著複製一起帶過去並持續生效——使用者在 UI 點不到不可改的元素，agent 下 CLI 命令碰到會直接被拒絕。目的不是同步，是保護版面骨架不被誰不小心拖歪。這個設計不需要烘焙、不需要繼承、不需要脫離機制，只需要一個布林標記加 UI 與 CLI 兩道守衛。</p>
-    <p>順帶處理「程式化的元素」：頁碼不能是寫死的字，姑且叫它「欄位」——一個由 CoMotion 算出來而非使用者打出來的文字。問題是這個值要不要寫進 SVG：做法一標記＋當下的值都寫進去（靜態打開完全正確，但這是一份快取，需靠 CoMotion 在頁序變動時同步重寫）；做法二只寫標記、值由 App 顯示時注入（唯一真相，但靜態打開頁碼是空的）。AI 推做法一。</p>
+    <p>順帶處理「程式化的元素」：頁碼不能是寫死的字，姑且叫它「欄位」——一個由 Slidra 算出來而非使用者打出來的文字。問題是這個值要不要寫進 SVG：做法一標記＋當下的值都寫進去（靜態打開完全正確，但這是一份快取，需靠 Slidra 在頁序變動時同步重寫）；做法二只寫標記、值由 App 顯示時注入（唯一真相，但靜態打開頁碼是空的）。AI 推做法一。</p>
   </div>
 
   <div class="turn assistant">
@@ -538,7 +538,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>jinja 比「欄位標記」好，因為能組合（<code>第 {{ slide_number }} 頁，共 {{ slide_total }} 頁</code>）。但直接把 <code>{{ slide_number }}</code> 寫進文字內容，別人用預覽程式打開會看到字面的那六個字元原樣顯示——比「缺一塊」更糟，因為看起來像壞掉。解法：模板寫在屬性裡、算出來的值寫在文字內容裡（<code>data-comot-template="第 {{ slide_number }} 頁"</code>，內文是「第 7 頁」）。這跟前面否決的「兩份真相會打架」不一樣，因為文字內容是沒有人能編輯的衍生值，單向、無分歧。另外建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知的攻擊面；變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>。</p>
+    <p>jinja 比「欄位標記」好，因為能組合（<code>第 {{ slide_number }} 頁，共 {{ slide_total }} 頁</code>）。但直接把 <code>{{ slide_number }}</code> 寫進文字內容，別人用預覽程式打開會看到字面的那六個字元原樣顯示——比「缺一塊」更糟，因為看起來像壞掉。解法：模板寫在屬性裡、算出來的值寫在文字內容裡（<code>data-slidra-template="第 {{ slide_number }} 頁"</code>，內文是「第 7 頁」）。這跟前面否決的「兩份真相會打架」不一樣，因為文字內容是沒有人能編輯的衍生值，單向、無分歧。另外建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知的攻擊面；變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>。</p>
   </div>
 
   <div class="turn assistant">
@@ -625,7 +625,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這題正面碰到 ADR-0004——三層防護確保 agent 完全接觸不到真實檔案系統。人這邊沒爭議：拖進編輯器、server 收下、複製進 <code>assets/</code>。有爭議的是 agent。三做法：一、agent 不能帶新資產進來（隔離完好，但「幫我找張圖」做不到，agent 仍可自己畫向量圖形）；二、給一條匯入命令、agent 指定本機路徑（agent 真的能放照片，但等於開一條「把使用者電腦上任意檔案複製進簡報」的通道——<code>co-motion asset import ~/.ssh/id_rsa</code> 會被權限鉤子放行，三層防護全繞過）；三、只能從指定收件匣資料夾匯入（安全但使用者還是得自己搬檔，多一個概念）。AI 推做法一。</p>
+    <p>這題正面碰到 ADR-0004——三層防護確保 agent 完全接觸不到真實檔案系統。人這邊沒爭議：拖進編輯器、server 收下、複製進 <code>assets/</code>。有爭議的是 agent。三做法：一、agent 不能帶新資產進來（隔離完好，但「幫我找張圖」做不到，agent 仍可自己畫向量圖形）；二、給一條匯入命令、agent 指定本機路徑（agent 真的能放照片，但等於開一條「把使用者電腦上任意檔案複製進簡報」的通道——<code>slidra asset import ~/.ssh/id_rsa</code> 會被權限鉤子放行，三層防護全繞過）；三、只能從指定收件匣資料夾匯入（安全但使用者還是得自己搬檔，多一個概念）。AI 推做法一。</p>
   </div>
 
   <div class="turn assistant">
@@ -637,13 +637,13 @@
       <li><b>能，但只限一個收件匣資料夾</b></li>
     </ul>
     <div class="reversed">
-      <b>使用者沒有選任一選項，而是提出第四種安排。</b>agent 可以插入圖片影音，但只能放進 <code>.comot</code> 的 <code>assets/</code>（唯一可放的地方），可透過絕對路徑或 URL 帶入——等於做法一與做法二的折衷：agent 有能力，但一律落地在 <code>assets/</code>。
+      <b>使用者沒有選任一選項，而是提出第四種安排。</b>agent 可以插入圖片影音，但只能放進 <code>.slidra</code> 的 <code>assets/</code>（唯一可放的地方），可透過絕對路徑或 URL 帶入——等於做法一與做法二的折衷：agent 有能力，但一律落地在 <code>assets/</code>。
     </div>
   </div>
 
   <div class="turn user">
     <div class="who">使用者（回答）</div>
-    <p>可以插入圖片影音帶進簡報，會放在 <code>.comot</code> 中的 <code>assets/</code>（唯一可以放的地方）被使用。也可以透過 file abs path 或 url 來帶入圖片影音。</p>
+    <p>可以插入圖片影音帶進簡報，會放在 <code>.slidra</code> 中的 <code>assets/</code>（唯一可以放的地方）被使用。也可以透過 file abs path 或 url 來帶入圖片影音。</p>
   </div>
 
   <div class="turn assistant">
@@ -713,14 +713,14 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>選了通用命令，得補一件事，否則它會真的變成 ADR-0002 擔心的東西——問題不在命令有幾條，而在屬性名叫什麼、agent 怎麼知道有哪些屬性可用。做法一：屬性名用 CoMotion 自己的詞彙＋一條列舉命令（agent 不用懂 SVG，值可驗證，但要維護對照表＋寫新 ADR）。做法二：屬性名直接用 SVG 名字（零維護成本，agent 大多懂 SVG，但等於放棄「agent 不必精通 SVG」這個前提，且沒有屬性表就沒有邊界，<code>filter</code>、<code>clip-path</code> 拒絕的理由也消失）。AI 推做法一。</p>
+    <p>選了通用命令，得補一件事，否則它會真的變成 ADR-0002 擔心的東西——問題不在命令有幾條，而在屬性名叫什麼、agent 怎麼知道有哪些屬性可用。做法一：屬性名用 Slidra 自己的詞彙＋一條列舉命令（agent 不用懂 SVG，值可驗證，但要維護對照表＋寫新 ADR）。做法二：屬性名直接用 SVG 名字（零維護成本，agent 大多懂 SVG，但等於放棄「agent 不必精通 SVG」這個前提，且沒有屬性表就沒有邊界，<code>filter</code>、<code>clip-path</code> 拒絕的理由也消失）。AI 推做法一。</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI（提問）</div>
     <p><b>element style set 的屬性名用什麼詞彙？</b></p>
     <ul>
-      <li><b>CoMotion 自己的詞＋一條列舉命令（推薦）</b></li>
+      <li><b>Slidra 自己的詞＋一條列舉命令（推薦）</b></li>
       <li><b>直接用 SVG 屬性名</b> — 正式放棄「agent 不必精通 SVG」的前提。</li>
     </ul>
   </div>
@@ -742,8 +742,8 @@
     <div class="who">AI（提問）</div>
     <p><b>element style set 可以設哪些 SVG 屬性？</b></p>
     <ul>
-      <li><b>A：白名單（推薦）</b> — 明列可設樣式屬性，幾何屬性與 <code>data-comot-*</code> 排除，有自己的命令。</li>
-      <li><b>B：黑名單</b> — 只擋幾何屬性與 <code>data-comot-*</code>，其餘放行；<code>style</code>、<code>class</code>、<code>clip-path</code> 這些 CoMotion 不認得的東西也進得來。</li>
+      <li><b>A：白名單（推薦）</b> — 明列可設樣式屬性，幾何屬性與 <code>data-slidra-*</code> 排除，有自己的命令。</li>
+      <li><b>B：黑名單</b> — 只擋幾何屬性與 <code>data-slidra-*</code>，其餘放行；<code>style</code>、<code>class</code>、<code>clip-path</code> 這些 Slidra 不認得的東西也進得來。</li>
       <li><b>C：完全不限制</b> — 連 transform、x、width 都能設，幾何模型只剩紙上約定。</li>
     </ul>
   </div>
@@ -887,7 +887,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>已定「<code>{{ slide_number }}</code> 直接寫在文字內容裡，顯示時才替換」，衍生兩件事必須定死：要不要支援邏輯（<code>if</code>／<code>for</code>／filter）？以及有哪些變數？建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知攻擊面，模板替換又發生在 sandbox 之外，是 CoMotion 自己的程式在跑。變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>；每加一個變數就是一個新能力，且大多能用普通文字解決（公司名不會變，直接打在範本上就好）。</p>
+    <p>已定「<code>{{ slide_number }}</code> 直接寫在文字內容裡，顯示時才替換」，衍生兩件事必須定死：要不要支援邏輯（<code>if</code>／<code>for</code>／filter）？以及有哪些變數？建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知攻擊面，模板替換又發生在 sandbox 之外，是 Slidra 自己的程式在跑。變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>；每加一個變數就是一個新能力，且大多能用普通文字解決（公司名不會變，直接打在範本上就好）。</p>
   </div>
 
   <div class="turn assistant">
@@ -909,7 +909,7 @@
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>該問的都問完了，剩下的直接照既有 ADR 推導、不再問：備忘稿存在該頁 SVG 的 <code>&lt;metadata&gt;</code>，跟效果清單同一個地方；貼齊與輔助線是前端輔助，不新增命令，對齊是命令（天生多元素）；疊置順序是四條語意化操作；選取的擴充（多選、框選、進入群組編輯）是前端行為，不產生命令；群組本身是一個元素，有識別碼與顯示名稱，可巢狀；範本住在 <code>.comot</code> 的 <code>templates/*.svg</code>；投影片層級（新增、刪除、複製、重排）各一條命令。</p>
+    <p>該問的都問完了，剩下的直接照既有 ADR 推導、不再問：備忘稿存在該頁 SVG 的 <code>&lt;metadata&gt;</code>，跟效果清單同一個地方；貼齊與輔助線是前端輔助，不新增命令，對齊是命令（天生多元素）；疊置順序是四條語意化操作；選取的擴充（多選、框選、進入群組編輯）是前端行為，不產生命令；群組本身是一個元素，有識別碼與顯示名稱，可巢狀；範本住在 <code>.slidra</code> 的 <code>templates/*.svg</code>；投影片層級（新增、刪除、複製、重排）各一條命令。</p>
     <p>彙整出的共識與需要寫的三份 ADR（幾何模型、範本與鎖定、樣式命令用 SVG 屬性名）如本頁開頭摘要所列。</p>
   </div>
 

@@ -23,15 +23,15 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/inline-opacity-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
@@ -39,16 +39,16 @@ beforeAll(async () => {
 
   browser = await chromium.launch();
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-inlineop-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-inlineop-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "inline-opacity-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "inline-opacity-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -69,10 +69,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
 it('元素自帶 inline style="opacity:1" 時，進場前仍被藏起來，推進後仍看得到', async () => {

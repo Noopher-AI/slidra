@@ -20,7 +20,7 @@ const SHAPE_ITEMS: { kind: ShapeKind; label: string }[] = [
   { kind: "line", label: "Line" },
 ];
 
-/** 原型 `newShape()`（docs/design/prototype/comotion-logic-v3.js:186）的百分比幾何, converted against the presentation's own real canvas size. */
+/** 原型 `newShape()`（docs/design/prototype/slidra-logic-v3.js:186）的百分比幾何, converted against the presentation's own real canvas size. */
 const RECT_BOX = { l: 36, t: 32, w: 28, h: 36 };
 
 /**

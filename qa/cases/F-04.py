@@ -13,7 +13,7 @@ NOOP-399）。
 沒有任何打字用的原語，見這三個函式在 `qa/agent_helpers.py` 裡的 docstring）。
 
 判準：demo 第 1 頁標題（`el-title`）是一個 plain `<text>`（沒有
-`data-comot-text-width`）。base 上，`applyTextEditContent` 對這種元素只做
+`data-slidra-text-width`）。base 上，`applyTextEditContent` 對這種元素只做
 `textEl.textContent = text`——SVG 原生不會對 "\\n" 換行，所以編輯中打
 Enter 之後，畫面上 `#el-title` 底下仍然只有 1 個直接子 tspan（其實是 0
 個，內容是純文字節點），要等 Esc 提交、SVG 端重新排版之後才看得到兩行。

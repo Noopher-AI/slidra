@@ -50,31 +50,31 @@ describe("chat-messages: identity, not position", () => {
 
 describe("chat-messages: a command is its own kind of message (ticket #17)", () => {
   it("appendCommandMessage records the command verbatim, addressed by its ACP toolCallId", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "comotion ls p1", "pending", true);
+    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "pending", true);
     expect(messages).toEqual([
-      { id: 0, role: "command", toolCallId: "call-1", command: "comotion ls p1", status: "pending", cli: true },
+      { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "pending", cli: true },
     ]);
   });
 
   it("updateCommandMessage finds the command by toolCallId even when it is no longer last", () => {
-    const started = appendCommandMessage([{ id: 0, role: "author", text: "改標題" }], 1, "call-1", "comotion ls p1", "pending", true);
+    const started = appendCommandMessage([{ id: 0, role: "author", text: "改標題" }], 1, "call-1", "slidra ls p1", "pending", true);
     const withLaterReply = appendMessage(started, 2, "agent", "改好了");
 
     const finished = updateCommandMessage(withLaterReply, "call-1", { status: "completed" });
 
     expect(finished).toEqual([
       { id: 0, role: "author", text: "改標題" },
-      { id: 1, role: "command", toolCallId: "call-1", command: "comotion ls p1", status: "completed", cli: true },
+      { id: 1, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "completed", cli: true },
       { id: 2, role: "agent", text: "改好了" },
     ]);
   });
 
   it("updateCommandMessage attaches the failure output to the command that failed", () => {
-    const started = appendCommandMessage([], 0, "call-1", "comotion text set p1", "in_progress", true);
+    const started = appendCommandMessage([], 0, "call-1", "slidra text set p1", "in_progress", true);
 
     const failed = updateCommandMessage(started, "call-1", {
       status: "failed",
-      output: "zsh: command not found: comotion",
+      output: "zsh: command not found: slidra",
     });
 
     expect(failed).toEqual([
@@ -83,9 +83,9 @@ describe("chat-messages: a command is its own kind of message (ticket #17)", () 
         role: "command",
         cli: true,
         toolCallId: "call-1",
-        command: "comotion text set p1",
+        command: "slidra text set p1",
         status: "failed",
-        output: "zsh: command not found: comotion",
+        output: "zsh: command not found: slidra",
       },
     ]);
   });
@@ -96,7 +96,7 @@ describe("chat-messages: a command is its own kind of message (ticket #17)", () 
   });
 
   it("appendChunkToMessage never writes reply text into a command message that shares nothing but a neighbourhood", () => {
-    const messages = appendCommandMessage([{ id: 0, role: "agent", text: "現在來修改文字：" }], 1, "call-1", "comotion ls p1", "pending", true);
+    const messages = appendCommandMessage([{ id: 0, role: "agent", text: "現在來修改文字：" }], 1, "call-1", "slidra ls p1", "pending", true);
 
     expect(appendChunkToMessage(messages, 1, "不該出現")).toEqual(messages);
   });
@@ -104,22 +104,22 @@ describe("chat-messages: a command is its own kind of message (ticket #17)", () 
 
 describe("chat-messages: a stream interruption is its own fact (ticket #19)", () => {
   it("marks a command still running as interrupted without touching its ACP status", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "comotion ls p1", "in_progress", true);
+    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "in_progress", true);
 
     expect(markUnfinishedCommandsInterrupted(messages)).toEqual([
-      { id: 0, role: "command", toolCallId: "call-1", command: "comotion ls p1", status: "in_progress", cli: true, interrupted: true },
+      { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "in_progress", cli: true, interrupted: true },
     ]);
   });
 
   it("marks a command still pending as interrupted too", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "comotion ls p1", "pending", true);
+    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "pending", true);
 
     expect(markUnfinishedCommandsInterrupted(messages)[0]).toMatchObject({ status: "pending", interrupted: true });
   });
 
   it("leaves commands that already reached an outcome alone", () => {
-    const completed = appendCommandMessage([], 0, "call-1", "comotion ls p1", "completed", true);
-    const failed = appendCommandMessage(completed, 1, "call-2", "comotion text set p1", "failed", true);
+    const completed = appendCommandMessage([], 0, "call-1", "slidra ls p1", "completed", true);
+    const failed = appendCommandMessage(completed, 1, "call-2", "slidra text set p1", "failed", true);
 
     expect(markUnfinishedCommandsInterrupted(failed)).toEqual(failed);
   });

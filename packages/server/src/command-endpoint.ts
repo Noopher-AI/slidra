@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { encodeCommandArgv } from "./comotion/argv.js";
-import { runJsonCommand } from "./comotion/command.js";
+import { encodeCommandArgv } from "./slidra/argv.js";
+import { runJsonCommand } from "./slidra/command.js";
 
 /**
  * `POST /api/command` (NOOP-91 §4.9) — the front end's only write path.
@@ -87,7 +87,7 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "element group",
   "element ungroup",
   // [E2.T17] Video/Image/Audio 插入面板的 caption 欄位（D4）：caption 落地
-  // 成 `data-comot-name`，走既有 `element name set` 命令。
+  // 成 `data-slidra-name`，走既有 `element name set` 命令。
   "element name set",
   // [E2.T7] 的 Animate 面板／時間軸／情境列 Edit animation 加入這四條；
   // `effect list` 不在其中——GUI 的清單狀態走一般的檔案讀取路徑

@@ -28,7 +28,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/media-deck");
@@ -53,16 +53,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-media-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-media-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-media-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-media-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "media-deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "media-deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -85,10 +85,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -154,7 +154,7 @@ it("story 20：靜態檢視就看得到影片與音訊佔位元素，未播放�
 // [E2.T17] plan §4.4/A3-A4: the STAGE (view mode) media layer — distinct
 // from every play-mode test below, which enters play via `.play-button`
 // first. These two open the app in its default view mode and interact
-// with `data-comot-media-control` directly inside the view iframe.
+// with `data-slidra-media-control` directly inside the view iframe.
 it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度", async () => {
   const { server, cleanup } = await startServerFor();
   try {
@@ -173,7 +173,7 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
       .toBeGreaterThan(0);
     expect(await video.evaluate((el: HTMLVideoElement) => el.paused)).toBe(true);
 
-    const playButton = viewFrame().locator('[data-comot-media-control="play"]').first();
+    const playButton = viewFrame().locator('[data-slidra-media-control="play"]').first();
     await playButton.click();
     await expect
       .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused), { timeout: 10_000 })
@@ -189,7 +189,7 @@ it("[E2.T17] 舞台（view 模式）下影片可播放、暫停、拖曳進度",
     // 拖曳進度：真實拖曳一個看不見厚度的 range 很不可靠，直接把值設到目標並
     // 送出瀏覽器拖曳時本來就會送的同一個 "input" 事件——production 的
     // `seek.addEventListener("input", ...)` 分不出這跟真的滑鼠拖曳有什麼不同。
-    const seek = viewFrame().locator('[data-comot-media-control="seek"]').first();
+    const seek = viewFrame().locator('[data-slidra-media-control="seek"]').first();
     const duration = await video.evaluate((el: HTMLVideoElement) => el.duration);
     const target = duration / 2;
     await seek.evaluate((el: HTMLInputElement, value: number) => {
@@ -222,7 +222,7 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
       .toBeGreaterThan(0);
     expect(await audio.evaluate((el: HTMLAudioElement) => el.paused)).toBe(true);
 
-    const playButton = viewFrame().locator('[data-comot-media-control="play"]').nth(1);
+    const playButton = viewFrame().locator('[data-slidra-media-control="play"]').nth(1);
     await playButton.click();
     await expect
       .poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 })
@@ -235,7 +235,7 @@ it("[E2.T17] 舞台（view 模式）下音訊可播放、暫停、拖曳進度",
     await playButton.click();
     await expect.poll(() => audio.evaluate((el: HTMLAudioElement) => el.paused), { timeout: 10_000 }).toBe(true);
 
-    const seek = viewFrame().locator('[data-comot-media-control="seek"]').nth(1);
+    const seek = viewFrame().locator('[data-slidra-media-control="seek"]').nth(1);
     const duration = await audio.evaluate((el: HTMLAudioElement) => el.duration);
     const target = duration / 2;
     await seek.evaluate((el: HTMLInputElement, value: number) => {
@@ -274,7 +274,7 @@ it("元素被選取時點 .media-play：選取狀態不受影響（[E2.T17] 舞�
 
     const video = frame.locator("video");
     await expect.poll(() => video.count(), { timeout: 10_000 }).toBe(1);
-    const playButton = frame.locator('[data-comot-media-control="play"]').first();
+    const playButton = frame.locator('[data-slidra-media-control="play"]').first();
     await playButton.click();
 
     // 播放鍵本身仍要正常運作——守衛不能把整顆按鈕擋死，只能擋掉「點擊落在
@@ -297,17 +297,17 @@ it("在 .media-seek 上按住拖曳：不產生 marquee、不改變選取（[E2.
       .poll(() => page.frameLocator("iframe.slide-frame").locator("#el-title").textContent().catch(() => null), { timeout: 30_000 })
       .toBe("媒體播放測試");
     const frame = await canvasFrame(page);
-    await expect.poll(() => frame.locator('[data-comot-media-control="seek"]').count()).toBeGreaterThan(0);
+    await expect.poll(() => frame.locator('[data-slidra-media-control="seek"]').count()).toBeGreaterThan(0);
     await expect.poll(() => selectionChip.textContent()).toBe("");
 
     const marqueeDisplay = () =>
       frame.evaluate(() => {
-        const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+        const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
         const marquee = host?.shadowRoot?.querySelector(".marquee") as HTMLElement | null;
         return marquee?.style.display ?? null;
       });
 
-    const seek = frame.locator('[data-comot-media-control="seek"]').first();
+    const seek = frame.locator('[data-slidra-media-control="seek"]').first();
     await seek.hover();
     await page.mouse.down();
     await page.mouse.move(200, 200, { steps: 5 }); // 遠超 DRAG_THRESHOLD_PX，若守衛失效會被判成 marquee 手勢

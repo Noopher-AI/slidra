@@ -1,16 +1,16 @@
 # 主場景 skill 驗收 fixtures
 
-這個目錄底下三份 deck，分別驗收 `.agents/skills/comotion-{plan,reshape,validate}/SKILL.md` 三個主場景 skill。每個 deck 目錄是一份未打包的簡報（`project.json` ＋ `slides/00N.svg`，`outline-deck` 多一個 `INPUT.md`），各自搭配一份 `EXPECTED.md` 描述跑完該 skill 之後應該長成什麼樣子。
+這個目錄底下三份 deck，分別驗收 `.agents/skills/slidra-{plan,reshape,validate}/SKILL.md` 三個主場景 skill。每個 deck 目錄是一份未打包的簡報（`project.json` ＋ `slides/00N.svg`，`outline-deck` 多一個 `INPUT.md`），各自搭配一份 `EXPECTED.md` 描述跑完該 skill 之後應該長成什麼樣子。
 
 ## 怎麼把 deck 打包並開啟
 
 ```bash
-mkdir -p .scratch && export COMOTION_HOME="$PWD/.scratch/home"
-node -e "import('./packages/core/dist/index.js').then(m=>m.packDirectory('fixtures/skills/check-deck','.scratch/check.comot'))"
-node packages/cli/bin/comotion.js open ./.scratch/check.comot     # 記下回傳的識別碼
-node packages/cli/bin/comotion.js ls <識別碼> slides
-node packages/cli/bin/comotion.js comment list <識別碼>
-node packages/cli/bin/comotion.js cat <識別碼> slides/001.svg
+mkdir -p .scratch && export SLIDRA_HOME="$PWD/.scratch/home"
+node -e "import('./packages/core/dist/index.js').then(m=>m.packDirectory('fixtures/skills/check-deck','.scratch/check.slidra'))"
+node packages/cli/bin/slidra.js open ./.scratch/check.slidra     # 記下回傳的識別碼
+node packages/cli/bin/slidra.js ls <識別碼> slides
+node packages/cli/bin/slidra.js comment list <識別碼>
+node packages/cli/bin/slidra.js cat <識別碼> slides/001.svg
 ```
 
 把 `check-deck` 換成 `outline-deck` 或 `reshape-deck` 就能打包開啟其他兩份。
@@ -19,9 +19,9 @@ node packages/cli/bin/comotion.js cat <識別碼> slides/001.svg
 
 | 目錄 | 驗證的 skill | 說明 |
 |---|---|---|
-| `outline-deck/` | `/comotion-plan` 再 `/comotion-build` | `INPUT.md` 是一份 5 段大綱，`EXPECTED.md` 描述應該長成的 5 頁投影片 |
-| `reshape-deck/` | `/comotion-reshape` | 3 頁、預埋 5 則留言（3 則可處理、2 則不可處理），`EXPECTED.md` 逐則列出處理結果 |
-| `check-deck/` | `/comotion-validate` | 5 頁、沒有計畫檔、預埋 6 類結構問題（每類一個），`EXPECTED.md` 列出通讀步驟應釘留言的 (頁, target) 配對 |
+| `outline-deck/` | `/slidra-plan` 再 `/slidra-build` | `INPUT.md` 是一份 5 段大綱，`EXPECTED.md` 描述應該長成的 5 頁投影片 |
+| `reshape-deck/` | `/slidra-reshape` | 3 頁、預埋 5 則留言（3 則可處理、2 則不可處理），`EXPECTED.md` 逐則列出處理結果 |
+| `check-deck/` | `/slidra-validate` | 5 頁、沒有計畫檔、預埋 6 類結構問題（每類一個），`EXPECTED.md` 列出通讀步驟應釘留言的 (頁, target) 配對 |
 
 ## 驗收紀錄放哪
 

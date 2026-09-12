@@ -1,30 +1,30 @@
-# CoMotion Agent 工作手冊
+# Slidra Agent 工作手冊
 
 這份文件鋪設在你（agent）的工作目錄裡，是穩定不變的長期指引；每次對話開頭收到的編輯規約只講會變的東西（識別碼、引號規則），其餘都在這裡與 `reference/`，隨時用原生的檔案讀取能力回來查。
 
-每次啟動 `comotion serve` 都會用套件內建的版本整個重鋪這個工作目錄；你在這裡做的任何改動都不會被保留，筆記請留在對話裡。
+每次啟動 `slidra serve` 都會用套件內建的版本整個重鋪這個工作目錄；你在這裡做的任何改動都不會被保留，筆記請留在對話裡。
 
-## CoMotion 是什麼
+## Slidra 是什麼
 
-CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器操作簡報，你（agent）用 `comotion` 命令操作同一份簡報——兩邊改的是同一個檔案，不是各自的副本。一份簡報的每一張投影片都是一份合法的 SVG，SVG 本身就是成品；除了 SVG 之外，沒有更權威的表示法在它背後。
+Slidra 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器操作簡報，你（agent）用 `slidra` 命令操作同一份簡報——兩邊改的是同一個檔案，不是各自的副本。一份簡報的每一張投影片都是一份合法的 SVG，SVG 本身就是成品；除了 SVG 之外，沒有更權威的表示法在它背後。
 
 ## 環境與限制
 
-編輯規約已經講了：簡報的內容只能透過 `comotion` 命令讀寫，其他 shell 命令不受限制。這裡補三件它沒講的：
+編輯規約已經講了：簡報的內容只能透過 `slidra` 命令讀寫，其他 shell 命令不受限制。這裡補三件它沒講的：
 
 - 「只能透過命令」指的是簡報的實體檔案：拿 shell 的檔案工具（`sed`、`cp`、`rm` 之類）去動它們會被擋下，而且你本來就拿不到那些路徑。跟簡報無關的命令（查資料、處理暫存檔、跑別的工具）照你平常的方式做。
-- 被擋下時你收到的是「使用者拒絕了這次工具使用」這種訊息，看起來像作者按了拒絕，其實不是——CoMotion 會另外告訴你該改用哪個命令，照著改，不要問作者為什麼拒絕。
+- 被擋下時你收到的是「使用者拒絕了這次工具使用」這種訊息，看起來像作者按了拒絕，其實不是——Slidra 會另外告訴你該改用哪個命令，照著改，不要問作者為什麼拒絕。
 - 色碼記得包引號（`'#3366FF'`），否則 `#` 之後會被 shell 當成註解吃掉。
 
 ## 命令參考
 
-`comotion` 完整的命令清單——每個命令的名稱、參數與一句用途——在 [`reference/commands.md`](reference/commands.md)。動手前先查那份參考，不要用編輯規約裡的兩個範例去猜其他命令的語法。
+`slidra` 完整的命令清單——每個命令的名稱、參數與一句用途——在 [`reference/commands.md`](reference/commands.md)。動手前先查那份參考，不要用編輯規約裡的兩個範例去猜其他命令的語法。
 
-版面、字級、配色角色、動畫與驗證規則一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)，可匯入的開源字型依 [`reference/fonts.md`](reference/fonts.md)。設計規則的驗證交給 `comotion validate` 命令，不要自己心算。
+版面、字級、配色角色、動畫與驗證規則一律依 [`reference/slide-design.md`](reference/slide-design.md)，敘事模式與節奏依 [`reference/modes.md`](reference/modes.md)，可匯入的開源字型依 [`reference/fonts.md`](reference/fonts.md)。設計規則的驗證交給 `slidra validate` 命令，不要自己心算。
 
 ## 虛擬檔案結構
 
-一份簡報是這樣的一組虛擬路徑，你只能用 `comotion` 命令讀寫它們（實體檔案在哪裡你拿不到，也不需要知道）：
+一份簡報是這樣的一組虛擬路徑，你只能用 `slidra` 命令讀寫它們（實體檔案在哪裡你拿不到，也不需要知道）：
 
 - `project.json`：簡報的中繼資料（名稱、畫布尺寸、投影片清單、內嵌字型）。
 - `slides/00N.svg`：每一頁投影片，索引從 1 開始，檔名補零到三位（第 2 頁是 `slides/002.svg`）。整頁寫入用 `slide add --svg`／`slide set --svg`，規則見 `reference/slide-design.md` 第 0 節。
@@ -35,21 +35,21 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 
 ## SVG 約定重點
 
-- 每一個可編輯的圖元都包在 `<g id="el-…" data-comot-name="…">` 容器裡；裸圖元會被大多數命令拒絕，並要求先跑 `convert`。
-- 元素識別碼一律從 `comotion` 的回傳或 `cat` 的結果讀出來，動手前先 `cat` 那一頁。
+- 每一個可編輯的圖元都包在 `<g id="el-…" data-slidra-name="…">` 容器裡；裸圖元會被大多數命令拒絕，並要求先跑 `convert`。
+- 元素識別碼一律從 `slidra` 的回傳或 `cat` 的結果讀出來，動手前先 `cat` 那一頁。
 - 整頁寫入（`slide add --svg`／`slide set --svg`）**有閘門**：這一頁自己的幾何、文字量、字級配色、角色自洽、資產路徑、scrim 沒過就整頁拒收，什麼都不會寫進去。被拒不是作者按了拒絕，回傳會列出每一條沒過的規則。送出前先照 `reference/slide-design.md` 第 0 節的自檢清單算一遍——**文字框的行數要自己估**，標題折成兩行卻沒把下一個元素往下挪，是最常見的一種。
-- 引用資產（圖片的 `href`、影音的 `data-comot-media`）在頁面 SVG 裡寫 `../assets/…`——投影片住在 `slides/` 底下，路徑是相對於它的。`asset import` 回傳的 `assets/…` 是虛擬路徑，整頁寫入時會自動補成 `../assets/…`，但指到不存在的檔案仍然只會畫出一塊空白，由 `validate` 的 `asset.missing` 抓。
-- 備忘稿存在 `<metadata><comot:notes>` 裡，只能用 `cat` 讀。
-- 留言存在 `<metadata><comot:comments>` 裡，`comment list` 讀、`comment add` 寫、`comment delete` 刪。
-- 動畫效果存在 `<metadata><comot:effects>` 裡，排列順序就是播放順序。`effect list` 在這張投影片沒有任何效果時結束碼是非零——這代表「沒有動畫」，不是錯誤。
+- 引用資產（圖片的 `href`、影音的 `data-slidra-media`）在頁面 SVG 裡寫 `../assets/…`——投影片住在 `slides/` 底下，路徑是相對於它的。`asset import` 回傳的 `assets/…` 是虛擬路徑，整頁寫入時會自動補成 `../assets/…`，但指到不存在的檔案仍然只會畫出一塊空白，由 `validate` 的 `asset.missing` 抓。
+- 備忘稿存在 `<metadata><slidra:notes>` 裡，只能用 `cat` 讀。
+- 留言存在 `<metadata><slidra:comments>` 裡，`comment list` 讀、`comment add` 寫、`comment delete` 刪。
+- 動畫效果存在 `<metadata><slidra:effects>` 裡，排列順序就是播放順序。`effect list` 在這張投影片沒有任何效果時結束碼是非零——這代表「沒有動畫」，不是錯誤。
 
 ## 工作慣例
 
-- 改動任何一頁之前，先 `comotion cat <presentation-id> slides/00N.svg` 讀一次目前的內容。
+- 改動任何一頁之前，先 `slidra cat <presentation-id> slides/00N.svg` 讀一次目前的內容。
 - 你這一輪回覆裡下的所有命令，會被合併成作者按一次 undo 就能整段復原的一個群組——所以一個要求在同一輪做完；`undo`／`redo` 動到的是與作者共用的同一條歷史，不拿來試錯。
 - 留言處理完就 `comment delete` 刪掉；做不到的留言保留原文，在對話裡就那一則提問。
 - 一次只做一頁，做完確認過再做下一頁；使用者一次要求做多頁時，中途出錯才知道停在哪裡。**這是下命令的節奏，不是結束回合的理由**——一頁做完就接著做下一頁，不要停下來報進度。
-- 同一份簡報上的 `comotion` 命令由 CLI 自己排隊執行，平行下多條命令安全但不會比較快；一次一條、看完結果再下下一條，出錯時才知道是哪一條。
+- 同一份簡報上的 `slidra` 命令由 CLI 自己排隊執行，平行下多條命令安全但不會比較快；一次一條、看完結果再下下一條，出錯時才知道是哪一條。
 
 ## 一輪做到哪裡才算完
 
@@ -73,7 +73,7 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 
 ## 收尾條件
 
-**只要這一輪動過任何一頁的內容，回覆之前的最後一件事一定是 `comotion validate <presentation-id>`**（只動一頁時可以只驗那一頁），並且把結果寫進回覆的第一行：`validate 0 錯誤` 或 `validate 還有 N 個錯誤`。
+**只要這一輪動過任何一頁的內容，回覆之前的最後一件事一定是 `slidra validate <presentation-id>`**（只動一頁時可以只驗那一頁），並且把結果寫進回覆的第一行：`validate 0 錯誤` 或 `validate 還有 N 個錯誤`。
 
 沒跑過 validate 就不知道有沒有做壞，「看起來沒問題」不算數：文字會不會折行、折了之後會不會壓到下一個元素、圖片指到的資產在不在、字級與配色有沒有偏離規格，都是你下命令時看不到、只有 validate 看得到的事。
 
@@ -81,22 +81,22 @@ CoMotion 是一個簡報編輯工具。作者在瀏覽器裡的圖形編輯器�
 
 ## Skills
 
-每一個 skill 的完整步驟都在你工作目錄的 `.agents/skills/<名稱>/SKILL.md`（Claude Code 讀的是同一份內容的 `.claude/skills/<名稱>/SKILL.md`）。目錄名、`SKILL.md` 的 `name`、作者打的斜線命令三者完全一致。**只要作者的訊息以 `/comotion-<名稱>` 開頭，就代表他要你照那個 skill 做**：先讀該 `SKILL.md`，再照裡面的步驟執行，斜線後面的文字就是這個 skill 的輸入。
+每一個 skill 的完整步驟都在你工作目錄的 `.agents/skills/<名稱>/SKILL.md`（Claude Code 讀的是同一份內容的 `.claude/skills/<名稱>/SKILL.md`）。目錄名、`SKILL.md` 的 `name`、作者打的斜線命令三者完全一致。**只要作者的訊息以 `/slidra-<名稱>` 開頭，就代表他要你照那個 skill 做**：先讀該 `SKILL.md`，再照裡面的步驟執行，斜線後面的文字就是這個 skill 的輸入。
 
 三個素材庫（`style-kit`、`background-kit`、`layout-kit`）是 `plan` 與 `build` 正常流程的一部分：計畫階段從風格庫適配配色與背景配方，建置階段逐頁從版面庫挑版面。三個庫都是「目錄是起點，不是白名單」——可以改、可以混、也可以自己生。
 
 | 作者打的 | skill | 什麼時候用 |
 |---|---|---|
-| `/comotion-plan` | `comotion-plan` | 把大綱規劃成逐頁計畫與設計規格，寫進 `plan/` 後等作者在確認視窗拍板 |
-| `/comotion-build` | `comotion-build` | 依確認過的計畫一頁寫一份 SVG、套動畫、登記範本，`validate` 修到 0 錯誤 |
-| `/comotion-new-slide` | `comotion-new-slide` | 加一頁講某件事 |
-| `/comotion-validate` | `comotion-validate` | 跑 `comotion validate` 並通讀錯字與動畫順序，把每個問題釘成留言，只留言不動手 |
-| `/comotion-reshape` | `comotion-reshape` | 逐則處理釘選留言，改完刪留言 |
-| `/comotion-animate` | `comotion-animate` | 為指定頁或整份加上依序揭露的動畫與轉場 |
-| `/comotion-style` | `comotion-style` | 統一整份的字級、顏色與字型，或把某頁樣式套到全部 |
-| `/comotion-notes` | `comotion-notes` | 依每頁內容補上口語化的備忘稿，可指定時長 |
-| `/comotion-table` | `comotion-table` | 把貼上的 Markdown 表格在指定頁做成表格 |
-| `/comotion-chart` | `comotion-chart` | 用一組數列在指定頁做出圖表，可選雙軸與堆疊 |
-| `/comotion-style-kit` | `comotion-style-kit` | 從風格庫挑一種寫進 `plan/design-spec.md` |
-| `/comotion-background-kit` | `comotion-background-kit` | 從背景庫挑一種配方建成資產並套到頁面 |
-| `/comotion-layout-kit` | `comotion-layout-kit` | 從版面庫挑一種排某一頁 |
+| `/slidra-plan` | `slidra-plan` | 把大綱規劃成逐頁計畫與設計規格，寫進 `plan/` 後等作者在確認視窗拍板 |
+| `/slidra-build` | `slidra-build` | 依確認過的計畫一頁寫一份 SVG、套動畫、登記範本，`validate` 修到 0 錯誤 |
+| `/slidra-new-slide` | `slidra-new-slide` | 加一頁講某件事 |
+| `/slidra-validate` | `slidra-validate` | 跑 `slidra validate` 並通讀錯字與動畫順序，把每個問題釘成留言，只留言不動手 |
+| `/slidra-reshape` | `slidra-reshape` | 逐則處理釘選留言，改完刪留言 |
+| `/slidra-animate` | `slidra-animate` | 為指定頁或整份加上依序揭露的動畫與轉場 |
+| `/slidra-style` | `slidra-style` | 統一整份的字級、顏色與字型，或把某頁樣式套到全部 |
+| `/slidra-notes` | `slidra-notes` | 依每頁內容補上口語化的備忘稿，可指定時長 |
+| `/slidra-table` | `slidra-table` | 把貼上的 Markdown 表格在指定頁做成表格 |
+| `/slidra-chart` | `slidra-chart` | 用一組數列在指定頁做出圖表，可選雙軸與堆疊 |
+| `/slidra-style-kit` | `slidra-style-kit` | 從風格庫挑一種寫進 `plan/design-spec.md` |
+| `/slidra-background-kit` | `slidra-background-kit` | 從背景庫挑一種配方建成資產並套到頁面 |
+| `/slidra-layout-kit` | `slidra-layout-kit` | 從版面庫挑一種排某一頁 |

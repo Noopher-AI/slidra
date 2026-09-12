@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-p5-b" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>
-      <comot:effect target="el-p5-a" family="enter" effect="fade" start="after-previous" duration="0.6" delay="0"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-p5-b" family="enter" effect="fade" start="on-click" duration="0.6" delay="0"/>
+      <slidra:effect target="el-p5-a" family="enter" effect="fade" start="after-previous" duration="0.6" delay="0"/>
+    </slidra:effects>
   </metadata>
-  <g id="el-p5-title" data-comot-name="標題">
+  <g id="el-p5-title" data-slidra-name="標題">
     <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">結語</text>
   </g>
-  <g id="el-p5-a" data-comot-name="項目一" transform="translate(80 200)">
+  <g id="el-p5-a" data-slidra-name="項目一" transform="translate(80 200)">
     <text font-family="Noto Sans TC" font-size="24" fill="#333333">項目一：先出現在畫面上方</text>
   </g>
-  <g id="el-p5-b" data-comot-name="項目二" transform="translate(80 400)">
+  <g id="el-p5-b" data-slidra-name="項目二" transform="translate(80 400)">
     <text font-family="Noto Sans TC" font-size="24" fill="#333333">項目二：在畫面下方，但動畫卻先播放</text>
   </g>
 </svg>

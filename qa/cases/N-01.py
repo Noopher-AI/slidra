@@ -98,9 +98,9 @@ def _title_transform(svg_text: str) -> str | None:
 
 def _server_url() -> str:
     # qa/agent_helpers.py 的 `_server_url()` 是私有名稱，exec() 注入時被
-    # 濾掉；`CO_MOTION_QA_URL` 是同一份資訊的公開來源（`quick_start.sh`
+    # 濾掉；`SLIDRA_QA_URL` 是同一份資訊的公開來源（`quick_start.sh`
     # 寫進 qa.env），用它就不必自己重造一個同名原語。
-    return os.environ.get("CO_MOTION_QA_URL", "http://127.0.0.1:5173").rstrip("/")
+    return os.environ.get("SLIDRA_QA_URL", "http://127.0.0.1:5173").rstrip("/")
 
 
 def _move_and_undo(label: str, next_n: int, to_point) -> int:

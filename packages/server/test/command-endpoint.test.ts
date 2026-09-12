@@ -9,7 +9,7 @@ import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -20,7 +20,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -51,26 +51,26 @@ const fakeAgent: AgentAdapterConfig = {
 
 const SLIDE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 200)"><rect x="0" y="0" width="50" height="50" fill="#c66"/></g></svg>';
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-cmd-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-cmd-static-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-cmd-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-cmd-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-cmd-static-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -87,9 +87,9 @@ async function openDeck(fileName: string): Promise<string> {
     ),
     "slides/001.svg": new TextEncoder().encode(SLIDE),
   });
-  const comotPath = path.join(comotDir, fileName);
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, fileName);
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -138,7 +138,7 @@ async function readProjectJson(presentationId: string): Promise<Record<string, u
 }
 
 it("白名單內的 element move 會實際改到投影片，並回 200 與 CommandResult", async () => {
-  const id = await openDeck("move.comot");
+  const id = await openDeck("move.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -153,7 +153,7 @@ it("白名單內的 element move 會實際改到投影片，並回 200 與 Comma
 });
 
 it("白名單外的命令回 403，而且根本不會進 dispatch：投影片位元組不變", async () => {
-  const id = await openDeck("blacklist.comot");
+  const id = await openDeck("blacklist.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 
@@ -168,7 +168,7 @@ it("白名單外的命令回 403，而且根本不會進 dispatch：投影片位
 });
 
 it("[E2.T3] slide delete／duplicate／move／notes set 四條新命令不再回 403", async () => {
-  const id = await openDeck("whitelist-page-management.comot");
+  const id = await openDeck("whitelist-page-management.slidra");
   const server = await serve(id);
 
   const notes = await postCommand(server, {
@@ -201,8 +201,8 @@ it("[E2.T3] slide delete／duplicate／move／notes set 四條新命令不再回
 });
 
 it("input 帶了自己的 id 也沒用：server 一律覆寫成自己啟動時的 presentationId", async () => {
-  const idA = await openDeck("a.comot");
-  const idB = await openDeck("b.comot");
+  const idA = await openDeck("a.slidra");
+  const idB = await openDeck("b.slidra");
   expect(idA).not.toBe(idB);
   const server = await serve(idA);
   const bBefore = await readSlide(idB);
@@ -219,7 +219,7 @@ it("input 帶了自己的 id 也沒用：server 一律覆寫成自己啟動時�
 });
 
 it("body 不是 JSON、input 不是物件、name 不是字串 → 400", async () => {
-  const id = await openDeck("bad.comot");
+  const id = await openDeck("bad.slidra");
   const server = await serve(id);
 
   expect((await postCommand(server, null, { raw: "{ not json" })).status).toBe(400);
@@ -229,7 +229,7 @@ it("body 不是 JSON、input 不是物件、name 不是字串 → 400", async ()
 });
 
 it("body 超過上限 → 400，且不會進 dispatch", async () => {
-  const id = await openDeck("big.comot");
+  const id = await openDeck("big.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 
@@ -240,7 +240,7 @@ it("body 超過上限 → 400，且不會進 dispatch", async () => {
 });
 
 it("dispatch 回 not-found → 404；其餘失敗 → 500", async () => {
-  const id = await openDeck("notfound.comot");
+  const id = await openDeck("notfound.slidra");
   const server = await serve(id);
 
   const missingSlide = await postCommand(server, {
@@ -259,7 +259,7 @@ it("dispatch 回 not-found → 404；其餘失敗 → 500", async () => {
 });
 
 it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", async () => {
-  const id = await openDeck("origin.comot");
+  const id = await openDeck("origin.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 
@@ -276,13 +276,13 @@ it("Origin: null 仍被既有的全域閘門擋下，這條路由沒有例外", 
 // The three "every whitelisted name is not 403" loop tests that used to
 // live here (this one, plus the 14-command table loop and the 8-command
 // chart loop below) are deleted (plan §6.1) — merged into
-// `comotion.test.ts`'s "COMMAND_WHITELIST ⇔ 編碼器鍵集合完全相等" test,
+// `slidra.test.ts`'s "COMMAND_WHITELIST ⇔ 編碼器鍵集合完全相等" test,
 // which asserts the same fact (every whitelisted name has an encoder, so
 // none of them can 403) as a pure unit test that also proves each name
 // encodes to a real argv, without spawning 43 subprocesses.
 
 it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("resize.comot");
+  const id = await openDeck("resize.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -296,7 +296,7 @@ it("NOOP-90/T2：element resize 在 COMMAND_WHITELIST 內，會實際改到投�
 });
 
 it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("delete-duplicate.comot");
+  const id = await openDeck("delete-duplicate.slidra");
   const server = await serve(id);
 
   const duplicated = await postCommand(server, {
@@ -317,8 +317,8 @@ it("NOOP-90/T2：element delete 與 element duplicate 在 COMMAND_WHITELIST 內�
   expect(await readSlide(id)).not.toContain('id="el-a"');
 });
 
-it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投影片（D4：面板 caption 落地成 data-comot-name）", async () => {
-  const id = await openDeck("element-name-set.comot");
+it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投影片（D4：面板 caption 落地成 data-slidra-name）", async () => {
+  const id = await openDeck("element-name-set.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -328,11 +328,11 @@ it("[E2.T17]：element name set 在 COMMAND_WHITELIST 內，會實際改到投�
 
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
-  expect(await readSlide(id)).toContain('data-comot-name="封面影片"');
+  expect(await readSlide(id)).toContain('data-slidra-name="封面影片"');
 });
 
 it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實際改到 project.json", async () => {
-  const id = await openDeck("template-commands.comot");
+  const id = await openDeck("template-commands.slidra");
   const server = await serve(id);
 
   const added = await postCommand(server, {
@@ -360,7 +360,7 @@ it("[E4.T7]：template add/list/rename/delete 在 COMMAND_WHITELIST 內，會實
 });
 
 it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("style-set.comot");
+  const id = await openDeck("style-set.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -374,7 +374,7 @@ it("NOOP-143：element style set 在 COMMAND_WHITELIST 內，會實際改到投�
 });
 
 it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("table-create.comot");
+  const id = await openDeck("table-create.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -384,11 +384,11 @@ it("E2.T14：table create 在 COMMAND_WHITELIST 內，會實際改到投影片",
 
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
-  expect(await readSlide(id)).toContain('data-comot-type="table"');
+  expect(await readSlide(id)).toContain('data-slidra-type="table"');
 });
 
 it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("chart-create.comot");
+  const id = await openDeck("chart-create.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -398,11 +398,11 @@ it("E2.T12：chart create 在 COMMAND_WHITELIST 內，會實際改到投影片",
 
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
-  expect(await readSlide(id)).toContain('data-comot-type="chart"');
+  expect(await readSlide(id)).toContain('data-slidra-type="chart"');
 });
 
-it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投影片位元組不變（transform／data-comot-name）", async () => {
-  const id = await openDeck("style-set-forbidden.comot");
+it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投影片位元組不變（transform／data-slidra-name）", async () => {
+  const id = await openDeck("style-set-forbidden.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 
@@ -414,7 +414,7 @@ it("#200 §5-E：element style set 收到白名單外的屬性仍被拒絕，投
 
   const dataAttrResult = await postCommand(server, {
     name: "element style set",
-    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "data-comot-name", value: "x" },
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], attr: "data-slidra-name", value: "x" },
   });
   expect(dataAttrResult.status).not.toBe(200);
 
@@ -425,7 +425,7 @@ async function openTextBoxDeck(fileName: string): Promise<string> {
   const { zipSync } = await import("fflate");
   const textBoxSlide =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-    '<g id="el-text" data-comot-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
+    '<g id="el-text" data-slidra-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
     "</svg>";
   const zipped = zipSync({
     "project.json": new TextEncoder().encode(
@@ -438,15 +438,15 @@ async function openTextBoxDeck(fileName: string): Promise<string> {
     ),
     "slides/001.svg": new TextEncoder().encode(textBoxSlide),
   });
-  const comotPath = path.join(comotDir, fileName);
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, fileName);
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
 
 it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openTextBoxDeck("textbox-align.comot");
+  const id = await openTextBoxDeck("textbox-align.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -456,11 +456,11 @@ it("#200：textbox align 在 COMMAND_WHITELIST 內，會實際改到投影片", 
 
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
-  expect(await readSlide(id)).toContain('data-comot-text-align="center"');
+  expect(await readSlide(id)).toContain('data-slidra-text-align="center"');
 });
 
 it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("slide-style-set.comot");
+  const id = await openDeck("slide-style-set.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -472,11 +472,11 @@ it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片"
   expect(json.ok).toBe(true);
   const slide = await readSlide(id);
   expect(slide).toContain("background-color:#202020");
-  expect(slide).toContain("--comot-accent:#00ff00");
+  expect(slide).toContain("--slidra-accent:#00ff00");
 });
 
 it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
-  const id = await openDeck("slide-background-set.comot");
+  const id = await openDeck("slide-background-set.slidra");
   const imported = await runCli<{ path: string }>([
     "asset", "import", id, "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>', "--name", "bg.svg",
   ]);
@@ -490,7 +490,7 @@ it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投�
   expect(set.status).toBe(200);
   expect(set.json.ok).toBe(true);
   const slide = await readSlide(id);
-  expect(slide).toContain('data-comot-role="background"');
+  expect(slide).toContain('data-slidra-role="background"');
   expect(slide).toContain('href="../assets/bg.svg"');
   expect(slide).toContain('opacity="0.5"');
 
@@ -500,11 +500,11 @@ it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投�
   });
   expect(cleared.status).toBe(200);
   expect(cleared.json.ok).toBe(true);
-  expect(await readSlide(id)).not.toContain('data-comot-role="background"');
+  expect(await readSlide(id)).not.toContain('data-slidra-role="background"');
 });
 
 it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {
-  const id = await openDeck("presentation-canvas-set.comot");
+  const id = await openDeck("presentation-canvas-set.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -519,7 +519,7 @@ it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 p
 });
 
 it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投影片 SVG（取代 presentation transition set 寫 project.json）", async () => {
-  const id = await openDeck("transition-fade.comot");
+  const id = await openDeck("transition-fade.slidra");
   const server = await serve(id);
 
   const { status, json } = await postCommand(server, {
@@ -534,7 +534,7 @@ it("[A8] slide transition set：白名單內的合法值回 2xx，並寫進投�
 });
 
 it("slide transition set：白名單外的 enter 值被命令層拒絕，SVG 不變", async () => {
-  const id = await openDeck("transition-bad.comot");
+  const id = await openDeck("transition-bad.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 
@@ -548,7 +548,7 @@ it("slide transition set：白名單外的 enter 值被命令層拒絕，SVG 不
 });
 
 it("一次人類操作即使同時改變多個屬性（dx 與 dy），也只佔一格復原：一次 undo 就整個復原，第二次 undo 落空", async () => {
-  const id = await openDeck("undo-group.comot");
+  const id = await openDeck("undo-group.slidra");
   const server = await serve(id);
   const before = await readSlide(id);
 

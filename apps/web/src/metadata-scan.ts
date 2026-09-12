@@ -3,12 +3,12 @@
  * core's `slide/scan.ts` scanDocument (F8, NOOP-289 決定 M1).
  *
  * Ported rather than replaced with `DOMParser` on purpose: notes/comments
- * written before core's `xmlns:comot` fix are still sitting on disk without
+ * written before core's `xmlns:slidra` fix are still sitting on disk without
  * a bound namespace prefix, and `DOMParser().parseFromString(...,
  * "image/svg+xml")` treats an unbound prefix as a fatal parse error. A
  * byte-offset scanner has no notion of namespace binding at all, so it
  * reads old and new files identically — `apps/web/test/notes.test.ts`
- * pins this down for `<comot:notes>`. Only what `notes.ts`/`comments.ts`
+ * pins this down for `<slidra:notes>`. Only what `notes.ts`/`comments.ts`
  * actually need (element tree with byte offsets, first-wins attribute
  * lookup) is kept — no splicing helpers, since the browser never writes
  * metadata back.
@@ -216,10 +216,10 @@ function scanNodes(
   return { nodes, next: svg.length, closeStart: svg.length };
 }
 
-// --- 留言 (`<comot:comment>`) — web's own copy of core's `readSlideComments` (read-only: the browser never writes metadata back) ---
+// --- 留言 (`<slidra:comment>`) — web's own copy of core's `readSlideComments` (read-only: the browser never writes metadata back) ---
 
-const COMMENTS_TAG = "comot:comments";
-const COMMENT_TAG = "comot:comment";
+const COMMENTS_TAG = "slidra:comments";
+const COMMENT_TAG = "slidra:comment";
 const METADATA_TAG = "metadata";
 
 export interface SlideComment {
@@ -253,7 +253,7 @@ function readComment(node: ScannedNode, svgContent: string): SlideComment {
   return { id, target, author, created, text: unescapeXmlText(raw) };
 }
 
-/** Reads out a slide's comments in document order. A missing `<metadata>`, a missing `<comot:comments>`, and an empty list all read the same: `[]`. */
+/** Reads out a slide's comments in document order. A missing `<metadata>`, a missing `<slidra:comments>`, and an empty list all read the same: `[]`. */
 export function readSlideComments(svgContent: string): SlideComment[] {
   const roots = scanDocument(svgContent);
   const svgRoot = roots.find((node) => node.tag === "svg");

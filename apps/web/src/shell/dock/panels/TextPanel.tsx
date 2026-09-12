@@ -25,7 +25,7 @@ interface PresetSpec {
   placeholderText: string;
 }
 
-// Verbatim from docs/design/prototype/comotion-logic-v3.js:203 (NOOP-65 計畫 §3.8) —
+// Verbatim from docs/design/prototype/slidra-logic-v3.js:203 (NOOP-65 計畫 §3.8) —
 // size/weight/width are percentages of the canvas's own width; positions
 // below (§7 決定 t/l) are computed against the ACTUAL open presentation's
 // canvas size, never a hard-coded 1280×720.
@@ -43,7 +43,7 @@ const ALIGN_ORDER: { align: Align; label: string }[] = [
   { align: "right", label: "Right" },
 ];
 
-/** Top offset is fixed at 42% of the canvas height; left depends on alignment (原型 comotion-logic-v3.js:203 一致 — 見計畫 §3.8). */
+/** Top offset is fixed at 42% of the canvas height; left depends on alignment (原型 slidra-logic-v3.js:203 一致 — 見計畫 §3.8). */
 function positionPercent(align: Align, widthPercent: number): { tPercent: number; lPercent: number } {
   const lPercent = align === "center" ? 50 - widthPercent / 2 : align === "right" ? 92 - widthPercent : 8.4;
   return { tPercent: 42, lPercent };

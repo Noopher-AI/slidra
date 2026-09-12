@@ -1,4 +1,4 @@
-import { readSaveState } from "./comotion/save-state.js";
+import { readSaveState } from "./slidra/save-state.js";
 import type { ChangeBroadcaster } from "./changes.js";
 
 /**

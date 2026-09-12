@@ -13,14 +13,14 @@ const SVG_WITH_GROUP_TEXTBOX_TABLE =
   '<g id="el-group">' +
   '<g id="el-rect"><rect x="0" y="0" width="10" height="10"/></g>' +
   "</g>" +
-  '<g id="el-textbox" data-comot-text-width="400" data-comot-text-align="center">' +
+  '<g id="el-textbox" data-slidra-text-width="400" data-slidra-text-align="center">' +
   '<text font-family="Noto Sans TC" font-size="16"><tspan x="0" y="16">Hi</tspan></text>' +
   "</g>" +
-  '<g id="el-table" data-comot-type="table" data-comot-cols="100 100" data-comot-rows="40 40">' +
-  '<g data-comot-cell="0,0"><rect width="100" height="40" fill="#111111"/><text x="0" y="0"><tspan>a</tspan></text></g>' +
-  '<g data-comot-cell="0,1"><rect width="100" height="40" fill="#222222"/><text x="0" y="0"><tspan>b</tspan></text></g>' +
-  '<g data-comot-cell="1,0"><rect width="100" height="40" fill="#333333"/><text x="0" y="0"><tspan>c</tspan></text></g>' +
-  '<g data-comot-cell="1,1"><rect width="100" height="40" fill="#444444"/><text x="0" y="0"><tspan>d</tspan></text></g>' +
+  '<g id="el-table" data-slidra-type="table" data-slidra-cols="100 100" data-slidra-rows="40 40">' +
+  '<g data-slidra-cell="0,0"><rect width="100" height="40" fill="#111111"/><text x="0" y="0"><tspan>a</tspan></text></g>' +
+  '<g data-slidra-cell="0,1"><rect width="100" height="40" fill="#222222"/><text x="0" y="0"><tspan>b</tspan></text></g>' +
+  '<g data-slidra-cell="1,0"><rect width="100" height="40" fill="#333333"/><text x="0" y="0"><tspan>c</tspan></text></g>' +
+  '<g data-slidra-cell="1,1"><rect width="100" height="40" fill="#444444"/><text x="0" y="0"><tspan>d</tspan></text></g>' +
   "</g>" +
   "</svg>";
 
@@ -59,11 +59,11 @@ describe("parseSlide（F8, NOOP-289）", () => {
     expect(() => parseSlide('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toThrow(); // 沒有 viewBox
   });
 
-  it("data-comot-text-width 是非法值（非正數）時，該元素 textWidth 為 null（決定 (e)：只影響這一個元素，不讓整份 slide 解析失敗，與 core 寫入端會丟例外不同）", () => {
+  it("data-slidra-text-width 是非法值（非正數）時，該元素 textWidth 為 null（決定 (e)：只影響這一個元素，不讓整份 slide 解析失敗，與 core 寫入端會丟例外不同）", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<g id="el-a" data-comot-text-width="not-a-number"><text>Hi</text></g>' +
-      '<g id="el-b" data-comot-text-width="0"><text>Bye</text></g>' +
+      '<g id="el-a" data-slidra-text-width="not-a-number"><text>Hi</text></g>' +
+      '<g id="el-b" data-slidra-text-width="0"><text>Bye</text></g>' +
       "</svg>";
     const model = parseSlide(svg);
     expect(model.elements.find((e) => e.id === "el-a")!.textWidth).toBeNull();
@@ -73,7 +73,7 @@ describe("parseSlide（F8, NOOP-289）", () => {
   it("#303：有背景圖片時 backgroundImage 讀出 asset（去掉 ../）與 opacity", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<g id="el-background" data-comot-role="background" data-comot-lock="true">' +
+      '<g id="el-background" data-slidra-role="background" data-slidra-lock="true">' +
       '<image x="0" y="0" width="1280" height="720" href="../assets/bg.svg" opacity="0.5"/>' +
       "</g>" +
       "</svg>";

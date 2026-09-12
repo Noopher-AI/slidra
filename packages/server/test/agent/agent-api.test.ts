@@ -17,7 +17,7 @@ import { agentSettingsPath } from "../../src/agent/settings.js";
 import { requireCliBuilt } from "./require-cli-built.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -28,7 +28,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -55,20 +55,20 @@ const multiCommandFixture = path.join(
   "fixtures/multi-command-fake-acp-agent.mjs",
 );
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let logDir: string;
 let logPath: string;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "comotion-agentapi-log-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-agentapi-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-agentapi-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "slidra-agentapi-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
   streams = [];
 });
@@ -76,18 +76,18 @@ beforeEach(async () => {
 afterEach(async () => {
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -479,7 +479,7 @@ describe("GET /api/agent", () => {
 describe("POST /api/agent/select", () => {
   beforeAll(requireCliBuilt);
 
-  it("A5: persists across a restart — select codex, close, reopen with the same COMOTION_HOME, GET /api/agent still reports codex/settings", async () => {
+  it("A5: persists across a restart — select codex, close, reopen with the same SLIDRA_HOME, GET /api/agent still reports codex/settings", async () => {
     const id = await openFreshPresentation();
     const server1 = await serve({
       presentationId: id,
@@ -567,12 +567,12 @@ describe("POST /api/agent/select", () => {
 
   it("A9: refused (409, reason 'editing') while the agent holds the floor; session unswapped", async () => {
     const id = await openFreshPresentation();
-    const comotPath = path.join(comotDir, "extra.comot");
-    // A separate presentation so `comotion text set` has a real target
+    const slidraPath = path.join(slidraDir, "extra.slidra");
+    // A separate presentation so `slidra text set` has a real target
     // for the multi-command fixture's shell command.
-    const created = await runCli(["new", comotPath, "--name", "測試簡報二"]);
+    const created = await runCli(["new", slidraPath, "--name", "測試簡報二"]);
     expect(created.ok).toBe(true);
-    const opened = await runCli<{ id: string }>(["open", comotPath]);
+    const opened = await runCli<{ id: string }>(["open", slidraPath]);
     expect(opened.ok).toBe(true);
     const lockId = opened.data!.id;
     // `new` creates no slides (ADR-0018): mint a page and a text box for the command to target.
@@ -582,7 +582,7 @@ describe("POST /api/agent/select", () => {
     ]);
     expect(added.ok).toBe(true);
     const elementId = added.data!.elementId;
-    const command = `comotion text set ${lockId} slides/001.svg ${elementId} '改一次'`;
+    const command = `slidra text set ${lockId} slides/001.svg ${elementId} '改一次'`;
 
     const server = await serve({
       presentationId: lockId,

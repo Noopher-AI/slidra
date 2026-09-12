@@ -24,7 +24,7 @@ import {
 // fake ACP agent, the same posture chat.test.ts uses.
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-acp-agent.mjs");
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 const execFileAsync = promisify(execFile);
 
 interface CliEnvelope<T = unknown> {
@@ -36,7 +36,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -75,7 +75,7 @@ describe("readSkillCommands", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "comotion-skills-"));
+    dir = await mkdtemp(path.join(tmpdir(), "slidra-skills-"));
   });
 
   afterEach(async () => {
@@ -105,7 +105,7 @@ describe("readSkillCommands", () => {
   });
 
   it("a skill installed as a symlink to a directory elsewhere is picked up (how skillshare installs them)", async () => {
-    const elsewhere = await mkdtemp(path.join(tmpdir(), "comotion-skill-src-"));
+    const elsewhere = await mkdtemp(path.join(tmpdir(), "slidra-skill-src-"));
     await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: 透過 symlink 安裝\n---\n");
     await symlink(path.join(elsewhere, "linked"), path.join(dir, "linked"));
 
@@ -160,8 +160,8 @@ describe("collectSlashCommands", () => {
   let userDir: string;
 
   beforeEach(async () => {
-    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "comotion-user-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "slidra-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "slidra-user-"));
   });
 
   afterEach(async () => {
@@ -230,28 +230,28 @@ class SseReader {
 }
 
 describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () => {
-  let coMotionHome: string;
-  let comotDir: string;
+  let slidraHome: string;
+  let slidraDir: string;
   let bundledDir: string;
   let userDir: string;
   let servers: RunningServer[];
 
   beforeEach(async () => {
-    coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-cmd-home-"));
-    comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-files-"));
-    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-user-"));
-    process.env.COMOTION_HOME = coMotionHome;
-    process.env.COMOTION_BIN = coMotionBinPath;
+    slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-cmd-home-"));
+    slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-cmd-files-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "slidra-cmd-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "slidra-cmd-user-"));
+    process.env.SLIDRA_HOME = slidraHome;
+    process.env.SLIDRA_BIN = slidraBinPath;
     servers = [];
   });
 
   afterEach(async () => {
     await Promise.all(servers.map((server) => server.close()));
-    delete process.env.COMOTION_HOME;
-    delete process.env.COMOTION_BIN;
-    await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    delete process.env.SLIDRA_HOME;
+    delete process.env.SLIDRA_BIN;
+    await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(bundledDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(userDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
@@ -261,7 +261,7 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   }
 
   async function serve(agent: AgentAdapterConfig): Promise<RunningServer> {
-    const deckPath = path.join(comotDir, "deck.comot");
+    const deckPath = path.join(slidraDir, "deck.slidra");
     const created = await runCli(["new", deckPath, "--name", "測試簡報"]);
     expect(created.ok).toBe(true);
     const opened = await runCli<{ id: string }>(["open", deckPath]);
@@ -313,14 +313,14 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   });
 
   it("before any message is sent, GET returns only what the skill directories contribute (agent has reported nothing yet)", async () => {
-    // 出貨 skill 的目錄名本身就帶 `comotion-` 前綴（#248：名字要跟 agent
+    // 出貨 skill 的目錄名本身就帶 `slidra-` 前綴（#248：名字要跟 agent
     // 註冊的一致），和 agent／使用者自己的 skill 區隔開來。
-    await mkSkill(bundledDir, "comotion-plan", "---\nname: comotion-plan\ndescription: 出貨版\n---\n");
+    await mkSkill(bundledDir, "slidra-plan", "---\nname: slidra-plan\ndescription: 出貨版\n---\n");
     const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent 版" }] }));
 
     const response = await fetch(`${server.url}/api/agent/commands`);
     const body = (await response.json()) as { commands: SlashCommand[] };
-    expect(body.commands).toEqual([{ name: "comotion-plan", description: "出貨版", source: "bundled" }]);
+    expect(body.commands).toEqual([{ name: "slidra-plan", description: "出貨版", source: "bundled" }]);
   });
 
   it("no agent report and no skill directories at all: GET returns 200 with an empty list, not an error", async () => {

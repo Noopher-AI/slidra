@@ -52,7 +52,7 @@
 /* 名稱／群組／鑽入路徑標籤（05-INTERACTIONS.feature「選取」；色值取自原型
    docs/design/prototype 的選取標籤）。[E2.T8] 把定位從 `.selection-label`
    本身移到這個新的 row 容器，讓留言 pin 能以 flex row 的第二個子項出現在
-   標籤右側（同一列，`comotion-logic-v3.js`.dc.html:219-224）。 */
+   標籤右側（同一列，`slidra-logic-v3.js`.dc.html:219-224）。 */
 .selection-label-row {
   position: absolute;
   transform: translateY(-100%);

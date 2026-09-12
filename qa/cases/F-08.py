@@ -81,7 +81,7 @@ def _recover_stuck_runtime_ready(timeout: float = 5.0) -> bool:
 
     局部緩解（只加在本案例腳本，不改 `qa/agent_helpers.py`）：用不受這道門
     檻管制的核心原語 `click_at_xy`（`browser_harness.helpers` 本身，不是
-    CoMotion 的 `_click`）直接點當前這一頁自己的第一張縮圖，逼出一次「監聽
+    Slidra 的 `_click`）直接點當前這一頁自己的第一張縮圖，逼出一次「監聽
     器已就位之後」的真實 srcdoc 重建，讓卡住的 pending 被清掉——實測即使只
     有一張投影片（`--blank`）也一樣有效：重複點同一張縮圖仍會換手一次
     srcdoc。回傳是否已經（或本來就沒有）卡住。"""
@@ -166,7 +166,7 @@ def main() -> int:
     before = slide_svg(1)  # noqa: F821
     shot("F-08-before")  # noqa: F821
 
-    check("前置：頁面沒有設定 accent（本案例只驗證沒有 accent 的分支）", "--comot-accent" not in before, before[:200])
+    check("前置：頁面沒有設定 accent（本案例只驗證沒有 accent 的分支）", "--slidra-accent" not in before, before[:200])
     check(
         "前置：頁面尚無既有的 rect/ellipse/line 元素（避免與新插入的元素混淆）",
         re.search(r"<(rect|ellipse|line)\b", before) is None,

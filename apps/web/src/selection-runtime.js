@@ -22,7 +22,7 @@
   // parent's own tokens.css via getComputedStyle(document.documentElement),
   // never hard-coded here: this document is opaque-origin and has no
   // access to the parent's :root at all.
-  var colors = window.__COMOT_SELECTION_COLORS__ || {};
+  var colors = window.__SLIDRA_SELECTION_COLORS__ || {};
 
   // Captured once, at init, rather than read as `parent` at click/message
   // time: `window.parent` is a writable global on this document and a
@@ -35,7 +35,7 @@
   function post(message) {
     // Same reasoning as player-runtime.js's post(): this frame is
     // opaque-origin, so there is no meaningful target origin to name.
-    var payload = { source: "comot-selection" };
+    var payload = { source: "slidra-selection" };
     for (var key in message) {
       if (Object.prototype.hasOwnProperty.call(message, key)) {
         payload[key] = message[key];
@@ -74,7 +74,7 @@
   // runtime now runs before `bodyMarkup` is parsed (wrapSelectionDocument,
   // canvas.ts), so the host is no longer document.body's last child once
   // the slide markup lands after it.
-  host.setAttribute("data-comot-selection-host", "");
+  host.setAttribute("data-slidra-selection-host", "");
   var important = "important";
   host.style.setProperty("all", "initial", important);
   host.style.setProperty("display", "block", important);
@@ -133,7 +133,7 @@
     colors.accent +
     ";pointer-events:auto;display:none;}" +
     ".handle.corner{cursor:nwse-resize;}" +
-    ".handle.corner[data-comot-handle=ne],.handle.corner[data-comot-handle=sw]{cursor:nesw-resize;}" +
+    ".handle.corner[data-slidra-handle=ne],.handle.corner[data-slidra-handle=sw]{cursor:nesw-resize;}" +
     ".handle.rotate{border-radius:50%;cursor:grab;}" +
     ".handle.edge{cursor:ew-resize;}" +
     // In-place editing has no visible input of its own — the <textarea>
@@ -148,11 +148,11 @@
     ";pointer-events:none;display:none;}" +
     ".edit-caret{position:fixed;width:2px;background:" +
     colors.accent +
-    ";pointer-events:none;display:none;animation:comot-caret 1s step-end infinite;}" +
+    ";pointer-events:none;display:none;animation:slidra-caret 1s step-end infinite;}" +
     ".edit-selection{position:fixed;box-sizing:border-box;background:color-mix(in srgb, " +
     colors.accent +
     " 30%, transparent);pointer-events:none;display:none;}" +
-    "@keyframes comot-caret{50%{opacity:0;}}" +
+    "@keyframes slidra-caret{50%{opacity:0;}}" +
     // [E2.T17] plan §4.4: the stage media layer. `.media-overlay-el` (the
     // actual <video>/<audio>) stays pointer-events:none so a click on the
     // media surface still hits the SVG placeholder underneath it and
@@ -181,7 +181,7 @@
     var hname = HANDLE_NAMES[hi];
     var hel = document.createElement("div");
     hel.className = "handle " + (hname === "rotate" ? "rotate" : hname === "width-left" || hname === "width-right" ? "edge" : "corner");
-    hel.setAttribute("data-comot-handle", hname);
+    hel.setAttribute("data-slidra-handle", hname);
     shadow.appendChild(hel);
     handleEls[hname] = hel;
   }
@@ -337,11 +337,11 @@
   // stays at the end there).
   var pendingEditPoint = null;
 
-  /** Any ancestor (including `el` itself) carrying `data-comot-lock="true"` — the same walk `findSelectable` does, exposed standalone because the host-initiated `beginTextEdit` path never goes through a click at all and so never runs `findSelectable`. */
+  /** Any ancestor (including `el` itself) carrying `data-slidra-lock="true"` — the same walk `findSelectable` does, exposed standalone because the host-initiated `beginTextEdit` path never goes through a click at all and so never runs `findSelectable`. */
   function isLockedOrInsideLocked(el) {
     var current = el;
     while (current && current !== document.body) {
-      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") return true;
+      if (current.getAttribute && current.getAttribute("data-slidra-lock") === "true") return true;
       current = current.parentElement;
     }
     return false;
@@ -521,18 +521,18 @@
   // Kind derivation stays entirely in the parent (`player-plan.ts`'s
   // `stageMediaFor`, D3) — this runtime only ever builds what it is told
   // to, injected the same way `colors` is (canvas.ts's
-  // wrapSelectionDocument sets `window.__COMOT_SELECTION_MEDIA__` before
+  // wrapSelectionDocument sets `window.__SLIDRA_SELECTION_MEDIA__` before
   // this script runs). Keyed by untrusted SVG element ids (ADR-0010, a
   // legal id can be "__proto__") — read with `for...in` +
   // hasOwnProperty, never assumed to be a plain enumerable object.
-  var mediaTable = window.__COMOT_SELECTION_MEDIA__ || {};
+  var mediaTable = window.__SLIDRA_SELECTION_MEDIA__ || {};
   // [E2.T17]: ids of the slide's third-party embeds. The <iframe> lives in
   // the PARENT document (ADR-0011 — this document may never be granted
   // allow-same-origin, and a nested iframe's sandbox flags are the
   // intersection with this one's, so the YouTube player cannot work from
   // in here); this runtime only measures where each placeholder sits and
   // posts it out, so the parent can keep its overlay aligned.
-  var embedIds = window.__COMOT_SELECTION_EMBEDS__ || [];
+  var embedIds = window.__SLIDRA_SELECTION_EMBEDS__ || [];
 
   function reportEmbedBoxes() {
     if (embedIds.length === 0) return;
@@ -551,13 +551,13 @@
   // id -> { placeholder, media, bar, playButton, seek }
   var mediaOverlays = {};
 
-  /** `data-comot-media-control`'s value ("play"/"seek") at or inside `event`'s real (composed) target, or null — same `composedPath()` technique as `findHandleTarget` below, needed for the identical reason: a click/pointerdown on an element inside this open shadow root is retargeted to `host` for a window-level listener's own `event.target`. */
+  /** `data-slidra-media-control`'s value ("play"/"seek") at or inside `event`'s real (composed) target, or null — same `composedPath()` technique as `findHandleTarget` below, needed for the identical reason: a click/pointerdown on an element inside this open shadow root is retargeted to `host` for a window-level listener's own `event.target`. */
   function findMediaControlTarget(event) {
     var path = typeof event.composedPath === "function" ? event.composedPath() : [event.target];
     for (var i = 0; i < path.length; i++) {
       var node = path[i];
-      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-comot-media-control")) {
-        return node.getAttribute("data-comot-media-control");
+      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-slidra-media-control")) {
+        return node.getAttribute("data-slidra-media-control");
       }
     }
     return null;
@@ -574,7 +574,7 @@
    */
   function createMediaOverlay(id, cue, placeholder) {
     var el = document.createElement(cue.kind === "video" ? "video" : "audio");
-    // The raw data-comot-media value, unmodified — same contract as
+    // The raw data-slidra-media value, unmodified — same contract as
     // player-runtime.js's playMedia(): the view srcdoc already carries a
     // <base href="/api/raw/<slide dir>"> (wrapSelectionDocument, canvas.ts),
     // so the browser's own relative-URL resolution does the rest.
@@ -596,7 +596,7 @@
     var playButton = document.createElement("button");
     playButton.type = "button";
     playButton.className = "media-play";
-    playButton.setAttribute("data-comot-media-control", "play");
+    playButton.setAttribute("data-slidra-media-control", "play");
     playButton.textContent = "▶";
     bar.appendChild(playButton);
 
@@ -607,7 +607,7 @@
     seek.step = "0.01";
     seek.value = "0";
     seek.className = "media-seek";
-    seek.setAttribute("data-comot-media-control", "seek");
+    seek.setAttribute("data-slidra-media-control", "seek");
     bar.appendChild(seek);
 
     shadow.appendChild(bar);
@@ -676,7 +676,7 @@
    * Only reachable once `bodyMarkup`'s SVG has actually been parsed
    * (`window`'s `load` event, same timing `reportViewport()` already
    * relies on) — `document.getElementById` for a placeholder resolves to
-   * nothing before that. A `data-comot-media` id this table names but the
+   * nothing before that. A `data-slidra-media` id this table names but the
    * page turns out not to contain (should not happen — the table is
    * derived from this exact markup) is skipped, never thrown on.
    */
@@ -832,7 +832,7 @@
    * that used to do `el.querySelector("text")` now goes through this.
    */
   function contentTextElement(el) {
-    return el.querySelector('text:not([data-comot-list-marker])');
+    return el.querySelector('text:not([data-slidra-list-marker])');
   }
 
   /**
@@ -847,7 +847,7 @@
    * `tspan.textContent`, since bold/italic runs never add or remove a
    * character — 決定 B); `valueStart/valueEnd` is `textarea.value`'s own
    * space, which additionally counts one virtual character per hard break
-   * (`data-comot-break="1"`, 決定 A) that has no DOM position at all. Only
+   * (`data-slidra-break="1"`, 決定 A) that has no DOM position at all. Only
    * DIRECT child `<tspan>`s are lines — `getElementsByTagName` (this
    * function's pre-NOOP-65 shape) would also pick up nested run tspans and
    * double-count every bold/italic span as its own extra "line".
@@ -864,7 +864,7 @@
       for (var i = 0; i < directTspans.length; i++) {
         var tspan = directTspans[i];
         var domLen = tspan.textContent.length;
-        var hasBreak = tspan.getAttribute("data-comot-break") === "1";
+        var hasBreak = tspan.getAttribute("data-slidra-break") === "1";
         lines.push({
           valueStart: valueIdx,
           valueEnd: valueIdx + domLen + (hasBreak ? 1 : 0),
@@ -1093,7 +1093,7 @@
     var current = el.parentElement;
     while (current && current.tagName && current.tagName.toLowerCase() !== "svg") {
       if (current.hasAttribute && current.hasAttribute("id")) {
-        chain.unshift({ id: current.getAttribute("id"), name: current.getAttribute("data-comot-name") || null });
+        chain.unshift({ id: current.getAttribute("id"), name: current.getAttribute("data-slidra-name") || null });
       }
       current = current.parentElement;
     }
@@ -1159,8 +1159,8 @@
   /** `table-cells` host->runtime command (E2.T14, plan §4.5): every cell's client rect, plus the table's own box, for `id`'s table container. Silently reports nothing for an id that no longer resolves or is not a table — same "no fallback, just skip" posture `reportMeasured` above has for a stale id. */
   function reportTableCells(id) {
     var tableEl = document.getElementById(id);
-    if (!tableEl || tableEl.getAttribute("data-comot-type") !== "table") return;
-    var cellEls = tableEl.querySelectorAll("[data-comot-cell]");
+    if (!tableEl || tableEl.getAttribute("data-slidra-type") !== "table") return;
+    var cellEls = tableEl.querySelectorAll("[data-slidra-cell]");
     var cells = [];
     for (var i = 0; i < cellEls.length; i++) {
       var address = tableCellAddress(cellEls[i]);
@@ -1193,10 +1193,10 @@
    */
   function applyPreviewTableCols(id, cols) {
     var tableEl = document.getElementById(id);
-    if (!tableEl || tableEl.getAttribute("data-comot-type") !== "table" || !Array.isArray(cols)) return;
+    if (!tableEl || tableEl.getAttribute("data-slidra-type") !== "table" || !Array.isArray(cols)) return;
     if (!cols.every(function (value) { return typeof value === "number" && isFinite(value) && value > 0; })) return;
 
-    var cellEls = tableEl.querySelectorAll("[data-comot-cell]");
+    var cellEls = tableEl.querySelectorAll("[data-slidra-cell]");
     var colCount = cols.length;
     // Column left-edge x offsets, from the previewed widths.
     var offsets = [];
@@ -1275,7 +1275,7 @@
       // unlocked outer group and still be reachable. The lock check must
       // run on every ancestor on the way up, not just the one we end up
       // returning.
-      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") {
+      if (current.getAttribute && current.getAttribute("data-slidra-lock") === "true") {
         return null;
       }
       if (current.hasAttribute && current.hasAttribute("id")) outermost = current;
@@ -1290,7 +1290,7 @@
    * `id` (ADR-0012) makes this exactly "is `el` a group". A table's cells
    * (E2.T14) never carry `id` either, so this already returns `false` for
    * a table container with no further checks needed — the dblclick
-   * handler below still special-cases `data-comot-type="table"` FIRST so
+   * handler below still special-cases `data-slidra-type="table"` FIRST so
    * it opens cell editing instead of merely falling through to "not a
    * group, do nothing".
    */
@@ -1298,26 +1298,26 @@
     return !!(el && el.querySelector("[id]"));
   }
 
-  /** Walks up from `rawTarget` to the nearest `data-comot-cell` ancestor, or null (E2.T14, plan §4.5). */
+  /** Walks up from `rawTarget` to the nearest `data-slidra-cell` ancestor, or null (E2.T14, plan §4.5). */
   function findTableCellElement(rawTarget) {
     var current = rawTarget;
     while (current && current !== document.body) {
-      if (current.getAttribute && current.hasAttribute("data-comot-cell")) return current;
+      if (current.getAttribute && current.hasAttribute("data-slidra-cell")) return current;
       current = current.parentElement;
     }
     return null;
   }
 
-  /** Parses a cell `<g>`'s own `data-comot-cell="r,c"` into `{row, col}`, or null if malformed. */
+  /** Parses a cell `<g>`'s own `data-slidra-cell="r,c"` into `{row, col}`, or null if malformed. */
   function tableCellAddress(cellEl) {
-    var raw = cellEl.getAttribute("data-comot-cell");
+    var raw = cellEl.getAttribute("data-slidra-cell");
     var match = raw ? /^(\d+),(\d+)$/.exec(raw) : null;
     return match ? { row: Number(match[1]), col: Number(match[2]) } : null;
   }
 
   /** The template-row cell sharing `generatedCell`'s column, within the same table container — architecture: "雙擊編輯的是模板列" (plan §4.5). */
   function findTemplateCellForColumn(tableEl, col) {
-    var candidates = tableEl.querySelectorAll('[data-comot-repeat="row"]');
+    var candidates = tableEl.querySelectorAll('[data-slidra-repeat="row"]');
     for (var i = 0; i < candidates.length; i++) {
       var addr = tableCellAddress(candidates[i]);
       if (addr && addr.col === col) return candidates[i];
@@ -1431,8 +1431,8 @@
         return;
       }
       var id = target.getAttribute("id");
-      var name = target.getAttribute("data-comot-name");
-      var isTable = target.getAttribute("data-comot-type") === "table";
+      var name = target.getAttribute("data-slidra-name");
+      var isTable = target.getAttribute("data-slidra-type") === "table";
       // E2.T14 §4.5: every cell in a table resolves to the SAME container
       // id (cells carry no id of their own) — a ⇧-click on a second cell
       // of an ALREADY-selected table would otherwise hit the ordinary
@@ -1500,7 +1500,7 @@
       if (editingId !== null) return;
       var target = resolveClickTargetAtEvent(event);
       if (!target) return;
-      // A text box's container carries data-comot-text-width (#76) — double
+      // A text box's container carries data-slidra-text-width (#76) — double
       // clicking it opens in-place editing instead of the group-entry
       // logic below. resolveClickTarget already ran findSelectable, which
       // returns null (so `target` is null, handled above) for a locked
@@ -1508,7 +1508,7 @@
       // the "two checks" lock posture (§7 決定 8); enterRuntimeTextEdit's
       // own isLockedOrInsideLocked is the other half, for the
       // host-initiated beginTextEdit path this click never goes through.
-      if (target.hasAttribute("data-comot-text-width") || isPlainTextContainer(target)) {
+      if (target.hasAttribute("data-slidra-text-width") || isPlainTextContainer(target)) {
         pendingEditPoint = { x: event.clientX, y: event.clientY };
         post({ event: "dblclick-textbox", id: target.getAttribute("id") });
         return;
@@ -1533,7 +1533,7 @@
           groupPath = chain;
           selectedIds = [dblclickTable.getAttribute("id")];
           updateBoxes();
-          post(withGroupPath({ event: "select", id: dblclickTable.getAttribute("id"), name: dblclickTable.getAttribute("data-comot-name"), additive: false }));
+          post(withGroupPath({ event: "select", id: dblclickTable.getAttribute("id"), name: dblclickTable.getAttribute("data-slidra-name"), additive: false }));
           postTableCellDblclick(dblclickTable, event.target);
           return;
         }
@@ -1545,7 +1545,7 @@
       // once the chart itself is the resolved target — the group-drilling
       // branch below still runs first for the outer dblclick, exactly the
       // existing "group 鑽入" two-dblclick sequence plan §4.4 asks for.
-      if (target.getAttribute("data-comot-type") === "chart") {
+      if (target.getAttribute("data-slidra-type") === "chart") {
         post({ event: "dblclick-chart", id: target.getAttribute("id") });
         return;
       }
@@ -1558,16 +1558,16 @@
       }
       selectedIds = [inner.getAttribute("id")];
       updateBoxes();
-      post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-comot-name"), additive: false }));
+      post(withGroupPath({ event: "select", id: inner.getAttribute("id"), name: inner.getAttribute("data-slidra-name"), additive: false }));
     },
     true,
   );
 
-  /** The `data-comot-type="table"` container a cell belongs to, or null. */
+  /** The `data-slidra-type="table"` container a cell belongs to, or null. */
   function tableContainerOf(cellEl) {
     var current = cellEl.parentElement;
     while (current && current !== document.body) {
-      if (current.getAttribute && current.getAttribute("data-comot-type") === "table") return current;
+      if (current.getAttribute && current.getAttribute("data-slidra-type") === "table") return current;
       current = current.parentElement;
     }
     return null;
@@ -1575,13 +1575,13 @@
 
   /** The ids of every id-carrying container above `el` up to the slide root, outermost first — the `groupPath` that makes `el` the resolved target. `null` when `el` or any ancestor is locked (ADR-0013: not reachable in view mode at all). */
   function unlockedAncestorChain(el) {
-    if (el.getAttribute("data-comot-lock") === "true") return null;
+    if (el.getAttribute("data-slidra-lock") === "true") return null;
     var chain = [];
     var current = el.parentElement;
     while (current && current !== document.body) {
       var tag = current.tagName ? current.tagName.toLowerCase() : "";
       if (tag === "svg" && !current.ownerSVGElement) break;
-      if (current.getAttribute && current.getAttribute("data-comot-lock") === "true") return null;
+      if (current.getAttribute && current.getAttribute("data-slidra-lock") === "true") return null;
       if (current.hasAttribute && current.hasAttribute("id")) chain.unshift(current.getAttribute("id"));
       current = current.parentElement;
     }
@@ -1594,7 +1594,7 @@
     var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
     if (!cellAddress) return;
     var reportedRow = cellAddress.row;
-    if (tableCellEl.getAttribute("data-comot-generated") === "1") {
+    if (tableCellEl.getAttribute("data-slidra-generated") === "1") {
       var templateCell = findTemplateCellForColumn(tableEl, cellAddress.col);
       var templateAddress = templateCell && tableCellAddress(templateCell);
       if (templateAddress) reportedRow = templateAddress.row;
@@ -1708,13 +1708,13 @@
     }
   }
 
-  /** The `data-comot-handle` name at or inside `event`'s real (composed) target, or null. `composedPath()` sees into the open shadow root even though `event.target` itself gets retargeted to the shadow host once the event reaches a window-level listener. */
+  /** The `data-slidra-handle` name at or inside `event`'s real (composed) target, or null. `composedPath()` sees into the open shadow root even though `event.target` itself gets retargeted to the shadow host once the event reaches a window-level listener. */
   function findHandleTarget(event) {
     var path = typeof event.composedPath === "function" ? event.composedPath() : [event.target];
     for (var i = 0; i < path.length; i++) {
       var node = path[i];
-      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-comot-handle")) {
-        return node.getAttribute("data-comot-handle");
+      if (node && node.getAttribute && node.hasAttribute && node.hasAttribute("data-slidra-handle")) {
+        return node.getAttribute("data-slidra-handle");
       }
     }
     return null;
@@ -1770,7 +1770,7 @@
   // puts it: the end of the string). Any other selection shape (0, ≥2, or
   // a non-text element) is a no-op, not an error (§4.4's contract table) —
   // falls through untouched to whatever this key would otherwise do.
-  // Deliberately does NOT pre-check `data-comot-lock` itself: a locked
+  // Deliberately does NOT pre-check `data-slidra-lock` itself: a locked
   // element reaches here only via the host's own "selection" command (a
   // plain click can never select one at all — `findSelectable` already
   // refuses it), and the existing `begin-text-edit` round trip
@@ -1788,12 +1788,12 @@
     if (!el) return;
     // E2.T12 plan §3.6: same keyboard-equivalent-of-double-click reuse, for
     // a selected chart's data window instead of text editing.
-    if (el.getAttribute("data-comot-type") === "chart") {
+    if (el.getAttribute("data-slidra-type") === "chart") {
       event.preventDefault();
       post({ event: "dblclick-chart", id: el.getAttribute("id") });
       return;
     }
-    if (!el.hasAttribute("data-comot-text-width") && !isPlainTextContainer(el)) return;
+    if (!el.hasAttribute("data-slidra-text-width") && !isPlainTextContainer(el)) return;
     event.preventDefault();
     pendingEditPoint = null;
     post({ event: "dblclick-textbox", id: el.getAttribute("id") });
@@ -1957,7 +1957,7 @@
             var target = document.getElementById(gesture.hitId);
             selectedIds = gesture.additive ? selectedIds.concat([gesture.hitId]) : [gesture.hitId];
             updateBoxes();
-            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-comot-name") : null, additive: gesture.additive }));
+            post(withGroupPath({ event: "select", id: gesture.hitId, name: target ? target.getAttribute("data-slidra-name") : null, additive: gesture.additive }));
           }
         }
         // reportViewport() is otherwise only wired to the iframe's own
@@ -2100,13 +2100,13 @@
     if (selectedIds.indexOf(id) === -1) {
       selectedIds = [id];
       updateBoxes();
-      post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-comot-name"), additive: false }));
+      post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-slidra-name"), additive: false }));
     }
     // E2.T14 §4.5: right-clicking a table cell also reports which one —
     // the host uses this to open the cell context menu (§3.7: the right-
     // click menu itself is a parent-document floating layer, this runtime
     // only ever reports the hit).
-    if (target.getAttribute("data-comot-type") === "table") {
+    if (target.getAttribute("data-slidra-type") === "table") {
       var cellEl = findTableCellElement(event.target);
       var address = cellEl && tableCellAddress(cellEl);
       if (address) {
@@ -2224,7 +2224,7 @@
    * A container holding exactly one `<text>` and no other element — the
    * shape `text set` writes through unchanged (core's
    * `replaceContainerText`). Text boxes are the wrapping variant of this,
-   * marked by `data-comot-text-width`; everything else here is a plain
+   * marked by `data-slidra-text-width`; everything else here is a plain
    * `<text>` whose own x/y/text-anchor stay authoritative.
    */
   function isPlainTextContainer(el) {
@@ -2244,7 +2244,7 @@
    * on the very first call for a given edit session — the `<text>`'s own
    * `x`) so re-entering the same content is idempotent; every line after
    * the first gets a plain relative `dy` (no attempt at the real line
-   * height core's font metrics used to compute) and `data-comot-break="1"`,
+   * height core's font metrics used to compute) and `data-slidra-break="1"`,
    * the same marker `textLineRanges()` already reads to place a virtual
    * `\n` in the caret's `textarea.value` index space. Alignment/runs are
    * NOT reproduced — decision T1 accepts left-anchored, unstyled text
@@ -2265,13 +2265,13 @@
       } else {
         tspan.setAttribute("dy", "1.2em");
       }
-      // `data-comot-break="1"` marks a line that is FOLLOWED by a "\n" in
+      // `data-slidra-break="1"` marks a line that is FOLLOWED by a "\n" in
       // the original content string (textLineRanges()'s own contract,
       // read/write-symmetric with core's original convention) — i.e.
       // every line except the last one, not every line except the first.
       // Putting it on the wrong tspan is exactly the off-by-one A16/A17
       // guard against (see this file's own textLineRanges doc comment).
-      if (i < lines.length - 1) tspan.setAttribute("data-comot-break", "1");
+      if (i < lines.length - 1) tspan.setAttribute("data-slidra-break", "1");
       tspan.textContent = lines[i];
       textEl.appendChild(tspan);
     }
@@ -2308,11 +2308,11 @@
   // point it agrees with the container's own real bbox again.
   var previewTextWidth = null;
 
-  /** `preview-textbox-width` (F8, NOOP-289 決定 (b)): updates `data-comot-text-width` and the live-preview override the box/handles read — never touches `<text>`. */
+  /** `preview-textbox-width` (F8, NOOP-289 決定 (b)): updates `data-slidra-text-width` and the live-preview override the box/handles read — never touches `<text>`. */
   function applyPreviewTextboxWidth(id, width) {
     var container = document.getElementById(id);
     if (!container || typeof width !== "number" || !(width > 0)) return;
-    container.setAttribute("data-comot-text-width", String(width));
+    container.setAttribute("data-slidra-text-width", String(width));
     previewTextWidth = { id: id, width: width };
     updateBoxes();
   }
@@ -2335,7 +2335,7 @@
     // legitimately be `event.source` here.
     if (event.source !== parentWindow) return;
     var data = event.data;
-    if (!data || data.source !== "comot-host") return;
+    if (!data || data.source !== "slidra-host") return;
     if (data.command === "preview") {
       applyPreview(data.items);
     } else if (data.command === "preview-textbox-width") {

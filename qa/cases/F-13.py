@@ -11,15 +11,15 @@ starting with "_" becomes a global... the same way core helpers like
 js()/cdp() are」）：`agent_helpers.py` 沒有讀縮圖徽章 textContent 的原語，
 這裡直接用 `js()` 讀 DOM，不新增 `agent_helpers.py` 原語。
 
-以及一個外部前置動作：直接呼叫 `node_modules/.bin/comotion effect add`
+以及一個外部前置動作：直接呼叫 `node_modules/.bin/slidra effect add`
 在第 1 頁標題（`el-title`）加一個效果——這是驗收條件本身要求的「操作」，
 不是瀏覽器手勢。CLI 寫檔後，server 的 `fs.watch(workDir)`（packages/
 server/src/watch.ts）會廣播 `presentation-changed`，跟一般使用者從 GUI
-操作落地的路徑相同（`comotion cat "$COMOTION_QA_PRESENTATION_ID"
+操作落地的路徑相同（`slidra cat "$SLIDRA_QA_PRESENTATION_ID"
 slides/001.svg` 走的是同一個 work dir，qa/README.md §1 已驗證過這條路
 徑）。
 
-判準：demo/slides/003.svg 的 metadata 裡帶三個 `<comot:effect>`（步驟一二
+判準：demo/slides/003.svg 的 metadata 裡帶三個 `<slidra:effect>`（步驟一二
 三各一個 enter 效果），demo/slides/001.svg 沒有任何效果清單——第 3 頁縮
 圖應顯示「✦ 3」、第 1 頁應無標記。對第 1 頁標題加一個效果後，第 1 頁縮圖
 應改顯示「✦ 1」。三個徽章讀值都用短輪詢（而非固定 sleep 或立即讀一次）：
@@ -74,13 +74,13 @@ def main() -> int:
     before_1 = wait_for_badge(1, "")
     check("第 1 頁縮圖無 ✦ 標記（base 上沒有效果）", before_1 == "", before_1)
     before_3 = wait_for_badge(3, "✦ 3")
-    check("第 3 頁縮圖顯示 ✦ 3（demo/slides/003.svg 帶三個 <comot:effect>）", before_3 == "✦ 3", before_3)
+    check("第 3 頁縮圖顯示 ✦ 3（demo/slides/003.svg 帶三個 <slidra:effect>）", before_3 == "✦ 3", before_3)
     shot("F-13-before")  # noqa: F821
 
-    presentation_id = os.environ["COMOTION_QA_PRESENTATION_ID"]
+    presentation_id = os.environ["SLIDRA_QA_PRESENTATION_ID"]
     result = subprocess.run(
         [
-            "node_modules/.bin/comotion",
+            "node_modules/.bin/slidra",
             "effect",
             "add",
             presentation_id,
@@ -95,7 +95,7 @@ def main() -> int:
         text=True,
     )
     if result.returncode != 0:
-        print(f"FAIL 前置：`comotion effect add` 失敗 stdout={result.stdout!r} stderr={result.stderr!r}")
+        print(f"FAIL 前置：`slidra effect add` 失敗 stdout={result.stdout!r} stderr={result.stderr!r}")
         return 1
 
     after_1 = wait_for_badge(1, "✦ 1")

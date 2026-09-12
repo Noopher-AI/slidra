@@ -63,7 +63,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -102,16 +102,16 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 async function startServerFor(
   deckDir: string,
 ): Promise<{ server: RunningServer; registry: CommandRegistry; presentationId: string; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -134,10 +134,10 @@ async function startServerFor(
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -212,7 +212,7 @@ it("點畫布上的元素會選起它，出現四角選取框（畫在 Shadow DO
       // not a DOM-position assumption — the runtime is injected before
       // the fetched slide markup (#56 fix), so the host is not
       // document.body's last child.
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const root = host.shadowRoot;
       if (!root) return null;
       const sel = root.querySelector(".sel");
@@ -269,7 +269,7 @@ it("狀態列顯示選取元素的顯示名稱；沒有顯示名稱的元素顯�
  * (ADR-0012).
  */
 async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-selection-deck-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-deck-"));
   await mkdir(path.join(dir, "slides"), { recursive: true });
   await mkdir(path.join(dir, "assets"), { recursive: true });
   await writeFile(
@@ -295,12 +295,12 @@ async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: ()
 it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-comot-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="方塊">\n' +
       '    <rect x="540" y="280" width="200" height="160" fill="#c66"/>\n' +
       "  </g>\n" +
       // openApp waits for the first painted <text>; a deck with none would
       // never finish loading as far as that helper is concerned.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -327,7 +327,7 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -345,13 +345,13 @@ it("點空白處取消選取，狀態列的選取顯示區清空", async () => {
 it("單選一個元素：出現名稱標籤（選取框正上方）與情境列（選取框正下方）", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-square" data-comot-name="方塊">\n' +
+      '  <g id="el-square" data-slidra-name="方塊">\n' +
       // Bottom edge at y=200, leaving 520 user units of slide below it —
       // comfortably more than the context bar's fixed 49 CSS px (GAP 13 +
       // BAR_HEIGHT 36) floor at any realistic render scale.
       '    <rect x="540" y="100" width="200" height="100" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="500" text-anchor="middle" font-size="32" fill="#9aa7b4">方塊</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -398,7 +398,7 @@ it("單選一個元素：出現名稱標籤（選取框正上方）與情境列�
 it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停留 hover 後才能按到它自己的按鈕", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-title" data-comot-name="標題">\n' +
+      '  <g id="el-title" data-slidra-name="標題">\n' +
       '    <rect x="100" y="60" width="1080" height="100" fill="#c66"/>\n' +
       // openApp() waits for the slide's first painted <text> before
       // returning — this fixture is otherwise all <rect>.
@@ -409,7 +409,7 @@ it("F-17：情境列未 hover 時可穿透點擊底下被壓住的內容；停�
       // context bar renders fully inside this rect's on-screen box) that
       // the bar's fixed CSS-px band below the title always lands on top of
       // it, reproducing the ticket's "情境列擋住下一行" layout.
-      '  <g id="el-subtitle" data-comot-name="副標">\n' +
+      '  <g id="el-subtitle" data-slidra-name="副標">\n' +
       '    <rect x="100" y="170" width="1080" height="400" fill="#6c9"/>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -504,7 +504,7 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
     const measurement = await frame.evaluate(() => {
       // The real box selection-runtime.js already drew, inside its shadow
       // root — protected by the host's own inline !important styles.
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const realBox = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       if (!realBox) return null;
       const realStyle = getComputedStyle(realBox);
@@ -561,19 +561,19 @@ it("敵意投影片的 CSS 蓋不掉 Shadow DOM 選取框，同一份 CSS 會蓋
 });
 
 // Gate review round 1 (#56): the view-mode iframe has `allow-scripts` too
-// (ADR-0011), so any slide script can forge a `comot-player` message by
+// (ADR-0011), so any slide script can forge a `slidra-player` message by
 // hand — `event.source === frame.contentWindow` only proves which iframe
 // sent it, never which script inside that iframe did. Before canvas.ts's
 // mode gate, this forged message drove advancePastEnd() and replaced the
 // view-mode srcdoc with the play document (containing
-// `window.__COMOT_PLAN__`) while mode stayed "view" — reproduced directly
+// `window.__SLIDRA_PLAN__`) while mode stayed "view" — reproduced directly
 // against this branch's pre-fix canvas.ts. Slide 2 of hostile-selection-deck
 // carries the forging script; slide 1's hostile CSS plays no part here.
 // Slide 2 is deliberately not the deck's last slide (slide 3 is harmless
 // filler after it): advancePastEnd() is a no-op on the last slide even
 // with no gate at all, so landing on the true last slide would make this
 // test pass whether or not the fix is in place.
-it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不會把 iframe 換成播放文件", async () => {
+it("檢視模式下，投影片偽造 slidra-player 訊息不會換頁、也不會把 iframe 換成播放文件", async () => {
   const { server, cleanup } = await startServerFor(hostileDeckDir);
   try {
     const page = await openApp(server);
@@ -594,7 +594,7 @@ it("檢視模式下，投影片偽造 comot-player 訊息不會換頁、也不�
     await expect.poll(() => pageIndicator.textContent()).toBe("Slide 2 of 4");
     const srcdoc = await slideFrame.getAttribute("srcdoc");
     expect(srcdoc).not.toBeNull();
-    expect(srcdoc).not.toContain("__COMOT_PLAN__");
+    expect(srcdoc).not.toContain("__SLIDRA_PLAN__");
   } finally {
     await cleanup();
   }
@@ -626,7 +626,7 @@ it("投影片自己的 script 搶先攔截點擊（stopImmediatePropagation）�
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -664,7 +664,7 @@ it("離開播放後仍可重新選取：狀態列顯示顯示名稱，且選取�
 
     const frame = await canvasFrame(page);
     const boxDisplay = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const sel = host.shadowRoot?.querySelector(".sel") as HTMLElement | null;
       return sel ? getComputedStyle(sel).display : null;
     });
@@ -697,17 +697,17 @@ it("基準截圖：標準檢視含選取框", async () => {
 it("點群組裡的子元素，選到的是整個群組，狀態列顯示群組的顯示名稱", async () => {
   const deck = await makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-comot-name="群組">\n' +
-      '    <g id="el-child-left" data-comot-name="左邊">\n' +
+      '  <g id="el-group" data-slidra-name="群組">\n' +
+      '    <g id="el-child-left" data-slidra-name="左邊">\n' +
       '      <rect x="200" y="260" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
-      '    <g id="el-child-right" data-comot-name="右邊">\n' +
+      '    <g id="el-child-right" data-slidra-name="右邊">\n' +
       '      <rect x="880" y="260" width="200" height="200" fill="#69c"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other
       // caller. This one sits well outside the group.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -748,7 +748,7 @@ async function groupFrameBoxes(
 ): Promise<Array<{ display: string; left: number; top: number; width: number; height: number }>> {
   const frame = await canvasFrame(page);
   return frame.evaluate(() => {
-    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const els = [...host.shadowRoot!.querySelectorAll(".group-frame")] as HTMLElement[];
     return els
       .filter((el) => getComputedStyle(el).display !== "none")
@@ -775,14 +775,14 @@ async function groupFrameBoxes(
 async function makeNestedGroupDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
+      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
       '    <rect x="450" y="200" width="380" height="320" fill="none" stroke="#ccc"/>\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 260)">\n' +
-      '      <rect id="el-leaf" data-comot-name="葉節點" width="200" height="200" fill="#c66"/>\n' +
+      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(500 260)">\n' +
+      '      <rect id="el-leaf" data-slidra-name="葉節點" width="200" height="200" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
       // openApp waits for the first painted <text>; see makeDeckDir's other callers.
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">群組虛線框測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -924,7 +924,7 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
  */
 // ADR-0012's normal form requires every group's children to themselves be
 // `<g>` containers ("a group is a container of containers") and forbids an
-// id/data-comot-name on a bare primitive — core's parseSlide (packages/core
+// id/data-slidra-name on a bare primitive — core's parseSlide (packages/core
 // src/slide/format.ts's toElement) only recurses into a `<g>`'s children as
 // real, independently addressable SlideElements when EVERY child is itself
 // a `<g>`; otherwise the whole thing collapses into one opaque "compound"
@@ -937,17 +937,17 @@ it("Esc 逐層退出：每次只收掉最內層的框，其餘外層框保留至
 async function makeDragConsistencyDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(460 220)">\n' +
-      '      <g id="el-blue" data-comot-name="藍色方塊">\n' +
+      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
+      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(460 220)">\n' +
+      '      <g id="el-blue" data-slidra-name="藍色方塊">\n' +
       '        <rect width="150" height="150" fill="#69c"/>\n' +
       "      </g>\n" +
-      '      <g id="el-pink" data-comot-name="粉色方塊" transform="translate(190 0)">\n' +
+      '      <g id="el-pink" data-slidra-name="粉色方塊" transform="translate(190 0)">\n' +
       '        <rect width="150" height="150" fill="#c9a"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="620" text-anchor="middle" font-size="32" fill="#9aa7b4">拖曳一致性測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -994,7 +994,7 @@ it("拖曳作用對象與選取層級一致：實線框標示的節點跟實際�
     // same as groupFrameBoxes above.
     const frame = await canvasFrame(page);
     const selBox = await frame.evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const rect = host.shadowRoot!.querySelector(".sel")!.getBoundingClientRect();
       return { width: rect.width, height: rect.height };
     });
@@ -1106,13 +1106,13 @@ async function effectCount(registry: CommandRegistry, presentationId: string): P
 async function makeGroupCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-a" data-comot-name="矩形A">\n' +
+      '  <g id="el-a" data-slidra-name="矩形A">\n' +
       '    <rect x="200" y="80" width="160" height="120" fill="#c66"/>\n' +
       "  </g>\n" +
-      '  <g id="el-b" data-comot-name="矩形B">\n' +
+      '  <g id="el-b" data-slidra-name="矩形B">\n' +
       '    <rect x="500" y="80" width="160" height="120" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="260" text-anchor="middle" font-size="32" fill="#9aa7b4">成組測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -1170,8 +1170,8 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
     await compareScreenshot(page, { name: "group-toast", baselineDir, clip: { x, y, width: right - x, height: bottom - y } });
 
     const svg = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
-    const groupMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
-    if (!groupMatch) throw new Error("找不到新群組的 <g data-comot-name=\"Group 1\">");
+    const groupMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
+    if (!groupMatch) throw new Error("找不到新群組的 <g data-slidra-name=\"Group 1\">");
     expect(svg.indexOf('id="el-a"')).toBeGreaterThan(groupMatch.index);
     expect(svg.indexOf('id="el-b"')).toBeGreaterThan(groupMatch.index);
   } finally {
@@ -1187,15 +1187,15 @@ it("成組：Shift 選 2 個元素、按 Group，成員自身動畫被移除並�
 async function makeNestingCommandDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-group" data-comot-name="子群組">\n' +
-      '    <g id="el-child" data-comot-name="子項">\n' +
+      '  <g id="el-group" data-slidra-name="子群組">\n' +
+      '    <g id="el-child" data-slidra-name="子項">\n' +
       '      <rect x="150" y="80" width="120" height="100" fill="#c66"/>\n' +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-extra" data-comot-name="額外元素">\n' +
+      '  <g id="el-extra" data-slidra-name="額外元素">\n' +
       '    <rect x="450" y="80" width="120" height="100" fill="#69c"/>\n' +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="300" text-anchor="middle" font-size="32" fill="#9aa7b4">巢狀成組測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",
@@ -1227,7 +1227,7 @@ it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再�
     // group wraps el-group (as a whole) and el-extra.
     expect(svg).toContain('id="el-group"');
     expect(svg).toContain('id="el-child"');
-    const outerMatch = /<g id="(el-[^"]+)" data-comot-name="Group 1">/.exec(svg);
+    const outerMatch = /<g id="(el-[^"]+)" data-slidra-name="Group 1">/.exec(svg);
     if (!outerMatch) throw new Error("找不到新的外層群組");
     expect(svg.indexOf('id="el-group"')).toBeGreaterThan(outerMatch.index);
     expect(svg.indexOf('id="el-extra"')).toBeGreaterThan(outerMatch.index);
@@ -1245,14 +1245,14 @@ it("巢狀：選「一個既有群組 ＋ 一個元素」按 Group，外層再�
 async function makeCompliantNestedDeck(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   return makeDeckDir(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
-      '  <g id="el-outer" data-comot-name="外層群組">\n' +
-      '    <g id="el-inner" data-comot-name="內層群組" transform="translate(500 60)">\n' +
-      '      <g id="el-leaf" data-comot-name="葉節點">\n' +
+      '  <g id="el-outer" data-slidra-name="外層群組">\n' +
+      '    <g id="el-inner" data-slidra-name="內層群組" transform="translate(500 60)">\n' +
+      '      <g id="el-leaf" data-slidra-name="葉節點">\n' +
       '        <rect width="200" height="200" fill="#c66"/>\n' +
       "      </g>\n" +
       "    </g>\n" +
       "  </g>\n" +
-      '  <g id="el-caption" data-comot-name="說明">\n' +
+      '  <g id="el-caption" data-slidra-name="說明">\n' +
       '    <text x="640" y="600" text-anchor="middle" font-size="32" fill="#9aa7b4">解組測試</text>\n' +
       "  </g>\n" +
       "</svg>\n",

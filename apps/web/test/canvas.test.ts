@@ -447,14 +447,14 @@ describe("mountCanvas 的多頁換頁", () => {
 // into the play iframe's sandbox and srcdoc, and how canvas.ts reacts to
 // postMessage events the runtime would send.
 
-const NS = 'xmlns:comot="https://co-motion.dev/ns"';
+const NS = 'xmlns:slidra="https://slidra.app/ns/2026"';
 const playDeck = { name: "播放測試簡報", slides: ["slides/001.svg", "slides/002.svg"] };
 const playDeckMarkup: Record<string, string> = {
   "slides/001.svg": `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
-    <comot:effects ${NS}>
-      <comot:effect target="el-a" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects ${NS}>
+      <slidra:effect target="el-a" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <rect id="el-a"/>
   <rect id="el-bg"/>
@@ -548,7 +548,7 @@ describe("mountCanvas 的播放模式", () => {
 
     const doc = srcdoc();
     expect(doc).toContain("#el-a{opacity:0 !important}");
-    expect(doc).toContain("window.__COMOT_PLAN__ = JSON.parse(");
+    expect(doc).toContain("window.__SLIDRA_PLAN__ = JSON.parse(");
     // The plan is injected as a JSON *string* literal now (renderPlanScript,
     // ticket #30 prototype-pollution follow-up), not a bare object literal,
     // so the target id shows up JSON-escaped inside that outer string.
@@ -572,8 +572,8 @@ describe("mountCanvas 的播放模式", () => {
     const sandbox = iframe.getAttribute("sandbox");
     expect(sandbox).toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-same-origin");
-    expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
-    expect(srcdoc()).not.toContain("__COMOT_PLAN__");
+    expect(srcdoc()).not.toContain("window.__SLIDRA_PLAN__");
+    expect(srcdoc()).not.toContain("__SLIDRA_PLAN__");
   });
 
   it("play() 後 frameElement 回傳的是重建後的新元素，不是舊的參照", async () => {
@@ -601,7 +601,7 @@ describe("mountCanvas 的播放模式", () => {
         if (url.endsWith("/api/files/slides/001.svg")) {
           return new Response(
             `<svg xmlns="http://www.w3.org/2000/svg">
-              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="build" effect="fade" start="on-click"/></comot:effects></metadata>
+              <metadata><slidra:effects ${NS}><slidra:effect target="el-a" family="build" effect="fade" start="on-click"/></slidra:effects></metadata>
               <rect id="el-a"/>
             </svg>`,
             { status: 200 },
@@ -628,7 +628,7 @@ describe("mountCanvas 的播放模式", () => {
     await controller.play();
 
     expect(state?.error).toMatch(/family.*build/);
-    expect(srcdoc()).not.toContain("window.__COMOT_PLAN__");
+    expect(srcdoc()).not.toContain("window.__SLIDRA_PLAN__");
     expect(srcdoc()).toContain('id="el-a"');
   });
 
@@ -645,7 +645,7 @@ describe("mountCanvas 的播放模式", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "focus", hasFocus: true },
+        data: { source: "slidra-player", event: "focus", hasFocus: true },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -662,7 +662,7 @@ describe("mountCanvas 的播放模式", () => {
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "advance-past-end" },
+        data: { source: "slidra-player", event: "advance-past-end" },
         source: frameWindow,
       }),
     );
@@ -674,7 +674,7 @@ describe("mountCanvas 的播放模式", () => {
     const secondFrameWindow = controller.frameElement.contentWindow as unknown as Window;
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "advance-past-end" },
+        data: { source: "slidra-player", event: "advance-past-end" },
         source: secondFrameWindow,
       }),
     );
@@ -703,14 +703,14 @@ describe("mountCanvas 的播放模式", () => {
 
       window.dispatchEvent(
         new MessageEvent("message", {
-          data: { source: "comot-player", event: "exit-play" },
+          data: { source: "slidra-player", event: "exit-play" },
           source: controller.frameElement.contentWindow as unknown as Window,
         }),
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Still in play mode: srcdoc keeps the play-only plan global.
-      expect(srcdoc()).toContain("window.__COMOT_PLAN__");
+      expect(srcdoc()).toContain("window.__SLIDRA_PLAN__");
 
       Object.defineProperty(document, "fullscreenElement", {
         value: null,
@@ -719,13 +719,13 @@ describe("mountCanvas 的播放模式", () => {
 
       window.dispatchEvent(
         new MessageEvent("message", {
-          data: { source: "comot-player", event: "exit-play" },
+          data: { source: "slidra-player", event: "exit-play" },
           source: controller.frameElement.contentWindow as unknown as Window,
         }),
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(srcdoc()).not.toContain("__COMOT_PLAN__");
+      expect(srcdoc()).not.toContain("__SLIDRA_PLAN__");
     } finally {
       if (originalDescriptor) {
         Object.defineProperty(document, "fullscreenElement", originalDescriptor);
@@ -748,7 +748,7 @@ describe("mountCanvas 的播放模式", () => {
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "advance-past-end" },
+        data: { source: "slidra-player", event: "advance-past-end" },
         source: frameWindow,
       }),
     );
@@ -757,7 +757,7 @@ describe("mountCanvas 的播放模式", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "retreat-past-start" },
+        data: { source: "slidra-player", event: "retreat-past-start" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -777,9 +777,9 @@ describe("mountCanvas 的播放模式", () => {
       "slides/001.svg": '<svg data-testid="s1"><rect id="el-a"/></svg>',
       "slides/002.svg": `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
-    <comot:effects ${NS}>
-      <comot:effect target="el-b" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects ${NS}>
+      <slidra:effect target="el-b" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <rect id="el-b"/>
 </svg>`,
@@ -816,7 +816,7 @@ describe("mountCanvas 的播放模式", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "retreat-past-start" },
+        data: { source: "slidra-player", event: "retreat-past-start" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -872,7 +872,7 @@ describe("mountCanvas 的播放模式", () => {
     // fetching slide 2 and gets stuck on slide2Gate.
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "retreat-past-start" },
+        data: { source: "slidra-player", event: "retreat-past-start" },
         source: frameWindow,
       }),
     );
@@ -883,7 +883,7 @@ describe("mountCanvas 的播放模式", () => {
     // resolves immediately and paints.
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "retreat-past-start" },
+        data: { source: "slidra-player", event: "retreat-past-start" },
         source: frameWindow,
       }),
     );
@@ -907,7 +907,7 @@ describe("mountCanvas 的播放模式", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "retreat-past-start" },
+        data: { source: "slidra-player", event: "retreat-past-start" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -930,7 +930,7 @@ describe("mountCanvas 的播放模式", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "error", message: "找不到步驟中要顯示的元素：el-x" },
+        data: { source: "slidra-player", event: "error", message: "找不到步驟中要顯示的元素：el-x" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -938,7 +938,7 @@ describe("mountCanvas 的播放模式", () => {
     expect(state?.error).toBe("找不到步驟中要顯示的元素：el-x");
   });
 
-  it("忽略不是來自目前 iframe 的訊息（即使 source 欄位宣稱是 comot-player）", async () => {
+  it("忽略不是來自目前 iframe 的訊息（即使 source 欄位宣稱是 slidra-player）", async () => {
     stubPlayDeck();
     controller = mountCanvas(container);
     await controller.reload();
@@ -952,7 +952,7 @@ describe("mountCanvas 的播放模式", () => {
     // Not from `controller.frameElement.contentWindow` — an impostor.
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "focus", hasFocus: true },
+        data: { source: "slidra-player", event: "focus", hasFocus: true },
       }),
     );
 
@@ -1008,7 +1008,7 @@ describe("mountCanvas 的播放模式", () => {
     // iframe: it is still the play document (has the plan), not the bare
     // view-mode wrapper for slides/001.svg.
     expect(controller.frameElement).toBe(playFrame);
-    expect(playFrame.srcdoc).toContain("window.__COMOT_PLAN__");
+    expect(playFrame.srcdoc).toContain("window.__SLIDRA_PLAN__");
   });
 
   // Gate review round 2, P1: pressing forward fast enough sends a second
@@ -1060,7 +1060,7 @@ describe("mountCanvas 的播放模式", () => {
     // fetching slide 2 and gets stuck on slide2Gate.
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "advance-past-end" },
+        data: { source: "slidra-player", event: "advance-past-end" },
         source: frameWindow,
       }),
     );
@@ -1071,7 +1071,7 @@ describe("mountCanvas 的播放模式", () => {
     // resolves immediately and paints.
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "advance-past-end" },
+        data: { source: "slidra-player", event: "advance-past-end" },
         source: frameWindow,
       }),
     );
@@ -1093,7 +1093,7 @@ describe("mountCanvas 的播放模式", () => {
   it("換到效果清單正常的投影片時，先前的 error 會被清掉並通知訂閱者", async () => {
     const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
     const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
-      <metadata><comot:effects ${NS}><comot:effect target="el-a" family="build" effect="fade" start="on-click"/></comot:effects></metadata>
+      <metadata><slidra:effects ${NS}><slidra:effect target="el-a" family="build" effect="fade" start="on-click"/></slidra:effects></metadata>
       <rect id="el-a"/>
     </svg>`;
     const fineMarkup = '<svg data-testid="fine"><rect id="el-b"/></svg>';
@@ -1140,7 +1140,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
   function sendSelectionMessage(data: Record<string, unknown>): void {
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", ...data },
+        data: { source: "slidra-selection", ...data },
         source: controller!.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1215,7 +1215,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
         if (url.endsWith("/api/files/slides/001.svg")) {
           return new Response(
             `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-              <metadata><comot:effects ${NS}><comot:effect target="el-a" family="enter" effect="fade" start="on-click"/></comot:effects></metadata>
+              <metadata><slidra:effects ${NS}><slidra:effect target="el-a" family="enter" effect="fade" start="on-click"/></slidra:effects></metadata>
               <g id="el-a"><rect width="10" height="10"/></g>
             </svg>`,
             { status: 200 },
@@ -1244,7 +1244,7 @@ describe("mountCanvas 的動畫（[E2.T7]）", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-player", event: "preview-done" },
+        data: { source: "slidra-player", event: "preview-done" },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1301,10 +1301,10 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
     return container.querySelector("iframe") as HTMLIFrameElement;
   }
 
-  /** Each entry is one slide's raw markup (with or without its own `<comot:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
-  /** Extracts the same `enter`/`enter-duration`/`exit`/`exit-duration` attributes `slideWithTransition()` writes into a slide's `<comot:transition>` — mirrors what the real `GET /api/effects/` route derives server-side (F8, NOOP-289 決定 E1: `canvas.ts` no longer parses this out of the fetched markup itself, so the mock route below has to, the same way the real one does). No `<comot:transition>` at all → the route's own "never had one" default. */
+  /** Each entry is one slide's raw markup (with or without its own `<slidra:transition>`) — transition now lives per-slide, not on `project.json` (T6's now-removed field). */
+  /** Extracts the same `enter`/`enter-duration`/`exit`/`exit-duration` attributes `slideWithTransition()` writes into a slide's `<slidra:transition>` — mirrors what the real `GET /api/effects/` route derives server-side (F8, NOOP-289 決定 E1: `canvas.ts` no longer parses this out of the fetched markup itself, so the mock route below has to, the same way the real one does). No `<slidra:transition>` at all → the route's own "never had one" default. */
   function transitionFromMarkup(markup: string): typeof DEFAULT_TRANSITION_FIXTURE {
-    const tagMatch = /<comot:transition\b[^>]*>/.exec(markup);
+    const tagMatch = /<slidra:transition\b[^>]*>/.exec(markup);
     if (!tagMatch) return DEFAULT_TRANSITION_FIXTURE;
     const attrs = tagMatch[0];
     const attr = (name: string, fallback: string): string => new RegExp(`${name}="([^"]*)"`).exec(attrs)?.[1] ?? fallback;
@@ -1326,8 +1326,8 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
         if (filesMatch && markup[filesMatch[1]]) {
           return new Response(markup[filesMatch[1]], { status: 200 });
         }
-        // None of this describe block's fixtures carry a `<comot:effects>`
-        // list (only `<comot:transition>`) — every slide legitimately has
+        // None of this describe block's fixtures carry a `<slidra:effects>`
+        // list (only `<slidra:transition>`) — every slide legitimately has
         // no effects, matching the route's own "never had one" plan (D3).
         const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
         if (effectsMatch) return effectsRouteResponse([], transitionFromMarkup(markup[effectsMatch[1]] ?? ""));
@@ -1337,13 +1337,13 @@ describe("mountCanvas 的頁面進出場轉場 ([E2.T11])", () => {
   }
 
   function slideWithTransition(testId: string, transitionAttrs?: string): string {
-    const metadata = transitionAttrs ? `<metadata><comot:transition ${NS} ${transitionAttrs}/></metadata>` : "";
+    const metadata = transitionAttrs ? `<metadata><slidra:transition ${NS} ${transitionAttrs}/></metadata>` : "";
     return `<svg data-testid="${testId}">${metadata}</svg>`;
   }
 
   it.each([
     ["沒有 <metadata>", slideWithTransition("s1")],
-    ["有 <metadata> 但沒有 <comot:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
+    ["有 <metadata> 但沒有 <slidra:transition>", '<svg data-testid="s1"><metadata></metadata></svg>'],
     ["enter/exit 都明寫 none", slideWithTransition("s1", 'enter="none" enter-duration="0.6" exit="none" exit-duration="0.5"')],
   ] as const)("讀取端：%s → 前進換頁瞬切，不拋錯", async (_label, firstSlideMarkup) => {
     stubTransitionDeck({ ...deckMarkup, "slides/001.svg": firstSlideMarkup, "slides/002.svg": slideWithTransition("s2") });
@@ -1483,9 +1483,9 @@ describe("mountCanvas 的播放模式：嵌入 plan 時的跳脫", () => {
     const hostileDeck = { name: "跳脫測試簡報", slides: ["slides/001.svg"] };
     const hostileMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
-    <comot:effects ${NS}>
-      <comot:effect target="el-&lt;!--&lt;script&gt;" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects ${NS}>
+      <slidra:effect target="el-&lt;!--&lt;script&gt;" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <rect id="el-&lt;!--&lt;script&gt;"/>
 </svg>`;
@@ -1542,10 +1542,10 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     await controller.reload();
 
     const doc = srcdoc();
-    expect(doc).toContain("window.__COMOT_SELECTION_COLORS__");
+    expect(doc).toContain("window.__SLIDRA_SELECTION_COLORS__");
     // The runtime's own distinctive call proves it was actually inlined,
     // not just referenced.
-    expect(doc).toContain('source: "comot-selection"');
+    expect(doc).toContain('source: "slidra-selection"');
   });
 
   it("一開始 (mountCanvas 剛 reload 完) CanvasState.selection 沒有任何選取", async () => {
@@ -1571,7 +1571,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: "標題", additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: "標題", additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1579,7 +1579,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [], elements: [null] });
   });
 
-  it("select 訊息沒有 data-comot-name 時，selection.name 是 null", async () => {
+  it("select 訊息沒有 data-slidra-name 時，selection.name 是 null", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
@@ -1590,7 +1590,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-b", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-b", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1610,7 +1610,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: frameWindow,
       }),
     );
@@ -1618,7 +1618,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "clear" },
+        data: { source: "slidra-selection", event: "clear" },
         source: frameWindow,
       }),
     );
@@ -1638,7 +1638,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: {} as unknown as Window,
       }),
     );
@@ -1657,7 +1657,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1678,7 +1678,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1700,7 +1700,7 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
     });
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -1735,13 +1735,13 @@ describe("mountCanvas 的選取 (ADR-0011/#56)", () => {
 describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", () => {
   const slideWithTwoElements =
     '<svg viewBox="0 0 1280 720">' +
-    '<g id="el-src" data-comot-name="來源"><rect width="10" height="10"/></g>' +
+    '<g id="el-src" data-slidra-name="來源"><rect width="10" height="10"/></g>' +
     "</svg>";
   const slideAfterPaste =
     '<svg viewBox="0 0 1280 720">' +
-    '<g id="el-src" data-comot-name="來源"><rect width="10" height="10"/></g>' +
-    '<g id="el-new1" data-comot-name="複本一"><rect width="10" height="10"/></g>' +
-    '<g id="el-new2" data-comot-name="複本二"><rect width="10" height="10"/></g>' +
+    '<g id="el-src" data-slidra-name="來源"><rect width="10" height="10"/></g>' +
+    '<g id="el-new1" data-slidra-name="複本一"><rect width="10" height="10"/></g>' +
+    '<g id="el-new2" data-slidra-name="複本二"><rect width="10" height="10"/></g>' +
     "</svg>";
 
   function stubPasteCommand(elementIds: string[]): void {
@@ -1851,7 +1851,7 @@ describe("mountCanvas 的選取：element paste 後的回饋 (NOOP-275/#156)", (
   it("textbox add / element insert 的單一 elementId 選取行為不因本次改動而回歸", async () => {
     let inserted = false;
     const slideAfterInsert =
-      '<svg viewBox="0 0 1280 720"><g id="el-shape" data-comot-name="矩形"><rect width="10" height="10"/></g></svg>';
+      '<svg viewBox="0 0 1280 720"><g id="el-shape" data-slidra-name="矩形"><rect width="10" height="10"/></g></svg>';
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -1936,14 +1936,14 @@ describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)
     // Select el-a, then start a "move" gesture at client (180,150) — BEFORE
     // any "viewport" message has ever arrived (the exact race window: the
     // runtime's `load` listener has not fired yet).
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
-    send({ source: "comot-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 180, y: 150 } });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 180, y: 150 } });
 
     // The runtime's viewport report now lands (1:1 client-px <-> user-unit
     // mapping, to keep the arithmetic simple: svgRect and viewBox both
     // 1280x720 at the origin).
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
@@ -1951,12 +1951,12 @@ describe("mountCanvas 的拖曳手勢：gesture-start 早於 viewport (NOOP-328)
 
     // Drag to client (775,400) with Alt held (no snapping), then release.
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "gesture-move",
       point: { x: 775, y: 400 },
       modifiers: { shift: false, alt: true },
     });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 775, y: 400 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 775, y: 400 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Buggy behavior (pre-fix): startUser was silently (0,0), so dx became
@@ -2022,18 +2022,18 @@ describe("mountCanvas 的拖曳手勢：pointer 離開 slide iframe 邊界後仍
     const send = (data: unknown) =>
       window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 100, y: 100 } });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "move", handle: null, point: { x: 100, y: 100 } });
     // One real gesture-move from the iframe, proving the drag actually
     // started (this much already worked pre-fix) — then nothing else ever
     // arrives from it, as if the pointer had crossed its rendered edge.
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 120 }, modifiers: { shift: false, alt: false } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 150, y: 120 }, modifiers: { shift: false, alt: false } });
 
     // jsdom's frame.getBoundingClientRect()/offsetWidth are both 0, which
     // makes canvas.ts's toFrameClientPoint an identity conversion here
@@ -2098,7 +2098,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
   const slideMarkupWithEl =
     '<svg viewBox="0 0 1280 720"><g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g></svg>';
   const slideMarkupWithTextbox =
-    '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="200" transform="translate(100 100)">' +
+    '<svg viewBox="0 0 1280 720"><g id="el-a" data-slidra-text-width="200" transform="translate(100 100)">' +
     '<text font-family="Noto Sans TC" font-size="16">hello</text></g></svg>';
 
   function stubFetch(slideMarkup: string, commandCalls: { name: string; input: Record<string, unknown> }[]): void {
@@ -2130,7 +2130,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
     // el-a's origin (post-decompose) is (100,100). Without the guard,
     // toUserPoint(point) here silently returns {x:0,y:0}, so startUser is
     // corrupted to (0,0) instead of being dropped — the gesture does NOT
@@ -2140,15 +2140,15 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     // positive factor (0.5) that DOES get posted as "element scale" in the
     // buggy case — a coordinate that instead yields a negative/invalid
     // factor either way would pass this test even without the guard.
-    send({ source: "comot-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 50, y: 50 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 50, y: 50 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 50, y: 50 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 50, y: 50 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const scaleCalls = commandCalls.filter((call) => call.name === "element scale");
@@ -2164,16 +2164,16 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
-    send({ source: "comot-selection", event: "gesture-start", kind: "rotate", handle: null, point: { x: 180, y: 150 } });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "rotate", handle: null, point: { x: 180, y: 150 } });
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 250 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 150, y: 250 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 150, y: 250 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 150, y: 250 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const rotateCalls = commandCalls.filter((call) => call.name === "element rotate");
@@ -2193,7 +2193,7 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
     // Without the !viewport guard, beginTextboxWidthGesture would set
     // activeGesture synchronously and kick off resolveBrowserFont(), whose
     // fetch("/api/default-font") is not stubbed above and rejects — that
@@ -2202,19 +2202,19 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     // gesture-start (before any gesture-end, which unconditionally nulls
     // activeGesture first thing) is what keeps that window open long
     // enough for the assertion below to actually observe the rejection.
-    send({ source: "comot-selection", event: "gesture-start", kind: "textbox-width", handle: "left", point: { x: 180, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "textbox-width", handle: "left", point: { x: 180, y: 150 } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state?.error).toBeNull();
 
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 150, y: 150 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 150, y: 150 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 150, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 150, y: 150 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const textboxCalls = commandCalls.filter((call) => call.name === "textbox width");
@@ -2244,20 +2244,20 @@ describe("mountCanvas 的縮放／旋轉／文字框寬度手勢：gesture-start
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "scale", handle: "se", point: { x: 180, y: 150 } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state?.error).toBeNull();
 
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 220, y: 150 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 220, y: 150 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 220, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 220, y: 150 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(commandCalls.filter((call) => call.name === "textbox width")).toHaveLength(1);
@@ -2296,22 +2296,22 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     sendElementBounds: boolean,
   ): Promise<void> {
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
     if (sendElementBounds) {
       send({
-        source: "comot-selection",
+        source: "slidra-selection",
         event: "element-bounds",
         items: [{ id: "el-a", rect: { x: 100, y: 100, width: 160, height: 100 }, local: { x: 0, y: 0, width: 160, height: 100 } }],
       });
     }
     // Marquee rect (50,50)-(300,250) fully covers el-a's (100,100,160,100).
-    send({ source: "comot-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 300, y: 250 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 300, y: 250 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
@@ -2334,7 +2334,7 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
   it("鎖定的背景圖不會被框選選到（#303：滿版背景本來每次框選都會被抓進去）", async () => {
     const withBackground =
       '<svg viewBox="0 0 1280 720">' +
-      '<g id="el-background" data-comot-role="background" data-comot-lock="true"><image x="0" y="0" width="1280" height="720" href="../assets/bg.svg"/></g>' +
+      '<g id="el-background" data-slidra-role="background" data-slidra-lock="true"><image x="0" y="0" width="1280" height="720" href="../assets/bg.svg"/></g>' +
       '<g id="el-a" transform="translate(100 100)"><rect width="160" height="100"/></g>' +
       "</svg>";
     stubFetch(withBackground);
@@ -2348,23 +2348,23 @@ describe("mountCanvas 的框選命中：只認 element-bounds，沒收到就是�
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
     // The runtime reports bounds for every id-carrying element, background included.
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "element-bounds",
       items: [
         { id: "el-background", rect: { x: 0, y: 0, width: 1280, height: 720 }, local: { x: 0, y: 0, width: 1280, height: 720 } },
         { id: "el-a", rect: { x: 100, y: 100, width: 160, height: 100 }, local: { x: 0, y: 0, width: 160, height: 100 } },
       ],
     });
-    send({ source: "comot-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 300, y: 250 } });
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "marquee", handle: null, point: { x: 50, y: 50 } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 300, y: 250 } });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 300, y: 250 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state?.selection.ids).toEqual(["el-a"]);
@@ -2420,7 +2420,7 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
     const frameWindow = controller!.frameElement.contentWindow as unknown as Window;
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "select", id: "el-a", name: null, additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false },
         source: frameWindow,
       }),
     );
@@ -2477,7 +2477,7 @@ describe("mountCanvas 的剪貼簿 copySelection／cutSelection（F8, NOOP-289 �
 // during the drag, exactly one `"textbox width"` on release.
 describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F8, NOOP-289 決定 (b)）", () => {
   const slideMarkupWithTextbox =
-    '<svg viewBox="0 0 1280 720"><g id="el-a" data-comot-text-width="200" transform="translate(100 100)">' +
+    '<svg viewBox="0 0 1280 720"><g id="el-a" data-slidra-text-width="200" transform="translate(100 100)">' +
     '<text font-family="Noto Sans TC" font-size="16">hello</text></g></svg>';
 
   function stubFetch(commandCalls: { name: string; input: Record<string, unknown> }[]): void {
@@ -2504,22 +2504,22 @@ describe("mountCanvas 的文字框寬度拖曳：拖曳中不送任何命令（F
     const frameWindow = controller.frameElement.contentWindow as unknown as Window;
     const send = (data: unknown) => window.dispatchEvent(new MessageEvent("message", { data, source: frameWindow }));
 
-    send({ source: "comot-selection", event: "select", id: "el-a", name: null, additive: false });
+    send({ source: "slidra-selection", event: "select", id: "el-a", name: null, additive: false });
     send({
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "viewport",
       svgRect: { x: 0, y: 0, width: 1280, height: 720 },
       viewBox: { x: 0, y: 0, width: 1280, height: 720 },
     });
-    send({ source: "comot-selection", event: "gesture-start", kind: "textbox-width", handle: "right", point: { x: 100, y: 150 } });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 120, y: 150 } });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 140, y: 150 } });
-    send({ source: "comot-selection", event: "gesture-move", point: { x: 160, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-start", kind: "textbox-width", handle: "right", point: { x: 100, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 120, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 140, y: 150 } });
+    send({ source: "slidra-selection", event: "gesture-move", point: { x: 160, y: 150 } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(commandCalls).toEqual([]);
 
-    send({ source: "comot-selection", event: "gesture-end", point: { x: 160, y: 150 }, cancelled: false });
+    send({ source: "slidra-selection", event: "gesture-end", point: { x: 160, y: 150 }, cancelled: false });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(commandCalls).toHaveLength(1);
@@ -2547,9 +2547,9 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
       latest = state;
     });
 
-    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
-    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
 
     expect(latest?.label).toEqual({ text: "方塊 A", path: [] });
     expect(latest?.boxes).toEqual([rect]);
@@ -2564,9 +2564,9 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
       latest = state;
     });
 
-    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
-    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
     // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion.
     expect(latest?.union).toEqual(rect);
 
@@ -2590,7 +2590,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     });
 
     send(controller.frameElement, {
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "select",
       id: "el-group-child",
       name: "群組子元素",
@@ -2599,7 +2599,7 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
     });
     const rect = { x: 0, y: 0, width: 10, height: 10 };
     send(controller.frameElement, {
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "bounds",
       items: [
         {
@@ -2627,12 +2627,12 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
       latest = state;
     });
 
-    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
-    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-b", name: "方塊 B", additive: true });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-b", name: "方塊 B", additive: true });
     const rectA = { x: 0, y: 0, width: 10, height: 10 };
     const rectB = { x: 20, y: 20, width: 10, height: 10 };
     send(controller.frameElement, {
-      source: "comot-selection",
+      source: "slidra-selection",
       event: "bounds",
       items: [
         { id: "el-a", rect: rectA, ancestors: [{ id: "should-be-ignored", name: "多選時忽略祖先鏈" }] },
@@ -2653,16 +2653,16 @@ describe("subscribeOverlay：label／union／boxes 的座標與祖先鏈計算�
       latest = state;
     });
 
-    send(controller.frameElement, { source: "comot-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
-    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
+    send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
     expect(latest?.label).not.toBeNull();
 
     // selection-runtime.js's updateBoxes() always calls reportBounds() right
     // after any selection change, including the empty-selection branch — a
     // "clear" is never sent without an immediate follow-up "bounds".
-    send(controller.frameElement, { source: "comot-selection", event: "clear" });
-    send(controller.frameElement, { source: "comot-selection", event: "bounds", items: [], union: null });
+    send(controller.frameElement, { source: "slidra-selection", event: "clear" });
+    send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [], union: null });
 
     expect(latest?.label).toBeNull();
     expect(latest?.union).toBeNull();
@@ -2684,7 +2684,7 @@ describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client p
 
     // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion
     // (same fixture shape subscribeOverlay's own tests above rely on).
-    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 12, y: 34 } });
+    send(controller.frameElement, { source: "slidra-selection", event: "stage-hover", point: { x: 12, y: 34 } });
 
     expect(points).toEqual([{ x: 12, y: 34 }]);
   });
@@ -2695,9 +2695,9 @@ describe("subscribeStageHover：runtime 的 stage-hover 轉成父文件 client p
     const points: { x: number; y: number }[] = [];
     controller.subscribeStageHover((point) => points.push(point));
 
-    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: Number.NaN, y: 1 } });
-    send(controller.frameElement, { source: "comot-selection", event: "stage-hover", point: { x: 1 } });
-    send(controller.frameElement, { source: "comot-selection", event: "stage-hover" });
+    send(controller.frameElement, { source: "slidra-selection", event: "stage-hover", point: { x: Number.NaN, y: 1 } });
+    send(controller.frameElement, { source: "slidra-selection", event: "stage-hover", point: { x: 1 } });
+    send(controller.frameElement, { source: "slidra-selection", event: "stage-hover" });
 
     expect(points).toEqual([]);
   });
@@ -2707,7 +2707,7 @@ describe("mountCanvas 的 stage-key 中繼：⌘Z/⇧⌘Z 轉交 setUndoRedoHand
   function relayStageKey(key: string, shift: boolean): void {
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "stage-key", key, meta: true, ctrl: false, shift, alt: false },
+        data: { source: "slidra-selection", event: "stage-key", key, meta: true, ctrl: false, shift, alt: false },
         source: controller!.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -2753,7 +2753,7 @@ describe("mountCanvas 的 stage-key 中繼：ArrowLeft/ArrowRight 換頁（F-02,
   function relayArrow(key: "ArrowLeft" | "ArrowRight"): void {
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "comot-selection", event: "stage-key", key, meta: false, ctrl: false, shift: false, alt: false },
+        data: { source: "slidra-selection", event: "stage-key", key, meta: false, ctrl: false, shift: false, alt: false },
         source: controller!.frameElement.contentWindow as unknown as Window,
       }),
     );
@@ -2801,11 +2801,11 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
   // fixture instead of two nearly-identical ones.
   const TABLE_SLIDE =
     '<svg viewBox="0 0 1280 720">' +
-    '<g id="el-tbl" data-comot-type="table" data-comot-cols="100 100" data-comot-rows="40 40" data-comot-theme="dark" transform="translate(10 10)">' +
-    '<g data-comot-cell="0,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">A</text></g>' +
-    '<g data-comot-cell="0,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="700" fill="#ffffff">B</text></g>' +
-    '<g data-comot-cell="1,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">C</text></g>' +
-    '<g data-comot-cell="1,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">D</text></g>' +
+    '<g id="el-tbl" data-slidra-type="table" data-slidra-cols="100 100" data-slidra-rows="40 40" data-slidra-theme="dark" transform="translate(10 10)">' +
+    '<g data-slidra-cell="0,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">A</text></g>' +
+    '<g data-slidra-cell="0,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="700" fill="#ffffff">B</text></g>' +
+    '<g data-slidra-cell="1,0"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">C</text></g>' +
+    '<g data-slidra-cell="1,1"><rect x="0" y="0" width="100" height="40" fill="#111111"/><text x="4" y="20" font-weight="400" fill="#ffffff">D</text></g>' +
     "</g></svg>";
 
   function stubTableFetch(commandCalls: { name: string; input: Record<string, unknown> }[]): void {
@@ -2830,7 +2830,7 @@ describe("mountCanvas 的儲存格範圍鍵盤決策（E2.T14r2, plan §4.1）",
   }
 
   function sendSelection(frameWindow: Window, data: Record<string, unknown>): void {
-    window.dispatchEvent(new MessageEvent("message", { data: { source: "comot-selection", ...data }, source: frameWindow }));
+    window.dispatchEvent(new MessageEvent("message", { data: { source: "slidra-selection", ...data }, source: frameWindow }));
   }
 
   /** Tracks the latest `subscribeTableRange` value — a real state channel (plan §4.1), so the very first call already carries the value at subscribe time. */

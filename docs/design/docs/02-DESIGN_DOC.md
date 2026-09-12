@@ -1,7 +1,7 @@
-# 02 · Design Document — CoMotion New v3
+# 02 · Design Document — Slidra New v3
 
 ## 1. 產品定位
-CoMotion 是「人與 AI agent 共同編輯」的簡報工具。投影片本體是 SVG 檔（動畫以 SVG 內 `<style>` keyframes／SMIL 表示），agent 透過 CLI 指令修改檔案，人類在 GUI 直接操作並用「留言」給 agent 上下文。
+Slidra 是「人與 AI agent 共同編輯」的簡報工具。投影片本體是 SVG 檔（動畫以 SVG 內 `<style>` keyframes／SMIL 表示），agent 透過 CLI 指令修改檔案，人類在 GUI 直接操作並用「留言」給 agent 上下文。
 
 ## 2. 設計原則
 1. **舞台優先**：外殼淺、舞台深；所有工具浮在舞台上（玻璃），不佔固定版面。
@@ -14,7 +14,7 @@ CoMotion 是「人與 AI agent 共同編輯」的簡報工具。投影片本體�
 ## 3. 版面結構（1280×720 最小）
 ```
 ┌ Titlebar 48 ───────────────────────────────────────────────────────────┐
-│ CoMotion BETA │ ↶ ↷ │ 檔名.comot  Saved  │        Open Save Export ▶Play│
+│ Slidra BETA │ ↶ ↷ │ 檔名.slidra  Saved  │        Open Save Export ▶Play│
 ├ Rail 212 ┬──────────── Stage well (dark) ────────────┬ Side panel 340 ─┤
 │ New Tmpl │                                           │ Chat│Style│Anim│
 │ 1 [thumb]│         ┌──────── slide ────────┐         │                 │

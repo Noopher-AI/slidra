@@ -7,7 +7,7 @@ export interface SelectionOverlayProps {
    * [E2.T8] §4.7/§3.9: the single selected element's own comment, or
    * `null`/absent when it has none (or the selection isn't exactly one
    * element — resolved by the caller, not here: the prototype's own rule is
-   * "no pin for a multi-selection", `comotion-logic-v3.js:666`). Optional
+   * "no pin for a multi-selection", `slidra-logic-v3.js:666`). Optional
    * (not `null`-required) so every pre-[E2.T8] caller of this component
    * keeps compiling unchanged.
    */

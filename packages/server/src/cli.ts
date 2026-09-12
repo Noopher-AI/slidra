@@ -4,13 +4,13 @@ import type { AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
 
 /**
- * Entry point for `comotion serve <presentation-id>`.
+ * Entry point for `slidra serve <presentation-id>`.
  *
- * This is invoked from `packages/cli/bin/comotion.js` (plain JS, not part
+ * This is invoked from `packages/cli/bin/slidra.js` (plain JS, not part
  * of the compiled `packages/cli` sources) via a runtime-only dynamic
- * import. [E4.T9]/F7: `@comotion/server` no longer depends on
+ * import. [E4.T9]/F7: `@slidra/server` no longer depends on
  * `packages/cli` at all — every command it needs now spawns the Rust
- * `comotion` binary (`comotion/`) instead of dispatching against an
+ * `slidra` binary (`slidra/`) instead of dispatching against an
  * in-process registry.
  *
  * NOOP-230: serve now always starts, whether or not an agent is selected —
@@ -59,7 +59,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
     return 1;
   }
 
-  console.log(`CoMotion 已啟動：${server.url}`);
+  console.log(`Slidra 已啟動：${server.url}`);
   await printAgentStatusLine(server.url);
 
   await new Promise<void>((resolve) => {

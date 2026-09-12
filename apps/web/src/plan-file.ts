@@ -1,6 +1,6 @@
 /**
  * #303: reads the machine-readable head of `plan/outline.md` — the plan
- * file `comotion-plan` writes through `comotion plan set` (contract §1: a
+ * file `slidra-plan` writes through `slidra plan set` (contract §1: a
  * leading ```json fence, then free markdown). Only the fence is parsed;
  * the markdown body is for people and the agent.
  *
@@ -208,7 +208,7 @@ export function parsePlanOutline(text: string): PlanOutline | null {
   return { status, mode, pages, questions, fenceText };
 }
 
-/** Contract §4: the answers the gate sends back as one `/comotion-build 【計畫確認】` message. */
+/** Contract §4: the answers the gate sends back as one `/slidra-build 【計畫確認】` message. */
 export interface PlanAnswers {
   /** question id → chosen option value */
   choices: Record<string, string>;
@@ -219,7 +219,7 @@ export interface PlanAnswers {
 }
 
 export function buildConfirmMessage(answers: PlanAnswers): string {
-  const lines: string[] = ["/comotion-build 【計畫確認】"];
+  const lines: string[] = ["/slidra-build 【計畫確認】"];
   for (const [id, value] of Object.entries(answers.choices)) {
     lines.push(`${id}=${value}`);
     const note = answers.notes[id]?.trim();
@@ -230,5 +230,5 @@ export function buildConfirmMessage(answers: PlanAnswers): string {
 }
 
 export function buildRedoMessage(reason: string): string {
-  return `/comotion-plan 【重做】${reason.trim()}`;
+  return `/slidra-plan 【重做】${reason.trim()}`;
 }

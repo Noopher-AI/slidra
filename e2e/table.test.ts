@@ -89,9 +89,9 @@ async function catSlide(registry: Awaited<ReturnType<typeof newTableDeck>>["regi
   return result.data!.content;
 }
 
-/** `<COMOTION_HOME>/history/<presentationId>/stack.json`'s `undo` array length — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses, for "single history entry" assertions without depending on the Undo button's own UI state. */
+/** `<SLIDRA_HOME>/history/<presentationId>/stack.json`'s `undo` array length — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses, for "single history entry" assertions without depending on the Undo button's own UI state. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.COMOTION_HOME!;
+  const home = process.env.SLIDRA_HOME!;
   try {
     const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
     return (JSON.parse(raw).undo ?? []).length;
@@ -101,9 +101,9 @@ async function undoCount(presentationId: string): Promise<number> {
   }
 }
 
-/** The single cell `<g data-comot-cell="row,col">…</g>` block's raw markup, for regex assertions against a `cat` dump. */
+/** The single cell `<g data-slidra-cell="row,col">…</g>` block's raw markup, for regex assertions against a `cat` dump. */
 function cellMarkup(svg: string, row: number, col: number): string {
-  const match = new RegExp(`<g data-comot-cell="${row},${col}"[^>]*>[\\s\\S]*?</g>`).exec(svg);
+  const match = new RegExp(`<g data-slidra-cell="${row},${col}"[^>]*>[\\s\\S]*?</g>`).exec(svg);
   if (!match) throw new Error(`找不到儲存格 (${row},${col})`);
   return match[0];
 }
@@ -113,16 +113,16 @@ it("B1: 單獨用 file:// 開啟 workdir 的 slides/001.svg，無 parsererror，
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
     const svgContent = await catSlide(registry, presentationId);
-    const expectedCells = (svgContent.match(/data-comot-cell="/g) ?? []).length;
+    const expectedCells = (svgContent.match(/data-slidra-cell="/g) ?? []).length;
     expect(expectedCells).toBeGreaterThan(0);
 
-    const workDir = path.join(process.env.COMOTION_HOME!, "work", presentationId);
+    const workDir = path.join(process.env.SLIDRA_HOME!, "work", presentationId);
     const page = await browser.newPage();
     openPages.push(page);
     await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);
 
     expect(await page.locator("parsererror").count()).toBe(0);
-    expect(await page.locator("[data-comot-type=table] rect").count()).toBe(expectedCells);
+    expect(await page.locator("[data-slidra-type=table] rect").count()).toBe(expectedCells);
   } finally {
     await cleanup();
   }
@@ -133,17 +133,17 @@ it("B2: 模板列的儲存格 display:none，generated 儲存格不是 none", as
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
 
-    const workDir = path.join(process.env.COMOTION_HOME!, "work", presentationId);
+    const workDir = path.join(process.env.SLIDRA_HOME!, "work", presentationId);
     const page = await browser.newPage();
     openPages.push(page);
     await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);
 
-    const templateDisplay = await page.locator('[data-comot-repeat="row"]').first().evaluate((el) => getComputedStyle(el).display);
+    const templateDisplay = await page.locator('[data-slidra-repeat="row"]').first().evaluate((el) => getComputedStyle(el).display);
     expect(templateDisplay).toBe("none");
 
-    const generatedCount = await page.locator('[data-comot-generated="1"]').count();
+    const generatedCount = await page.locator('[data-slidra-generated="1"]').count();
     expect(generatedCount).toBe(6);
-    const generatedDisplays = await page.locator('[data-comot-generated="1"]').evaluateAll((els) => els.map((el) => getComputedStyle(el).display));
+    const generatedDisplays = await page.locator('[data-slidra-generated="1"]').evaluateAll((els) => els.map((el) => getComputedStyle(el).display));
     for (const display of generatedDisplays) expect(display).not.toBe("none");
   } finally {
     await cleanup();
@@ -170,14 +170,14 @@ it("E1: Dock 的 Table 按鈕開出插入面板；hover 預覽格數；click 鎖
     await insertButton.click();
 
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await expect.poll(() => slideFrame.locator("[data-comot-type=table]").count()).toBe(1);
+    await expect.poll(() => slideFrame.locator("[data-slidra-type=table]").count()).toBe(1);
     expect(await page.locator(".status-selection-chip").isVisible()).toBe(true);
   } finally {
     await cleanup();
   }
 });
 
-it("E2: 面板的三個主題按鈕各按一次後 Insert，產出的 data-comot-theme 對應正確", async () => {
+it("E2: 面板的三個主題按鈕各按一次後 Insert，產出的 data-slidra-theme 對應正確", async () => {
   for (const theme of ["dark", "light", "zebra"] as const) {
     const { server, registry, presentationId, cleanup } = await startServerFor({ deckDir, prefix: `e2-${theme}` });
     try {
@@ -189,14 +189,14 @@ it("E2: 面板的三個主題按鈕各按一次後 Insert，產出的 data-comot
       await panel.locator(".table-panel-theme", { hasText: label }).click();
       await panel.locator(".table-panel-insert").click();
 
-      await expect.poll(() => catSlide(registry, presentationId)).toContain(`data-comot-theme="${theme}"`);
+      await expect.poll(() => catSlide(registry, presentationId)).toContain(`data-slidra-theme="${theme}"`);
     } finally {
       await cleanup();
     }
   }
 });
 
-it("E3: 面板的表頭開關關掉後 Insert，產出沒有 data-comot-header", async () => {
+it("E3: 面板的表頭開關關掉後 Insert，產出沒有 data-slidra-header", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor({ deckDir, prefix: "e3" });
   try {
     const page = await openPage(server);
@@ -206,8 +206,8 @@ it("E3: 面板的表頭開關關掉後 Insert，產出沒有 data-comot-header",
     await panel.locator(".table-panel-header-toggle input[type=checkbox]").uncheck();
     await panel.locator(".table-panel-insert").click();
 
-    await expect.poll(() => catSlide(registry, presentationId)).toContain("data-comot-type=\"table\"");
-    expect(await catSlide(registry, presentationId)).not.toContain("data-comot-header");
+    await expect.poll(() => catSlide(registry, presentationId)).toContain("data-slidra-type=\"table\"");
+    expect(await catSlide(registry, presentationId)).not.toContain("data-slidra-header");
   } finally {
     await cleanup();
   }
@@ -219,12 +219,12 @@ it("E4: 點一格出現單格範圍框；⇧點另一格範圍框涵蓋兩格圍
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     const rangeBox = page.locator(".table-range-box");
     await expect.poll(() => rangeBox.count()).toBe(1);
     const singleBox = await rangeBox.boundingBox();
 
-    await slideFrame.locator('[data-comot-cell="1,1"]').click({ modifiers: ["Shift"] });
+    await slideFrame.locator('[data-slidra-cell="1,1"]').click({ modifiers: ["Shift"] });
     await expect.poll(async () => {
       const box = await rangeBox.boundingBox();
       return box && singleBox ? box.width > singleBox.width && box.height > singleBox.height : false;
@@ -240,13 +240,13 @@ it("E5: 範圍作用中按 Tab 移到下一格；按 Esc 範圍框消失但表�
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     const rangeBox = page.locator(".table-range-box");
     await expect.poll(() => rangeBox.count()).toBe(1);
     const beforeTab = await rangeBox.boundingBox();
 
     await page.keyboard.press("Tab");
-    const targetCellBox = await slideFrame.locator('[data-comot-cell="0,1"]').boundingBox();
+    const targetCellBox = await slideFrame.locator('[data-slidra-cell="0,1"]').boundingBox();
     await expect.poll(async () => {
       const box = await rangeBox.boundingBox();
       return box && targetCellBox ? Math.abs(box.x - targetCellBox.x) < 2 && Math.abs(box.y - targetCellBox.y) < 2 : false;
@@ -271,7 +271,7 @@ it("E6: 範圍作用中按 ⌘B，重載後該格 font-weight=700", async () => 
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
-    await slideFrame.locator('[data-comot-cell="1,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="1,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
     await page.keyboard.press("Meta+b");
 
@@ -290,13 +290,13 @@ it("E7: 範圍涵蓋 2 格時按 Delete，兩格文字變空且投影片仍有�
     await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: 0, col: 0, text: "A" });
     await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: 0, col: 1, text: "B" });
     const before = await catSlide(registry, presentationId);
-    const cellCountBefore = (before.match(/data-comot-cell="/g) ?? []).length;
+    const cellCountBefore = (before.match(/data-slidra-cell="/g) ?? []).length;
     expect(cellMarkup(before, 0, 0)).toContain(">A<");
 
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
-    await slideFrame.locator('[data-comot-cell="0,1"]').click({ modifiers: ["Shift"] });
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,1"]').click({ modifiers: ["Shift"] });
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
     await page.keyboard.press("Delete");
 
@@ -306,7 +306,7 @@ it("E7: 範圍涵蓋 2 格時按 Delete，兩格文字變空且投影片仍有�
     }, { timeout: 5_000 }).toBe(false);
 
     const after = await catSlide(registry, presentationId);
-    expect((after.match(/data-comot-cell="/g) ?? []).length).toBe(cellCountBefore);
+    expect((after.match(/data-slidra-cell="/g) ?? []).length).toBe(cellCountBefore);
   } finally {
     await cleanup();
   }
@@ -327,9 +327,9 @@ it("E8: 雙擊一格出現編輯輸入框；Enter 提交後重載顯示新文字
     // before React has run the mount effect at all, landing on zero
     // listeners) — an artifact of this test's cold start, not of the
     // dblclick feature itself.
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
-    await slideFrame.locator('[data-comot-cell="0,0"]').dblclick();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     await editor.fill("哈囉");
@@ -356,7 +356,7 @@ it("E8b: 表格在群組裡時，直接雙擊一格就進入編輯（同一次�
 
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').dblclick();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     await editor.fill("群內");
@@ -379,16 +379,16 @@ it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（
     // the first generated cell in column 0. A plain click first — see E8's
     // comment on why a cold dblclick on a never-selected table races
     // TableOverlay's own mount effect.
-    await slideFrame.locator('[data-comot-cell="2,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="2,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
-    await slideFrame.locator('[data-comot-cell="2,0"]').dblclick();
+    await slideFrame.locator('[data-slidra-cell="2,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     expect(await editor.inputValue()).toBe("{{ 產品 }}");
     // Drawn over the generated cell the author double-clicked — the template
     // row it edits is display:none and has no rect (was: a 12×12 input at
     // the slide's top-left corner, read as "cannot edit" in manual review).
-    const clicked = await slideFrame.locator('[data-comot-cell="2,0"]').boundingBox();
+    const clicked = await slideFrame.locator('[data-slidra-cell="2,0"]').boundingBox();
     const editorBox = await editor.boundingBox();
     expect(editorBox!.width).toBeGreaterThan(40);
     expect(Math.abs(editorBox!.y - clicked!.y)).toBeLessThan(4);
@@ -409,9 +409,9 @@ it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-edi
   try {
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
-    await slideFrame.locator('[data-comot-cell="0,0"]').dblclick();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     const editorHandle = await editor.elementHandle();
@@ -452,9 +452,9 @@ it("F-09b: Tab 落在 generated 格，input 初值是同欄模板原文，提交
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
-    await slideFrame.locator('[data-comot-cell="2,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="2,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
-    await slideFrame.locator('[data-comot-cell="2,0"]').dblclick();
+    await slideFrame.locator('[data-slidra-cell="2,0"]').dblclick();
     const editor = page.locator("input.table-cell-editor");
     await expect.poll(() => editor.count()).toBe(1);
     expect(await editor.inputValue()).toBe("{{ 產品 }}");
@@ -477,7 +477,7 @@ it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產�
   try {
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
 
     const handle = page.locator(".table-col-handle").first();
     await expect.poll(() => handle.count()).toBe(1);
@@ -491,7 +491,7 @@ it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產�
     await page.mouse.down();
     await page.mouse.move(startX + 60, startY, { steps: 5 });
 
-    const liveWidth = Number(await slideFrame.locator('[data-comot-cell="0,0"] rect').getAttribute("width"));
+    const liveWidth = Number(await slideFrame.locator('[data-slidra-cell="0,0"] rect').getAttribute("width"));
     expect(liveWidth).toBeGreaterThan(200); // default column width is 160; +60px drag should read well above it mid-drag
 
     await page.mouse.up();
@@ -499,14 +499,14 @@ it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產�
 
     expect(await undoCount(presentationId)).toBe(beforeUndo + 1);
     const svg = await catSlide(registry, presentationId);
-    const cols = /data-comot-cols="([^"]+)"/.exec(svg)![1].split(" ").map(Number);
+    const cols = /data-slidra-cols="([^"]+)"/.exec(svg)![1].split(" ").map(Number);
     expect(cols[0]).toBeGreaterThan(200);
     expect(cols[0]).toBeLessThan(400); // a 60px drag must not also swallow the well's left offset (was 160 -> ~900)
     expect(cols[0] + cols[1]).toBeCloseTo(320, 3); // the boundary moved: the right column absorbed the difference
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
-    expect(Number(/data-comot-cols="([^"]+)"/.exec(await catSlide(registry, presentationId))![1].split(" ")[0])).toBe(160);
+    expect(Number(/data-slidra-cols="([^"]+)"/.exec(await catSlide(registry, presentationId))![1].split(" ")[0])).toBe(160);
   } finally {
     await cleanup();
   }
@@ -518,11 +518,11 @@ it("E11: 在格上按右鍵出現選單（Edit／Bold／插列插欄／Merge／�
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
 
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
-    await slideFrame.locator('[data-comot-cell="1,1"]').click({ modifiers: ["Shift"] });
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="1,1"]').click({ modifiers: ["Shift"] });
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
 
-    await slideFrame.locator('[data-comot-cell="0,0"]').click({ button: "right" });
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click({ button: "right" });
     const menu = page.locator('[data-testid="table-cell-menu"]');
     await expect.poll(() => menu.count()).toBe(1);
     const items = await menu.locator(".table-cell-menu-item").allTextContents();
@@ -543,10 +543,10 @@ it("E11: 在格上按右鍵出現選單（Edit／Bold／插列插欄／Merge／�
 
     await expect.poll(async () => {
       const svg = await catSlide(registry, presentationId);
-      return (svg.match(/data-comot-cell="/g) ?? []).length;
+      return (svg.match(/data-slidra-cell="/g) ?? []).length;
     }).toBe(1);
     const svg = await catSlide(registry, presentationId);
-    expect(cellMarkup(svg, 0, 0)).toContain('data-comot-span="2,2"');
+    expect(cellMarkup(svg, 0, 0)).toContain('data-slidra-span="2,2"');
   } finally {
     await cleanup();
   }
@@ -558,42 +558,42 @@ it("E12: 選取表格時右欄 Style › Object 顯示 table-section；點主題
     await bindToSalesCsv(registry, presentationId, elementId, 1);
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
 
     await page.locator("#side-panel-tab-style").click();
     const section = page.locator(".table-section");
     await expect.poll(() => section.isVisible()).toBe(true);
 
     await section.locator(".table-section-theme", { hasText: "Light" }).click();
-    await expect.poll(() => catSlide(registry, presentationId)).toContain('data-comot-theme="light"');
+    await expect.poll(() => catSlide(registry, presentationId)).toContain('data-slidra-theme="light"');
 
     const refreshButton = section.locator(".table-section-refresh");
     await expect.poll(() => refreshButton.count()).toBe(1);
     await refreshButton.click();
     await expect.poll(async () => {
       const svg = await catSlide(registry, presentationId);
-      return (svg.match(/data-comot-generated="1"/g) ?? []).length;
+      return (svg.match(/data-slidra-generated="1"/g) ?? []).length;
     }).toBe(6);
   } finally {
     await cleanup();
   }
 });
 
-it('E12b: 點一格後出現 table-section-cell；點 align center 後重載該格有 data-comot-align="center"；Esc 離開範圍後消失', async () => {
+it('E12b: 點一格後出現 table-section-cell；點 align center 後重載該格有 data-slidra-align="center"；Esc 離開範圍後消失', async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e12b", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
     await page.locator("#side-panel-tab-style").click();
 
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     const cellSection = page.locator(".table-section-cell");
     await expect.poll(() => cellSection.count()).toBe(1);
 
     await cellSection.locator('.table-section-align[data-align="center"]').click();
     await expect.poll(async () => {
       const svg = await catSlide(registry, presentationId);
-      return cellMarkup(svg, 0, 0).includes('data-comot-align="center"');
+      return cellMarkup(svg, 0, 0).includes('data-slidra-align="center"');
     }).toBe(true);
 
     await page.keyboard.press("Escape");
@@ -608,15 +608,15 @@ it("E13: 選取表格時顯示四角縮放與旋轉把手（表格靠容器 tran
   try {
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
 
     for (const name of ["nw", "ne", "sw", "se", "rotate"]) {
-      const handle = slideFrame.locator(`[data-comot-handle="${name}"]`);
+      const handle = slideFrame.locator(`[data-slidra-handle="${name}"]`);
       const display = await handle.evaluate((el) => getComputedStyle(el).display);
       expect(display, name).not.toBe("none");
     }
     for (const name of ["width-left", "width-right"]) {
-      const handle = slideFrame.locator(`[data-comot-handle="${name}"]`);
+      const handle = slideFrame.locator(`[data-slidra-handle="${name}"]`);
       const display = await handle.evaluate((el) => getComputedStyle(el).display);
       expect(display, name).toBe("none");
     }
@@ -718,7 +718,7 @@ for (const theme of ["dark", "light", "zebra"] as const) {
       const page = await openPage(server);
       await page.emulateMedia({ reducedMotion: "reduce" });
       const svg = await catSlide(registry, presentationId);
-      expect(svg).toContain(`data-comot-theme="${theme}"`);
+      expect(svg).toContain(`data-slidra-theme="${theme}"`);
       const headerCell = cellMarkup(svg, 0, 0);
       const paint = HEADER_PAINT[theme];
       expect(headerCell).toContain(`fill="${paint.fill}"`);
@@ -734,7 +734,7 @@ for (const theme of ["dark", "light", "zebra"] as const) {
         ["2,0"], ["2,1"], ["2,2"],
       ];
       const rects = await Promise.all(
-        cellAddrs.map(([addr]) => slideFrame.locator(`[data-comot-cell="${addr}"] rect`).boundingBox()),
+        cellAddrs.map(([addr]) => slideFrame.locator(`[data-slidra-cell="${addr}"] rect`).boundingBox()),
       );
       const clip = snapClip(unionBox("表格", rects));
       await compareScreenshot(page, { name: `theme-${theme}`, baselineDir, clip });
@@ -754,8 +754,8 @@ it("F3: cell-range 基準截圖", async () => {
     // just masked by the `waitForTimeout(200)` below).
     await page.emulateMedia({ reducedMotion: "reduce" });
     const slideFrame = page.frameLocator("iframe.slide-frame");
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
-    await slideFrame.locator('[data-comot-cell="1,1"]').click({ modifiers: ["Shift"] });
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="1,1"]').click({ modifiers: ["Shift"] });
 
     const rangeBox = page.locator(".table-range-box");
     await expect.poll(() => rangeBox.count()).toBe(1);
@@ -771,7 +771,7 @@ it("F3: cell-range 基準截圖", async () => {
         ["0,1"],
         ["1,0"],
         ["1,1"],
-      ].map(([addr]) => slideFrame.locator(`[data-comot-cell="${addr}"] rect`).boundingBox()),
+      ].map(([addr]) => slideFrame.locator(`[data-slidra-cell="${addr}"] rect`).boundingBox()),
     );
     expect(rangeBoxBox).not.toBeNull();
     for (const rect of rects) expect(rect).not.toBeNull();
@@ -808,9 +808,9 @@ it("F4: cell-menu 基準截圖", async () => {
     // settle before the interaction that needs it" reasoning as E8/E9's
     // dblclick fix; a cold right-click on a never-selected table races the
     // component's mount effect the same way a cold dblclick does.
-    await slideFrame.locator('[data-comot-cell="0,0"]').click();
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click();
     await expect.poll(() => page.locator(".table-range-box").count()).toBe(1);
-    await slideFrame.locator('[data-comot-cell="0,0"]').click({ button: "right" });
+    await slideFrame.locator('[data-slidra-cell="0,0"]').click({ button: "right" });
 
     const menu = page.locator('[data-testid="table-cell-menu"]');
     await expect.poll(() => menu.count()).toBe(1);

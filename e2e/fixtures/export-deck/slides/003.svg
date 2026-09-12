@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-only-step" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-only-step" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <text id="el-title3" x="640" y="120" text-anchor="middle" font-size="64">匯出第三頁</text>
   <text id="el-only-step" x="640" y="360" text-anchor="middle" font-size="56">唯一步驟</text>

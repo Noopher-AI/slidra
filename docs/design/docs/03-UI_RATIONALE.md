@@ -3,9 +3,9 @@
 ## A. 標題列（Titlebar）
 | 元件 | 意義 / 決策 |
 |---|---|
-| `CoMotion` + `BETA` | 品牌僅文字，Logo 方塊經討論移除（資訊價值低）。 |
+| `Slidra` + `BETA` | 品牌僅文字，Logo 方塊經討論移除（資訊價值低）。 |
 | ↶ ↷ | 放在檔名左側、緊鄰內容——「歷史屬於這份檔案」。凍結時停用並 toast。 |
-| `檔名.comot` | 顯示副檔名以強化「這是一個檔案、由 agent 以 CLI 操作」的心智；`Saved · just now` / `Unsaved changes` 即時反映 dirty。 |
+| `檔名.slidra` | 顯示副檔名以強化「這是一個檔案、由 agent 以 CLI 操作」的心智；`Saved · just now` / `Unsaved changes` 即時反映 dirty。 |
 | `Agent editing · undo paused` | 凍結態明示：agent 寫檔期間人類不能回退，避免衝突。 |
 | Open / Save / Export | 檔案動作集中右側。Export 提供 PPTX、PDF、By-frame PDF（每個動畫步一頁）——後者是動畫簡報的關鍵輸出。 |
 | ▶ Play ▏▶| | 主要 CTA 紅色，分裂鈕：從目前頁／從頭。移到頂列右端是因為「放映」屬檔案層級，不是編輯工具。 |

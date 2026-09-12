@@ -27,7 +27,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -55,16 +55,16 @@ async function startServerFor(
   deckDir: string,
   prefix: string,
 ): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-home-`));
-  const comotDir = await mkdtemp(path.join(tmpdir(), `comotion-e2e-${prefix}-files-`));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-home-`));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-files-`));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, `${prefix}.comot`);
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, `${prefix}.slidra`);
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -85,10 +85,10 @@ async function startServerFor(
     server,
     cleanup: async () => {
       await server.close();
-      delete process.env["COMOTION_HOME"];
-      delete process.env["COMOTION_BIN"];
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env["SLIDRA_HOME"];
+      delete process.env["SLIDRA_BIN"];
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -519,21 +519,21 @@ it("基準截圖：控制列隱藏態", async () => {
 it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
   // `.canvas`（play.css，data-mode="play"）的 #000 黑幕是進場前/載入前的
   // 佔位色，本該被投影片文件蓋掉。但 `slide add` 的空白頁沒有背景矩形
-  // （crates/comotion/src/slide/ops.rs 的 build_blank_slide_svg），播放
+  // （crates/slidra/src/slide/ops.rs 的 build_blank_slide_svg），播放
   // 模式走的是 renderPlay() 的正常路徑（canvas.ts's wrapPlayDocument），不
   // 是票面文字點名的 wrapSlideDocument——這裡直接量播放中 iframe 自己的
   // html/body 背景，量的是實際播放路徑用到的那個 wrap 函式，不是名字對得
   // 上但實際沒被這條路徑呼叫到的那個。
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-play-nobg-files-"));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-play-nobg-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-play-nobg-files-"));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
   try {
     const registry: CommandRegistry = createDefaultRegistry();
-    const comotPath = path.join(comotDir, "deck.comot");
-    await registry.dispatch("new", { path: comotPath, name: "無背景播放測試" });
-    const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+    const slidraPath = path.join(slidraDir, "deck.slidra");
+    await registry.dispatch("new", { path: slidraPath, name: "無背景播放測試" });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const presentationId = opened.data!.id;
     // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
     await registry.dispatch("slide add", { id: presentationId });
@@ -573,9 +573,9 @@ it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放�
       await server.close();
     }
   } finally {
-    delete process.env["COMOTION_HOME"];
-    delete process.env["COMOTION_BIN"];
-    await rm(coMotionHome, { recursive: true, force: true });
-    await rm(comotDir, { recursive: true, force: true });
+    delete process.env["SLIDRA_HOME"];
+    delete process.env["SLIDRA_BIN"];
+    await rm(slidraHome, { recursive: true, force: true });
+    await rm(slidraDir, { recursive: true, force: true });
   }
 });

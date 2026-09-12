@@ -1,17 +1,17 @@
-# `/comotion-notes` 示範輸入
+# `/slidra-notes` 示範輸入
 
 在 `demo/` 打包出的示範簡報上執行（四頁，`slides/001.svg`～`slides/004.svg`）。
 
 ## 示範輸入
 
 ```
-/comotion-notes 幫每一頁補口語化的簡報者備忘稿
+/slidra-notes 幫每一頁補口語化的簡報者備忘稿
 ```
 
 ## 預期結果
 
-- 四頁各跑一次 `comotion slide notes set <id> slides/00N.svg '<講稿>'`，各自成功。
-- `comotion cat <id> slides/00N.svg` 每頁都能看到非空的 `<comot:notes>...</comot:notes>`。
+- 四頁各跑一次 `slidra slide notes set <id> slides/00N.svg '<講稿>'`，各自成功。
+- `slidra cat <id> slides/00N.svg` 每頁都能看到非空的 `<slidra:notes>...</slidra:notes>`。
 - 講稿內容是口語、第一人稱，不是投影片文字的重抄。
 - agent 的回報裡逐頁列出備忘稿內容或摘要。
 

@@ -106,8 +106,8 @@
   color: var(--ink-900);
 }
 
-/* ── 成組／解組提示（[E2.T15]/#205 D3/D4，原型 comotion-logic-v3.js:446 的
-   toast()，位置抄自 CoMotion (New v3).dc.html:427）── 固定顯示在 dock 正上
+/* ── 成組／解組提示（[E2.T15]/#205 D3/D4，原型 slidra-logic-v3.js:446 的
+   toast()，位置抄自 Slidra (New v3).dc.html:427）── 固定顯示在 dock 正上
    方，2500ms 後由 Dock.tsx 的計時器自動收掉，不堆疊、不可關閉。 */
 .dock-toast {
   position: absolute;
@@ -384,7 +384,7 @@
   font-weight: 700;
   line-height: 1;
 }
-/* 四個樣式預設各自的「Aa」字級（原型 comotion-logic-v3.js:203 的相對比例，
+/* 四個樣式預設各自的「Aa」字級（原型 slidra-logic-v3.js:203 的相對比例，
    換算成面板本身固定的字級，不吃簡報 canvas 尺寸 — 那個換算只在真正插入
    時才對 controller.insertTextBox 的輸入做，見 TextPanel.tsx）。 */
 .text-panel-preset[data-preset="title"] .text-panel-preset-sample {

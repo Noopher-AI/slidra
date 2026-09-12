@@ -8,7 +8,7 @@ import type { AgentKind } from "./adapters.js";
 /**
  * `/` 清單的三個常態來源（architecture comment on #232/#236 — not a
  * fallback, all three always contribute): the agent's own ACP
- * `available_commands_update` report, CoMotion's shipped skills, and the
+ * `available_commands_update` report, Slidra's shipped skills, and the
  * agent's own user-level skill directory. Same-name entries are resolved
  * agent > bundled > user (see `mergeSlashCommands`) — bundled is what gets
  * deployed into the agent's own cwd, so this mirrors the agent's own
@@ -25,12 +25,12 @@ export interface SlashCommand {
 
 /**
  * The namespace every shipped skill's own directory name carries
- * (`.agents/skills/comotion-plan/`), so the name an author types is the
+ * (`.agents/skills/slidra-plan/`), so the name an author types is the
  * name the agent has registered — a prefix added here instead would be a
  * name no agent knows, and Claude Code's SDK silently drops an unknown
  * slash command without ever reaching the model (#248).
  */
-export const BUNDLED_PREFIX = "comotion-";
+export const BUNDLED_PREFIX = "slidra-";
 
 export interface SkillDirs {
   bundled: string;
@@ -52,7 +52,7 @@ export function resolveSkillDirs(kind: AgentKind, overrides?: Partial<SkillDirs>
 
 /**
  * `<packages/server package root>/agent-workdir/.agents/skills` — the
- * directory T2 (F3, a separate ticket) deploys CoMotion's shipped skills
+ * directory T2 (F3, a separate ticket) deploys Slidra's shipped skills
  * into. That directory does not exist yet on `main` (T2 is unmerged); this
  * module treats a missing directory as an empty source (see
  * `readSkillCommands`), so nothing here depends on T2 landing first.
@@ -210,8 +210,8 @@ export async function collectSlashCommands(
     readSkillCommands(dirs.user, "user"),
   ]);
 
-  // CoMotion's own shipped skills are namespaced by their directory names
-  // (`comotion-plan`, never a bare `plan`), which is also the name
+  // Slidra's own shipped skills are namespaced by their directory names
+  // (`slidra-plan`, never a bare `plan`), which is also the name
   // the agent registers them under — so a bundled skill and a user skill
   // of the same subject are two separate entries here, not a shadowing
   // pair, and the name shown is one the agent will actually answer to.

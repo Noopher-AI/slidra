@@ -8,7 +8,7 @@ import { TitleBar, type TitleBarProps } from "../src/shell/TitleBar.js";
 // chat-panel-status.test.ts。
 function markup(): string {
   const props: TitleBarProps = {
-    deckName: "deck.comot",
+    deckName: "deck.slidra",
     savedStatusText: "Saved",
     editingFrozen: false,
     onUndo: () => {},

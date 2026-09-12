@@ -126,7 +126,7 @@ export function EmbedLayer({ controller }: EmbedLayerProps) {
         <iframe
           key={item.id}
           className="embed-frame"
-          id={`comot-embed-${item.id}`}
+          id={`slidra-embed-${item.id}`}
           data-embed-id={item.id}
           data-embed-provider={item.provider}
           ref={(node) => {

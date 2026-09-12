@@ -12,7 +12,7 @@ import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { requireCliBuilt } from "./require-cli-built.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -23,7 +23,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -44,36 +44,36 @@ const fixturePath = path.join(
   "fixtures/multi-command-fake-acp-agent.mjs",
 );
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let logDir: string;
 let logPath: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-freeze-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-freeze-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "comotion-freeze-log-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-freeze-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-freeze-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "slidra-freeze-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018, #303): mint one page with one text
   // box, and take the element id straight from `textbox add`'s own result.
@@ -86,7 +86,7 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   // These tests count undo entries, and the two setup commands above leave
   // their own. Drop the history so the deck reaches each test exactly as it
   // did when `new` still shipped a first slide: one page, empty undo stack.
-  await rm(path.join(coMotionHome, "history", id), { recursive: true, force: true });
+  await rm(path.join(slidraHome, "history", id), { recursive: true, force: true });
   return { id, elementId: added.data!.elementId };
 }
 
@@ -252,9 +252,9 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
     const commands = [
-      `comotion text set ${id} slides/001.svg ${elementId} '第一次'`,
-      `comotion text set ${id} slides/001.svg ${elementId} '第二次'`,
-      `comotion text set ${id} slides/001.svg ${elementId} '第三次'`,
+      `slidra text set ${id} slides/001.svg ${elementId} '第一次'`,
+      `slidra text set ${id} slides/001.svg ${elementId} '第二次'`,
+      `slidra text set ${id} slides/001.svg ${elementId} '第三次'`,
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
@@ -281,8 +281,8 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC2-a: after the turn, stack.json has no open group and exactly one undo entry for it", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const commands = [
-      `comotion text set ${id} slides/001.svg ${elementId} 'A'`,
-      `comotion text set ${id} slides/001.svg ${elementId} 'B'`,
+      `slidra text set ${id} slides/001.svg ${elementId} 'A'`,
+      `slidra text set ${id} slides/001.svg ${elementId} 'B'`,
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
@@ -290,7 +290,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.ranCommand === commands[1]);
     await waitForFrozen(server, false);
 
-    const stackRaw = await readFile(path.join(coMotionHome, "history", id, "stack.json"), "utf8");
+    const stackRaw = await readFile(path.join(slidraHome, "history", id, "stack.json"), "utf8");
     const stack = JSON.parse(stackRaw) as { undo: unknown[]; openGroup: unknown | null };
     expect(stack.openGroup).toBeNull();
     expect(stack.undo).toHaveLength(1);
@@ -298,8 +298,8 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("two separate agent turns produce two separate undo groups", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const cmd1 = `comotion text set ${id} slides/001.svg ${elementId} '回合一'`;
-    const cmd2 = `comotion text set ${id} slides/001.svg ${elementId} '回合二'`;
+    const cmd1 = `slidra text set ${id} slides/001.svg ${elementId} '回合一'`;
+    const cmd2 = `slidra text set ${id} slides/001.svg ${elementId} '回合二'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[cmd1], [cmd2]] }), id);
 
     await postChat(server, "第一次請求");
@@ -310,7 +310,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.ranCommand === cmd2);
     await waitForFrozen(server, false);
 
-    const stackRaw = await readFile(path.join(coMotionHome, "history", id, "stack.json"), "utf8");
+    const stackRaw = await readFile(path.join(slidraHome, "history", id, "stack.json"), "utf8");
     const stack = JSON.parse(stackRaw) as { undo: unknown[] };
     expect(stack.undo).toHaveLength(2);
   });
@@ -334,7 +334,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("AC2-c: undo is refused (409) from the first command until the turn ends, then allowed", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '改一次'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '改一次'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");
@@ -354,7 +354,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC4: the agent's first command waits for an in-progress human edit instead of failing", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '人放手後才改'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '人放手後才改'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     const beginResponse = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
@@ -380,7 +380,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("POST /api/editing/begin is refused with 409 while the agent holds the floor", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");
@@ -402,7 +402,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then actually execute once it releases", async () => {
     const { id, elementId, moveElementId, scaleElementId, rotateElementId, textboxElementId } =
       await openFreshPresentationForCommandExecution();
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const slidePath = "slides/001.svg";
 
@@ -469,12 +469,12 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
       new RegExp(`<g id="${scaleElementId}"[^>]*><rect[^>]*width="100"[^>]*height="100"`),
     );
     expect(executedSlide).toContain(`<g id="${rotateElementId}" transform="translate(50 60) rotate(30)">`);
-    expect(executedSlide).toContain(`data-comot-text-width="100"`);
+    expect(executedSlide).toContain(`data-slidra-text-width="100"`);
   });
 
   it("POST /api/asset: refused with 409 while the agent holds the floor, then actually runs once it releases", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
@@ -484,7 +484,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
     const frozenResponse = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Comotion-Asset-Name": "photo.png" },
+      headers: { "X-Slidra-Asset-Name": "photo.png" },
       body: pngBytes,
     });
     expect(frozenResponse.status).toBe(409);
@@ -496,7 +496,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
     const unfrozenResponse = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Comotion-Asset-Name": "photo.png" },
+      headers: { "X-Slidra-Asset-Name": "photo.png" },
       body: pngBytes,
     });
     expect(unfrozenResponse.status).toBe(200);
@@ -505,7 +505,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");

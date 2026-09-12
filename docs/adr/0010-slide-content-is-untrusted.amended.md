@@ -6,7 +6,7 @@
 > **仍然成立的**：投影片內容一律不可信、檢視模式不跑 script、播放模式才加 `allow-scripts`、
 > 永遠不加 `allow-same-origin`、server 必須拒絕 `Origin: null`、不採用伺服器端消毒。
 
-`.comot` 的用途之一就是被作者以外的人打開（ADR-0003）。合法的 SVG 可以帶 `onload`、`onerror` 等事件處理器，若以第一方身分執行，就能取用 `/api/*` 並把整份簡報送出去。投影片內容因此一律視為不可信。
+`.slidra` 的用途之一就是被作者以外的人打開（ADR-0003）。合法的 SVG 可以帶 `onload`、`onerror` 等事件處理器，若以第一方身分執行，就能取用 `/api/*` 並把整份簡報送出去。投影片內容因此一律視為不可信。
 
 投影片渲染在 sandbox iframe 中，以 `srcdoc` 餵入，處於 opaque origin。這個姿態依模式而異：
 

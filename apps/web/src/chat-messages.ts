@@ -37,7 +37,7 @@ export interface CommandMessage {
   command: string;
   status: CommandStatus;
   /**
-   * True for a `comotion` invocation. Only those carry a status the author
+   * True for a `slidra` invocation. Only those carry a status the author
    * is meant to read: 執行中／完成／失敗 is a claim about the presentation,
    * and the agent's own shell work (reading its references, grepping) has
    * no outcome the author is being asked to act on. The command is still
@@ -57,13 +57,13 @@ export interface CommandMessage {
    */
   interrupted?: true;
   /**
-   * The command never ran: CoMotion's own allowlist refused it (server:
+   * The command never ran: Slidra's own allowlist refused it (server:
    * `BLOCKED_COMMAND_MESSAGE`). A separate field rather than another
    * `CommandStatus` for the same reason as `interrupted` — `status` is
    * ACP's vocabulary, and ACP has no word for "the client refused this".
    * The distinction is worth drawing on screen: a failed command is the
    * agent's problem to fix, a blocked one is a rule the author should be
-   * able to recognise as CoMotion's, not as something they clicked.
+   * able to recognise as Slidra's, not as something they clicked.
    */
   blocked?: true;
 }

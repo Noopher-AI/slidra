@@ -5,7 +5,7 @@
    契約文件：畫布內選取／控制點／文字游標／文字選取／對齊參考線的色彩，是
    canvas.ts 用 getComputedStyle(document.documentElement) 讀
    `--brand-red` / `--surface-white` 這兩個 CSS 自訂屬性（canvas.ts 的
-   selectionColors()），序列化成 window.__COMOT_SELECTION_COLORS__ 注入投
+   selectionColors()），序列化成 window.__SLIDRA_SELECTION_COLORS__ 注入投
    影片 iframe，selection-runtime.js（shadow root 內的 <style>，零色碼字
    面值）再吃這兩個值。
 

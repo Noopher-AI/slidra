@@ -17,7 +17,7 @@ import { EmbedLayer } from "./EmbedLayer.js";
  * on their own.
  */
 export interface CommentOverlayProps {
-  /** The single selected element's own comment, or `null` when it has none (multi-selection is resolved to `null` by the caller too — no pin for 2+, `comotion-logic-v3.js:666`). */
+  /** The single selected element's own comment, or `null` when it has none (multi-selection is resolved to `null` by the caller too — no pin for 2+, `slidra-logic-v3.js:666`). */
   pin: { commentId: string; number: number; onClick(): void } | null;
   /** `null` = composer closed; an element id or `"page"` = open, targeting that. */
   target: string | null;

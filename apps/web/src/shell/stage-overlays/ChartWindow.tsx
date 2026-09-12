@@ -108,7 +108,7 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
   );
 
   // Default position: top-right of the well, minus a margin (prototype's
-  // own `chartWinPos` default, comotion-logic-v3.js's `startWinDrag`) — one
+  // own `chartWinPos` default, slidra-logic-v3.js's `startWinDrag`) — one
   // `useState` initializer per mount, so a NEW chart window (a different
   // `state.id`, remounted via OverlayLayer's `key={state.id}`) always opens
   // at this corner rather than wherever the previous one was dragged to.

@@ -18,7 +18,7 @@ const SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
   '<g id="el-a"><rect x="0" y="0" width="10" height="10" fill="#111"/></g>' +
   '<g id="el-b"><rect x="0" y="0" width="10" height="10" fill="#222"/></g>' +
-  '<g id="el-text" data-comot-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
+  '<g id="el-text" data-slidra-text-width="300"><text font-size="24" xml:space="preserve"><tspan x="0" y="24">Hi</tspan></text></g>' +
   '<g id="el-group"><g id="el-group-child"><rect x="0" y="0" width="10" height="10"/></g></g>' +
   "</svg>";
 

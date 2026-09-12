@@ -436,7 +436,7 @@ export function App() {
         // here the same way any other file write does — this is what
         // makes Pinned context update itself without a page refresh.
         void refreshComments();
-        // #303: `comotion-plan`'s `plan set` lands here too — this is what
+        // #303: `slidra-plan`'s `plan set` lands here too — this is what
         // opens the plan-confirmation gate without a page refresh.
         void refreshPlan();
       },
@@ -1018,7 +1018,7 @@ export function App() {
 
   /**
    * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
-   * same file with `x-comotion-discard-unsaved: 1` after the author
+   * same file with `x-slidra-discard-unsaved: 1` after the author
    * confirms losing the current unsaved changes — the one round-trip the
    * table's 409 row describes.
    */
@@ -1031,8 +1031,8 @@ export function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-comotion-file-name": encodeURIComponent(file.name),
-          ...(discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {}),
+          "x-slidra-file-name": encodeURIComponent(file.name),
+          ...(discardUnsaved ? { "x-slidra-discard-unsaved": "1" } : {}),
         },
         body: bytes,
       });
@@ -1067,7 +1067,7 @@ export function App() {
     try {
       response = await fetch("/api/new", {
         method: "POST",
-        headers: discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {},
+        headers: discardUnsaved ? { "x-slidra-discard-unsaved": "1" } : {},
       });
     } catch {
       setOpenError("建立新簡報失敗：連線已中斷");
@@ -1393,7 +1393,7 @@ export function App() {
 
   /**
    * [E2.T8] §4.8 / #303: `OutlineModal`'s `Draft with agent` — a plain chat
-   * message invoking the shipped `/comotion-plan` skill (the same text an
+   * message invoking the shipped `/slidra-plan` skill (the same text an
    * author would type by hand, so the skill really triggers — #248), with
    * a fixed position line (contract §4), sent through the exact same path
    * a hand-typed message takes (architecture 拍板: no separate API, no
@@ -1408,7 +1408,7 @@ export function App() {
       count === 0
         ? "【從大綱規劃】這份簡報還沒有任何投影片。"
         : `【從大綱規劃】目前有 ${count} 頁，新頁接在最後。`;
-    await sendChatText(`/comotion-plan ${position}\n\n${outline}`);
+    await sendChatText(`/slidra-plan ${position}\n\n${outline}`);
   }
 
   /**

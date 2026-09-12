@@ -1,5 +1,5 @@
 /**
- * Reads a `<comot:chart>` container back into a `ChartModel` with the
+ * Reads a `<slidra:chart>` container back into a `ChartModel` with the
  * browser's own `DOMParser` — the web's own copy of
  * core's chart module types/constants and `readChartModel` (F8,
  * NOOP-289). `renderChartSvg`/`validateChartModel`/chart editing are NOT
@@ -78,26 +78,26 @@ function requireChartContainer(doc: Document, elementId: string): Element {
   if (!svgRoot || localName(svgRoot) !== "svg") throw new Error("投影片的根節點不是 <svg>");
   const found = findChartContainer(svgRoot, elementId);
   if (!found) throw new Error(`找不到元素：${elementId}`);
-  if (found.getAttribute("data-comot-type") !== "chart") throw new Error(`元素 ${elementId} 不是圖表`);
+  if (found.getAttribute("data-slidra-type") !== "chart") throw new Error(`元素 ${elementId} 不是圖表`);
   return found;
 }
 
 function requireDataNode(container: Element, elementId: string): Element {
   const chartNode = Array.from(container.children).find((child) => localName(child) === "chart");
-  if (!chartNode) throw new Error(`元素 ${elementId} 缺少 <comot:chart>`);
+  if (!chartNode) throw new Error(`元素 ${elementId} 缺少 <slidra:chart>`);
   return chartNode;
 }
 
 function readRequiredAttr(node: Element, name: string, elementId: string): string {
   const raw = node.getAttribute(name);
-  if (raw === null) throw new Error(`元素 ${elementId} 的 <comot:chart> 缺少屬性：${name}`);
+  if (raw === null) throw new Error(`元素 ${elementId} 的 <slidra:chart> 缺少屬性：${name}`);
   return raw;
 }
 
 function readNumberAttr(node: Element, name: string, elementId: string): number {
   const raw = readRequiredAttr(node, name, elementId);
   const value = Number(raw);
-  if (!Number.isFinite(value)) throw new Error(`元素 ${elementId} 的 <comot:chart> 屬性 ${name} 不是有限數字：${raw}`);
+  if (!Number.isFinite(value)) throw new Error(`元素 ${elementId} 的 <slidra:chart> 屬性 ${name} 不是有限數字：${raw}`);
   return value;
 }
 
@@ -112,7 +112,7 @@ function parseValues(raw: string, elementId: string, seriesName: string): number
 }
 
 /**
- * Reads `elementId`'s `<comot:chart>` back into a `ChartModel`, parsing
+ * Reads `elementId`'s `<slidra:chart>` back into a `ChartModel`, parsing
  * `svgContent` with `DOMParser`. Tolerates `axes="single"` documents where
  * a stray series still carries `axis="right"` (a hand-edited or
  * pre-migration file) by leaving it as read — the browser does not
@@ -147,8 +147,8 @@ export function readChartModel(svgContent: string, elementId: string): ChartMode
   const children = Array.from(chartNode.children);
   const seriesNodes = children.filter((child) => localName(child) === "series");
   const categoriesNodes = children.filter((child) => localName(child) === "categories");
-  if (seriesNodes.length === 0) throw new Error(`元素 ${elementId} 的圖表沒有任何 <comot:series>`);
-  if (categoriesNodes.length !== 1) throw new Error(`元素 ${elementId} 的圖表必須恰好有一個 <comot:categories>`);
+  if (seriesNodes.length === 0) throw new Error(`元素 ${elementId} 的圖表沒有任何 <slidra:series>`);
+  if (categoriesNodes.length !== 1) throw new Error(`元素 ${elementId} 的圖表必須恰好有一個 <slidra:categories>`);
 
   const categories = readRequiredAttr(categoriesNodes[0], "values", elementId).split(",");
   if (categories.some((category) => category === "")) {

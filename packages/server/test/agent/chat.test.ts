@@ -12,7 +12,7 @@ import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { buildCommentContext } from "../../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -23,7 +23,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -50,19 +50,19 @@ const fixturePath = path.join(
   "fixtures/fake-acp-agent.mjs",
 );
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let logDir: string;
 let logPath: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-chat-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-log-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-chat-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
@@ -71,18 +71,18 @@ afterEach(async () => {
   // stream) is torn down here, including on assertion failure, or the
   // suite hangs on a live child process / open socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018): the tests below read and edit
   // slides/001.svg, so mint one page with one title text box.
@@ -99,7 +99,7 @@ async function openFreshPresentation(): Promise<string> {
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const id = await openFreshPresentation();
   const svgText = await readPresentationTextViaCli(id, "slides/001.svg");
-  const match = /<g id="(el-[^"]+)" data-comot-text-width/.exec(svgText);
+  const match = /<g id="(el-[^"]+)" data-slidra-text-width/.exec(svgText);
   if (!match) throw new Error("test fixture: title element id not found");
   return { id, elementId: match[1] };
 }
@@ -112,9 +112,9 @@ async function openFixturePresentation(files: Record<string, Uint8Array | string
     encoded[name] = typeof content === "string" ? new TextEncoder().encode(content) : content;
   }
   const zipped = zipSync(encoded);
-  const comotPath = path.join(comotDir, `fixture-${Math.random().toString(36).slice(2)}.comot`);
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, `fixture-${Math.random().toString(36).slice(2)}.slidra`);
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -509,14 +509,14 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     return log.find((entry) => "permissionOutcome" in entry)?.permissionOutcome;
   }
 
-  it("allows a plain comotion command, selecting the offered allow option", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion text set abc slides/001.svg el-1 新標題" });
+  it("allows a plain slidra command, selecting the offered allow option", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra text set abc slides/001.svg el-1 新標題" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows Codex's shell argv after validating the entire script", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: ["/bin/zsh", "-lc", "comotion text set abc slides/001.svg el-1 '新標題'"],
+      permissionCommand: ["/bin/zsh", "-lc", "slidra text set abc slides/001.svg el-1 '新標題'"],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -525,9 +525,9 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // itself (see `unquoteShellWord`): a command carrying quotes of its own
   // arrives wrapped in quotes it never had. Without unquoting, every
   // writing command is refused on its leading `"`.
-  it("allows a comotion command codex-acp sent in its shell-quoted form", async () => {
+  it("allows a slidra command codex-acp sent in its shell-quoted form", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `"comotion text set abc slides/001.svg el-1 '新標題'"`,
+      permissionCommand: `"slidra text set abc slides/001.svg el-1 '新標題'"`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -536,7 +536,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // single-quoted chunks for one `plan set` whose argument spans lines.
   it("allows a shell-quoted command built from several adjacent quoted chunks", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `"comotion plan set abc outline '"'\`\`\`json\n{ "n": 1 }\n\`\`\`'"'"`,
+      permissionCommand: `"slidra plan set abc outline '"'\`\`\`json\n{ "n": 1 }\n\`\`\`'"'"`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -545,7 +545,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   // the command and lets the turn continue, `cancel` is Codex's abort.
   it("refuses with decline, not the abort, when the adapter offers both", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `rm -rf ${coMotionHome}/work/abc`,
+      permissionCommand: `rm -rf ${slidraHome}/work/abc`,
       permissionOptions: [
         { kind: "allow_once", name: "允許", optionId: "allow_once" },
         { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
@@ -556,13 +556,13 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
   });
 
   // 直接讀簡報檔案被擋之後，整輪本來會死在 adapter 的 `interrupt: true` 上，
-  // agent 只收到「使用者拒絕」。現在 CoMotion 把回合接回來，告訴它該用什麼。
+  // agent 只收到「使用者拒絕」。現在 Slidra 把回合接回來，告訴它該用什麼。
   it("被擋下的命令會換成一句建議送回 agent，回合繼續", async () => {
     const server = await serve(
       fakeAgent({
         replies: [["(ack)"], ["好的"], ["知道了，改用讀檔工具"]],
         requestPermissionOnPromptIndex: 1,
-        permissionCommand: `cat ${coMotionHome}/work/abc/slides/001.svg`,
+        permissionCommand: `cat ${slidraHome}/work/abc/slides/001.svg`,
         permissionOptions: [
           { kind: "allow_once", name: "允許", optionId: "allow_once" },
           { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
@@ -582,7 +582,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect((collected.at(-1)!.data as { stopReason: string }).stopReason).toBe("end_turn");
     // agent 收到的第二個 prompt 就是那句建議
     const prompts = (await readFakeAgentLog()).filter((entry) => entry.prompt !== undefined);
-    expect(JSON.stringify(prompts.at(-1)!.prompt)).toContain("comotion cat");
+    expect(JSON.stringify(prompts.at(-1)!.prompt)).toContain("slidra cat");
     // 作者看得到這件事發生過
     expect(collected.some((e) => e.event === "chat-notice")).toBe(true);
   });
@@ -594,7 +594,7 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
       fakeAgent({
         replies: [["(ack)"], ["好的"]],
         requestPermissionOnPromptIndex: 1,
-        permissionRawInput: { script: `${coMotionHome}/work/abc/slides/001.svg` },
+        permissionRawInput: { script: `${slidraHome}/work/abc/slides/001.svg` },
         // Only the abort on offer, and the adapter aborts the turn on it.
         permissionOptions: [
           { kind: "allow_once", name: "允許", optionId: "allow_once" },
@@ -631,37 +631,37 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     }
   });
 
-  // 政策改版：CoMotion 只保護簡報自己的檔案，其餘 shell 命令一律放行。
-  // 以下這組守的是新的那條線——`<COMOTION_HOME>`（除了 agent 自己的工作目錄）
-  // 與任何 `.comot` 容器，只能透過 CLI 動。
+  // 政策改版：Slidra 只保護簡報自己的檔案，其餘 shell 命令一律放行。
+  // 以下這組守的是新的那條線——`<SLIDRA_HOME>`（除了 agent 自己的工作目錄）
+  // 與任何 `.slidra` 容器，只能透過 CLI 動。
 
   it("refuses a command that writes straight into the presentation's work directory", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `sed -i s/a/b/ ${coMotionHome}/work/abc/slides/001.svg`,
+      permissionCommand: `sed -i s/a/b/ ${slidraHome}/work/abc/slides/001.svg`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  it("refuses a command that reads CoMotion's own bookkeeping", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: `cat ${coMotionHome}/projects.json` });
+  it("refuses a command that reads Slidra's own bookkeeping", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: `cat ${slidraHome}/projects.json` });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
-  it("refuses a command that opens a .comot container directly, wherever it lives", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "unzip /tmp/somebody-elses.comot -d /tmp/out" });
+  it("refuses a command that opens a .slidra container directly, wherever it lives", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "unzip /tmp/somebody-elses.slidra -d /tmp/out" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
   it("refuses a protected path buried inside another program's script argument", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `sh -c 'rm -rf ${coMotionHome}/history/abc'`,
+      permissionCommand: `sh -c 'rm -rf ${slidraHome}/history/abc'`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
 
   it("refuses a protected path in a raw input shape whose command cannot be read at all", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionRawInput: { script: `${coMotionHome}/work/abc/slides/001.svg` },
+      permissionRawInput: { script: `${slidraHome}/work/abc/slides/001.svg` },
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "reject" });
   });
@@ -678,8 +678,8 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
-  it("allows a comotion command with a pipe — the CLI is the CLI however it is spelled", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion ls abc | head -3" });
+  it("allows a slidra command with a pipe — the CLI is the CLI however it is spelled", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra ls abc | head -3" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
@@ -690,20 +690,20 @@ describe("chat: session/request_permission — 簡報檔案只能走 CLI，其�
 
   it("allows a double-quoted argument, which the old character grammar refused outright", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: 'comotion text set abc slides/001.svg el-1 "第三季 財報"',
+      permissionCommand: 'slidra text set abc slides/001.svg el-1 "第三季 財報"',
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows a single-quoted Chinese argument containing spaces", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion text set abc slides/001.svg el-1 '第三季 財報 標題'",
+      permissionCommand: "slidra text set abc slides/001.svg el-1 '第三季 財報 標題'",
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
-  it("allows a comotion command with a trailing 2>&1", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "comotion cat abc project.json 2>&1" });
+  it("allows a slidra command with a trailing 2>&1", async () => {
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra cat abc project.json 2>&1" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 });
@@ -729,12 +729,12 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
   // Fix 2 (ticket #7): some adapters stop calling session/request_permission
   // for a tool once a persistent grant (allow_always) has been given —
   // accepting it once would silently disable this gate for every later
-  // command in the session, including non-comotion ones. Only allow_once
+  // command in the session, including non-slidra ones. Only allow_once
   // may ever be selected for an allow decision.
 
-  it("allows a valid comotion command when allow_once is offered", async () => {
+  it("allows a valid slidra command when allow_once is offered", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion ls abc",
+      permissionCommand: "slidra ls abc",
       permissionOptions: [
         { kind: "allow_once", name: "允許一次", optionId: "allow-once" },
         { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
@@ -744,9 +744,9 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow-once" });
   });
 
-  it("refuses a valid comotion command when only allow_always is offered, rather than accepting a persistent grant", async () => {
+  it("refuses a valid slidra command when only allow_always is offered, rather than accepting a persistent grant", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "comotion ls abc",
+      permissionCommand: "slidra ls abc",
       permissionOptions: [
         { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
         { kind: "reject_once", name: "拒絕", optionId: "reject" },
@@ -823,16 +823,16 @@ describe("chat: session cwd", () => {
 
     // Never the real project directory the CLI was launched from.
     expect(sentCwd).not.toBe(process.cwd());
-    // Exactly `<COMOTION_HOME>/agent/<presentationId>`, resolved — the
+    // Exactly `<SLIDRA_HOME>/agent/<presentationId>`, resolved — the
     // product work directory `deployAgentWorkdir()` deploys before
     // `startServe` ever
     // constructs the session (NOOP-238). The escape-hatch this test used to
-    // assert ("never under COMOTION_HOME") is inverted by design: `../work/<id>`
+    // assert ("never under SLIDRA_HOME") is inverted by design: `../work/<id>`
     // is no longer reachable from here, because `fs/read_text_file`'s
     // containment is the deployed directory's own real tree
     // (`classifyAgentReadPath`/`readAgentWorkdirFile`), not a string prefix
     // check an agent could try to walk out of.
-    const expectedWorkdir = await realpath(path.join(coMotionHome, "agent", id));
+    const expectedWorkdir = await realpath(path.join(slidraHome, "agent", id));
     expect(sentCwd).toBe(expectedWorkdir);
   });
 
@@ -876,7 +876,7 @@ describe("chat: session cwd", () => {
     // a second deploy would overwrite anyway. This only proves the read
     // wiring reaches the real, already-deployed `.claude/skills` tree; skill
     // *content* is out of this ticket's scope (T6/T7).
-    const skillDir = path.join(coMotionHome, "agent", id, ".claude", "skills", "probe");
+    const skillDir = path.join(slidraHome, "agent", id, ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
     await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
 
@@ -906,14 +906,14 @@ describe("chat: serve close does not delete the deployed work directory (NOOP-23
       path.join(path.dirname(fileURLToPath(import.meta.url)), "../../agent-workdir/AGENTS.md"),
       "utf8",
     );
-    const deployedAgentsMd = await readFile(path.join(coMotionHome, "agent", id, "AGENTS.md"), "utf8");
+    const deployedAgentsMd = await readFile(path.join(slidraHome, "agent", id, "AGENTS.md"), "utf8");
     expect(deployedAgentsMd).toBe(sourceAgentsMd);
   });
 });
 
 describe("chat: a failed start must not leak its subprocess", () => {
   it("tears down the failed attempt's child so a retry leaves exactly one live child process", async () => {
-    const markerDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-marker-"));
+    const markerDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-marker-"));
     const markerPath = path.join(markerDir, "attempted");
     try {
       const server = await serve(
@@ -955,7 +955,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
   it(
     "errors out the pending turn instead of hanging, and a later message starts a fresh, working session",
     async () => {
-      const markerDir = await mkdtemp(path.join(tmpdir(), "comotion-chat-exit-marker-"));
+      const markerDir = await mkdtemp(path.join(tmpdir(), "slidra-chat-exit-marker-"));
       const markerPath = path.join(markerDir, "exited-once");
       try {
         // exitDuringPromptIndex: 1 is the author's first message (index 0 is
@@ -1062,7 +1062,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
       | { readTextFileError?: { code: number; message: string } }
       | undefined;
     expect(errorEntry?.readTextFileError?.message).toBe("找不到檔案：does/not/exist.svg");
-    expect(errorEntry?.readTextFileError?.message).not.toContain(coMotionHome);
+    expect(errorEntry?.readTextFileError?.message).not.toContain(slidraHome);
   });
 
   it("fails explicitly for a directory — not an empty string, not a listing", async () => {
@@ -1274,7 +1274,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
 });
 
 describe("chat: fs/write_text_file always refuses, and the refusal names the command to use instead", () => {
-  it("refuses, naming comotion text set, and writes nothing", async () => {
+  it("refuses, naming slidra text set, and writes nothing", async () => {
     const id = await openFreshPresentation();
     const before = await readPresentationTextViaCli(id, "slides/001.svg");
 
@@ -1298,7 +1298,7 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
     const errorEntry = log.find((entry) => "writeTextFileError" in entry) as
       | { writeTextFileError?: { code: number; message: string } }
       | undefined;
-    expect(errorEntry?.writeTextFileError?.message).toContain("comotion text set");
+    expect(errorEntry?.writeTextFileError?.message).toContain("slidra text set");
     expect(log.some((entry) => "writeTextFileResult" in entry)).toBe(false);
 
     const after = await readPresentationTextViaCli(id, "slides/001.svg");
@@ -1307,7 +1307,7 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
 });
 
 describe("chat: the whole loop — read via the file method, request permission, allowed, change visible through a read", () => {
-  it("lets the agent read the slide, get permission for comotion text set, and see the edit afterwards only through another read", async () => {
+  it("lets the agent read the slide, get permission for slidra text set, and see the edit afterwards only through another read", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
 
     // Fix 2 (ticket #7): the id used to build the permission command below
@@ -1333,7 +1333,7 @@ describe("chat: the whole loop — read via the file method, request permission,
         // Single-quoted, per the 編輯規約's quoting rule (ticket #7 fix 1):
         // double quotes are refused outright by the new allowlist grammar,
         // so a real agent following the brief would quote this way.
-        permissionCommand: `comotion text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
+        permissionCommand: `slidra text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
       }),
       id,
     );
@@ -1358,7 +1358,7 @@ describe("chat: the whole loop — read via the file method, request permission,
     // The permission grant only authorizes the command — actually running
     // it is the agent's own business (ADR-0006), which this fake agent does
     // not simulate a real shell for. Applying it here, through the exact
-    // `comotion` binary the agent's permission command names, is what the
+    // `slidra` binary the agent's permission command names, is what the
     // agent's own Bash tool would have done once permission came back
     // "allow".
     const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 財報"]);
@@ -1402,13 +1402,13 @@ describe("chat: the author can see the command run (ticket #17)", () => {
   }
 
   it("relays the command and its successful ending, with the command text verbatim from rawInput.command", async () => {
-    const events = await commandEventsFor({ toolCallCommand: "comotion ls p1" });
+    const events = await commandEventsFor({ toolCallCommand: "slidra ls p1" });
 
     const started = events.find((e) => e.event === "chat-command");
     expect(started?.data).toEqual({
       toolCallId: "fake-command-call",
       cli: true,
-      command: "comotion ls p1",
+      command: "slidra ls p1",
       status: "pending",
     });
 
@@ -1421,9 +1421,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
 
   it("relays a failed command together with its output, so the author never has to open a terminal", async () => {
     const events = await commandEventsFor({
-      toolCallCommand: "comotion text set p1 slides/001.svg el-1 '新標題'",
+      toolCallCommand: "slidra text set p1 slides/001.svg el-1 '新標題'",
       toolCallOutcome: "failed",
-      toolCallOutput: "zsh: command not found: comotion\nexit code 127",
+      toolCallOutput: "zsh: command not found: slidra\nexit code 127",
     });
 
     const failure = events
@@ -1433,7 +1433,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     expect(failure).toEqual({
       toolCallId: "fake-command-call",
       status: "failed",
-      output: "zsh: command not found: comotion\nexit code 127",
+      output: "zsh: command not found: slidra\nexit code 127",
     });
   });
 
@@ -1441,7 +1441,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     // 命令照樣出現在時間軸上（作者看得到機器上發生什麼事），但沒有狀態標記
     // ——它不是 CLI 操作。被擋這件事由一句通知負責。
     const events = await commandEventsFor({
-      toolCallCommand: `sed -i s/a/b/ ${coMotionHome}/work/p1/slides/001.svg`,
+      toolCallCommand: `sed -i s/a/b/ ${slidraHome}/work/p1/slides/001.svg`,
       permissionForToolCall: true,
       toolCallOutcome: "failed",
       toolCallOutput: "The user doesn't want to proceed with this tool use.",
@@ -1455,9 +1455,9 @@ describe("chat: the author can see the command run (ticket #17)", () => {
     expect((notice!.data as { text: string }).text).toContain("擋下了 agent 直接動簡報檔案");
   });
 
-  it("leaves a command's own failure alone — only a refused one gets CoMotion's wording", async () => {
+  it("leaves a command's own failure alone — only a refused one gets Slidra's wording", async () => {
     const events = await commandEventsFor({
-      toolCallCommand: "comotion ls p1",
+      toolCallCommand: "slidra ls p1",
       permissionForToolCall: true,
       toolCallOutcome: "failed",
       toolCallOutput: "exit code 1",
@@ -1490,7 +1490,7 @@ describe("chat: the author can see the command run (ticket #17)", () => {
 
   it("never relays commands from the 編輯規約 turn", async () => {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "comotion ls p1" }),
+      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "slidra ls p1" }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);

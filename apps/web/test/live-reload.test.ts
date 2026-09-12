@@ -203,8 +203,8 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.comot" });
-    expect(onSaveStateChange).toHaveBeenNthCalledWith(1, { known: true, dirty: true, fileName: "deck.comot" });
+    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.slidra" });
+    expect(onSaveStateChange).toHaveBeenNthCalledWith(1, { known: true, dirty: true, fileName: "deck.slidra" });
 
     fake!.emit("save-state", { known: false });
     expect(onSaveStateChange).toHaveBeenNthCalledWith(2, { known: false });
@@ -223,7 +223,7 @@ describe("startLiveReload", () => {
     });
     onChange.mockClear(); // drop the initial "open" call
 
-    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.comot" });
+    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.slidra" });
 
     expect(onChange).not.toHaveBeenCalled();
   });

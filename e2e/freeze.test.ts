@@ -30,7 +30,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/player-deck");
@@ -75,16 +75,16 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 async function startServerFor(): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "player-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "player-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -106,10 +106,10 @@ async function startServerFor(): Promise<{ server: RunningServer; cleanup: () =>
     server,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -181,21 +181,21 @@ async function startServerForDrag(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-freeze-dm-deck-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-freeze-dm-deck-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   await cp(dmDeckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -219,10 +219,10 @@ async function startServerForDrag(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
     },
   };

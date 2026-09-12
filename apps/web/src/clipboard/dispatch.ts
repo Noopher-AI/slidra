@@ -66,7 +66,7 @@ export function cutCommandFor(target: ClipboardTarget): ClipboardCommand | null 
 
 /**
  * ⌘V / the ContextBar Paste button / the window `paste` event. Routes on
- * the pasted *content*, not the current selection (計畫 §4.3): a comotion
+ * the pasted *content*, not the current selection (計畫 §4.3): a slidra
  * elements payload always goes to `element paste`, regardless of what (if
  * anything) is selected; plain text only goes anywhere when a cell range is
  * selected. `slidePath` is the slide to paste onto — it cannot be read off
@@ -79,7 +79,7 @@ export function pasteCommandFor(
   slidePath: string,
   offset: { dx: number; dy: number },
 ): ClipboardCommand | null {
-  if (text.kind === "comotion-elements") {
+  if (text.kind === "slidra-elements") {
     return { name: "element paste", input: { slidePath, svg: text.svg, dx: offset.dx, dy: offset.dy } };
   }
   if (text.kind === "plain" && target?.kind === "cells") {

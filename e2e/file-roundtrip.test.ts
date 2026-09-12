@@ -6,13 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
-import { workDirFor } from "../packages/server/src/comotion/home.js";
+import { workDirFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
 
 /**
- * #210 條件 1 — Open／Save round-trips a `.comot` byte-for-byte, and
+ * #210 條件 1 — Open／Save round-trips a `.slidra` byte-for-byte, and
  * `POST /api/open` clears undo history and replaces the served presentation
  * without changing its id (NOOP-93 §7 decision 5).
  *
@@ -23,7 +23,7 @@ import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const deckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const fakeAgentFixture = path.join(rootDir, "packages/server/test/agent/fixtures/fake-acp-agent.mjs");
 const fakeAgent: AgentAdapterConfig = {
@@ -37,37 +37,37 @@ interface Harness {
   server: RunningServer;
   registry: CommandRegistry;
   presentationId: string;
-  comotPath: string;
-  coMotionHome: string;
-  comotDir: string;
+  slidraPath: string;
+  slidraHome: string;
+  slidraDir: string;
   staticDir: string;
 }
 
 async function startHarness(): Promise<Harness> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-files-"));
-  const staticDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-static-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-files-"));
+  const staticDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-static-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
-  const comotPath = path.join(comotDir, "a.comot");
-  await packDirectory(deckDir, comotPath);
+  const slidraPath = path.join(slidraDir, "a.slidra");
+  await packDirectory(deckDir, slidraPath);
   const registry = createDefaultRegistry();
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const server = await startServe({ presentationId, port: 0, agent: fakeAgent, staticDir });
 
-  return { server, registry, presentationId, comotPath, coMotionHome, comotDir, staticDir };
+  return { server, registry, presentationId, slidraPath, slidraHome, slidraDir, staticDir };
 }
 
 async function stopHarness(harness: Harness): Promise<void> {
   await harness.server.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(harness.coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(harness.comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(harness.slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(harness.slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
@@ -104,9 +104,9 @@ afterEach(async () => {
 });
 
 describe("file round-trip via POST /api/save (#210 條件 1)", () => {
-  it("an edit saved through /api/save survives a reopen into a second COMOTION_HOME, byte-for-byte", async () => {
+  it("an edit saved through /api/save survives a reopen into a second SLIDRA_HOME, byte-for-byte", async () => {
     harness = await startHarness();
-    const { server, comotPath } = harness;
+    const { server, slidraPath } = harness;
 
     const setResponse = await fetch(`${server.url}/api/command`, {
       method: "POST",
@@ -123,21 +123,21 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     await expect(saveResponse.json()).resolves.toEqual({ ok: true });
 
     const stateResponse = await fetch(`${server.url}/api/save-state`);
-    await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: "a.comot" });
+    await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: "a.slidra" });
 
     // The work directory this server is still running against.
     const firstWorkDir = await workDirFor(harness.presentationId);
     const firstFiles = await listFilesRecursive(firstWorkDir);
 
-    // Re-open the just-saved `a.comot` into a completely separate
-    // COMOTION_HOME and compare every file byte-for-byte.
-    secondHome = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-home2-"));
-    const previousHome = process.env.COMOTION_HOME;
-    process.env.COMOTION_HOME = secondHome;
-    // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-    process.env.COMOTION_BIN = coMotionBin;
+    // Re-open the just-saved `a.slidra` into a completely separate
+    // SLIDRA_HOME and compare every file byte-for-byte.
+    secondHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home2-"));
+    const previousHome = process.env.SLIDRA_HOME;
+    process.env.SLIDRA_HOME = secondHome;
+    // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+    process.env.SLIDRA_BIN = slidraBin;
     try {
-      const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: comotPath });
+      const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: slidraPath });
       const secondId = secondOpened.data!.id;
       const secondWorkDir = await workDirFor(secondId);
       const secondFiles = await listFilesRecursive(secondWorkDir);
@@ -156,19 +156,19 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
       const editedSlide = await readFile(path.join(secondWorkDir, "slides/001.svg"), "utf-8");
       expect(editedSlide).toContain("roundtrip 已編輯");
     } finally {
-      process.env.COMOTION_HOME = previousHome;
-      // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-      process.env.COMOTION_BIN = coMotionBin;
+      process.env.SLIDRA_HOME = previousHome;
+      // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+      process.env.SLIDRA_BIN = slidraBin;
     }
   });
 
   it("POST /api/save without a sourcePath (a pre-NOOP-93 registry entry) is refused with 400, not a guessed path", async () => {
     harness = await startHarness();
-    const { server, coMotionHome, presentationId } = harness;
+    const { server, slidraHome, presentationId } = harness;
 
     // Simulate a registry entry created before this ticket: no
     // sourcePath/savedAt at all.
-    const registryPath = path.join(coMotionHome, "projects.json");
+    const registryPath = path.join(slidraHome, "projects.json");
     const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { workDir: string }>;
     const workDir = raw[presentationId].workDir;
     raw[presentationId] = { workDir };
@@ -186,18 +186,18 @@ describe("POST /api/open (#210 條件 1)", () => {
     harness = await startHarness();
     const { server, presentationId } = harness;
 
-    // Build a second, distinct .comot to open on top of the running server.
-    const otherDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-other-"));
+    // Build a second, distinct .slidra to open on top of the running server.
+    const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other-"));
     try {
-      const otherComotPath = path.join(otherDir, "other.comot");
-      await packDirectory(path.join(rootDir, "demo"), otherComotPath);
-      const otherBytes = await readFile(otherComotPath);
+      const otherSlidraPath = path.join(otherDir, "other.slidra");
+      await packDirectory(path.join(rootDir, "demo"), otherSlidraPath);
+      const otherBytes = await readFile(otherSlidraPath);
 
       const openResponse = await fetch(`${server.url}/api/open`, {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-comotion-file-name": encodeURIComponent("other.comot"),
+          "x-slidra-file-name": encodeURIComponent("other.slidra"),
         },
         body: otherBytes,
       });
@@ -240,17 +240,17 @@ describe("POST /api/open (#210 條件 1)", () => {
     });
     expect(setResponse.status).toBe(200);
 
-    const otherDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-other2-"));
+    const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other2-"));
     try {
-      const otherComotPath = path.join(otherDir, "other.comot");
-      await packDirectory(path.join(rootDir, "demo"), otherComotPath);
-      const otherBytes = await readFile(otherComotPath);
+      const otherSlidraPath = path.join(otherDir, "other.slidra");
+      await packDirectory(path.join(rootDir, "demo"), otherSlidraPath);
+      const otherBytes = await readFile(otherSlidraPath);
 
       const refused = await fetch(`${server.url}/api/open`, {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-comotion-file-name": encodeURIComponent("other.comot"),
+          "x-slidra-file-name": encodeURIComponent("other.slidra"),
         },
         body: otherBytes,
       });
@@ -260,8 +260,8 @@ describe("POST /api/open (#210 條件 1)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-comotion-file-name": encodeURIComponent("other.comot"),
-          "x-comotion-discard-unsaved": "1",
+          "x-slidra-file-name": encodeURIComponent("other.slidra"),
+          "x-slidra-discard-unsaved": "1",
         },
         body: otherBytes,
       });
@@ -278,7 +278,7 @@ describe("POST /api/open (#210 條件 1)", () => {
 
     const response = await fetch(`${server.url}/api/open`, {
       method: "POST",
-      headers: { "Content-Type": "application/octet-stream", "x-comotion-file-name": "broken.comot" },
+      headers: { "Content-Type": "application/octet-stream", "x-slidra-file-name": "broken.slidra" },
       body: Buffer.from("not a zip file"),
     });
     expect(response.status).toBe(400);
@@ -309,7 +309,7 @@ describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器�
     const started = await startServerFor({ deckDir, prefix: "roundtrip-cmd-s" });
     try {
       const page = await openApp(browser, started.server);
-      // startServerFor 用 registry.dispatch("open", { path: comotPath }) 開檔，
+      // startServerFor 用 registry.dispatch("open", { path: slidraPath }) 開檔，
       // 這條路徑一定帶 sourcePath（見 helpers/launch.ts 本身的說明），
       // /api/save 才有東西可以寫回。先真的改動一次，dirty 才會是 true——
       // 不改就按 ⌘S，看到 dirty: false 證明不了 ⌘S 做了什麼（本來就是 false）。
@@ -322,7 +322,7 @@ describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器�
       expect(setResult.ok).toBe(true);
       await expect
         .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: true, fileName: "deck.comot" });
+        .toEqual({ known: true, dirty: true, fileName: "deck.slidra" });
 
       // 焦點刻意留在父文件（不點投影片）：⌘S 的 keydown 監聽掛在 App.tsx 的
       // `document`，焦點若先移進 sandbox iframe，這個按鍵事件根本不會冒泡
@@ -332,7 +332,7 @@ describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器�
 
       await expect
         .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: false, fileName: "deck.comot" });
+        .toEqual({ known: true, dirty: false, fileName: "deck.slidra" });
     } finally {
       await browser.close();
       await started.cleanup();

@@ -6,11 +6,11 @@ import { exportFileName } from "./output-name.js";
 import type { ExportFormat } from "./job.js";
 
 /**
- * Entry point for `comotion export <presentation-id> --format pdf|pdf-frames
+ * Entry point for `slidra export <presentation-id> --format pdf|pdf-frames
  * [--out <path>] [--port <n>]` (NOOP-93 §4.3).
  *
- * Invoked from `packages/cli/bin/comotion.js` via the same runtime-only
- * dynamic import `serve` already uses. [E4.T9]/F7: `@comotion/server` no
+ * Invoked from `packages/cli/bin/slidra.js` via the same runtime-only
+ * dynamic import `serve` already uses. [E4.T9]/F7: `@slidra/server` no
  * longer depends on `packages/cli`'s in-process registry at all.
  */
 export async function runExportCli(argv: string[]): Promise<number> {

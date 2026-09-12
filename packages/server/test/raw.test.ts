@@ -12,7 +12,7 @@ import type { AddressInfo } from "node:net";
 import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -23,7 +23,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -36,7 +36,7 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 // Ticket #11: agents read text through `cat` (strict UTF-8, rejects
 // binary); browsers need the byte-preserving `/api/raw/` route instead.
-// These tests hit the real HTTP server (Seam B), never COMOTION_HOME's
+// These tests hit the real HTTP server (Seam B), never SLIDRA_HOME's
 // real path, and always bind port 0.
 
 // root ignores permission bits, so the chmod(0o000)-based I/O-failure test
@@ -60,16 +60,16 @@ const PNG_BYTES = Buffer.from([
 // never accidentally look correct.
 const PATTERN_BYTES = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let servers: RunningServer[];
 let rawServers: Server[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-raw-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-raw-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-raw-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-raw-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
   rawServers = [];
 });
@@ -79,10 +79,10 @@ afterEach(async () => {
   await Promise.all(
     rawServers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
@@ -92,7 +92,7 @@ async function serve(presentationId: string): Promise<RunningServer> {
 }
 
 /**
- * Builds a real `.comot` zip (fflate, no mocks) containing a real slide
+ * Builds a real `.slidra` zip (fflate, no mocks) containing a real slide
  * SVG plus a genuinely binary asset and a non-ASCII-named asset, and opens
  * it through the real `open` command. Mirrors serve.test.ts's
  * `openMalformedPresentation` technique.
@@ -116,9 +116,9 @@ async function openPresentationWithAssets(): Promise<string> {
     "assets/clip.mp4": PATTERN_BYTES,
     "assets/empty.mp4": new Uint8Array(0),
   });
-  const comotPath = path.join(comotDir, "with-assets.comot");
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, "with-assets.slidra");
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -193,7 +193,7 @@ describe("GET /api/raw/<virtual path>", () => {
       // Real filesystem path of the unpacked asset, per workspace.ts's
       // workDirFor(home, id) = path.join(home, "work", id). Only used to
       // break the read (chmod) — never asserted against the response.
-      const realAssetPath = path.join(coMotionHome, "work", id, "assets", "photo.png");
+      const realAssetPath = path.join(slidraHome, "work", id, "assets", "photo.png");
       await chmod(realAssetPath, 0o000);
 
       try {
@@ -207,7 +207,7 @@ describe("GET /api/raw/<virtual path>", () => {
         expect(body.error).not.toBe("找不到檔案：assets/photo.png");
         // The real filesystem path must never leak into the response.
         expect(body.error).not.toContain(realAssetPath);
-        expect(body.error).not.toContain(coMotionHome);
+        expect(body.error).not.toContain(slidraHome);
       } finally {
         await chmod(realAssetPath, 0o644);
       }
@@ -225,7 +225,7 @@ describe("GET /api/raw/<virtual path>", () => {
       // packages/core/src/virtual-fs.ts), before ever reaching a file's
       // own read — so an unreadable directory must be a 500 too, not just
       // an unreadable file.
-      const realAssetsDir = path.join(coMotionHome, "work", id, "assets");
+      const realAssetsDir = path.join(slidraHome, "work", id, "assets");
       await chmod(realAssetsDir, 0o000);
 
       try {
@@ -239,7 +239,7 @@ describe("GET /api/raw/<virtual path>", () => {
         expect(body.error).not.toBe("找不到檔案：assets/photo.png");
         // The real filesystem path must never leak into the response.
         expect(body.error).not.toContain(realAssetsDir);
-        expect(body.error).not.toContain(coMotionHome);
+        expect(body.error).not.toContain(slidraHome);
       } finally {
         await chmod(realAssetsDir, 0o755);
       }
@@ -255,7 +255,7 @@ describe("GET /api/raw/<virtual path>", () => {
     // the response. A damaged registry is a server-side failure, not
     // evidence the requested asset is missing, so it must not be told
     // back to the author as "your asset is missing".
-    const registryPath = path.join(coMotionHome, "projects.json");
+    const registryPath = path.join(slidraHome, "projects.json");
     await writeFile(registryPath, "{ not valid json");
 
     const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
@@ -265,7 +265,7 @@ describe("GET /api/raw/<virtual path>", () => {
     expect(body.error).toBeTruthy();
     expect(body.error).not.toBe("找不到檔案：assets/photo.png");
     expect(body.error).not.toContain(registryPath);
-    expect(body.error).not.toContain(coMotionHome);
+    expect(body.error).not.toContain(slidraHome);
   });
 
   it("404s with an explicit body when the path does not resolve to anything", async () => {
@@ -332,7 +332,7 @@ describe("text reads (`GET /api/files/`) on a binary file — unchanged by ticke
     // [E4.T9]/F7: this used to dispatch "cat" against the in-process
     // registry directly — server no longer does that at all, so the same
     // assertion now goes through the one HTTP boundary that still performs
-    // this exact strict-UTF-8 rejection (`comotion/reads.ts`'s
+    // this exact strict-UTF-8 rejection (`slidra/reads.ts`'s
     // `readPresentationText`, reached here because "assets/photo.png" is
     // not a declared slide).
     const id = await openPresentationWithAssets();

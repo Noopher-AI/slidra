@@ -11,9 +11,9 @@
  * using `wrapPlayDocument` — the exact function the live player itself
  * uses (§7 decision 1/2/3: no new rendering path, no runtime changes).
  *
- * Progress is exposed on `window.__COMOT_EXPORT__` for `render.ts`'s
+ * Progress is exposed on `window.__SLIDRA_EXPORT__` for `render.ts`'s
  * Playwright driver to poll; completion/failure on
- * `window.__COMOT_EXPORT_DONE__` / `window.__COMOT_EXPORT_ERROR__`.
+ * `window.__SLIDRA_EXPORT_DONE__` / `window.__SLIDRA_EXPORT_ERROR__`.
  */
 import { computePlayerPlan, renderHideStyle, renderPlanScript, type PlayerPlan } from "./player-plan.js";
 import { setPresentationFonts, slideDirectory, wrapPlayDocument } from "./canvas.js";
@@ -27,9 +27,9 @@ export interface ExportProgress {
 
 declare global {
   interface Window {
-    __COMOT_EXPORT__?: ExportProgress;
-    __COMOT_EXPORT_DONE__?: boolean;
-    __COMOT_EXPORT_ERROR__?: string;
+    __SLIDRA_EXPORT__?: ExportProgress;
+    __SLIDRA_EXPORT_DONE__?: boolean;
+    __SLIDRA_EXPORT_ERROR__?: string;
   }
 }
 
@@ -86,7 +86,7 @@ function applyPageLayout(width: number, height: number): void {
   document.head.appendChild(style);
 }
 
-/** Resolves once `total` frames have posted `{ source: "comot-player", event: "ready" }`, or rejects after `READY_TIMEOUT_MS`. */
+/** Resolves once `total` frames have posted `{ source: "slidra-player", event: "ready" }`, or rejects after `READY_TIMEOUT_MS`. */
 function waitForAllReady(getCompleted: () => number, total: number): Promise<void> {
   if (total === 0) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
@@ -151,12 +151,12 @@ async function main(): Promise<void> {
   }
 
   let readyCount = 0;
-  window.__COMOT_EXPORT__ = { total: frames.length, completed: 0 };
+  window.__SLIDRA_EXPORT__ = { total: frames.length, completed: 0 };
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as { source?: string; event?: string } | null;
-    if (data?.source === "comot-player" && data.event === "ready") {
+    if (data?.source === "slidra-player" && data.event === "ready") {
       readyCount++;
-      window.__COMOT_EXPORT__ = { total: frames.length, completed: readyCount };
+      window.__SLIDRA_EXPORT__ = { total: frames.length, completed: readyCount };
     }
   });
 
@@ -177,9 +177,9 @@ async function main(): Promise<void> {
   }
 
   await waitForAllReady(() => readyCount, frames.length);
-  window.__COMOT_EXPORT_DONE__ = true;
+  window.__SLIDRA_EXPORT_DONE__ = true;
 }
 
 main().catch((error: unknown) => {
-  window.__COMOT_EXPORT_ERROR__ = error instanceof Error ? error.message : String(error);
+  window.__SLIDRA_EXPORT_ERROR__ = error instanceof Error ? error.message : String(error);
 });

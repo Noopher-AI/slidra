@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
-import { CoMotionError } from "../src/comotion/errors.js";
+import { SlidraError } from "../src/slidra/errors.js";
 import { createChatStreamRegistry } from "../src/serve.js";
 import type { AgentChatSession } from "../src/agent/session.js";
 
@@ -33,7 +33,7 @@ const fakeChatSession = {
 } as unknown as AgentChatSession;
 
 /**
- * Serves `registry.open()` on every request, mapping a thrown CoMotionError
+ * Serves `registry.open()` on every request, mapping a thrown SlidraError
  * to a 500 the way serve.ts's own handleRequest does.
  */
 async function serveRegistry(registry: ReturnType<typeof createChatStreamRegistry>): Promise<string> {
@@ -42,7 +42,7 @@ async function serveRegistry(registry: ReturnType<typeof createChatStreamRegistr
       registry.open(fakeChatSession, res);
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: error instanceof CoMotionError ? error.message : "未知錯誤" }));
+      res.end(JSON.stringify({ error: error instanceof SlidraError ? error.message : "未知錯誤" }));
     }
   });
   servers.push(server);

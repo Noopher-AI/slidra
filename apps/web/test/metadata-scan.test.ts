@@ -6,31 +6,31 @@ import { readSlideComments, scanDocument } from "../src/metadata-scan.js";
  * replacing core's `scanDocument`/`readSlideComments`
  * (core's slide/comments.ts). `notes.ts`'s own `readSlideNotes` is already
  * covered by `notes.test.ts` — these two tests are the ones the plan asks
- * for: both an `xmlns:comot`-bound and an unbound (legacy) file read the
+ * for: both an `xmlns:slidra`-bound and an unbound (legacy) file read the
  * same way, the whole reason a byte-offset scanner was kept instead of
  * switching to `DOMParser` for this one reader (see this module's own doc
  * comment).
  */
 
 describe("scanDocument / readSlideComments（F8, NOOP-289 決定 M1）", () => {
-  it("有 xmlns:comot 繫結：讀得出 <comot:comment>", () => {
+  it("有 xmlns:slidra 繫結：讀得出 <slidra:comment>", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:comments xmlns:comot="https://co-motion.dev/ns">' +
-      '<comot:comment id="c1" target="page" author="Ada" created="2026-01-01T00:00:00Z">第一則留言</comot:comment>' +
-      "</comot:comments></metadata>" +
+      '<metadata><slidra:comments xmlns:slidra="https://slidra.app/ns/2026">' +
+      '<slidra:comment id="c1" target="page" author="Ada" created="2026-01-01T00:00:00Z">第一則留言</slidra:comment>' +
+      "</slidra:comments></metadata>" +
       "</svg>";
     expect(readSlideComments(svg)).toEqual([
       { id: "c1", target: "page", author: "Ada", created: "2026-01-01T00:00:00Z", text: "第一則留言" },
     ]);
   });
 
-  it("舊檔沒有 xmlns:comot 繫結：DOMParser 會判定損毀，但 scanDocument 是逐位元組掃描，一樣讀得出 <comot:comment>", () => {
+  it("舊檔沒有 xmlns:slidra 繫結：DOMParser 會判定損毀，但 scanDocument 是逐位元組掃描，一樣讀得出 <slidra:comment>", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      "<metadata><comot:comments>" +
-      '<comot:comment id="c1" target="el-a" author="Bob" created="2025-06-01T00:00:00Z">舊版留言，沒有繫結命名空間</comot:comment>' +
-      "</comot:comments></metadata>" +
+      "<metadata><slidra:comments>" +
+      '<slidra:comment id="c1" target="el-a" author="Bob" created="2025-06-01T00:00:00Z">舊版留言，沒有繫結命名空間</slidra:comment>' +
+      "</slidra:comments></metadata>" +
       "</svg>";
     // Sanity check on the premise: DOMParser really does reject this.
     expect(new DOMParser().parseFromString(svg, "image/svg+xml").getElementsByTagName("parsererror").length).toBeGreaterThan(0);

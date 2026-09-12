@@ -13,7 +13,7 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 const execFileAsync = promisify(execFile);
 
 /** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,10 +22,10 @@ interface CliEnvelope<T = unknown> {
   failureKind?: string;
 }
 
-/** Runs the real `comotion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
+/** Runs the real `slidra` binary with `--json`, exit-code-blind (mirrors `slidra/command.ts`'s `runJsonCommand`). */
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -104,12 +104,12 @@ const fakeAgent: AgentAdapterConfig = {
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
-// Every test points COMOTION_HOME at its own temp directory (ADR-0004
+// Every test points SLIDRA_HOME at its own temp directory (ADR-0004
 // testing convention) and always binds port 0, reading the assigned port
 // back — a fixed port would collide with ticket #6's own server tests.
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 // Where this test's server serves static files from — a throwaway stand-in
 // for apps/web/dist, injected via ServeOptions.staticDir. Deliberately
 // NOT created here: the "frontend was never built" test needs it absent,
@@ -119,12 +119,12 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-static-"));
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-serve-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-serve-static-"));
   webDist = path.join(staticRoot, "dist");
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
 
@@ -132,18 +132,18 @@ afterEach(async () => {
   // Always shut every server started in the test down, including on
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(name = "測試簡報"): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", name]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
@@ -172,9 +172,9 @@ async function openPresentationWithRampAsset(): Promise<string> {
     "slides/001.svg": new TextEncoder().encode("<svg/>"),
     "assets/clip.mp4": RAMP_BYTES,
   });
-  const comotPath = path.join(comotDir, "with-ramp-asset.comot");
-  await writeFile(comotPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const slidraPath = path.join(slidraDir, "with-ramp-asset.slidra");
+  await writeFile(slidraPath, zipped);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
@@ -196,7 +196,7 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
   return server;
 }
 
-// Builds a hostile .comot with a literal project.json body (bypassing the
+// Builds a hostile .slidra with a literal project.json body (bypassing the
 // server's own JSON.stringify) so the malformed-container tests exercise
 // the exact bytes the review found unhandled — real fflate zips, no mocks.
 //
@@ -212,7 +212,7 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
     "slides/": new Uint8Array(0),
     "assets/": new Uint8Array(0),
   });
-  const malformedPath = path.join(comotDir, "malformed.comot");
+  const malformedPath = path.join(slidraDir, "malformed.slidra");
   await writeFile(malformedPath, zipped);
   const opened = await runCli<{ id: string }>(["open", malformedPath]);
   expect(opened.ok).toBe(false);
@@ -311,7 +311,7 @@ describe("startServe", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  it("serves the presentation's metadata reached only through the comotion binary", async () => {
+  it("serves the presentation's metadata reached only through the slidra binary", async () => {
     const id = await openFreshPresentation("我的簡報");
 
     const server = await serve(id);
@@ -339,14 +339,14 @@ describe("startServe", () => {
   });
 
   // Validation standard 8 (plan §5): the structural proof that `serve` no
-  // longer reads any presentation file itself now points `COMOTION_BIN` at
+  // longer reads any presentation file itself now points `SLIDRA_BIN` at
   // a fake, hand-written `.mjs` binary — never touching a real filesystem —
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
-  // injection point: it proves the server goes through `runCoMotion`'s own
+  // injection point: it proves the server goes through `runSlidra`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
-  it("serves fabricated content from a stub COMOTION_BIN, never touching the real filesystem", async () => {
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
+  it("serves fabricated content from a stub SLIDRA_BIN, never touching the real filesystem", async () => {
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -369,9 +369,9 @@ describe("startServe", () => {
       { mode: 0o755 },
     );
 
-    process.env.COMOTION_BIN = fakeBinPath;
+    process.env.SLIDRA_BIN = fakeBinPath;
     try {
-      // COMOTION_HOME is this test's own fresh, empty temp directory —
+      // SLIDRA_HOME is this test's own fresh, empty temp directory —
       // "unregistered-stub-id" names nothing on the real filesystem at all.
       const server = await serve("unregistered-stub-id");
 
@@ -381,7 +381,7 @@ describe("startServe", () => {
       const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
       expect(slide).toBe("<svg>STUB</svg>");
     } finally {
-      process.env.COMOTION_BIN = coMotionBinPath;
+      process.env.SLIDRA_BIN = slidraBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });
@@ -407,7 +407,7 @@ describe("startServe", () => {
       "slides/": new Uint8Array(0),
       "assets/": new Uint8Array(0),
     });
-    const emptyPath = path.join(comotDir, "empty.comot");
+    const emptyPath = path.join(slidraDir, "empty.slidra");
     await writeFile(emptyPath, zipped);
     const opened = await runCli<{ id: string }>(["open", emptyPath]);
     expect(opened.ok).toBe(true);
@@ -460,7 +460,7 @@ describe("startServe", () => {
     // Real filesystem path of the unpacked slide, per workspace.ts's
     // workDirFor(home, id) = path.join(home, "work", id). Only used to
     // break the read (chmod) — never asserted against the response.
-    const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+    const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
     await chmod(realSlidePath, 0o000);
 
     try {
@@ -473,7 +473,7 @@ describe("startServe", () => {
       expect(body.error).not.toBe("找不到檔案：slides/001.svg");
       // The real filesystem path must never leak (ADR-0004, third layer).
       expect(body.error).not.toContain(realSlidePath);
-      expect(body.error).not.toContain(coMotionHome);
+      expect(body.error).not.toContain(slidraHome);
       expect(body.error).not.toContain("EACCES");
     } finally {
       await chmod(realSlidePath, 0o644);
@@ -487,14 +487,14 @@ describe("startServe", () => {
     // workspace.ts's registryPath(home) = path.join(home, "projects.json").
     // A damaged registry is a server-side failure, not evidence the
     // requested slide is missing.
-    await writeFile(path.join(coMotionHome, "projects.json"), "{ not valid json");
+    await writeFile(path.join(slidraHome, "projects.json"), "{ not valid json");
 
     const response = await fetch(`${server.url}/api/files/slides/001.svg`);
     const body = await response.json();
 
     expect(response.status).toBe(500);
     expect(body.error).toBe("簡報登記資料已損毀");
-    expect(body.error).not.toContain(coMotionHome);
+    expect(body.error).not.toContain(slidraHome);
   });
 
   // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
@@ -571,13 +571,13 @@ describe("startServe", () => {
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
-      const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
+      const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
       const original = await readFile(realSlidePath, "utf-8");
       const damaged = original.replace(
         "</svg>",
-        '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns">' +
-          '<comot:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
-          "</comot:effects></metadata></svg>",
+        '<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">' +
+          '<slidra:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
+          "</slidra:effects></metadata></svg>",
       );
       await writeFile(realSlidePath, damaged);
 
@@ -628,14 +628,14 @@ describe("startServe", () => {
   });
 
   it("never leaks the hidden work directory's path in project.json validation errors", async () => {
-    // Echoing back the .comot path the caller supplied is legitimate
+    // Echoing back the .slidra path the caller supplied is legitimate
     // (ADR-0004) — it's the user's own argument, not the work directory.
-    // What must never appear is COMOTION_HOME's hidden work directory.
+    // What must never appear is SLIDRA_HOME's hidden work directory.
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );
 
-    expect(message).not.toContain(coMotionHome);
+    expect(message).not.toContain(slidraHome);
   });
 
   // The exact ticket #12 scenario: a container whose project.json is only

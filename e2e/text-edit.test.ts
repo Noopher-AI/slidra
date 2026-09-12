@@ -19,7 +19,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
  * dir before packing, same as that file does).
  *
  * Entry point exercised: `beginTextEdit` via the runtime's own
- * dblclick-on-a-text-box path (`data-comot-text-width` on the container) —
+ * dblclick-on-a-text-box path (`data-slidra-text-width` on the container) —
  * per NOOP-174's plan, wiring `beginTextEdit` to the INSERT flow is out of
  * scope for this ticket (T2/NOOP-159); this file's dblclick IS the public
  * entry point NOOP-174 designates as the equivalent path for AC1.
@@ -27,7 +27,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/text-edit-deck");
@@ -73,21 +73,21 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-text-edit-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-text-edit-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-text-edit-deck-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-text-edit-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-text-edit-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-text-edit-deck-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckStagingDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckStagingDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -110,10 +110,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
     },
   };
@@ -134,10 +134,10 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-/** `<g id="elementId" ... data-comot-text-width="N">`'s declared wrap width. */
+/** `<g id="elementId" ... data-slidra-text-width="N">`'s declared wrap width. */
 function readDeclaredTextWidth(svg: string, elementId: string): number {
-  const match = new RegExp(`<g id="${elementId}"[^>]*data-comot-text-width="([^"]+)"`).exec(svg);
-  if (!match) throw new Error(`找不到 ${elementId} 的 data-comot-text-width`);
+  const match = new RegExp(`<g id="${elementId}"[^>]*data-slidra-text-width="([^"]+)"`).exec(svg);
+  if (!match) throw new Error(`找不到 ${elementId} 的 data-slidra-text-width`);
   return Number(match[1]);
 }
 
@@ -180,7 +180,7 @@ async function renderedWidthInChromium(page: Page, text: string, fontSizePx: num
 async function isEditTextareaFocused(page: Page): Promise<boolean> {
   const frame = page.frameLocator("iframe.slide-frame");
   return frame.locator("body").evaluate(() => {
-    const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+    const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
     const active = host?.shadowRoot?.activeElement;
     return !!active && active.tagName === "TEXTAREA";
   });
@@ -310,7 +310,7 @@ async function readSelection(page: Page): Promise<{ start: number; end: number }
   const frame = page.frameLocator("iframe.slide-frame");
   return frame.locator("body").evaluate((body) => {
     const doc = body.ownerDocument as Document;
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
     return { start: ta.selectionStart as number, end: ta.selectionEnd as number };
   });
@@ -321,7 +321,7 @@ async function readEditFrameDisplay(page: Page): Promise<string> {
   const frame = page.frameLocator("iframe.slide-frame");
   return frame.locator("body").evaluate((body) => {
     const doc = body.ownerDocument as Document;
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     return (host.shadowRoot!.querySelector(".edit-frame") as HTMLElement).style.display;
   });
 }
@@ -331,7 +331,7 @@ async function readCaretRect(page: Page): Promise<{ left: number; top: number; h
   const frame = page.frameLocator("iframe.slide-frame");
   return frame.locator("body").evaluate((body) => {
     const doc = body.ownerDocument as Document;
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const caret = host.shadowRoot!.querySelector(".edit-caret") as HTMLElement;
     if (getComputedStyle(caret).display === "none") return null;
     const r = caret.getBoundingClientRect();
@@ -346,7 +346,7 @@ async function readSelectionBlockRects(
   const frame = page.frameLocator("iframe.slide-frame");
   return frame.locator("body").evaluate((body) => {
     const doc = body.ownerDocument as Document;
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const blocks = [...host.shadowRoot!.querySelectorAll(".edit-selection")] as HTMLElement[];
     return blocks
       .filter((el) => getComputedStyle(el).display !== "none")
@@ -371,11 +371,11 @@ async function tspanCount(page: Page, elementId: string): Promise<number> {
 function readTspans(svg: string, elementId: string): { text: string; y: number }[] {
   const containerMatch = new RegExp(`<g id="${elementId}"[^>]*>\\s*<text[^>]*>([\\s\\S]*?)</text>`).exec(svg);
   if (!containerMatch) throw new Error(`找不到 ${elementId} 的 <text>`);
-  // `data-comot-break="1"` (NOOP-65 決定 A) is an optional trailing attribute
+  // `data-slidra-break="1"` (NOOP-65 決定 A) is an optional trailing attribute
   // on a line that ends on a hard break — matched but not captured, so this
   // helper's existing callers (none of which touch hard breaks) see no
   // change in behaviour.
-  const tspanRe = /<tspan x="0" y="([-\d.]+)"(?: data-comot-break="1")?>([^<]*)<\/tspan>/g;
+  const tspanRe = /<tspan x="0" y="([-\d.]+)"(?: data-slidra-break="1")?>([^<]*)<\/tspan>/g;
   const out: { text: string; y: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = tspanRe.exec(containerMatch[1])) !== null) {
@@ -409,7 +409,7 @@ it("雙擊文字框進入編輯、打字、Esc 離開：SVG 的 tspan 逐行內�
     // the fixture's own initial text ("Hi"), so typing appends after it
     // rather than replacing it. `finalText` below is what actually ends
     // up committed.
-    const typed = "Hello CoMotion 文字框就地編輯測試內容一二三四五六七八九十";
+    const typed = "Hello Slidra 文字框就地編輯測試內容一二三四五六七八九十";
     const finalText = "Hi" + typed;
     await page.keyboard.type(typed);
     // Let the rAF/postMessage round trip for the live preview settle before
@@ -518,7 +518,7 @@ it("編輯期間在被編輯元素上按下並拖曳：transform 不變、不送
     const multiBoxVisible = await page.evaluate(() => {
       const host = document.querySelector("iframe.slide-frame") as HTMLIFrameElement | null;
       const doc = host?.contentDocument;
-      const selHost = doc?.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+      const selHost = doc?.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
       const boxes = selHost?.shadowRoot?.querySelectorAll(".sel-multi") ?? [];
       return Array.from(boxes).some((el) => getComputedStyle(el as HTMLElement).display !== "none");
     });
@@ -581,7 +581,7 @@ it("A1：ArrowLeft 依序左移游標，caret 畫面位置與 textarea.selection
 
 // A16（NOOP-65r3 §4 C2）：preview 通道 off-by-one 的原始重現情境——有硬換行
 //時，點第 2 行第 1 個字，游標必須落在點到的字，不是差一個字元。第 1、2 輪
-// FAIL 1 的根因是 canvas.ts 的 preview 從不帶 data-comot-break，讓
+// FAIL 1 的根因是 canvas.ts 的 preview 從不帶 data-slidra-break，讓
 // selection-runtime.js 的 textLineRanges（本身是對的）在編輯階段永遠拿不到
 // 硬換行標記，於是編輯期間的行邊界算錯。這是 A2 座標版本（clickChar →
 // selectionStart → 打字 → value）的嚴格超集，同一輸入路徑在更難的情境（跨
@@ -612,7 +612,7 @@ it("A16：有硬換行時，點第 2 行第 1 個字，游標落在點到的字�
     expect(await isEditTextareaFocused(page)).toBe(true);
     const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
     expect(value).toBe("HiAAA\nXBBB"); // caret sits before value index 6 ("B") — "HiAAA\n" | "X" | "BBB"
@@ -653,7 +653,7 @@ it("A17：有硬換行時，點第 1 行最後一個字的右半邊，游標停�
     await page.waitForTimeout(80);
     const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
     expect(value).toBe("HiAAAX\nBBB");
@@ -724,7 +724,7 @@ it("A19：雙擊多行文字框的第 2 行某字，進入編輯後游標落在�
     await page.waitForTimeout(80);
     const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
     expect(value).toBe("HiAAA\nBXBB");
@@ -751,7 +751,7 @@ it("A3：拖曳選取 3 個字後打一個字，該 3 字被取代為 1 字", as
     await page.waitForTimeout(80);
     const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
     expect(value).toBe("HiZDE"); // [2,5) = "ABC" replaced by "Z"
@@ -797,7 +797,7 @@ it("A5：選取一段後 Backspace 整段刪除，Esc commit 只送一條命令�
     await page.waitForTimeout(80);
     const value = await page.frameLocator("iframe.slide-frame").locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
     expect(value).toBe("HiDE"); // [2,5) = "ABC" deleted
@@ -838,14 +838,14 @@ it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元�
     // never compositionend until the final step (ADR-0017 §4.4).
     await frame.locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
       ta.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
     });
     for (const partial of ["你", "你好"]) {
       await frame.locator("body").evaluate((body, partial) => {
         const doc = body.ownerDocument as Document;
-        const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+        const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
         const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
         const base = "Hi";
         ta.value = base + partial;
@@ -875,7 +875,7 @@ it("A7：中文輸入法組字期間，游標不亂跳；組字中在編輯元�
 
     await frame.locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
-      const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
       const ta = host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement;
       ta.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
     });
@@ -936,7 +936,7 @@ it("編輯中按 Enter：游標處插入硬換行，不 commit、不離開編輯
 
     expect(commandCount).toBe(1); // one `text set` for the whole session, not one per Enter
     const after = await readSlide(registry, presentationId);
-    expect(after).toContain('data-comot-break="1"');
+    expect(after).toContain('data-slidra-break="1"');
     const lines = readTspans(after, "el-text");
     expect(lines.map((l) => l.text)).toEqual(["HiAAA", "BBB"]);
 

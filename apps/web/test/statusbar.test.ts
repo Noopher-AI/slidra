@@ -45,14 +45,14 @@ describe("StatusBar 選取 chip 文字（NOOP-349 round 3）", () => {
     expect(markup).not.toContain("Selected:");
   });
 
-  it("選取單一元素且有 data-comot-name：chip 顯示該名稱，不是 id", () => {
+  it("選取單一元素且有 data-slidra-name：chip 顯示該名稱，不是 id", () => {
     const markup = markupWithSelection(["el-a"], ["標題"]);
     expect(markup).toContain("Selected:");
     expect(markup).toContain("標題");
     expect(markup).not.toContain("el-a");
   });
 
-  it("選取單一元素但沒有 data-comot-name：chip 退回顯示 id", () => {
+  it("選取單一元素但沒有 data-slidra-name：chip 退回顯示 id", () => {
     const markup = markupWithSelection(["el-a"], [null]);
     expect(markup).toContain("Selected:");
     expect(markup).toContain("el-a");

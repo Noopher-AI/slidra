@@ -39,7 +39,7 @@ export interface ChatPanelProps {
   comments: readonly NumberedComment[];
   /** A Pinned context row was clicked: jump to its slide, select its target, open it for editing. */
   onPinnedClick(comment: NumberedComment): void;
-  /** The row's own ✕ — deletes immediately, no confirmation (prototype's own rule, `comotion-logic-v3.js:665`). */
+  /** The row's own ✕ — deletes immediately, no confirmation (prototype's own rule, `slidra-logic-v3.js:665`). */
   onPinnedRemove(commentId: string): void;
   /**
    * [E3.T3] #232/#236: the full `/` list — agent report ∪ bundled skills ∪
@@ -186,7 +186,7 @@ export function ChatPanel({
   }
 
   /**
-   * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `comotion-logic-v3.js` 的
+   * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `slidra-logic-v3.js` 的
    * `draftKey`）——輸入框是 textarea，plain `↵` 換行不送出。
    * `streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤路徑不得繞過它。
    */
@@ -378,7 +378,7 @@ export function ChatPanel({
   );
 }
 
-/** 命令被 CoMotion 的白名單擋下時顯示的字——不是命令自己失敗，也不是作者按了拒絕。 */
+/** 命令被 Slidra 的白名單擋下時顯示的字——不是命令自己失敗，也不是作者按了拒絕。 */
 const COMMAND_BLOCKED_LABEL = "Blocked";
 
 /**

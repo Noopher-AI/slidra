@@ -15,7 +15,7 @@ export interface ObjectListProps {
 /**
  * Animate › Object 的清單視圖（NOOP-66/#206 §4.5）：一張卡一個效果項，順序
  * 即檔案順序即 1-based 位址（D6）。空清單顯示原型的空態文案，一字不改
- * （`prototype/CoMotion (New v3).dc.html:696`）。
+ * （`prototype/Slidra (New v3).dc.html:696`）。
  */
 export function ObjectList({ cards, onChangeEffect, onChangeStart, onChangeDuration, onChangeDelay, onMove, onRemove, onPreview }: ObjectListProps) {
   if (cards.length === 0) {

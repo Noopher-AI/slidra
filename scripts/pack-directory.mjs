@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// `comotion pack <presentation-id> <path>` packs an ALREADY-OPEN
+// `slidra pack <presentation-id> <path>` packs an ALREADY-OPEN
 // presentation, not an arbitrary directory (`docs/spec/cli.md`'s `pack`
 // entry) — there is no CLI command for "zip this directory into a
-// `.comot`" and this ticket deliberately does not add one (plan section
+// `.slidra`" and this ticket deliberately does not add one (plan section
 // 0.4: the 81 registered commands are a frozen contract). This script is
 // the replacement for the (deleted) `packages/core`'s `packDirectory`, kept
 // as a standalone script rather than a new command for exactly that
@@ -13,7 +13,7 @@
 // directory placeholder entries, same zip level) from the deleted
 // `packages/core/src/container.ts`'s `packDirectory` — deliberately NOT
 // "improved" in the port, since that would change the zipped bytes of every
-// existing `.comot` fixture this repo's tests compare against.
+// existing `.slidra` fixture this repo's tests compare against.
 
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -23,7 +23,7 @@ import { zipSync } from "fflate";
 const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 
 /**
- * Recursively zips every file under `sourceDir` into a `.comot` container at
+ * Recursively zips every file under `sourceDir` into a `.slidra` container at
  * `outputPath`. `slides/`, `assets/`, and `fonts/` are guaranteed to exist as
  * entries even when empty — the first two per ADR-0003, `fonts/` per its
  * ADR-0016 amendment.
@@ -68,7 +68,7 @@ async function collectFiles(root, currentDir, zippable) {
   }
 }
 
-// CLI usage (`node scripts/pack-directory.mjs <source-dir> <output.comot>`),
+// CLI usage (`node scripts/pack-directory.mjs <source-dir> <output.slidra>`),
 // used by `quick_start.sh`'s demo-deck packing step. Only runs when this
 // file is the process entry point, not when imported (e2e's
 // `e2e/helpers/pack.ts`).

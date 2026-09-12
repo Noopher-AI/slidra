@@ -3,13 +3,13 @@ import { classifyClipboardText } from "../src/clipboard/payload.js";
 import { copyCommandFor, cutCommandFor, pasteCommandFor, type ClipboardTarget } from "../src/clipboard/dispatch.js";
 
 // F8 (NOOP-289 決定 C1): recognition is now a shallow DOMParser check on the
-// root `<svg>`'s own marker attribute (`data-comot-clipboard="elements"`) —
+// root `<svg>`'s own marker attribute (`data-slidra-clipboard="elements"`) —
 // this literal is the same shape core's `serializeClipboardSvg`
 // writes (element-clipboard.ts), inlined rather than generated, since the
 // web bundle no longer depends on core at all.
 const elementsSvg =
-  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:comot="https://co-motion.dev/ns" viewBox="0 0 1280 720" ' +
-  'data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:slidra="https://slidra.app/ns/2026" viewBox="0 0 1280 720" ' +
+  'data-slidra-clipboard="elements" data-slidra-source="slides/001.svg">' +
   '<g id="el-a"><rect width="10" height="10"/></g></svg>';
 
 describe("classifyClipboardText", () => {
@@ -20,8 +20,8 @@ describe("classifyClipboardText", () => {
     expect(classifyClipboardText("   \n\t")).toEqual({ kind: "empty" });
   });
 
-  it("classifies a comotion clipboard SVG as comotion-elements", () => {
-    expect(classifyClipboardText(elementsSvg)).toEqual({ kind: "comotion-elements", svg: elementsSvg });
+  it("classifies a slidra clipboard SVG as slidra-elements", () => {
+    expect(classifyClipboardText(elementsSvg)).toEqual({ kind: "slidra-elements", svg: elementsSvg });
   });
 
   it("classifies plain text and foreign SVG (no clipboard marker) as plain", () => {
@@ -79,13 +79,13 @@ describe("pasteCommandFor", () => {
     expect(pasteCommandFor(cellsTarget, { kind: "empty" }, "slides/001.svg", { dx: 0, dy: 0 })).toBeNull();
   });
 
-  it("a comotion elements payload always routes to element paste, even with a cell range selected", () => {
+  it("a slidra elements payload always routes to element paste, even with a cell range selected", () => {
     const cellsTarget: ClipboardTarget = {
       kind: "cells",
       slidePath: "slides/001.svg",
       range: { tableElementId: "tbl-1", top: 0, left: 0, bottom: 0, right: 0 },
     };
-    const result = pasteCommandFor(cellsTarget, { kind: "comotion-elements", svg: elementsSvg }, "slides/002.svg", { dx: 20, dy: 20 });
+    const result = pasteCommandFor(cellsTarget, { kind: "slidra-elements", svg: elementsSvg }, "slides/002.svg", { dx: 20, dy: 20 });
     expect(result).toEqual({
       name: "element paste",
       input: { slidePath: "slides/002.svg", svg: elementsSvg, dx: 20, dy: 20 },

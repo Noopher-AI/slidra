@@ -1,5 +1,5 @@
 {
-  "name": "comotion-monorepo",
+  "name": "slidra-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [

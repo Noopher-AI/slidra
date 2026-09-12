@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
 
 /**
- * The CLI's own minimal HTTP server for `comotion export` (NOOP-93 §3.6).
+ * The CLI's own minimal HTTP server for `slidra export` (NOOP-93 §3.6).
  *
- * `comotion export` runs standalone — there is no already-running
- * `comotion serve` to piggyback on, and `startServe` cannot be reused for
+ * `slidra export` runs standalone — there is no already-running
+ * `slidra serve` to piggyback on, and `startServe` cannot be reused for
  * it: `ServeOptions.agent` is required with no fallback (`serve.ts:44-52`'s
  * own comment says this is deliberate), so faking an adapter just to
  * satisfy the type would be lying to the type system for a feature

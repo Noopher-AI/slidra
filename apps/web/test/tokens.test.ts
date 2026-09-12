@@ -22,7 +22,7 @@ const designTokensDoc = readFileSync(designTokensDocPath, "utf8");
 // all — this reads the Rust CLI's own palette constants with node:fs +
 // regex instead, the same "the file's own text is the contract" posture
 // this whole test file already applies to tokens.css/the design doc.
-const chartRenderRsPath = path.join(repoRoot, "crates", "comotion", "src", "chart", "render.rs");
+const chartRenderRsPath = path.join(repoRoot, "crates", "slidra", "src", "chart", "render.rs");
 const chartRenderRs = readFileSync(chartRenderRsPath, "utf8");
 
 /** `CHART_PALETTE_HEX_<PALETTE>: [&str; 6] = [ "#...", ... ];` → the six hex strings, in order. */
@@ -282,7 +282,7 @@ describe("tokens.css 對照 docs/design/docs/01-DESIGN_TOKENS.md（設計包 tok
     expect(malformed).toEqual([]);
   });
 
-  it("accent.palette.* 的三組 CSS 變數與 crates/comotion 的 CHART_PALETTE_HEX_* 逐色一致（NOOP-159r2 三項債之一：兩份色票各自獨立維護，先前沒有測試綁住；F8/NOOP-289 起改比對 Rust 端，TS 端的等價常數已隨 core 一起從 web 移除）", () => {
+  it("accent.palette.* 的三組 CSS 變數與 crates/slidra 的 CHART_PALETTE_HEX_* 逐色一致（NOOP-159r2 三項債之一：兩份色票各自獨立維護，先前沒有測試綁住；F8/NOOP-289 起改比對 Rust 端，TS 端的等價常數已隨 core 一起從 web 移除）", () => {
     for (const [palette, key] of [["brand", "BRAND"], ["cool", "COOL"], ["warm", "WARM"]] as const) {
       chartPaletteHex(key).forEach((hex, index) => {
         const cssVar = `--accent-palette-${palette}-${index + 1}`;

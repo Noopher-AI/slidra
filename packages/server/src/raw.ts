@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionNotFoundError } from "./comotion/errors.js";
-import { readPresentationBytes } from "./comotion/reads.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
+import { readPresentationBytes } from "./slidra/reads.js";
 import { MEDIA_MIME_TYPES } from "./media-types.js";
 
 /**
@@ -119,19 +119,19 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
  *
  * `readPresentationFileBytes` can fail for reasons that must not be
  * collapsed into the same response, so the classification here is
- * deliberately the narrow way round: only `CoMotionNotFoundError` (a
- * `CoMotionError` subtype that positively means "the virtual path does
+ * deliberately the narrow way round: only `SlidraNotFoundError` (a
+ * `SlidraError` subtype that positively means "the virtual path does
  * not resolve to a file — not found, or resolves to a directory, or the
  * presentation id itself is unknown") is a 404. Every other
- * `CoMotionError` — an I/O failure reading the file or an earlier
+ * `SlidraError` — an I/O failure reading the file or an earlier
  * directory, a corrupt registry, or any subtype added later that nobody
  * has taught this function about yet — is a 500, because "not an
- * instance of CoMotionNotFoundError" is not evidence that the asset is
+ * instance of SlidraNotFoundError" is not evidence that the asset is
  * missing. This is the inverse of an earlier version that treated
  * "not an I/O error" as proof of absence, which silently 404'd every new
  * error kind until someone noticed (ticket #11, fourth fix round). Either
  * way the response body is `error.message`, which — like every
- * `CoMotionError` message — never contains the real filesystem path
+ * `SlidraError` message — never contains the real filesystem path
  * (ADR-0004); only the caller-supplied virtual path may appear in it.
  *
  * `Range` handling (ticket #13) deliberately happens *after* the bytes have
@@ -152,12 +152,12 @@ export async function handleRawRequest(
   try {
     bytes = await readPresentationBytes(presentationId, virtualPath);
   } catch (error) {
-    if (error instanceof CoMotionNotFoundError) {
+    if (error instanceof SlidraNotFoundError) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;
     }
-    if (error instanceof CoMotionError) {
+    if (error instanceof SlidraError) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: error.message }));
       return;

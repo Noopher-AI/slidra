@@ -20,7 +20,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -43,24 +43,24 @@ const DOCK_RESERVATION = 76 - 28;
 let browser: Browser;
 let openPages: Page[] = [];
 let server: RunningServer;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "demo.comot");
-  await packDirectory(demoDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "demo.slidra");
+  await packDirectory(demoDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -81,10 +81,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
 afterEach(async () => {
@@ -119,24 +119,24 @@ async function openApp(viewport = VIEWPORT, targetServer: RunningServer = server
  * from "silently uses the CSS fallback". A 4:3 canvas can.
  */
 async function startNonWidescreenServer(): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const deckDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-deck-"));
+  const deckDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-4x3-deck-"));
   await cp(demoDir, deckDir, { recursive: true });
   const projectPath = path.join(deckDir, "project.json");
   const project = JSON.parse(await readFile(projectPath, "utf-8"));
   project.canvas = { width: 4, height: 3 };
   await writeFile(projectPath, JSON.stringify(project, null, 2));
 
-  const savedHome = process.env.COMOTION_HOME;
-  const altHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-home-"));
-  const altFilesDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-files-"));
-  process.env.COMOTION_HOME = altHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const savedHome = process.env.SLIDRA_HOME;
+  const altHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-4x3-home-"));
+  const altFilesDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-4x3-files-"));
+  process.env.SLIDRA_HOME = altHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(altFilesDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(altFilesDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -157,9 +157,9 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     server: altServer,
     cleanup: async () => {
       await altServer.close();
-      process.env.COMOTION_HOME = savedHome;
-      // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-      process.env.COMOTION_BIN = coMotionBin;
+      process.env.SLIDRA_HOME = savedHome;
+      // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+      process.env.SLIDRA_BIN = slidraBin;
       await rm(deckDir, { recursive: true, force: true });
       await rm(altHome, { recursive: true, force: true });
       await rm(altFilesDir, { recursive: true, force: true });

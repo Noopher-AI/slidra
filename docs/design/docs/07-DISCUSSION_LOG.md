@@ -5,7 +5,7 @@
 ## 第一階段：從 web/ 舊版到 New
 - 讀取 `web/`（React + CSS tokens 的深色 Office 式 ribbon）與 Holspire 設計語言（暖白、#C8233B、Plus Jakarta Sans、圓角卡片）。
 - 問卷決策：重設計全部畫面；**暖白外殼＋深色舞台**；右側維持分頁側欄；Plus Jakarta Sans + Noto Sans TC；直接做一個高保真。
-- 先重建舊版 `CoMotion (Old)` 作對照，再產生 `CoMotion (New)`。
+- 先重建舊版 `Slidra (Old)` 作對照，再產生 `Slidra (New)`。
 - 工具列走向：分頁 pill + 單列精簡指令 + 選取時浮動情境列。
 
 ## 第二階段：AI 留言（pin）系統
@@ -38,7 +38,7 @@
 - 工具列位置：舞台下方 → 懸浮玻璃於舞台上方 → 最終**懸浮玻璃於舞台下方**。過程中修正寬度溢出（縮小間距、Insert 一度改純圖示又恢復標籤、tooltip 需單一 hole）。
 - ✕ 左右欄也改玻璃懸浮並刪備忘稿 → 還原。
 - New / Templates 移到左欄上方（白底同款）。
-- 標題列：Undo/Redo 移到檔名左；檔名顯示 `.comot`；Logo 改 CM → 刪除；agent connected 刪除；AI 頭像改 🤖。
+- 標題列：Undo/Redo 移到檔名左；檔名顯示 `.slidra`；Logo 改 CM → 刪除；agent connected 刪除；AI 頭像改 🤖。
 - 情境列：移除 Left/Center/Front 與 sub 標籤；順序 Comment to AI ｜ Edit style · Edit animation ｜ Delete；箭頭移除、分隔線調整；「Comment to agent」→「Comment to AI」；Revise → **Edit**；無動畫時不顯示 Edit animation。
 - pin 編號移到選框名稱標籤右側、僅選取時出現、實心。
 - 留言框：刪頂部說明與左下提示；按鈕改 Save changes / Add comment 並留在框內。

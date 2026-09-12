@@ -3,8 +3,8 @@ import type { Dirent } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
-import { isEnoent, resolveCoMotionHome } from "../comotion/home.js";
+import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
+import { isEnoent, resolveSlidraHome } from "../slidra/home.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -84,7 +84,7 @@ async function populateWorkdirTree(realDir: string, node: Extract<WorkdirNode, {
   } catch {
     // realDir is a real filesystem path inside the deployed work directory
     // (ADR-0004) — never quote it, even for a plain permission/I-O error.
-    throw new CoMotionError("讀取工作目錄時發生錯誤");
+    throw new SlidraError("讀取工作目錄時發生錯誤");
   }
   for (const entry of entries) {
     const realPath = path.join(realDir, entry.name);
@@ -124,26 +124,26 @@ function navigateWorkdirTree(root: WorkdirNode, relativePath: string): WorkdirNo
 export async function readAgentWorkdirFile(workdirReal: string, relativePath: string): Promise<string> {
   const hasSegment = relativePath.split("/").some((segment) => segment.length > 0);
   if (!hasSegment) {
-    throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`找不到檔案：${relativePath}`);
   }
   const root = await buildWorkdirTree(workdirReal);
   const node = navigateWorkdirTree(root, relativePath);
   if (!node) {
-    throw new CoMotionNotFoundError(`找不到檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`找不到檔案：${relativePath}`);
   }
   if (node.type !== "file") {
-    throw new CoMotionNotFoundError(`不是檔案：${relativePath}`);
+    throw new SlidraNotFoundError(`不是檔案：${relativePath}`);
   }
   let buffer: Buffer;
   try {
     buffer = await readFile(node.realPath);
   } catch {
-    throw new CoMotionError(`讀取檔案時發生錯誤：${relativePath}`);
+    throw new SlidraError(`讀取檔案時發生錯誤：${relativePath}`);
   }
   try {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(buffer);
   } catch {
-    throw new CoMotionError(`${relativePath} 是二進位資產，無法以文字讀取`);
+    throw new SlidraError(`${relativePath} 是二進位資產，無法以文字讀取`);
   }
 }
 
@@ -164,11 +164,11 @@ export function resolveAgentWorkdirSource(): string {
 
 /**
  * Where one presentation's work directory is deployed to on the user's
- * machine — `<COMOTION_HOME>/agent/<presentationId>`, never cleaned up
+ * machine — `<SLIDRA_HOME>/agent/<presentationId>`, never cleaned up
  * when `serve` exits.
  *
  * Keyed by presentation id rather than one shared `agent/` directory
- * because two `comotion serve` processes can run on the same machine at
+ * because two `slidra serve` processes can run on the same machine at
  * the same time, and `deployAgentWorkdir()` replaces its target wholesale
  * on every startup. A shared path means the second `serve` to start pulls
  * the directory out from under the first one's already-spawned ACP agent,
@@ -180,7 +180,7 @@ export function resolveAgentWorkdirSource(): string {
  * in one directory.
  */
 export function agentWorkdirTarget(presentationId: string): string {
-  return path.join(resolveCoMotionHome(), "agent", presentationId);
+  return path.join(resolveSlidraHome(), "agent", presentationId);
 }
 
 /**
@@ -232,7 +232,7 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * (disk full, a permissions error) never leaves the target half-written:
  * everything happens in a sibling directory first, and only a clean copy
  * ever gets renamed over the real target. The staging directory shares
- * `COMOTION_HOME` with the target, and therefore its filesystem, which is
+ * `SLIDRA_HOME` with the target, and therefore its filesystem, which is
  * what makes the final `rename` atomic rather than a copy-then-delete.
  *
  * The previous generation is *retired* (renamed aside), never deleted here
@@ -253,7 +253,7 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * path back must be compared against the same resolved form.
  */
 export async function deployAgentWorkdir(presentationId: string): Promise<string> {
-  const home = resolveCoMotionHome();
+  const home = resolveSlidraHome();
   const source = resolveAgentWorkdirSource();
   const target = agentWorkdirTarget(presentationId);
   const parent = path.dirname(target);
@@ -290,7 +290,7 @@ export async function deployAgentWorkdir(presentationId: string): Promise<string
     // Never echo the underlying fs error's own message here — it embeds a
     // real filesystem path (ADR-0004, third layer), and this error can
     // surface all the way out to `startServe`'s caller.
-    throw new CoMotionError("部署 agent 工作目錄時發生錯誤");
+    throw new SlidraError("部署 agent 工作目錄時發生錯誤");
   }
 
   return realpath(target);

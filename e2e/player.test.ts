@@ -13,7 +13,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * Multi-slide paging end to end (issue #25). The deck under test is the
  * hand-written fixture in `fixtures/player-deck/`: three visibly different
  * 投影片, one of which references an asset by relative path. Everything is
- * real — a real `.comot` packed from that directory, the real `open`
+ * real — a real `.slidra` packed from that directory, the real `open`
  * command, a real server, the real built bundle, a real Chromium. The
  * agent is the same fake ACP subprocess the smoke test uses; nothing here
  * talks to it.
@@ -21,15 +21,15 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/player-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let registry: CommandRegistry;
 let server: RunningServer;
 
@@ -39,16 +39,16 @@ beforeAll(async () => {
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-player-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-player-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "player-deck.comot");
-  await packDirectory(deckFixtureDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "player-deck.slidra");
+  await packDirectory(deckFixtureDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -72,10 +72,10 @@ afterAll(async () => {
   // finish — with a page still attached that wait never ends.
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
 it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", async () => {

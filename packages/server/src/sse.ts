@@ -128,7 +128,7 @@ export function openEventStream(res: ServerResponse, options?: { heartbeatMs?: n
     emit(": \n\n");
   }, heartbeatMs);
   // Must be unref'd: a live setInterval keeps the Node event loop alive,
-  // which would hang the test suite and stop `comotion serve` from ever
+  // which would hang the test suite and stop `slidra serve` from ever
   // exiting on Ctrl-C.
   heartbeat.unref();
 

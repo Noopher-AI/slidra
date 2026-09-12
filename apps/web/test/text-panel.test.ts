@@ -4,7 +4,7 @@ import { textPanelInsertInput } from "../src/shell/dock/panels/TextPanel.js";
 // NOOP-65r3 §Step 3 — `textPanelInsertInput` is the preset/align →
 // `insertTextBox` input conversion pulled out of `TextPanel`'s `insert()`
 // so it has a test independent of React/DOM. Values below are verbatim
-// from `docs/design/prototype/comotion-logic-v3.js:203` (NOOP-65 計畫
+// from `docs/design/prototype/slidra-logic-v3.js:203` (NOOP-65 計畫
 // §3.8), computed by hand against a 1000×1000 canvas so every percentage
 // in the source becomes its own literal pixel value.
 describe("textPanelInsertInput", () => {

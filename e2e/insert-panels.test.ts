@@ -134,7 +134,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
 
       const after = await readSlide(started);
       expect(after).not.toBe(before);
-      expect(after).toContain('data-comot-name="我的圖片"');
+      expect(after).toContain('data-slidra-name="我的圖片"');
       expect(after).toMatch(/<image[^>]*href="\.\.\/assets\/photo(-1)?\.gif"/);
 
       // 新元素被選取
@@ -182,8 +182,8 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       await expect.poll(() => panel.count()).toBe(0);
 
       const after = await readSlide(started);
-      expect(after).toContain('data-comot-type="video"');
-      expect(after).not.toContain("data-comot-media=");
+      expect(after).toContain('data-slidra-type="video"');
+      expect(after).not.toContain("data-slidra-media=");
 
       const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
       expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries); // 沒有任何匯入發生
@@ -193,7 +193,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
     }
   });
 
-  it("Video 面板貼 YouTube 網址 → 不下載任何資產，改成 data-comot-embed，且父文件疊出 <iframe> 播放器", async () => {
+  it("Video 面板貼 YouTube 網址 → 不下載任何資產，改成 data-slidra-embed，且父文件疊出 <iframe> 播放器", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-video-youtube" });
     try {
       const page = await openPage(started.server);
@@ -207,8 +207,8 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
 
       const after = await readSlide(started);
       // 網頁連結沒有位元組可下載：這條路徑必須完全繞過資產匯入。
-      expect(after).toContain('data-comot-embed="youtube"');
-      expect(after).toContain('data-comot-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc"');
+      expect(after).toContain('data-slidra-embed="youtube"');
+      expect(after).toContain('data-slidra-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc"');
       const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
       expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries);
 
@@ -235,7 +235,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       await expect.poll(() => panel.count()).toBe(0);
 
       const after = await readSlide(started);
-      expect(after).toContain('data-comot-type="audio"');
+      expect(after).toContain('data-slidra-type="audio"');
     } finally {
       await started.cleanup();
     }

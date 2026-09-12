@@ -44,7 +44,7 @@ export interface ContextBarProps {
 
 /**
  * Placement constants, mirroring the prototype's `place()`
- * (comotion-logic-v3.js:416), except horizontally: the bar is left-aligned
+ * (slidra-logic-v3.js:416), except horizontally: the bar is left-aligned
  * with the selection box (review decision) instead of centred, kept
  * MARGIN px inside the well, flips above the selection when it would run into
  * the DOCK_RESERVE strip the floating Dock lives in (--space-gutter-bottom),
@@ -67,7 +67,7 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
 
 /**
  * 選取框下方的情境列（NOOP-90/T2 §0.3 裁決，issue 198 review 修訂）。外觀照原型
- * `CoMotion (New v3).dc.html` 的 ctx bar；內容是原型情境列加上原本元素右鍵選單
+ * `Slidra (New v3).dc.html` 的 ctx bar；內容是原型情境列加上原本元素右鍵選單
  * 的項目（review 決定拿掉右鍵選單、全部併到左鍵這一列）：
  * 「Comment to AI ｜ Edit style ｜ Edit animation（僅選取元素有動畫時）｜
  * 前後層四項（只有圖示） ｜ Copy／Cut／Paste（[E2.T18] 新增）｜ Duplicate ｜ Delete」。

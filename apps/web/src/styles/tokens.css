@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   CoMotion design tokens — the single public UI token contract.
+   Slidra design tokens — the single public UI token contract.
 
    This file was rewritten to track the design package's own token
    set, not an ad-hoc naming scheme:
@@ -30,7 +30,7 @@
    (e.g. `text.xs = 10.5–11px`) rather than a single value. Per the
    ticket, each such range was resolved by grepping the actual value
    used in the prototype's inline styles
-   (docs/design/prototype/CoMotion (New v3).dc.html). Where the same
+   (docs/design/prototype/Slidra (New v3).dc.html). Where the same
    token name is genuinely used at two different real values for two
    different named purposes, it is split into two CSS custom
    properties — each split is called out with its own comment below.
@@ -146,7 +146,7 @@
   --font-slide: var(--font-ui); /* 文件：「同 font.ui」 */
 
   /* ── 字級（UI） ────────────────────────────────────────────────
-     Ranges resolved against docs/design/prototype/CoMotion (New
+     Ranges resolved against docs/design/prototype/Slidra (New
      v3).dc.html's inline font-size values. Where the doc's own 用途
      column names two distinct usages and the prototype uses two
      distinct real values for them, the token is split. */

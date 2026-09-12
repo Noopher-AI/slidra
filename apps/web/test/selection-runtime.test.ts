@@ -30,15 +30,15 @@ afterEach(() => {
 
 type StageMediaTable = Record<string, { src: string; kind: "video" | "audio" }>;
 
-/** Boots the runtime inside `iframe`'s own window/document with the given body markup. `media` ([E2.T17] plan §4.4) seeds `window.__COMOT_SELECTION_MEDIA__` the same way canvas.ts's wrapSelectionDocument does — defaulting to an empty table so every pre-existing call site (no media in play) is unaffected. */
+/** Boots the runtime inside `iframe`'s own window/document with the given body markup. `media` ([E2.T17] plan §4.4) seeds `window.__SLIDRA_SELECTION_MEDIA__` the same way canvas.ts's wrapSelectionDocument does — defaulting to an empty table so every pre-existing call site (no media in play) is unaffected. */
 function boot(
   bodyMarkup: string,
   colors: typeof COLORS = COLORS,
   media: StageMediaTable = {},
 ): { win: Window; doc: Document } {
   const win = iframe.contentWindow as Window & {
-    __COMOT_SELECTION_COLORS__?: typeof COLORS;
-    __COMOT_SELECTION_MEDIA__?: StageMediaTable;
+    __SLIDRA_SELECTION_COLORS__?: typeof COLORS;
+    __SLIDRA_SELECTION_MEDIA__?: StageMediaTable;
   };
   const doc = iframe.contentDocument as Document;
   doc.body.innerHTML = bodyMarkup;
@@ -49,8 +49,8 @@ function boot(
   // does not change the production code path, which real browsers implement.
   // The ring's own pixel-tolerance behavior is covered by e2e/visual-qa, not here.
   (doc as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => null;
-  win.__COMOT_SELECTION_COLORS__ = colors;
-  win.__COMOT_SELECTION_MEDIA__ = media;
+  win.__SLIDRA_SELECTION_COLORS__ = colors;
+  win.__SLIDRA_SELECTION_MEDIA__ = media;
   (win as unknown as { eval: (source: string) => void }).eval(runtimeSource);
   return { win, doc };
 }
@@ -61,7 +61,7 @@ function fireLoad(win: Window): void {
 }
 
 /**
- * Collects every `comot-selection` message posted to the outer (test)
+ * Collects every `slidra-selection` message posted to the outer (test)
  * window, excluding `"viewport"` (NOOP-91 §4.1) — jsdom's own async iframe
  * load can fire the runtime's `load` listener at an unpredictable point
  * relative to a test's click, and these tests are about hit resolution and
@@ -136,7 +136,7 @@ async function beginTextEdit(win: Window, id: string, text: string): Promise<voi
   const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
   win.dispatchEvent(
     new MessageEventCtor("message", {
-      data: { source: "comot-host", command: "begin-text-edit", id, text },
+      data: { source: "slidra-host", command: "begin-text-edit", id, text },
       source: win.parent as unknown as MessageEventSource,
     }),
   );
@@ -173,25 +173,25 @@ function visibleGroupFrames(doc: Document): HTMLElement[] {
 }
 
 describe("selection-runtime.js", () => {
-  it("點一個帶 id 的元素會回報 select，帶上它的 id 與 data-comot-name", async () => {
-    const { doc } = boot('<svg><rect id="el-a" data-comot-name="標題"/></svg>');
+  it("點一個帶 id 的元素會回報 select，帶上它的 id 與 data-slidra-name", async () => {
+    const { doc } = boot('<svg><rect id="el-a" data-slidra-name="標題"/></svg>');
     const { messages, stop } = collectMessages();
 
     click(doc, doc.getElementById("el-a")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-a", name: "標題", additive: false }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "select", id: "el-a", name: "標題", additive: false }]);
     stop();
   });
 
-  it("點一個只有 id、沒有 data-comot-name 的元素，name 回報為 null", async () => {
+  it("點一個只有 id、沒有 data-slidra-name 的元素，name 回報為 null", async () => {
     const { doc } = boot('<svg><rect id="el-b"/></svg>');
     const { messages, stop } = collectMessages();
 
     click(doc, doc.getElementById("el-b")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-b", name: null, additive: false }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "select", id: "el-b", name: null, additive: false }]);
     stop();
   });
 
@@ -202,7 +202,7 @@ describe("selection-runtime.js", () => {
     click(doc, doc.querySelector("svg")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "clear" }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "clear" }]);
     stop();
   });
 
@@ -214,7 +214,7 @@ describe("selection-runtime.js", () => {
     click(doc, doc.querySelector("circle")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "comot-selection", event: "select", id: "el-group", name: null, additive: false }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "select", id: "el-group", name: null, additive: false }]);
     stop();
   });
 
@@ -247,7 +247,7 @@ describe("selection-runtime.js", () => {
     expect(host.style.opacity).toBe("1");
   });
 
-  it("重點色與 handle 色來自注入的 window.__COMOT_SELECTION_COLORS__，不是寫死在檔案裡的色碼", async () => {
+  it("重點色與 handle 色來自注入的 window.__SLIDRA_SELECTION_COLORS__，不是寫死在檔案裡的色碼", async () => {
     const customColors = { accent: "rgb(1, 2, 3)", handle: "rgb(4, 5, 6)" };
     const { doc } = boot('<svg><rect id="el-a"/></svg>', customColors);
 
@@ -374,7 +374,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     ta.dispatchEvent(new (win as unknown as { CompositionEvent: typeof CompositionEvent }).CompositionEvent("compositionend", { bubbles: true }));
     pressEscape(win);
     await tick();
-    expect(messages).toContainEqual({ source: "comot-selection", event: "text-edit-commit", id: "el-text" });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "text-edit-commit", id: "el-text" });
     stop();
   });
 
@@ -388,7 +388,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
     pointerdownAt(doc, doc.getElementById("outside")!, 0, 0);
     await tick();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "text-edit-commit", id: "el-text" });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "text-edit-commit", id: "el-text" });
     stop();
   });
 
@@ -420,7 +420,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
   });
 
   it("編輯中按 Enter（無修飾鍵）不呼叫 preventDefault（NOOP-65 決定 A：讓瀏覽器原生插入換行），不 commit、不離開編輯", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
     const { messages, stop } = collectMessages();
@@ -436,7 +436,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
   });
 
   it("編輯中按 ⌘Enter／Ctrl+Enter：preventDefault，不插入換行、不 commit、不離開編輯", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
     const { messages, stop } = collectMessages();
@@ -455,7 +455,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
   });
 
   it("貼上含 \\r\\n 的內容正規化成 \\n，不是被拿掉（NOOP-65 §4.4：pasted 多行文字合法）", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     const ta = editTextarea(doc);
 
@@ -469,7 +469,7 @@ describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
 
 describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，鍵盤等同雙擊）", () => {
   it("未編輯、選取恰好一個文字框，按 Enter（無修飾鍵）送出 dblclick-textbox", async () => {
-    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     click(doc, doc.getElementById("el-box")!);
     const { messages, stop } = collectMessages();
     const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
@@ -477,12 +477,12 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
     win.dispatchEvent(new KeyboardEventCtor("keydown", { key: "Enter", cancelable: true }));
     await tick();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "dblclick-textbox", id: "el-box" });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "dblclick-textbox", id: "el-box" });
     stop();
   });
 
   it("未選取任何元素時按 Enter 是 no-op", async () => {
-    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     void doc;
     const { messages, stop } = collectMessages();
     const KeyboardEventCtor = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
@@ -496,7 +496,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
 
   it("選取 2 個以上元素時按 Enter 是 no-op", async () => {
     const { doc, win } = boot(
-      '<svg><g id="el-a" data-comot-text-width="400"><text>A</text></g><g id="el-b" data-comot-text-width="400"><text>B</text></g></svg>',
+      '<svg><g id="el-a" data-slidra-text-width="400"><text>A</text></g><g id="el-b" data-slidra-text-width="400"><text>B</text></g></svg>',
     );
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
     click(doc, doc.getElementById("el-a")!);
@@ -527,7 +527,7 @@ describe("selection-runtime.js — Enter 進入就地編輯（NOOP-65 §4.4，�
   });
 
   it("⌘Enter／Shift+Enter 等帶修飾鍵的 Enter 不觸發進入編輯", async () => {
-    const { doc, win } = boot('<svg><g id="el-box" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-box" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     click(doc, doc.getElementById("el-box")!);
     await tick();
     const { messages, stop } = collectMessages();
@@ -557,8 +557,8 @@ describe("selection-runtime.js 的手勢起點：viewport 必須早於 gesture-s
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
     window.addEventListener("message", handler);
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
-    const handleEl = host.shadowRoot!.querySelector('[data-comot-handle="nw"]') as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
+    const handleEl = host.shadowRoot!.querySelector('[data-slidra-handle="nw"]') as HTMLElement;
     const PointerEventCtor = (win as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent;
     handleEl.dispatchEvent(
       new PointerEventCtor("pointerdown", { bubbles: true, composed: true, pointerId: 1, clientX: 100, clientY: 100, button: 0 }),
@@ -700,7 +700,7 @@ async function sendSelectionCommand(win: Window, ids: string[]): Promise<void> {
   const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
   win.dispatchEvent(
     new MessageEventCtor("message", {
-      data: { source: "comot-host", command: "selection", ids, handles: ids.length === 1 ? "full" : "move-only" },
+      data: { source: "slidra-host", command: "selection", ids, handles: ids.length === 1 ? "full" : "move-only" },
       source: win.parent as unknown as MessageEventSource,
     }),
   );
@@ -724,7 +724,7 @@ describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列
     await tick();
 
     stop();
-    expect(messages).toEqual([{ source: "comot-selection", event: "stage-hover", point: { x: 50, y: 60 } }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "stage-hover", point: { x: 50, y: 60 } }]);
   });
 
   it("沒有選取時，pointermove 不送出 stage-hover", async () => {
@@ -760,7 +760,7 @@ describe("selection-runtime.js — stage-hover 中繼（[E5.T7]/F-17，情境列
 describe("selection-runtime.js — bounds 事件（NOOP-90/T2 §4.6）", () => {
   it("回報每個選取元素的祖先鏈，最外層在前；union 是所有選取元素的聯集", async () => {
     const { win } = boot(
-      '<svg><g id="el-outer" data-comot-name="外層"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
+      '<svg><g id="el-outer" data-slidra-name="外層"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
     );
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -822,7 +822,7 @@ describe("selection-runtime.js — measure 指令（[E2.T7]/D9）", () => {
     const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
     win.dispatchEvent(
       new MessageEventCtor("message", {
-        data: { source: "comot-host", command: "measure", ids },
+        data: { source: "slidra-host", command: "measure", ids },
         source: win.parent as unknown as MessageEventSource,
       }),
     );
@@ -895,7 +895,7 @@ describe("selection-runtime.js — 多選畫單一虛線聯集框（05-INTERACTI
 
 describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，項目併入父文件的情境列）", () => {
   it("在未選取的元素上按右鍵：選取它、壓掉瀏覽器原生選單，不再回報 contextmenu 事件", async () => {
-    const { win, doc } = boot('<svg><rect id="el-a" data-comot-name="矩形"/></svg>');
+    const { win, doc } = boot('<svg><rect id="el-a" data-slidra-name="矩形"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
     window.addEventListener("message", handler);
@@ -907,7 +907,7 @@ describe("selection-runtime.js — 元素上按右鍵（右鍵選單已移除，
 
     window.removeEventListener("message", handler);
     expect(event.defaultPrevented).toBe(true);
-    expect(messages).toContainEqual({ source: "comot-selection", event: "select", id: "el-a", name: "矩形", additive: false });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "select", id: "el-a", name: "矩形", additive: false });
     expect(messages.some((m) => m.event === "contextmenu")).toBe(false);
   });
 
@@ -945,9 +945,9 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "a", code: "", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Delete", code: "", meta: false, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "]", code: "", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "a", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "Delete", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "]", code: "", meta: true, ctrl: false, shift: true, alt: false },
     ]);
   });
 
@@ -969,8 +969,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "}", code: "BracketRight", meta: true, ctrl: false, shift: true, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "{", code: "BracketLeft", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "}", code: "BracketRight", meta: true, ctrl: false, shift: true, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "{", code: "BracketLeft", meta: true, ctrl: false, shift: true, alt: false },
     ]);
   });
 
@@ -989,8 +989,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "z", code: "", meta: true, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "Z", code: "", meta: false, ctrl: true, shift: true, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "z", code: "", meta: true, ctrl: false, shift: false, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "Z", code: "", meta: false, ctrl: true, shift: true, alt: false },
     ]);
   });
 
@@ -1008,8 +1008,8 @@ describe("selection-runtime.js — 鍵盤中繼 stage-key（NOOP-90/T2 §4.4）"
     window.removeEventListener("message", handler);
     const relayed = messages.filter((m) => m.event === "stage-key");
     expect(relayed).toEqual([
-      { source: "comot-selection", event: "stage-key", key: "ArrowLeft", code: "", meta: false, ctrl: false, shift: false, alt: false },
-      { source: "comot-selection", event: "stage-key", key: "ArrowRight", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "ArrowLeft", code: "", meta: false, ctrl: false, shift: false, alt: false },
+      { source: "slidra-selection", event: "stage-key", key: "ArrowRight", code: "", meta: false, ctrl: false, shift: false, alt: false },
     ]);
   });
 
@@ -1044,26 +1044,26 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
   }
 
   it("begin-text-edit 後，<text> 的直接子 tspan 數等於 text.split(\"\\n\").length", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
 
     await beginTextEdit(win, "el-text", "第一行\n第二行\n第三行");
 
     expect(tspanCount(doc, "el-text")).toBe(3);
     const tspans = doc.getElementById("el-text")!.querySelectorAll("text > tspan");
-    // data-comot-break marks a line FOLLOWED by "\n" (textLineRanges()'s
+    // data-slidra-break marks a line FOLLOWED by "\n" (textLineRanges()'s
     // own contract) — every line except the last one, not every line
     // except the first (the visual y/dy split is the opposite: only the
     // FIRST line gets an explicit y, the rest get a relative dy).
     expect(tspans[0].textContent).toBe("第一行");
-    expect(tspans[0].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[0].getAttribute("data-slidra-break")).toBe("1");
     expect(tspans[1].textContent).toBe("第二行");
-    expect(tspans[1].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[1].getAttribute("data-slidra-break")).toBe("1");
     expect(tspans[2].textContent).toBe("第三行");
-    expect(tspans[2].getAttribute("data-comot-break")).toBeNull();
+    expect(tspans[2].getAttribute("data-slidra-break")).toBeNull();
   });
 
   it("text-edit-input 帶新的 \\n 後，tspan 數跟著變——不呼叫任何命令，純本地重畫", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");
     expect(tspanCount(doc, "el-text")).toBe(1);
 
@@ -1076,12 +1076,12 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
   });
 
   it("begin-text-edit 的 markup 欄位不再被接受——即使傳了也不當一回事，只看 text", async () => {
-    const { doc, win } = boot('<svg><g id="el-text" data-comot-text-width="400"><text>Hi</text></g></svg>');
+    const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
     const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
 
     win.dispatchEvent(
       new MessageEventCtor("message", {
-        data: { source: "comot-host", command: "begin-text-edit", id: "el-text", text: "真正的內容", markup: "<tspan>不該出現</tspan>", width: 999 },
+        data: { source: "slidra-host", command: "begin-text-edit", id: "el-text", text: "真正的內容", markup: "<tspan>不該出現</tspan>", width: 999 },
         source: win.parent as unknown as MessageEventSource,
       }),
     );
@@ -1092,12 +1092,12 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     expect(html).not.toContain("不該出現");
   });
 
-  // F-04 (NOOP-399): a plain `<text>` (no data-comot-text-width — e.g. a
+  // F-04 (NOOP-399): a plain `<text>` (no data-slidra-text-width — e.g. a
   // slide title) used to be repainted with a bare `textContent =`, which
   // SVG never breaks on "\n" — Enter's hard break was invisible until Esc
   // committed and the SVG-side re-layout (render_plain_text_content) split
   // it into tspans for real. Both branches now share renderTextBoxLines.
-  it("plain <text>（無 data-comot-text-width）帶 \\n 時也重畫成多個 tspan，第一行標 data-comot-break", async () => {
+  it("plain <text>（無 data-slidra-text-width）帶 \\n 時也重畫成多個 tspan，第一行標 data-slidra-break", async () => {
     const { doc, win } = boot('<svg><g id="el-plain"><text x="640" y="330" text-anchor="middle">Hi</text></g></svg>');
 
     await beginTextEdit(win, "el-plain", "a\nb");
@@ -1105,11 +1105,11 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
     const tspans = doc.getElementById("el-plain")!.querySelectorAll("text > tspan");
     expect(tspans.length).toBe(2);
     expect(tspans[0].textContent).toBe("a");
-    expect(tspans[0].getAttribute("data-comot-break")).toBe("1");
+    expect(tspans[0].getAttribute("data-slidra-break")).toBe("1");
     expect(tspans[0].getAttribute("x")).toBe("640");
     expect(tspans[0].getAttribute("y")).toBe("330");
     expect(tspans[1].textContent).toBe("b");
-    expect(tspans[1].getAttribute("data-comot-break")).toBeNull();
+    expect(tspans[1].getAttribute("data-slidra-break")).toBeNull();
   });
 
   it("plain <text> 仍是單行時只有 1 個 tspan，x/y 沿用 <text> 自己的——視覺位置不得位移", async () => {
@@ -1132,62 +1132,62 @@ describe("selection-runtime.js 的文字框就地編輯重畫（F8, NOOP-289 決
 describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）", () => {
   const TABLE = `
     <svg>
-      <g id="el-tbl" data-comot-type="table">
-        <g data-comot-cell="0,0"><rect width="10" height="10"/><text>a</text></g>
-        <g data-comot-cell="0,1"><rect width="10" height="10"/><text>b</text></g>
-        <g data-comot-cell="1,0" data-comot-repeat="row" display="none"><rect width="10" height="10"/><text>{{ x }}</text></g>
-        <g data-comot-cell="2,0" data-comot-generated="1"><rect width="10" height="10"/><text>gen</text></g>
+      <g id="el-tbl" data-slidra-type="table">
+        <g data-slidra-cell="0,0"><rect width="10" height="10"/><text>a</text></g>
+        <g data-slidra-cell="0,1"><rect width="10" height="10"/><text>b</text></g>
+        <g data-slidra-cell="1,0" data-slidra-repeat="row" display="none"><rect width="10" height="10"/><text>{{ x }}</text></g>
+        <g data-slidra-cell="2,0" data-slidra-generated="1"><rect width="10" height="10"/><text>gen</text></g>
       </g>
     </svg>`;
 
   it("點一格：發出 select（表格本身）與 table-cell-click（該格）", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
-    const cell = doc.querySelector('[data-comot-cell="0,1"]')!;
+    const cell = doc.querySelector('[data-slidra-cell="0,1"]')!;
     click(doc, cell);
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "select", id: "el-tbl", name: null, additive: false });
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "select", id: "el-tbl", name: null, additive: false });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: false });
   });
 
   it("⇧點：table-cell-click 的 additive 為 true", async () => {
     const { doc, win } = boot(TABLE);
     const { messages, stop } = collectMessages();
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
-    doc.querySelector('[data-comot-cell="0,0"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    doc.querySelector('[data-slidra-cell="0,0"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: true });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 0, additive: true });
   });
 
   it("⇧點同一張已選取表格的第二格：表格本身保持選取（不重發 select／不被誤判成 toggle 取消），只有 table-cell-click 回報新格子（手動瀏覽器煙霧測試抓到的迴歸）", async () => {
     const { doc } = boot(TABLE);
-    click(doc, doc.querySelector('[data-comot-cell="0,0"]')!);
+    click(doc, doc.querySelector('[data-slidra-cell="0,0"]')!);
     await tick();
 
     const { messages, stop } = collectMessages();
     const win = doc.defaultView as Window;
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
-    doc.querySelector('[data-comot-cell="0,1"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
+    doc.querySelector('[data-slidra-cell="0,1"]')!.dispatchEvent(new MouseEventCtor("click", { bubbles: true, shiftKey: true }));
     await tick();
     stop();
 
     expect(messages.some((m: any) => m.event === "select")).toBe(false);
     expect(messages.some((m: any) => m.event === "clear")).toBe(false);
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: true });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-click", id: "el-tbl", row: 0, col: 1, additive: true });
   });
 
   it("雙擊一般儲存格：table-cell-dblclick 回報自己的 row/col，不進入群組編輯", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
-    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    dblclick(doc, doc.querySelector('[data-slidra-cell="0,1"]')!);
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
     expect(messages.some((m: any) => m.event === "group-path")).toBe(false);
   });
 
@@ -1195,7 +1195,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     const grouped = TABLE.replace('<g id="el-tbl"', '<g id="el-outer"><g id="el-grp"><g id="el-tbl"').replace(/<\/svg>\s*$/, "</g></g></svg>");
     const { doc } = boot(grouped);
     const { messages, stop } = collectMessages();
-    dblclick(doc, doc.querySelector('[data-comot-cell="0,1"]')!);
+    dblclick(doc, doc.querySelector('[data-slidra-cell="0,1"]')!);
     await tick();
     stop();
 
@@ -1203,17 +1203,17 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     expect(events.indexOf("select")).toBeGreaterThanOrEqual(0);
     expect(events.indexOf("table-cell-dblclick")).toBeGreaterThan(events.indexOf("select"));
     expect(messages).toContainEqual(expect.objectContaining({ event: "select", id: "el-tbl", groupPath: ["el-outer", "el-grp"] }));
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-dblclick", id: "el-tbl", row: 0, col: 1, atRow: 0 });
   });
 
   it("雙擊一個 generated 格：table-cell-dblclick 回報對應模板列的 row（架構：雙擊編輯的是模板列）", async () => {
     const { doc } = boot(TABLE);
     const { messages, stop } = collectMessages();
-    dblclick(doc, doc.querySelector('[data-comot-cell="2,0"]')!);
+    dblclick(doc, doc.querySelector('[data-slidra-cell="2,0"]')!);
     await tick();
     stop();
 
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-dblclick", id: "el-tbl", row: 1, col: 0, atRow: 2 });
   });
 
   it("在格上按右鍵：table-cell-contextmenu 回報 row/col/x/y，且壓掉原生選單", async () => {
@@ -1221,19 +1221,19 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     const { messages, stop } = collectMessages();
     const MouseEventCtor = (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent;
     const event = new MouseEventCtor("contextmenu", { bubbles: true, cancelable: true, clientX: 7, clientY: 9 });
-    doc.querySelector('[data-comot-cell="0,0"]')!.dispatchEvent(event);
+    doc.querySelector('[data-slidra-cell="0,0"]')!.dispatchEvent(event);
     await tick();
     stop();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(messages).toContainEqual({ source: "comot-selection", event: "table-cell-contextmenu", id: "el-tbl", row: 0, col: 0, x: 7, y: 9 });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "table-cell-contextmenu", id: "el-tbl", row: 0, col: 0, x: 7, y: 9 });
   });
 
   async function sendHostCommand(win: Window, command: Record<string, unknown>): Promise<void> {
     const MessageEventCtor = (win as unknown as { MessageEvent: typeof MessageEvent }).MessageEvent;
     win.dispatchEvent(
       new MessageEventCtor("message", {
-        data: { source: "comot-host", ...command },
+        data: { source: "slidra-host", ...command },
         source: win.parent as unknown as MessageEventSource,
       }),
     );
@@ -1265,8 +1265,8 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
     const { doc, win } = boot(TABLE);
     await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: [50, 30] });
 
-    const cellA = doc.querySelector('[data-comot-cell="0,0"]')!;
-    const cellB = doc.querySelector('[data-comot-cell="0,1"]')!;
+    const cellA = doc.querySelector('[data-slidra-cell="0,0"]')!;
+    const cellB = doc.querySelector('[data-slidra-cell="0,1"]')!;
     expect(cellA.querySelector("rect")!.getAttribute("width")).toBe("50");
     expect(cellB.querySelector("rect")!.getAttribute("width")).toBe("30");
     expect(cellA.getAttribute("transform")).toBe("translate(0 0)");
@@ -1276,12 +1276,12 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
 
   it("preview-table-cols：壞輸入（含負數的陣列、非陣列）完全不動 DOM", async () => {
     const { doc, win } = boot(TABLE);
-    const before = doc.querySelector('[data-comot-cell="0,0"]')!.querySelector("rect")!.getAttribute("width");
+    const before = doc.querySelector('[data-slidra-cell="0,0"]')!.querySelector("rect")!.getAttribute("width");
 
     await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: [50, -1] });
     await sendHostCommand(win, { command: "preview-table-cols", id: "el-tbl", cols: "not-an-array" });
 
-    expect(doc.querySelector('[data-comot-cell="0,0"]')!.querySelector("rect")!.getAttribute("width")).toBe(before);
+    expect(doc.querySelector('[data-slidra-cell="0,0"]')!.querySelector("rect")!.getAttribute("width")).toBe(before);
   });
 
   /** Dispatches a real keydown on `win` with the given modifiers — same shape `pressEscape` above uses for its one key. */
@@ -1310,7 +1310,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       stop();
 
       expect(messages).toContainEqual({
-        source: "comot-selection",
+        source: "slidra-selection",
         event: "stage-key",
         key: "Delete",
         code: "",
@@ -1331,7 +1331,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       stop();
 
       expect(messages).toContainEqual({
-        source: "comot-selection",
+        source: "slidra-selection",
         event: "table-key",
         id: "el-tbl",
         key: "Delete",
@@ -1344,7 +1344,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
 
     it("H4: tableRangeId 非 null 時 Escape 發 table-key 且不發 clear；為 null 時仍發 clear", async () => {
       const { doc, win } = boot(TABLE);
-      click(doc, doc.querySelector('[data-comot-cell="0,0"]')!); // selects el-tbl, so a later Escape-without-range would otherwise clear it
+      click(doc, doc.querySelector('[data-slidra-cell="0,0"]')!); // selects el-tbl, so a later Escape-without-range would otherwise clear it
       await tick();
 
       await sendHostCommand(win, { command: "table-range", id: "el-tbl" });
@@ -1352,7 +1352,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       pressEscape(win);
       await tick();
       stopWithRange();
-      expect(withRange).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Escape", meta: false, ctrl: false, shift: false });
+      expect(withRange).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "Escape", meta: false, ctrl: false, shift: false });
       expect(withRange.some((m: any) => m.event === "clear")).toBe(false);
 
       await sendHostCommand(win, { command: "table-range", id: null });
@@ -1360,7 +1360,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       pressEscape(win);
       await tick();
       stopWithoutRange();
-      expect(withoutRange).toContainEqual({ source: "comot-selection", event: "clear" });
+      expect(withoutRange).toContainEqual({ source: "slidra-selection", event: "clear" });
       expect(withoutRange.some((m: any) => m.event === "table-key")).toBe(false);
     });
 
@@ -1375,8 +1375,8 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       stop();
 
       expect(tabEvent.defaultPrevented).toBe(true);
-      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: false });
-      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: true });
+      expect(messages).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: false });
+      expect(messages).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "Tab", meta: false, ctrl: false, shift: true });
     });
 
     it("⌘B／Ctrl+B 只在 tableRangeId 作用中才 relay 成 table-key", async () => {
@@ -1393,7 +1393,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       pressKey(win, "b", { meta: true });
       await tick();
       stop();
-      expect(messages).toContainEqual({ source: "comot-selection", event: "table-key", id: "el-tbl", key: "b", meta: true, ctrl: false, shift: false });
+      expect(messages).toContainEqual({ source: "slidra-selection", event: "table-key", id: "el-tbl", key: "b", meta: true, ctrl: false, shift: false });
     });
 
     it("table-range 指令的 id 不是 string 也不是 null 時忽略，tableRangeId 不動", async () => {
@@ -1407,7 +1407,7 @@ describe("selection-runtime.js — 表格儲存格互動（E2.T14, plan §4.5）
       stop();
 
       expect(messages).toContainEqual({
-        source: "comot-selection",
+        source: "slidra-selection",
         event: "table-key",
         id: "el-tbl",
         key: "Delete",
@@ -1470,7 +1470,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     });
     fireLoad(win);
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const video = host.shadowRoot!.querySelector("video") as HTMLVideoElement;
     const audio = host.shadowRoot!.querySelector("audio") as HTMLAudioElement;
     expect(video.src).toContain("clip.webm");
@@ -1487,15 +1487,15 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     expect(bar.style.getPropertyValue("pointer-events")).toBe("auto");
   });
 
-  it("控制列帶 data-comot-media-control=\"play\"／\"seek\" 屬性", async () => {
+  it("控制列帶 data-slidra-media-control=\"play\"／\"seek\" 屬性", async () => {
     const { win, doc } = boot('<svg><rect id="el-video"/></svg>', COLORS, {
       "el-video": { src: "../assets/clip.webm", kind: "video" },
     });
     fireLoad(win);
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
-    expect(host.shadowRoot!.querySelector('[data-comot-media-control="play"]')).not.toBeNull();
-    expect(host.shadowRoot!.querySelector('[data-comot-media-control="seek"]')).not.toBeNull();
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
+    expect(host.shadowRoot!.querySelector('[data-slidra-media-control="play"]')).not.toBeNull();
+    expect(host.shadowRoot!.querySelector('[data-slidra-media-control="seek"]')).not.toBeNull();
   });
 
   it("點控制列不改變選取：先選好一個元素，再點 play 鈕，selectedIds 不變、也不會多送一次 select/clear", async () => {
@@ -1507,12 +1507,12 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     click(doc, doc.getElementById("el-a")!);
     await tick();
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     const box = host.shadowRoot!.querySelector(".sel") as HTMLElement;
     expect(box.style.display).toBe("block");
 
     const { messages, stop } = collectMessages();
-    const playButton = host.shadowRoot!.querySelector('[data-comot-media-control="play"]') as HTMLElement;
+    const playButton = host.shadowRoot!.querySelector('[data-slidra-media-control="play"]') as HTMLElement;
     click(doc, playButton);
     await tick();
     stop();
@@ -1545,8 +1545,8 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     MediaProto.pause = pauseSpy;
     fireLoad(win);
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
-    const playButton = host.shadowRoot!.querySelector('[data-comot-media-control="play"]') as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
+    const playButton = host.shadowRoot!.querySelector('[data-slidra-media-control="play"]') as HTMLElement;
 
     click(doc, playButton);
     await tick();
@@ -1563,7 +1563,7 @@ describe("selection-runtime.js — 舞台媒體層（[E2.T17] plan §4.4）", ()
     const { win, doc } = boot('<svg><rect id="el-a"/></svg>', COLORS, {});
     fireLoad(win);
 
-    const host = doc.querySelector("[data-comot-selection-host]") as HTMLElement;
+    const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
     expect(host.shadowRoot!.querySelector("video")).toBeNull();
     expect(host.shadowRoot!.querySelector("audio")).toBeNull();
     expect(host.shadowRoot!.querySelector(".media-control-bar")).toBeNull();

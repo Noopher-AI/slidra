@@ -38,7 +38,7 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/export");
-const coMotionBinPath = path.join(rootDir, "target/release/comotion");
+const slidraBinPath = path.join(rootDir, "target/release/slidra");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -59,7 +59,7 @@ afterEach(async () => {
 
 /** A deck with many slides, each with a couple of steps, purely to widen the render window for the "still in progress" screenshot below. */
 async function buildManyFrameDeck(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-export-gui-deck-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-export-gui-deck-"));
   await mkdir(path.join(dir, "slides"), { recursive: true });
   await mkdir(path.join(dir, "assets"), { recursive: true });
   const slideCount = 15;
@@ -71,10 +71,10 @@ async function buildManyFrameDeck(): Promise<string> {
       path.join(dir, name),
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-step-a-${i}" family="enter" effect="fade" start="on-click"/>
-      <comot:effect target="el-step-b-${i}" family="enter" effect="appear" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-step-a-${i}" family="enter" effect="fade" start="on-click"/>
+      <slidra:effect target="el-step-b-${i}" family="enter" effect="appear" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <text id="el-title-${i}" x="640" y="120" text-anchor="middle" font-size="48">投影片 ${i}</text>
   <text id="el-step-a-${i}" x="640" y="320" text-anchor="middle" font-size="40">步驟一</text>
@@ -102,7 +102,7 @@ interface CliResult {
 
 function runCli(args: string[], env: NodeJS.ProcessEnv): Promise<CliResult> {
   return new Promise((resolve, reject) => {
-    execFile(coMotionBinPath, args, { env, maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
+    execFile(slidraBinPath, args, { env, maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
       if (error && typeof error.code !== "number") {
         reject(error);
         return;
@@ -309,11 +309,11 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
 
       await page.locator(".export-status-error").waitFor({ timeout: 30_000 });
       const errorText = await page.locator(".export-status-error").textContent();
-      // slides/001.svg 的損壞之處：media 效果缺少 data-comot-media
+      // slides/001.svg 的損壞之處：media 效果缺少 data-slidra-media
       // （player-plan.ts 的 mediaCuesFor 丟出的原文，見 export-cli.test.ts
       // 同一個斷言）。
       expect(errorText).toContain("el-speaker");
-      expect(errorText).toContain("data-comot-media");
+      expect(errorText).toContain("data-slidra-media");
 
       // §4.7：「error → ... 格式列恢復可點」。
       await page.getByRole("button", { name: "Export" }).click();
@@ -331,7 +331,7 @@ describe("Export 面板 — 進度、下載、與 CLI 產出一致（#210 條件
       // of its content off the left side of the viewport; post-fix it
       // wraps and stays fully on-screen.
       const geometry = await page.locator(".export-status-error").evaluate((el) => {
-        const longMessage = "壞掉的效果清單：" + "元素｢el-speaker｣缺少 data-comot-media 屬性，這是一段刻意加長、含有換行的合成錯誤訊息，用來驗證錯誤區塊在極端長度下仍完整落在畫面內。\n第二行：".repeat(4);
+        const longMessage = "壞掉的效果清單：" + "元素｢el-speaker｣缺少 data-slidra-media 屬性，這是一段刻意加長、含有換行的合成錯誤訊息，用來驗證錯誤區塊在極端長度下仍完整落在畫面內。\n第二行：".repeat(4);
         const textNode = Array.from(el.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
         if (textNode) textNode.textContent = longMessage;
         else el.textContent = longMessage;

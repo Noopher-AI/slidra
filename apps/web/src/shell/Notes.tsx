@@ -17,7 +17,7 @@ const PLACEHOLDER = "No notes for this slide yet. Add talking points — they sh
 /**
  * 備忘稿：`Notes.tsx` 的 textarea，blur 時把改動送 `slide notes set`
  * （T3 plan §4.1）。讀取走 `readSlideNotes`——不用 `DOMParser`，舊檔（沒有
- * `xmlns:comot`）也讀得回來，見 `notes.ts` 的檔頭說明。
+ * `xmlns:slidra`）也讀得回來，見 `notes.ts` 的檔頭說明。
  *
  * 「不存在」與「存在但為空」在 UI 上刻意不分（都顯示 placeholder）；
  * 讀取失敗（markup 壞掉／HTTP 非 200）則明確報錯並把欄位設成

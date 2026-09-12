@@ -11,7 +11,7 @@ export interface ZoomMenuProps {
  * 空容器）。05-INTERACTIONS.feature「縮放選單」：− 百分比 + ｜Fit｜預設值，
  * 目前值以 `--brand-red` 標示；選 Fit 回到 100% 並置中。
  *
- * +/− 兩顆按鈕比照 comotion-logic-v3.js 的 `zoomIn`/`zoomOut`：只呼叫
+ * +/− 兩顆按鈕比照 slidra-logic-v3.js 的 `zoomIn`/`zoomOut`：只呼叫
  * `setZoom`（不帶錨點），平移量不變，只是縮放係數改變——與滑鼠滾輪縮放
  * （`zoomByWheel`，以游標為錨點）是兩條不同路徑，這裡刻意不重用那一條。
  */

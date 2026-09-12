@@ -1,13 +1,13 @@
 import { watch as fsWatch } from "node:fs";
-import { CoMotionError } from "./comotion/errors.js";
-import { workDirFor } from "./comotion/home.js";
+import { SlidraError } from "./slidra/errors.js";
+import { workDirFor } from "./slidra/home.js";
 
 /**
  * Watches one presentation's work directory for filesystem changes and
  * calls `onChange` (debounced, coalesced) whenever something changes.
  * Ported verbatim from `packages/core`'s `watch.ts` ([E4.T9]/F7 — the
  * server no longer imports `packages/core` at all); the only change is
- * `resolveWorkDir` -> `workDirFor` (`comotion/home.ts`), which resolves
+ * `resolveWorkDir` -> `workDirFor` (`slidra/home.ts`), which resolves
  * the same `projects.json` registry file.
  *
  * `onChange` deliberately carries no payload — not which file, not what
@@ -22,7 +22,7 @@ export interface PresentationWatcher {
 }
 
 /**
- * The CLI's per-presentation file lock (`.comotion.lock`, #303) lives
+ * The CLI's per-presentation file lock (`.slidra.lock`, #303) lives
  * inside the watched work directory and is created and removed around
  * every command — reads included. It is coordination, never content, so a
  * change to it must not reach `onChange`: `serve` answers a live-reload
@@ -31,7 +31,7 @@ export interface PresentationWatcher {
  * Its visible symptom is the editor reloading constantly, which drops the
  * author's selection the instant they click an element.
  */
-const LOCK_FILE_NAME = ".comotion.lock";
+const LOCK_FILE_NAME = ".slidra.lock";
 
 function isCoordinationFile(filename: string | Buffer | null): boolean {
   if (filename === null) return false;
@@ -75,7 +75,7 @@ export async function watchPresentation(
       onChange();
     }, DEBOUNCE_MS);
     // Must be unref'd: a live setTimeout keeps the Node event loop alive,
-    // which would hang the test suite and stop `comotion serve` from ever
+    // which would hang the test suite and stop `slidra serve` from ever
     // exiting on Ctrl-C.
     debounceTimer.unref();
   };
@@ -92,7 +92,7 @@ export async function watchPresentation(
     // above and this call. That raw error's message very likely embeds the
     // real work directory path (ADR-0004), exactly like the asynchronous
     // `error` event handled below, so it gets the same sanitised treatment.
-    throw new CoMotionError("監看簡報檔案時發生錯誤");
+    throw new SlidraError("監看簡報檔案時發生錯誤");
   }
 
   watcher.on("error", () => {
@@ -107,7 +107,7 @@ export async function watchPresentation(
     watcher.close();
     // The underlying error object very likely embeds the real work
     // directory path (ADR-0004) — it is never logged or rethrown verbatim.
-    onError(new CoMotionError("監看簡報檔案時發生錯誤"));
+    onError(new SlidraError("監看簡報檔案時發生錯誤"));
   });
 
   return {

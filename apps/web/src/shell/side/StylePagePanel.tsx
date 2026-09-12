@@ -14,7 +14,7 @@ export interface StylePagePanelProps {
   controller: CanvasController | null;
 }
 
-/** #200 §4.3, values from `docs/design/prototype/comotion-logic-v3.js:571-573`. */
+/** #200 §4.3, values from `docs/design/prototype/slidra-logic-v3.js:571-573`. */
 const SIZE_PRESETS: readonly { label: string; width: number; height: number }[] = [
   { label: "16:9", width: 1280, height: 720 },
   { label: "4:3", width: 1024, height: 768 },

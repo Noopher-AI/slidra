@@ -35,7 +35,7 @@ def check(label: str, ok: bool, actual: object) -> None:
 
 
 def _cell_markup(svg: str, row: int, col: int) -> str:
-    match = re.search(rf'<g data-comot-cell="{row},{col}"[^>]*>.*?</g>', svg, re.S)
+    match = re.search(rf'<g data-slidra-cell="{row},{col}"[^>]*>.*?</g>', svg, re.S)
     if not match:
         raise RuntimeError(f"找不到儲存格 ({row},{col})")
     return match.group(0)

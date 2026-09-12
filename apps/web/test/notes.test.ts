@@ -9,18 +9,18 @@ describe("readSlideNotes", () => {
     expect(result).toEqual({ ok: true, text: "" });
   });
 
-  it("有 <metadata> 但沒有 <comot:notes>：空字串", () => {
+  it("有 <metadata> 但沒有 <slidra:notes>：空字串", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:effects xmlns:comot="https://co-motion.dev/ns"/></metadata>' +
+      '<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"/></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "" });
   });
 
-  it("有 <comot:notes>：讀出內容", () => {
+  it("有 <slidra:notes>：讀出內容", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">第一版備忘稿</comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一版備忘稿</slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "第一版備忘稿" });
   });
@@ -28,7 +28,7 @@ describe("readSlideNotes", () => {
   it("notes 含跳脫字元：還原成原字元", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">1 &lt; 2 &amp;&amp; true</comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">1 &lt; 2 &amp;&amp; true</slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "1 < 2 && true" });
   });
@@ -36,7 +36,7 @@ describe("readSlideNotes", () => {
   it("notes 含換行：原樣保留", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">第一行\n第二行</comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一行\n第二行</slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "第一行\n第二行" });
   });
@@ -44,7 +44,7 @@ describe("readSlideNotes", () => {
   it("舊檔（無 xmlns）：DOMParser 會判定損毀，但 readSlideNotes 讀得回來", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      "<metadata><comot:notes>舊版備忘稿，沒有繫結命名空間</comot:notes></metadata>" +
+      "<metadata><slidra:notes>舊版備忘稿，沒有繫結命名空間</slidra:notes></metadata>" +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "舊版備忘稿，沒有繫結命名空間" });
   });
@@ -70,7 +70,7 @@ describe("readSlideNotes", () => {
   it("notes 是空字串：讀回空字串", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns"></comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026"></slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "" });
   });
@@ -78,7 +78,7 @@ describe("readSlideNotes", () => {
   it("notes 只有空白：原樣保留", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">   </comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">   </slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "   " });
   });
@@ -86,7 +86,7 @@ describe("readSlideNotes", () => {
   it("notes 含 & 在中間：還原成原字元", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">A &amp; B &lt; C &gt; D</comot:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">A &amp; B &lt; C &gt; D</slidra:notes></metadata>' +
       "</svg>";
     expect(readSlideNotes(svg)).toEqual({ ok: true, text: "A & B < C > D" });
   });

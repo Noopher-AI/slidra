@@ -1,10 +1,10 @@
 # SVG 作者指南
 
-這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色角色、元素角色、一份語法示範、動畫腳本、關係與密度規則，以及最後用 `comotion validate` 驗收。`comotion-plan` 用第 6、7 節寫計畫；`comotion-build` 與 `comotion-new-slide` 用第 0～5 節做頁面。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
+這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色角色、元素角色、一份語法示範、動畫腳本、關係與密度規則，以及最後用 `slidra validate` 驗收。`slidra-plan` 用第 6、7 節寫計畫；`slidra-build` 與 `slidra-new-slide` 用第 0～5 節做頁面。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
 
-三個素材庫各管一段：配色與字級表在 `comotion-style-kit`、背景配方在 `comotion-background-kit`、版面與槽位在 `comotion-layout-kit`。這份指南只寫它們之間共用的規則。
+三個素材庫各管一段：配色與字級表在 `slidra-style-kit`、背景配方在 `slidra-background-kit`、版面與槽位在 `slidra-layout-kit`。這份指南只寫它們之間共用的規則。
 
-所有數字以 **1280×720** 畫布為準（`comotion new` 的預設）。
+所有數字以 **1280×720** 畫布為準（`slidra new` 的預設）。
 
 **同比例的畫布（16:9）**：先 `cat project.json` 讀出 `canvas.width`，算出 `k = width ÷ 1280`，把所有座標、寬度、半徑、字級都乘以 k（1920×1080 就是 ×1.5），`viewBox` 寫成畫布尺寸。
 
@@ -19,15 +19,15 @@
 | 9:16 | 1080×1920 | 限時動態、短影音封面 |
 | A4 | 1240×1754 | 列印海報、單張文件 |
 
-畫布用 `comotion presentation canvas set <id> --width <w> --height <h>` 設定，而且要在**建第一頁之前**設好。
+畫布用 `slidra presentation canvas set <id> --width <w> --height <h>` 設定，而且要在**建第一頁之前**設好。
 
 ## 0. 怎麼把一頁 SVG 寫進簡報
 
-- 新頁：`comotion slide add <presentation-id> --svg '<整頁 SVG>'`；要插在第 n 頁之後就加 `--at n`。整頁覆寫：`comotion slide set <presentation-id> slides/00N.svg --svg '<整頁 SVG>'`。
+- 新頁：`slidra slide add <presentation-id> --svg '<整頁 SVG>'`；要插在第 n 頁之後就加 `--at n`。整頁覆寫：`slidra slide set <presentation-id> slides/00N.svg --svg '<整頁 SVG>'`。
 - **引號規則**：整段 SVG 用單引號包住，裡面**只能用雙引號**當屬性引號，整段**不能出現任何半形單引號** `'`（命令列打不進去）；文字裡的 `&` 寫成 `&amp;`、`<` 寫成 `&lt;`。
-- 寫入時 CoMotion 會：檢查根節點是 `<svg>`、補或核對 `viewBox`；把裸圖元包進 `<g>`、補 id、把 `transform` 搬上容器；拒絕 `<script>`／`<foreignObject>`；把**文字框宣告**轉成真正的文字框（下一段）。`<defs>`、漸層、濾鏡、clipPath、`path` 都可以用。
-- 成功回傳 `data.elementIds`（文件順序的所有元素 id）。**自己給 id**（`el-<語意>`，同一頁內不重複），動畫腳本才對得上；`data-comot-name` 給人看，照給。
-- 頁面底色不寫在 SVG 裡，寫完後 `comotion slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
+- 寫入時 Slidra 會：檢查根節點是 `<svg>`、補或核對 `viewBox`；把裸圖元包進 `<g>`、補 id、把 `transform` 搬上容器；拒絕 `<script>`／`<foreignObject>`；把**文字框宣告**轉成真正的文字框（下一段）。`<defs>`、漸層、濾鏡、clipPath、`path` 都可以用。
+- 成功回傳 `data.elementIds`（文件順序的所有元素 id）。**自己給 id**（`el-<語意>`，同一頁內不重複），動畫腳本才對得上；`data-slidra-name` 給人看，照給。
+- 頁面底色不寫在 SVG 裡，寫完後 `slidra slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
 
 ### 寫入閘門：送出前自己先過這一遍
 
@@ -51,18 +51,18 @@
 **所有會被讀的文字**都用文字框宣告寫，才會自動換行、能加清單、可被就地編輯、被 `validate` 驗到：
 
 ```xml
-<text id="el-bullets" data-comot-name="要點" data-comot-text-width="1120" x="80" y="176"
+<text id="el-bullets" data-slidra-name="要點" data-slidra-text-width="1120" x="80" y="176"
       font-size="24" font-weight="400" fill="<text>"
-      data-comot-text-align="left" data-comot-list="bullet bullet bullet">第一條
+      data-slidra-text-align="left" data-slidra-list="bullet bullet bullet">第一條
 第二條
 第三條</text>
 ```
 
 - `x`／`y` 是文字框**左上角**（不是基線）。文字框高度＝行數 × 1.45 × 字級；排垂直位置用這條算。
-- 內容以換行分段，一段一條要點；`data-comot-list` 每段一個 token（`bullet`／`number`／`none`）。
-- `font-family` 只能寫簡報已內嵌的家族（`Noto Sans TC` 內建；其他照 `reference/fonts.md` 匯入）；字重只用 400 與 700；`data-comot-text-align` ∈ left／center／right。
-- 內容只能是純文字，`<tspan>` 由 CoMotion 自己產生。
-- 沒有 `data-comot-text-width` 的裸 `<text>` 只有一個用途：章節頁的浮水印大字，那是裝飾不是內容——而且要標 `data-comot-role="garnish"` 說明它是裝飾，否則寫入會被拒（沒標的裸 `<text>` 一律當成「文字掉了文字框」）。
+- 內容以換行分段，一段一條要點；`data-slidra-list` 每段一個 token（`bullet`／`number`／`none`）。
+- `font-family` 只能寫簡報已內嵌的家族（`Noto Sans TC` 內建；其他照 `reference/fonts.md` 匯入）；字重只用 400 與 700；`data-slidra-text-align` ∈ left／center／right。
+- 內容只能是純文字，`<tspan>` 由 Slidra 自己產生。
+- 沒有 `data-slidra-text-width` 的裸 `<text>` 只有一個用途：章節頁的浮水印大字，那是裝飾不是內容——而且要標 `data-slidra-role="garnish"` 說明它是裝飾，否則寫入會被拒（沒標的裸 `<text>` 一律當成「文字掉了文字框」）。
 
 ## 1. 舞台骨架
 
@@ -82,7 +82,7 @@
 
 ## 2. 字級表
 
-一份簡報每個角色只用一個字級；同一角色在不同頁上不得忽大忽小。字級的實際數值來自 `plan/design-spec.md` 的 `type_scale`（由 `comotion-style-kit` 的風格檔提供），下表是**角色的意思**：
+一份簡報每個角色只用一個字級；同一角色在不同頁上不得忽大忽小。字級的實際數值來自 `plan/design-spec.md` 的 `type_scale`（由 `slidra-style-kit` 的風格檔提供），下表是**角色的意思**：
 
 | 角色（type_scale 鍵） | 預設 | 字重 | 顏色 | 用在 |
 |---|---|---|---|---|
@@ -98,7 +98,7 @@
 
 ## 3. 配色角色
 
-每份簡報**只用一組**七個角色的色碼，來自 `plan/design-spec.md` 的 `palette`（由 `comotion-style-kit` 挑）；作者指定了顏色就照作者。SVG 範例裡的 `<role>` 寫入前都要換成該組的色碼。
+每份簡報**只用一組**七個角色的色碼，來自 `plan/design-spec.md` 的 `palette`（由 `slidra-style-kit` 挑）；作者指定了顏色就照作者。SVG 範例裡的 `<role>` 寫入前都要換成該組的色碼。
 
 | 角色 | 用在 |
 |---|---|
@@ -115,7 +115,7 @@
 
 ## 3b. 元素角色：每個元素是為了什麼而存在
 
-座標可以為內容調整，但**每個元素扮演的角色不能含糊**。在元素上宣告 `data-comot-role`，`validate` 就能在不管座標的前提下檢查這一頁的結構是否成立。
+座標可以為內容調整，但**每個元素扮演的角色不能含糊**。在元素上宣告 `data-slidra-role`，`validate` 就能在不管座標的前提下檢查這一頁的結構是否成立。
 
 | 角色 | 意思 | 典型元素 |
 |---|---|---|
@@ -129,35 +129,35 @@
 - `relationship` 不是 `none` 的頁面至少要標出一個 `node`（`role.required`）。宣告了就要自洽。
 - `background` 是 CLI 自己寫在背景圖容器上的，作者不要手寫。
 - `validate` 會擋的四件事：`garnish` 不可以是文字框（裝飾不承載意義）；一頁最多一條 `spine`；有 `edge` 就至少要有兩個 `node`；`label` 的數量不得少於當作色塊的 `node`。
-- 文字框宣告上的 `data-comot-role` 會被帶到正規化後的元素上；寫了不在表上的角色會直接被 `slide add --svg` 拒絕。
+- 文字框宣告上的 `data-slidra-role` 會被帶到正規化後的元素上；寫了不在表上的角色會直接被 `slide add --svg` 拒絕。
 
 ## 4. 語法示範
 
-這一頁只為了示範寫法：文字框怎麼宣告、角色怎麼標、頁尾三件怎麼放、scrim 疊在誰前面。**它不是版面建議**，版面去 `comotion-layout-kit` 挑。
+這一頁只為了示範寫法：文字框怎麼宣告、角色怎麼標、頁尾三件怎麼放、scrim 疊在誰前面。**它不是版面建議**，版面去 `slidra-layout-kit` 挑。
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect id="el-scrim-title" data-comot-name="標題底" data-comot-role="field" x="80" y="64" width="1120" height="88" fill="<background>" opacity="0.7"/>
-<text id="el-title" data-comot-name="頁標題" data-comot-role="label" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">標題是這一頁的主張</text>
-<g id="el-unit-1" data-comot-role="node"><rect x="80" y="176" width="1120" height="72" fill="<secondary_bg>"/></g>
-<text id="el-point-1" data-comot-name="要點 1" data-comot-role="label" data-comot-text-width="960" x="200" y="195" font-size="24" fill="<text>">一行關鍵詞，不加句號</text>
-<line id="el-footer-rule" data-comot-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
-<text id="el-footer-name" data-comot-name="頁尾簡報名" data-comot-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
-<text id="el-footer-page" data-comot-name="頁碼" data-comot-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-comot-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
+<rect id="el-scrim-title" data-slidra-name="標題底" data-slidra-role="field" x="80" y="64" width="1120" height="88" fill="<background>" opacity="0.7"/>
+<text id="el-title" data-slidra-name="頁標題" data-slidra-role="label" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">標題是這一頁的主張</text>
+<g id="el-unit-1" data-slidra-role="node"><rect x="80" y="176" width="1120" height="72" fill="<secondary_bg>"/></g>
+<text id="el-point-1" data-slidra-name="要點 1" data-slidra-role="label" data-slidra-text-width="960" x="200" y="195" font-size="24" fill="<text>">一行關鍵詞，不加句號</text>
+<line id="el-footer-rule" data-slidra-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
+<text id="el-footer-name" data-slidra-name="頁尾簡報名" data-slidra-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
+<text id="el-footer-page" data-slidra-name="頁碼" data-slidra-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-slidra-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
 </svg>
 ```
 
 從這一份要帶走的**語法事實**：
 
-- 每個元素有 `id` 與 `data-comot-name`，語意元素再加 `data-comot-role`（第 3b 節）。
+- 每個元素有 `id` 與 `data-slidra-name`，語意元素再加 `data-slidra-role`（第 3b 節）。
 - scrim 就是一塊在被墊文字**之前**出現的 rect；它同時可以是那段內容的 `field`。
 - 上面的 80／1120／656 是 `side_margin: 80` 時的值，錨點不同就跟著換。
 
 ## 4b. 背景圖：由你產生的 SVG 圖片，放在頁面最底層
 
-背景圖是一張獨立的 SVG 資產，用 `slide background set` 放在頁面**最底層**（容器 `id="el-background"`、`data-comot-role="background"`、鎖定，作者拖不動、`validate` 不驗它、不加動畫）。它把頁面的氣質再往上拉一層，但**不承載意義**：拿掉它，頁面的意思一個字都不少。計畫 `plan/outline.md` 的 `background` 是 `off` 時整份都不放。
+背景圖是一張獨立的 SVG 資產，用 `slide background set` 放在頁面**最底層**（容器 `id="el-background"`、`data-slidra-role="background"`、鎖定，作者拖不動、`validate` 不驗它、不加動畫）。它把頁面的氣質再往上拉一層，但**不承載意義**：拿掉它，頁面的意思一個字都不少。計畫 `plan/outline.md` 的 `background` 是 `off` 時整份都不放。
 
-配方來自 `comotion-background-kit`（計畫階段已經挑好，寫在背景題的 `note`）；配方檔會說它適合哪種 `rhythm`、建議的 opacity。一份簡報**最多兩種配方**（定錨頁一種、內容頁一種），同配方同色系只建一個資產，所有頁面重用同一個路徑。頁面底色是 `primary` 時（結語頁）opacity 降到 0.6 左右，色團會變成同色系的層次。
+配方來自 `slidra-background-kit`（計畫階段已經挑好，寫在背景題的 `note`）；配方檔會說它適合哪種 `rhythm`、建議的 opacity。一份簡報**最多兩種配方**（定錨頁一種、內容頁一種），同配方同色系只建一個資產，所有頁面重用同一個路徑。頁面底色是 `primary` 時（結語頁）opacity 降到 0.6 左右，色團會變成同色系的層次。
 
 ### 有背景圖時的 scrim 規則
 
@@ -174,9 +174,9 @@ scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg`
 
 ### 命令順序
 
-1. 同配方同色系只做一次：`comotion asset import <presentation-id> --svg '<配方 SVG，角色換成色碼>' --name bg-<配方>-<色系>.svg`（檔名只能用英數、`-`、`_`；同名已存在會被拒絕）。回傳 `data.path` 是 `assets/bg-….svg`。
-2. 寫該頁：`comotion slide add <presentation-id> --svg '<整頁 SVG>'`（含 scrim rect）。
-3. `comotion slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；要拿掉就 `--none`。
+1. 同配方同色系只做一次：`slidra asset import <presentation-id> --svg '<配方 SVG，角色換成色碼>' --name bg-<配方>-<色系>.svg`（檔名只能用英數、`-`、`_`；同名已存在會被拒絕）。回傳 `data.path` 是 `assets/bg-….svg`。
+2. 寫該頁：`slidra slide add <presentation-id> --svg '<整頁 SVG>'`（含 scrim rect）。
+3. `slidra slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；要拿掉就 `--none`。
 4. 動畫照第 5 節；背景圖從第一格就在。
 
 ## 5. 動畫腳本
@@ -190,11 +190,11 @@ scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg`
 先把同一段話裡的元素 `element group` 成一個群組，**再對群組 id 下一個效果**。群組就是動畫的錨點——一段一個錨點，一個錨點一個效果。
 
 ```
-comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
+slidra effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
 ```
 
 - `element group` 會清掉成員既有的效果，所以**一定先 group 再套動畫**。
-- 整份做完只下一次轉場：`comotion slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+- 整份做完只下一次轉場：`slidra slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
 
 ### 5.2 哪些東西進動畫（靠角色判斷）
 
@@ -239,7 +239,7 @@ comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter 
 
 ### 6.2 一個關係有多種解
 
-同一個關係可以用不同的幾何承載，解法的完整目錄（照關係分組，附槽位表與線框）在 `comotion-layout-kit`。**相鄰兩頁不要用同一個解**（`rhythm.repeated-shape` 會抓）。目錄是起點不是清單：需要目錄上沒有的解就自己組一個，並在 `blueprint.shape` 給它一個描述性的名字。
+同一個關係可以用不同的幾何承載，解法的完整目錄（照關係分組，附槽位表與線框）在 `slidra-layout-kit`。**相鄰兩頁不要用同一個解**（`rhythm.repeated-shape` 會抓）。目錄是起點不是清單：需要目錄上沒有的解就自己組一個，並在 `blueprint.shape` 給它一個描述性的名字。
 
 ### 6.3 已知解：六種頁型
 
@@ -287,9 +287,9 @@ comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter 
 - 不做「謝謝」頁、不做只有聯絡方式的頁、不重複封面。
 - 文字太多就縮短或拆頁，字級不動。
 
-## 9. 自我檢查：跑 `comotion validate`
+## 9. 自我檢查：跑 `slidra validate`
 
-規則與門檻寫在 CLI 裡，不要自己心算：`comotion validate <presentation-id> [slides/00N.svg]`。結束碼非零代表有錯誤，`data.errors[]` 每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`。有 `plan/design-spec.md` 時字數門檻依它的 `density`；沒有計畫檔時只驗幾何與骨架（message 尾巴會帶「沒有 plan/ 計畫檔，只驗幾何與骨架」）。
+規則與門檻寫在 CLI 裡，不要自己心算：`slidra validate <presentation-id> [slides/00N.svg]`。結束碼非零代表有錯誤，`data.errors[]` 每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`。有 `plan/design-spec.md` 時字數門檻依它的 `density`；沒有計畫檔時只驗幾何與骨架（message 尾巴會帶「沒有 plan/ 計畫檔，只驗幾何與骨架」）。
 
 **第一頁閘門**：封面與第一張內容頁做完各跑一次 `validate`；有錯誤先改做法，確認都是 0 錯誤才做第 3 頁起，不要每頁各修各的。
 
@@ -308,7 +308,7 @@ comotion effect add <presentation-id> slides/00N.svg <群組 id> --family enter 
 | `blueprint.nodes`、`blueprint.steps` | 畫出來的 node 數與 on-click 步數要跟構圖時寫的一致 | 頁面畫錯就改頁面；構圖想錯就 `plan set outline --force` 改 blueprint 並在回報裡說明 |
 | `rhythm.repeated-shape` | 相鄰兩頁不得用同一個 `blueprint.shape` 解同一種 `relationship`、又是同樣的單位數 | 換一種構圖（版面庫同一組有別的解），或把兩頁合併 |
 | `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 | 刪面板 |
-| ⛔ `role.required` | `relationship` 不是 `none` 的頁面至少要標出一個 `node` | 替每個語意單位加 `data-comot-role="node"` |
+| ⛔ `role.required` | `relationship` 不是 `none` 的頁面至少要標出一個 `node` | 替每個語意單位加 `data-slidra-role="node"` |
 | `role.garnish-animated` | `garnish` 不得有任何進場效果 | 拿掉那個效果，或這個元素其實是 `node`／`label` |
 | ⛔ `role.*` | 第 3b 節的四條自洽規則 | 改角色或補標籤 |
 | `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的簽名字級） | 以計畫為準修頁面；計畫本身錯了才改計畫 |

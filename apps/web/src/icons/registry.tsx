@@ -37,7 +37,7 @@ export type IconName =
   | "view-grid"
   | "view-play"
   // New v3 shell (this ticket) — every path below is copied verbatim from
-  // docs/design/prototype/comotion-logic-v3.js's `ICONS` constant (already
+  // docs/design/prototype/slidra-logic-v3.js's `ICONS` constant (already
   // 0 0 20 20), or from the prototype HTML inline SVGs for the titlebar
   // buttons that have no `ICONS` entry (undo/redo/open/save/export/play/
   // hand — noted per-icon below).
@@ -214,7 +214,7 @@ export const ICON_REGISTRY: Record<IconName, ReactElement> = {
   "view-play": <path d="M5 3.125 L16.25 10 L5 16.875 Z" />,
 
   // ── New v3 shell — paths copied verbatim from docs/design/prototype/
-  // comotion-logic-v3.js's `ICONS` constant, or (where noted above in
+  // slidra-logic-v3.js's `ICONS` constant, or (where noted above in
   // IconName) from the prototype HTML's own inline titlebar SVGs. ──
   hand: <path d="M7 11V4.5a1.2 1.2 0 012.4 0V9M9.4 9V3.5a1.2 1.2 0 012.4 0V9M11.8 9V4.5a1.2 1.2 0 012.4 0V10M14.2 10V6.5a1.2 1.2 0 012.4 0V13c0 3-2 5.5-5.5 5.5S9 17 7.5 15.5L4.2 11.6a1.2 1.2 0 011.9-1.5L7 11" />,
   undo: (

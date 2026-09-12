@@ -27,7 +27,7 @@ describe("buildCards / cardLabel", () => {
     expect(cardLabel(cards[0], 1)).toBe("el-a");
   });
 
-  it("一般元素：targetInfo 有 data-comot-name 時顯示名稱", () => {
+  it("一般元素：targetInfo 有 data-slidra-name 時顯示名稱", () => {
     const info = new Map<string, TargetInfo>([["el-a", { name: "標題", groupMemberCount: null }]]);
     const cards = buildCards([effect()], info);
     expect(cardLabel(cards[0], 1)).toBe("標題");

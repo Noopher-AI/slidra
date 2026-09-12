@@ -119,10 +119,10 @@ describe("[#303] gate messages (contract §4)", () => {
       notes: { mode: "  ", "page-5": "數字要大一點" },
       overall: "整體再精簡",
     });
-    expect(text).toBe("/comotion-build 【計畫確認】\nmode=pyramid\npage-5=number\npage-5.note=數字要大一點\n補充：整體再精簡");
+    expect(text).toBe("/slidra-build 【計畫確認】\nmode=pyramid\npage-5=number\npage-5.note=數字要大一點\n補充：整體再精簡");
   });
 
   it("builds the 【重做】 message", () => {
-    expect(buildRedoMessage(" 太多頁了 ")).toBe("/comotion-plan 【重做】太多頁了");
+    expect(buildRedoMessage(" 太多頁了 ")).toBe("/slidra-plan 【重做】太多頁了");
   });
 });

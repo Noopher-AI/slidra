@@ -95,7 +95,7 @@ export function computeGroupButtonState(
   return { label, disabled };
 }
 
-/** D3/D4: toast text, copied verbatim from the prototype (docs/design/prototype/comotion-logic-v3.js:192-193). */
+/** D3/D4: toast text, copied verbatim from the prototype (docs/design/prototype/slidra-logic-v3.js:192-193). */
 export function groupToastText(action: "group" | "ungroup", n: number, removedEffects: number): string {
   if (action === "group") {
     return removedEffects > 0 ? `Grouped ${n} elements · their animations were removed` : `Grouped ${n} elements`;

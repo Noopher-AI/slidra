@@ -1,12 +1,12 @@
 // Replaces the deleted TypeScript engine's in-process `CommandRegistry`
-// with a same-shaped object backed by the real compiled `comotion` binary
-// — via `packages/server/src/comotion/`'s argv encoder and `--json` runner
+// with a same-shaped object backed by the real compiled `slidra` binary
+// — via `packages/server/src/slidra/`'s argv encoder and `--json` runner
 // (F7's bridge, the same one `POST /api/command` uses). This is what lets
 // the ~200 `registry.dispatch(...)` call sites across the e2e suite stay
 // untouched: only the import changes, not the call sites (plan section
 // 3.4).
-import { encodeCommandArgv, type EncodedCommand } from "../../packages/server/src/comotion/argv.js";
-import { runJsonCommand, type CommandResult } from "../../packages/server/src/comotion/command.js";
+import { encodeCommandArgv, type EncodedCommand } from "../../packages/server/src/slidra/argv.js";
+import { runJsonCommand, type CommandResult } from "../../packages/server/src/slidra/command.js";
 
 export type { CommandResult };
 
@@ -31,7 +31,7 @@ function plain(argv: string[]): EncodedCommand {
  * `convert`, and reads comments through `/api/comments` rather than
  * shelling out to `comment list`), but the e2e suite's former
  * `CommandRegistry.dispatch` calls exercised all 8. Added here rather than
- * to `packages/server/src/comotion/argv.ts` itself (plan boundary 2.0-6):
+ * to `packages/server/src/slidra/argv.ts` itself (plan boundary 2.0-6):
  * that map is `POST /api/command`'s input encoder, and these 8 have no
  * reason to ever be reachable from that endpoint.
  */

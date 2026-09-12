@@ -32,7 +32,7 @@ export interface ExportRunResult {
 }
 
 export type ExportRunner = (
-  /** The freshly-generated job id — `run` needs it to place its output under `<COMOTION_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
+  /** The freshly-generated job id — `run` needs it to place its output under `<SLIDRA_HOME>/exports/<jobId>/` (§4.4), and it does not exist before `start()` generates it, so it is handed in rather than the caller having to invent its own id up front. */
   jobId: string,
   format: ExportFormat,
   onRunning: (totalFrames: number) => void,
@@ -136,7 +136,7 @@ export class ExportJobManager {
     } catch (error) {
       // ADR-0004: an export failure's message must never carry a real
       // filesystem path. Every error this job can actually throw already
-      // comes from `renderExportPdf`'s own `CoMotionError`s (path-free by
+      // comes from `renderExportPdf`'s own `SlidraError`s (path-free by
       // that class's own contract) or a plain Error with a message this
       // module never derives from a path itself, so relaying `.message`
       // verbatim holds that invariant rather than merely hoping callers do.

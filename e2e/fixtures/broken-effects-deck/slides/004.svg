@@ -1,11 +1,11 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
       <!-- 損壞之處：family="enter" 合法，但 effect="wipe" 不在 enter 的
            SUPPORTED_EFFECTS 清單（只有 fade 與 appear）。這是作者以為
            PowerPoint 式的「wipe」也能直接拿來用時最可能犯的錯。 -->
-      <comot:effect target="el-wipe-target" family="enter" effect="wipe" start="on-click"/>
-    </comot:effects>
+      <slidra:effect target="el-wipe-target" family="enter" effect="wipe" start="on-click"/>
+    </slidra:effects>
   </metadata>
   <text id="el-broken-title-4" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 4 頁：未實作的 effect</text>
   <text id="el-wipe-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>

@@ -8,7 +8,7 @@
     implementation would not survive it.
 
     Two selectable subjects, per the dispatch: `el-title` carries a
-    顯示名稱 (data-comot-name), `el-plain` carries only an `id` — the
+    顯示名稱 (data-slidra-name), `el-plain` carries only an `id` — the
     識別碼 fallback needs a real subject too.
 
     The blanket `*` rule below also matches every ancestor of this markup
@@ -71,7 +71,7 @@
       pointer-events: none !important;
     }
   </style>
-  <text id="el-title" data-comot-name="標題" x="640" y="200" text-anchor="middle" font-size="56">敵意投影片</text>
+  <text id="el-title" data-slidra-name="標題" x="640" y="200" text-anchor="middle" font-size="56">敵意投影片</text>
   <rect id="el-plain" x="200" y="400" width="200" height="100" fill="#4a8f45"/>
   <foreignObject x="0" y="0" width="1280" height="720">
     <div xmlns="http://www.w3.org/1999/xhtml" class="overlay"></div>

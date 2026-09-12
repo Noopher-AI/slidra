@@ -16,7 +16,7 @@ const EXIT_LABELS: Record<PageTransitionEffect, string> = {
   zoom: "Zoom out",
 };
 
-/** Prototype's own slider range (`CoMotion (New v3).dc.html:674-686`) — deliberately narrower than the CLI's value domain (any finite, ≥0 duration is legal there); a value outside it still displays its real number, the slider handle just clamps to whichever end is closer (§4.7). */
+/** Prototype's own slider range (`Slidra (New v3).dc.html:674-686`) — deliberately narrower than the CLI's value domain (any finite, ≥0 duration is legal there); a value outside it still displays its real number, the slider handle just clamps to whichever end is closer (§4.7). */
 const DURATION_MIN = 0.2;
 const DURATION_MAX = 1.5;
 const DURATION_STEP = 0.1;

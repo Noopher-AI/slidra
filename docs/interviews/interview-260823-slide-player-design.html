@@ -65,12 +65,12 @@
 <main>
 
   <h1>投影片播放器設計</h1>
-  <p class="meta">使用者訪談紀錄 · 2026-08-23 · CoMotion（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
+  <p class="meta">使用者訪談紀錄 · 2026-08-23 · Slidra（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
 
   <div class="summary">
     <h2>本次做成的決定</h2>
     <ul>
-      <li><b>ADR-0007</b>：播放 <code>.comot</code> 需要安裝 CoMotion；分享靠匯出（Export HTML / PDF / PPTX），不靠傳檔。取代 ADR-0005「runtime 不得依賴 server」。</li>
+      <li><b>ADR-0007</b>：播放 <code>.slidra</code> 需要安裝 Slidra；分享靠匯出（Export HTML / PDF / PPTX），不靠傳檔。取代 ADR-0005「runtime 不得依賴 server」。</li>
       <li><b>步驟作用域是頁內的</b>，不是貫穿整份簡報；總步數用算的，不存起來。</li>
       <li><b>投影片的靜態長相＝所有效果都跑完的最終狀態</b>。隱藏是 runtime 在播放時才做的事，永遠不寫進檔案；沒有效果的元素從一開始就在畫面上。</li>
       <li><b>ADR-0009</b>：動畫是投影片 SVG <code>&lt;metadata&gt;</code> 裡一份有序的效果清單，用自訂 XML 命名空間表示——仿 PowerPoint 的 <code>&lt;p:timing&gt;</code> 樹與 Keynote 的 build list，不是元素身上的屬性。步驟由清單推導，不另外儲存。</li>
@@ -90,9 +90,9 @@
 
   <div class="turn user">
     <div class="who">使用者</div>
-    <p>我決定了，接下來下一個大的方向，我要在 CoMotion 這邊實現一個功能、一個樣態——它就像是一個投影片的編輯器。投影片編輯器的基礎功能都先不用，只要是說這個投影片，你可以看到它的側邊總覽，點下去之後可以看到每一頁的投影片，然後按播放之後放到全螢幕，按下一頁的方向鍵，就可以往下一個投影片走，用這樣的樣態去做。</p>
+    <p>我決定了，接下來下一個大的方向，我要在 Slidra 這邊實現一個功能、一個樣態——它就像是一個投影片的編輯器。投影片編輯器的基礎功能都先不用，只要是說這個投影片，你可以看到它的側邊總覽，點下去之後可以看到每一頁的投影片，然後按播放之後放到全螢幕，按下一頁的方向鍵，就可以往下一個投影片走，用這樣的樣態去做。</p>
     <p>至於在編輯方面，我先不要做編輯，只要能播放就好。播放也包含影像跟音訊的播放，還有圖片的播放。這邊也要實現一些動畫，最簡單的就是我按下一鍵，第一個 object 出現，再按下一鍵，第二個 object 出現。或者是到下一頁之後，我原本影片是靜止的，我按下一頁，影片就開始播放。或者是一個音訊檔案在這個 slide 裡面，我按下之後，它就會播放這個音檔。</p>
-    <p>所以就是實現一個可以呈現投影片的介面。這些內容全部都要來自我這個特製的 <code>.comot</code> 副檔名底下，要包含在這個裡面，然後被播放出來。</p>
+    <p>所以就是實現一個可以呈現投影片的介面。這些內容全部都要來自我這個特製的 <code>.slidra</code> 副檔名底下，要包含在這個裡面，然後被播放出來。</p>
     <p>我希望你不要悶著頭就直接開始做了。我覺得你應該要去上網查一下，有沒有網路上的資訊可以拿來使用或參考，如果可以的話就把它拉下來參考。</p>
   </div>
 
@@ -111,37 +111,37 @@
     <p>現有程式碼裡，<code>canvas.ts</code> 把投影片跑在零 token 的 sandbox iframe（不准跑 script），註解已預先寫給這顆子彈看：<code>allow-scripts</code> 單獨加是安全的，但絕不能配上 <code>allow-same-origin</code>。</p>
     <p><b>問題 1：播放器是一份「獨立的 HTML 文件」，還是編輯器裡的一個模式？</b> AI 的建議：獨立、對 server 一無所知的 HTML 文件——就是未來 <code>export --html</code> 要吐出來的東西，理由是讓 ADR-0005「runtime 不依賴 server」從紙上變成可驗收的條件，並收窄信任邊界。</p>
     <div class="reversed">
-      <b>此處後來整個作廢。</b>這個問題從未被 A / B 選過——使用者下一則訊息直接撤銷了 ADR-0005 那句硬約束本身：CoMotion 變成播放 <code>.comot</code> 的必要條件，播放器就是同一個 web app 的一個模式，不是獨立產物。問題 1 因此被繞過，而不是被回答。
+      <b>此處後來整個作廢。</b>這個問題從未被 A / B 選過——使用者下一則訊息直接撤銷了 ADR-0005 那句硬約束本身：Slidra 變成播放 <code>.slidra</code> 的必要條件，播放器就是同一個 web app 的一個模式，不是獨立產物。問題 1 因此被繞過，而不是被回答。
     </div>
   </div>
 
   <div class="turn user">
     <div class="who">使用者</div>
-    <p>這邊我想要撤銷對於 ADR-0005 的這段描述。我想要改成：其實你的電腦裡面要安裝 CoMotion，你才能播放我這個檔案，所以反而是會有依賴，一定要 CoMotion 的。CoMotion 現在是一個 server——你在執行的時候用 server mode 把它打開來，到相應的 port 把網頁打開，那就是一個編輯器可以使用。接下來你把 <code>.comot</code> 副檔名的檔案放進去這個播放器或編輯器，就可以開始使用了。未來也還會進一步把它改成一個 Mac app，打開一個 app 之後就可以去使用 CoMotion。所以這邊要修改 ADR-0005。</p>
+    <p>這邊我想要撤銷對於 ADR-0005 的這段描述。我想要改成：其實你的電腦裡面要安裝 Slidra，你才能播放我這個檔案，所以反而是會有依賴，一定要 Slidra 的。Slidra 現在是一個 server——你在執行的時候用 server mode 把它打開來，到相應的 port 把網頁打開，那就是一個編輯器可以使用。接下來你把 <code>.slidra</code> 副檔名的檔案放進去這個播放器或編輯器，就可以開始使用了。未來也還會進一步把它改成一個 Mac app，打開一個 app 之後就可以去使用 Slidra。所以這邊要修改 ADR-0005。</p>
   </div>
 
-  <h2>ADR-0007：播放需要 CoMotion</h2>
+  <h2>ADR-0007：播放需要 Slidra</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
     <p>這是個大轉向，先把帳算清楚。</p>
     <p><b>買到的</b>：runtime 可以依賴 server，影音走 <code>/api/raw</code> 串流、HTTP Range（#13 到這裡才第一次有意義）；播放器與編輯器共用同一個 web app；未來 Mac app 只是把 server 藏起來，架構不用再動。</p>
-    <p><b>賠掉的</b>：<code>export --html</code> 這扇門關上；<code>.comot</code> 寄給沒裝 CoMotion 的人＝廢檔，跟 ADR-0003「簡報可以複製、寄送、備份」的出發點有張力；上台要在那台電腦上裝 CoMotion。唯一剩下的逃生口——單獨用瀏覽器打開一張投影片 SVG 必須看到正常靜態畫面——因此升級成最後的相容性保證，之後不能再被侵蝕。</p>
+    <p><b>賠掉的</b>：<code>export --html</code> 這扇門關上；<code>.slidra</code> 寄給沒裝 Slidra 的人＝廢檔，跟 ADR-0003「簡報可以複製、寄送、備份」的出發點有張力；上台要在那台電腦上裝 Slidra。唯一剩下的逃生口——單獨用瀏覽器打開一張投影片 SVG 必須看到正常靜態畫面——因此升級成最後的相容性保證，之後不能再被侵蝕。</p>
     <div class="reversed">
-      <b>此處框架後來被使用者整個推翻。</b>下一則訊息裡使用者指出：並沒有賠掉「分享」，因為未來可以在 CoMotion 裡實作 Export HTML / Export PDF / Export PPTX，仍然能轉成別的格式分享給別人——只有 <code>.comot</code> 本身是 CoMotion 專屬。ADR 最終照這個框架寫：不是「不能分享」，是「分享靠匯出，不靠傳檔」。
+      <b>此處框架後來被使用者整個推翻。</b>下一則訊息裡使用者指出：並沒有賠掉「分享」，因為未來可以在 Slidra 裡實作 Export HTML / Export PDF / Export PPTX，仍然能轉成別的格式分享給別人——只有 <code>.slidra</code> 本身是 Slidra 專屬。ADR 最終照這個框架寫：不是「不能分享」，是「分享靠匯出，不靠傳檔」。
     </div>
     <p><b>問題 2：記錄方式</b>——寫一份新的 ADR-0007 去 supersede ADR-0005 的那一段，還是直接改 ADR-0005 原文？AI 建議前者，理由是 ADR 是決策紀錄不是規格書，抹掉舊決策的脈絡，未來的人（和 agent）會看不到當初權衡過什麼。</p>
   </div>
 
   <div class="turn user">
     <div class="who">使用者</div>
-    <p>好，我同意你的建議，你就這樣修改吧。另外我要補充一下——其實沒有賠掉什麼，因為我未來可以在 CoMotion 裡面的 app 或 server 裡，實作 Export HTML、Export PDF，甚至 Export PPTX，這些都可以實現。所以並沒有賠掉這些東西，仍然可以轉換成其他檔案格式分享給別人，只是針對 <code>.comot</code> 這個副檔名，只有在 CoMotion 裡面能跑。</p>
+    <p>好，我同意你的建議，你就這樣修改吧。另外我要補充一下——其實沒有賠掉什麼，因為我未來可以在 Slidra 裡面的 app 或 server 裡，實作 Export HTML、Export PDF，甚至 Export PPTX，這些都可以實現。所以並沒有賠掉這些東西，仍然可以轉換成其他檔案格式分享給別人，只是針對 <code>.slidra</code> 這個副檔名，只有在 Slidra 裡面能跑。</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這個補充把代價欄改寫了：不是「不能分享」，是「分享靠匯出，不靠傳檔」，<code>.comot</code> 是工作格式不是交付格式。</p>
-    <p>一個張力先標記、不現在處理：ADR-0001 白紙黑字寫「CoMotion 不匯入也不匯出 PPTX」，跟剛才把 PPTX 列進未來匯出選項牴觸。判斷是先不動 ADR-0001，真要做匯出 PPTX 時再開一份新 ADR 去撞它。</p>
+    <p>這個補充把代價欄改寫了：不是「不能分享」，是「分享靠匯出，不靠傳檔」，<code>.slidra</code> 是工作格式不是交付格式。</p>
+    <p>一個張力先標記、不現在處理：ADR-0001 白紙黑字寫「Slidra 不匯入也不匯出 PPTX」，跟剛才把 PPTX 列進未來匯出選項牴觸。判斷是先不動 ADR-0001，真要做匯出 PPTX 時再開一份新 ADR 去撞它。</p>
     <p>ADR-0007 寫好，ADR-0005 加上取代註記（理由留在原地），README 兩處同步。問題 1 因此被這個決定回答掉：播放器不是獨立產物，是同一個 web app 的一個模式。</p>
   </div>
 
@@ -171,7 +171,7 @@
       <li><b>A</b> — 存進檔案，元素帶 <code>display="none"</code> 或 <code>opacity="0"</code>。</li>
       <li><b>B（建議）</b> — 只存在 runtime 裡：檔案裡所有元素都是可見的最終狀態，runtime 在播放開始時才藏起來、再逐步放出來。</li>
     </ul>
-    <p>建議 B，且認為 A 根本不合法：A 之下，用 Illustrator 開一份有動畫的投影片會看到幾乎空白的頁面，正是 ADR-0001 那條靜態相容性驗收標準所禁止的畫面，而 ADR-0007 之後這條保證是沒裝 CoMotion 的人唯一還能看到內容的途徑。B 之下靜態長相＝所有步驟跑完的最終狀態，編輯模式免費得到正確畫面，<code>data-comot-step</code> 退化成純粹標記、不影響渲染。順帶定下：沒有標註的元素屬於第 0 步，進入該頁就已在畫面上。代價是實作上要先藏再放，中間可能有一瞬間 FOUC，是已知可解的問題。</p>
+    <p>建議 B，且認為 A 根本不合法：A 之下，用 Illustrator 開一份有動畫的投影片會看到幾乎空白的頁面，正是 ADR-0001 那條靜態相容性驗收標準所禁止的畫面，而 ADR-0007 之後這條保證是沒裝 Slidra 的人唯一還能看到內容的途徑。B 之下靜態長相＝所有步驟跑完的最終狀態，編輯模式免費得到正確畫面，<code>data-slidra-step</code> 退化成純粹標記、不影響渲染。順帶定下：沒有標註的元素屬於第 0 步，進入該頁就已在畫面上。代價是實作上要先藏再放，中間可能有一瞬間 FOUC，是已知可解的問題。</p>
   </div>
 
   <div class="turn user">
@@ -268,12 +268,12 @@
     <div class="who">AI</div>
     <p>位置不算選擇題：ADR-0003 說 <code>project.json</code> 只放 SVG 表達不了的東西，同一個理由適用——效果清單放進 <code>project.json</code>，單獨開啟一張投影片就會缺動畫，所以它住在該張投影片 SVG 的 <code>&lt;metadata&gt;</code> 裡。真正的選擇是格式：</p>
     <ul>
-      <li><b>A（建議）</b> — 自訂命名空間的 XML 元素，例如 <code>&lt;comot:effect target="el-a3f2c1" family="enter" effect="fade" start="on-click"/&gt;</code>。</li>
+      <li><b>A（建議）</b> — 自訂命名空間的 XML 元素，例如 <code>&lt;slidra:effect target="el-a3f2c1" family="enter" effect="fade" start="on-click"/&gt;</code>。</li>
       <li><b>B</b> — JSON 塞在 <code>&lt;metadata&gt;</code> 的文字節點裡。</li>
     </ul>
     <p>建議 A，理由是 ADR-0004（hand-readable、對 agent 友善）：整份檔案維持單一語法。</p>
     <div class="reversed">
-      <b>此處論證在同一段話裡被自己收回。</b>AI 原本想拿「XML 的 git diff 逐行可讀」當理由，隨即在同一則訊息裡撤回：<code>.comot</code> 是 zip、工作目錄在 <code>~/.comotion/work/</code>，根本不進 git，這條論證不成立。真正的代價講清楚：XML 屬性值全是字串，未來加 duration、delay 要自己轉型別，JSON 是免費的；而且要自己寫一個小讀寫器。
+      <b>此處論證在同一段話裡被自己收回。</b>AI 原本想拿「XML 的 git diff 逐行可讀」當理由，隨即在同一則訊息裡撤回：<code>.slidra</code> 是 zip、工作目錄在 <code>~/.slidra/work/</code>，根本不進 git，這條論證不成立。真正的代價講清楚：XML 屬性值全是字串，未來加 duration、delay 要自己轉型別，JSON 是免費的；而且要自己寫一個小讀寫器。
     </div>
   </div>
 
@@ -326,7 +326,7 @@
     <div class="who">AI</div>
     <table>
       <tr><th></th><th>決定</th><th>取代</th></tr>
-      <tr><td>ADR-0007</td><td>播放 <code>.comot</code> 需要安裝 CoMotion，分享靠匯出</td><td>ADR-0005 的「runtime 不得依賴 server」</td></tr>
+      <tr><td>ADR-0007</td><td>播放 <code>.slidra</code> 需要安裝 Slidra，分享靠匯出</td><td>ADR-0005 的「runtime 不得依賴 server」</td></tr>
       <tr><td>ADR-0008</td><td>一張投影片自成一體</td><td>—</td></tr>
       <tr><td>ADR-0009</td><td>動態是有序的效果清單，不是元素屬性</td><td>ADR-0005 的屬性設計</td></tr>
       <tr><td>ADR-0010</td><td>投影片內容不可信：檢視不跑 script，播放才開 allow-scripts</td><td>—</td></tr>

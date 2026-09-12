@@ -1,21 +1,21 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
-      <comot:effect target="el-step-one" family="enter" effect="appear" start="on-click"/>
-      <comot:effect target="el-step-two" family="enter" effect="fade" start="on-click"/>
-      <comot:effect target="el-step-three" family="enter" effect="fade" start="on-click"/>
-    </comot:effects>
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
+      <slidra:effect target="el-step-one" family="enter" effect="appear" start="on-click"/>
+      <slidra:effect target="el-step-two" family="enter" effect="fade" start="on-click"/>
+      <slidra:effect target="el-step-three" family="enter" effect="fade" start="on-click"/>
+    </slidra:effects>
   </metadata>
-  <g id="el-effects-title" data-comot-name="標題">
+  <g id="el-effects-title" data-slidra-name="標題">
     <text x="640" y="140" text-anchor="middle" font-size="64" fill="#f4f6f8">第 3 頁：效果清單</text>
   </g>
-  <g id="el-step-one" data-comot-name="第一點">
+  <g id="el-step-one" data-slidra-name="第一點">
     <text x="640" y="300" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟一</text>
   </g>
-  <g id="el-step-two" data-comot-name="第二點">
+  <g id="el-step-two" data-slidra-name="第二點">
     <text x="640" y="390" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟二</text>
   </g>
-  <g id="el-step-three" data-comot-name="第三點">
+  <g id="el-step-three" data-slidra-name="第三點">
     <text x="640" y="480" text-anchor="middle" font-size="40" fill="#9aa7b4">步驟三</text>
   </g>
 </svg>

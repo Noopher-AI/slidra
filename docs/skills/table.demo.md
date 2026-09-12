@@ -1,11 +1,11 @@
-# `/comotion-table` 示範輸入
+# `/slidra-table` 示範輸入
 
 在 `demo/` 打包出的示範簡報上執行，放到第 2 頁（`slides/002.svg`，畫布 1280×720）。
 
 ## 示範輸入
 
 ```
-/comotion-table 把這張表放到第 2 頁：
+/slidra-table 把這張表放到第 2 頁：
 
 | 項目 | 數量 |
 |---|---|
@@ -17,9 +17,9 @@
 
 ## 預期結果
 
-- `comotion table create <id> slides/002.svg --rows 3 --cols 2 --x 140 --y 200` 成功並回傳一個 `elementId`。
-- `comotion table set <id> slides/002.svg <elementId> --markdown '...'` 成功，訊息為「已重寫 … 表格 … 的內容」。
-- `comotion cat <id> slides/002.svg` 可看到 `data-comot-type="table"`、`data-comot-theme="zebra"`、`data-comot-header="1"`，兩個資料列的儲存格文字為「蘋果／3」「香蕉／5」。
+- `slidra table create <id> slides/002.svg --rows 3 --cols 2 --x 140 --y 200` 成功並回傳一個 `elementId`。
+- `slidra table set <id> slides/002.svg <elementId> --markdown '...'` 成功，訊息為「已重寫 … 表格 … 的內容」。
+- `slidra cat <id> slides/002.svg` 可看到 `data-slidra-type="table"`、`data-slidra-theme="zebra"`、`data-slidra-header="1"`，兩個資料列的儲存格文字為「蘋果／3」「香蕉／5」。
 - agent 的回報裡列出建立的 element id、欄列數與主題。
 
 ## 不該發生的事

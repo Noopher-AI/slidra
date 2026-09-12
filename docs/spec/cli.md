@@ -1,6 +1,6 @@
-# comotion CLI 規格
+# slidra CLI 規格
 
-這份文件是 `comotion` 命令列工具的唯一規範性文件。TypeScript 引擎（`packages/core`／`packages/cli`）已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據。並存期曾對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，這三處已由 Rust 依本規格實作。
+這份文件是 `slidra` 命令列工具的唯一規範性文件。TypeScript 引擎（`packages/core`／`packages/cli`）已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據。並存期曾對三個既有缺口（`asset import` 的 argv、`chart data set --csv -`、`effect list` 的 `data` 形狀）做出定案，這三處已由 Rust 依本規格實作。
 
 `docs/adr/` 記錄的是決策史，本文件記錄的是命令集目前與未來的規範性事實；兩者衝突時以本文件為準。
 
@@ -35,7 +35,7 @@ interface CommandResult<Data = unknown> {
 }
 ```
 
-- `failureKind` 只有兩個值：**`"not-found"`**——請求的東西被正面證明不存在（未知的 `<presentation-id>`、找不到的虛擬路徑、找不到的元素等）；**`"failed"`**——其他任何原因（I/O 錯誤、驗證失敗、格式錯誤，或任何未來才發明、呼叫者還沒見過的錯誤子類）。分類規則（順序不可交換）：拋出的錯誤若是 `CoMotionNotFoundError`（或其子類）→ `not-found`；若是其他任何 `CoMotionError` 子類 → `failed`；**不是** `CoMotionError` 的例外一律往外拋、不轉換成 `CommandResult`——那是程式錯誤（bug），不是使用者可見的失敗，呼叫端必須讓它繼續中斷執行，不能吞掉。
+- `failureKind` 只有兩個值：**`"not-found"`**——請求的東西被正面證明不存在（未知的 `<presentation-id>`、找不到的虛擬路徑、找不到的元素等）；**`"failed"`**——其他任何原因（I/O 錯誤、驗證失敗、格式錯誤，或任何未來才發明、呼叫者還沒見過的錯誤子類）。分類規則（順序不可交換）：拋出的錯誤若是 `SlidraNotFoundError`（或其子類）→ `not-found`；若是其他任何 `SlidraError` 子類 → `failed`；**不是** `SlidraError` 的例外一律往外拋、不轉換成 `CommandResult`——那是程式錯誤（bug），不是使用者可見的失敗，呼叫端必須讓它繼續中斷執行，不能吞掉。
 - `failureKind` **缺席**（即使 `ok === false`）必須讀成「未證明不存在」，映射到 HTTP 語意時要答 500，不是 404——這是故意的保守預設：新發明一種失敗原因時，預設是「大聲失敗」而不是「安靜地誤判成 404」。
 - `message` 是繁體中文人類文案，**不是契約**，可能隨時改措辭；呼叫者不得對 `message` 的字串內容做任何模式比對或分支判斷，只能拿來顯示給人看。`message` 永不含真實檔案系統路徑（無論成功或失敗）。
 - exit code：成功恆為 `0`，失敗恆為 `1`，沒有第三種 exit code。
@@ -46,7 +46,7 @@ interface CommandResult<Data = unknown> {
 
 有 renderer 的三條命令（`cat`、`ls`、`slide render`）：輸出規則見下一節。
 
-**下游 pipe 提早關閉**（例如 `comotion cat <id> <path> | head`）：這類 one-shot 命令把 EPIPE 視為正常結束，`process.exit(0)`，不視為錯誤。`export`／`serve` **不適用**這條規則——`export` 若在寫出過程中遇到 EPIPE 就 `process.exit(0)`，會把一次沒寫完的匯出謊報成功，所以刻意不裝這個處理。
+**下游 pipe 提早關閉**（例如 `slidra cat <id> <path> | head`）：這類 one-shot 命令把 EPIPE 視為正常結束，`process.exit(0)`，不視為錯誤。`export`／`serve` **不適用**這條規則——`export` 若在寫出過程中遇到 EPIPE 就 `process.exit(0)`，會把一次沒寫完的匯出謊報成功，所以刻意不裝這個處理。
 
 ## Renderer 命令：`cat`、`ls`、`slide render`
 
@@ -64,41 +64,41 @@ interface CommandResult<Data = unknown> {
 
 `--json` 是新規格定案的全域旗標，由 Rust 入口實作。
 
-- 位置：只能出現在命令名之後（例如 `comotion cat <id> <path> --json`），不影響任何命令自己的位置參數與旗標解析順序。
+- 位置：只能出現在命令名之後（例如 `slidra cat <id> <path> --json`），不影響任何命令自己的位置參數與旗標解析順序。
 - 輸出：單行 compact（無縮排）JSON 加一個換行，欄位順序固定為 `ok, data, message, failureKind`。
 - 有 renderer 的命令在 `--json` 下也一律回 JSON，不再走 renderer 的原始位元組輸出；`data.content` 這類原本是原始文字/位元組的欄位，在 `--json` 底下編碼成**原始位元組的 base64**（因為 JSON 字串無法安全承載任意二進位內容）。
 - `cat --json` 是唯一允許接受**多個** `<path>` 的形式：`data` 變成 `[{ path, content }]` 陣列，順序與 argv 給的路徑順序相同；**沒有** `--json` 時 `cat` 仍然只接受單一路徑，直出原始 bytes（相容性等級 2 凍結範圍，不因為多路徑需求而改變單路徑行為）。
 - 失敗時仍然印 JSON（`ok: false`，含 `failureKind`，不含 `data`），exit code 仍然是 `1`。
-- `comotion serve` 一律視為帶了 `--json`（它的呼叫端是程式，不是終端機使用者，不需要人類可讀的狀態行/renderer 輸出）。
+- `slidra serve` 一律視為帶了 `--json`（它的呼叫端是程式，不是終端機使用者，不需要人類可讀的狀態行/renderer 輸出）。
 
 ## 「`-`」代表標準輸入
 
 規格定義一組「可代換 stdin」的旗標。入口層（`bin.ts` 的 `main`，Rust 版是 `main.rs` 的對應位置）在呼叫 `dispatch` **之前**檢查：若某個可代換旗標的值恰好是字面字串 `"-"`，就讀取 stdin 的完整內容（UTF-8），把該欄位從「路徑欄位」改寫成同名但不同型別的 `*Text` 欄位，再交給 `dispatch`。`parseArgv` 本身是純函式，不讀 stdin、不做這個代換——代換必須發生在入口層，因為 `serve` 直接呼叫 `registry.dispatch`，完全繞過 `parseArgv`，若代換邏輯放在 argv 層，`serve` 這條路徑就永遠不會做代換。
 
-目前**唯一**的可代換旗標：`chart data set` 的 `--csv`。`comotion serve` 沒有終端機的 stdin 可讀——handler 若收到未被代換的字面值 `"-"`（也就是透過 `serve` 直接呼叫，繞過了入口層的代換），必須明確回傳失敗，不得把 `"-"` 當成一個檔名去讀。
+目前**唯一**的可代換旗標：`chart data set` 的 `--csv`。`slidra serve` 沒有終端機的 stdin 可讀——handler 若收到未被代換的字面值 `"-"`（也就是透過 `serve` 直接呼叫，繞過了入口層的代換），必須明確回傳失敗，不得把 `"-"` 當成一個檔名去讀。
 
 ## 環境變數
 
-- **`COMOTION_HOME`**：`.comot` 之外的工作區根目錄，預設 `~/.comotion`。每次呼叫都重新讀取這個環境變數，不快取——同一個行程存活期間改變這個環境變數，下一次呼叫就會生效。佈局細節見 `docs/spec/comot-format.md`。
-- **`COMOTION_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `comotion` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `comotion`**（架構原則「一個二進位、一個真理」：絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `comotion`）。
-- **`COMOTION_ID_SEED`**：設定時，id 產生器（`<presentation-id>`／`<element-id>`）改為確定性輸出，僅供測試使用；id 的字面格式（`el-` 前綴 + 12 字元 base64url）不因此改變。**確定性序列的實際演算法不是本規格的契約**，由實作 crate 自行決定——只要求「設定這個環境變數時輸出變成確定性，且格式不變」這一條外顯行為。
+- **`SLIDRA_HOME`**：`.slidra` 之外的工作區根目錄，預設 `~/.slidra`。每次呼叫都重新讀取這個環境變數，不快取——同一個行程存活期間改變這個環境變數，下一次呼叫就會生效。佈局細節見 `docs/spec/slidra-format.md`。
+- **`SLIDRA_BIN`**：Rust 入口 exec Node（跑 `serve`／`export`）之前，把自己的絕對路徑設進這個環境變數；Node 端任何需要再 spawn `slidra` 命令的地方，一律用這個環境變數指向的**同一支二進位**，未設定時直接報錯，**不回退去 PATH 尋找 `slidra`**（架構原則「一個二進位、一個真理」：絕不允許 Node 端不小心 spawn 到系統上另一支版本不同的 `slidra`）。
+- **`SLIDRA_ID_SEED`**：設定時，id 產生器（`<presentation-id>`／`<element-id>`）改為確定性輸出，僅供測試使用；id 的字面格式（`el-` 前綴 + 12 字元 base64url）不因此改變。**確定性序列的實際演算法不是本規格的契約**，由實作 crate 自行決定——只要求「設定這個環境變數時輸出變成確定性，且格式不變」這一條外顯行為。
 
 ## Undo 語意
 
 - **一次操作 = 一條命令 = 一步 undo**（ADR-0002）。批次定址（一條命令同時處理多個 `<element-id>`）仍然只算一步，不因為內部影響多個元素而拆成多步。
 - **讀類命令不進歷史**：`cat`、`ls`、`effect list`、`template list`、`comment list`——這些命令不寫檔、不建立歷史群組、不產生 undo 步驟。
 - **一個已知的例外**：`presentation canvas set` 雖然會寫入 `project.json`（改變畫布尺寸），但刻意設計成**不佔用任何 undo 步驟**——這是「一次操作一步 undo」規則唯一的例外，理由與畫布尺寸屬於簡報層級而非某一步可回退的內容編輯有關。
-- 歷史的實際存放位置與磁碟格式見 `docs/spec/comot-format.md` 的「`~/.comotion/`」一節。
+- 歷史的實際存放位置與磁碟格式見 `docs/spec/slidra-format.md` 的「`~/.slidra/`」一節。
 
 ## 不經 registry 的入口：`serve` 與 `export`
 
-`serve`／`export` 這兩個子命令**不算在 88 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/comotion-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@comotion/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
+`serve`／`export` 這兩個子命令**不算在 88 條命令之內**，也不使用命令條目的格式描述。它們在二進位入口就分流（`packages/server/bin/slidra-node.js`：`argv[0] === "serve"` 或 `"export"` 時，動態載入 `@slidra/server` 的 `runServeCli`／`runExportCli` 並直接呼叫），完全不經過 `parseArgv`、不經過 `CommandRegistry`。
 
-Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `COMOTION_BIN`，再 `exec` Node 執行 `@comotion/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
+Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對路徑寫入 `SLIDRA_BIN`，再 `exec` Node 執行 `@slidra/server` 對應的 CLI 進入點，把 argv、stdin、stdout、stderr、exit code 逐位元組透傳。
 
 ## 命令條目格式說明
 
-下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/comotion/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_88_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 90，與 Rust 註冊的 88 條命令對不上。
+下面每一條命令固定用 `` ## `<命令名>` `` 作為標題——**H2 加反引號包住完整命令名，行內沒有其他文字**。這是本文件裡唯一允許以反引號開頭的 H2；文件中其他所有 H2（上面的通則各節、下面的附錄）一律不以反引號開頭。這個規則本身也是子集檢查腳本（`scripts/check-reference-subset.mjs`）與 `crates/slidra/tests/cli_golden.rs` 的 `cli_md_lists_exactly_the_88_rust_dispatched_commands` 測試解析命令清單所依賴的唯一格式（抽取正則固定為 `` /^## `(.+)`$/gm ``）：`serve`／`export` 之所以不能用這個標題格式，正是因為那會讓抽取出的命令數變成 90，與 Rust 註冊的 88 條命令對不上。
 
 每個命令條目固定五個小節，順序不變：
 
@@ -114,15 +114,15 @@ Rust 入口的行為：偵測到 `serve`／`export` 時，先把自己的絕對�
 **語法**
 
 ```
-comotion new <path> [--name <名稱>]
+slidra new <path> [--name <名稱>]
 ```
 
 **參數**
 
-- `path`：字串，必填。要建立的 `.comot` 檔案的本機檔案系統路徑（新檔案，不是既有簡報的識別碼——`new` 是唯一直接操作真實檔案系統路徑、不透過 `<presentation-id>` 的命令之一，因為它建立的目標本來就還不是一份「已開啟」的簡報）。
+- `path`：字串，必填。要建立的 `.slidra` 檔案的本機檔案系統路徑（新檔案，不是既有簡報的識別碼——`new` 是唯一直接操作真實檔案系統路徑、不透過 `<presentation-id>` 的命令之一，因為它建立的目標本來就還不是一份「已開啟」的簡報）。
 - `--name`：字串，選填。簡報的顯示名稱，寫入 `project.json.name`；省略時預設為「新簡報」。
 
-建立出來的簡報**沒有任何投影片**（`project.json.slides` 是空陣列），只有 `project.json`、內嵌字型與其授權文字（ADR-0018）：第一頁由作者或 agent 之後用 `slide add` 或 `/comotion-plan` → `/comotion-build` 產生，不預先放一張未經設計的佔位頁。
+建立出來的簡報**沒有任何投影片**（`project.json.slides` 是空陣列），只有 `project.json`、內嵌字型與其授權文字（ADR-0018）：第一頁由作者或 agent 之後用 `slide add` 或 `/slidra-plan` → `/slidra-build` 產生，不預先放一張未經設計的佔位頁。
 
 **成功 `data`**
 
@@ -139,7 +139,7 @@ comotion new <path> [--name <名稱>]
 **範例**
 
 ```
-comotion new ./deck.comot --name '我的簡報'
+slidra new ./deck.slidra --name '我的簡報'
 ```
 
 ## `open`
@@ -147,12 +147,12 @@ comotion new ./deck.comot --name '我的簡報'
 **語法**
 
 ```
-comotion open <path>
+slidra open <path>
 ```
 
 **參數**
 
-- `path`：字串，必填。既有 `.comot` 檔案的本機檔案系統路徑。
+- `path`：字串，必填。既有 `.slidra` 檔案的本機檔案系統路徑。
 
 **成功 `data`**
 
@@ -160,7 +160,7 @@ comotion open <path>
 { "id": "AbCdEfGhIjKl" }
 ```
 
-`id` 是 12 個字元的 base64url 不透明識別碼（見 `docs/spec/comot-format.md` 的「元素 id 格式」一節，`<presentation-id>` 用同一個產生器），是後續每一條命令的第一個位置參數。
+`id` 是 12 個字元的 base64url 不透明識別碼（見 `docs/spec/slidra-format.md` 的「元素 id 格式」一節，`<presentation-id>` 用同一個產生器），是後續每一條命令的第一個位置參數。
 
 **錯誤情境**
 
@@ -168,8 +168,8 @@ comotion open <path>
 |---|---|
 | `path` 指向的檔案不存在，或讀取失敗 | `failed` |
 | `path` 指向的路徑不是檔案（例如是目錄） | `failed` |
-| 檔案不是合法的 zip（`.comot` 已損壞） | `failed` |
-| 解壓後的內容缺少可解析的 `project.json`，或 `project.json` 格式不符（見 `docs/spec/comot-format.md`） | `failed` |
+| 檔案不是合法的 zip（`.slidra` 已損壞） | `failed` |
+| 解壓後的內容缺少可解析的 `project.json`，或 `project.json` 格式不符（見 `docs/spec/slidra-format.md`） | `failed` |
 | `project.json.formatVersion` 大於此建置支援的最大版本 | `failed` |
 | 登記這份簡報時發生磁碟或登記檔（`projects.json`）本身的錯誤 | `failed` |
 
@@ -178,7 +178,7 @@ comotion open <path>
 **範例**
 
 ```
-comotion open ./deck.comot
+slidra open ./deck.slidra
 ```
 
 ## `pack`
@@ -186,13 +186,13 @@ comotion open ./deck.comot
 **語法**
 
 ```
-comotion pack <presentation-id> <path>
+slidra pack <presentation-id> <path>
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填，已開啟的簡報識別碼。
-- `path`：字串，必填，輸出的 `.comot` 檔案的本機檔案系統路徑；若與 `open` 最初讀取的來源路徑相同，這次 `pack` 同時會把該簡報標記為「已儲存」（`~/.comotion/projects.json` 的 `savedAt` 會更新，見 `docs/spec/comot-format.md`）。輸出到其他任意路徑則單純另存一份，不影響「已儲存」狀態。
+- `path`：字串，必填，輸出的 `.slidra` 檔案的本機檔案系統路徑；若與 `open` 最初讀取的來源路徑相同，這次 `pack` 同時會把該簡報標記為「已儲存」（`~/.slidra/projects.json` 的 `savedAt` 會更新，見 `docs/spec/slidra-format.md`）。輸出到其他任意路徑則單純另存一份，不影響「已儲存」狀態。
 
 **成功 `data`**
 
@@ -210,7 +210,7 @@ comotion pack <presentation-id> <path>
 **範例**
 
 ```
-comotion pack pres-abc123 ./deck.comot
+slidra pack pres-abc123 ./deck.slidra
 ```
 
 ## `cat`
@@ -218,7 +218,7 @@ comotion pack pres-abc123 ./deck.comot
 **語法**
 
 ```
-comotion cat <presentation-id> <path>
+slidra cat <presentation-id> <path>
 ```
 
 **參數**
@@ -245,7 +245,7 @@ comotion cat <presentation-id> <path>
 **範例**
 
 ```
-comotion cat pres-abc123 slides/001.svg
+slidra cat pres-abc123 slides/001.svg
 ```
 
 ## `ls`
@@ -253,7 +253,7 @@ comotion cat pres-abc123 slides/001.svg
 **語法**
 
 ```
-comotion ls <presentation-id> [path]
+slidra ls <presentation-id> [path]
 ```
 
 **參數**
@@ -279,15 +279,15 @@ comotion ls <presentation-id> [path]
 **範例**
 
 ```
-comotion ls pres-abc123
-comotion ls pres-abc123 slides
+slidra ls pres-abc123
+slidra ls pres-abc123 slides
 ```
 ## `text set`
 
 **語法**
 
 ```
-comotion text set <presentation-id> <slide-path> <element-id> <new-text> [--force]
+slidra text set <presentation-id> <slide-path> <element-id> <new-text> [--force]
 ```
 
 **參數**
@@ -296,7 +296,7 @@ comotion text set <presentation-id> <slide-path> <element-id> <new-text> [--forc
 - `slide-path`：字串，必填。虛擬路徑（例如 `slides/001.svg`），可以是 `project.json` 的 `slides` 清單裡的投影片，**也可以是 `templates` 清單裡的範本**（`text set` 不限定只能對已插入的投影片動作）。
 - `element-id`：字串，必填。要修改文字的元素 id。
 - `new-text`：字串，必填，但**允許空字串 `''`**——空字串是合法值，代表清空該元素的文字內容，不會被當成「參數缺漏」拒絕（只有完全省略這個位置才算缺漏）。多行以 `\n` 分隔會各自轉成一行 `<tspan>`。
-- `--force`：布林旗標，選填。只能出現在 `new-text` 之後那個固定位置（第 5 個位置引數）；出現在其他位置或有其他多餘引數都會被視為未知參數而報錯。用來略過「鎖定元素」保護（ADR-0013）——目標元素帶有 `data-comot-lock="true"` 時，一般情況下 `text set` 會拒絕修改，加上 `--force` 才能修改；鎖定狀態本身不會被清除或改變。
+- `--force`：布林旗標，選填。只能出現在 `new-text` 之後那個固定位置（第 5 個位置引數）；出現在其他位置或有其他多餘引數都會被視為未知參數而報錯。用來略過「鎖定元素」保護（ADR-0013）——目標元素帶有 `data-slidra-lock="true"` 時，一般情況下 `text set` 會拒絕修改，加上 `--force` 才能修改；鎖定狀態本身不會被清除或改變。
 
 **成功 `data`**
 
@@ -315,13 +315,13 @@ comotion text set <presentation-id> <slide-path> <element-id> <new-text> [--forc
 | `element-id` 在該投影片裡找不到 | `failed` |
 | 目標元素是鎖定的版面骨架，且未加 `--force` | `failed` |
 | 目標元素不是文字承載元素，或該元素沒有文字內容可取代 | `failed` |
-| 目標是文字框，但其 `data-comot-text-width` 不是合法正數，或宣告的字型未內嵌於簡報（資料已損毀） | `failed` |
+| 目標是文字框，但其 `data-slidra-text-width` 不是合法正數，或宣告的字型未內嵌於簡報（資料已損毀） | `failed` |
 
 **範例**
 
 ```
-comotion text set pres-abc123 slides/001.svg el-title '新的標題文字'
-comotion text set pres-abc123 slides/001.svg el-locked '' --force
+slidra text set pres-abc123 slides/001.svg el-title '新的標題文字'
+slidra text set pres-abc123 slides/001.svg el-locked '' --force
 ```
 
 ## `text style set`
@@ -329,14 +329,14 @@ comotion text set pres-abc123 slides/001.svg el-locked '' --force
 **語法**
 
 ```
-comotion text style set <presentation-id> <slide-path> <element-id> --range <start>:<end> [--font-weight <value>] [--font-style <value>] [--force]
+slidra text style set <presentation-id> <slide-path> <element-id> --range <start>:<end> [--font-weight <value>] [--font-style <value>] [--force]
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
 - `slide-path`：字串，必填，同 `text set`——可以是已登記的投影片或範本。
-- `element-id`：字串，必填，必須是一個**文字框**（帶有 `data-comot-text-width` 的容器），不能是一般 `<text>` 元素。
+- `element-id`：字串，必填，必須是一個**文字框**（帶有 `data-slidra-text-width` 的容器），不能是一般 `<text>` 元素。
 - `--range <start>:<end>`：必填，格式固定為「非負整數:非負整數」，且 `start` 必須小於 `end`（半開區間 `[start, end)`，以字元為單位，對應文字框內容字串）。格式不符或起訖顛倒在命令解析階段就會直接報錯。
 - `--font-weight`：選填字串。合法值為 `normal`、`bold`，或 100 的倍數（`100`–`900`）。`normal` 會**清除**該範圍的 `font-weight` 樣式（不是設成 normal），其他合法值會設定該樣式；旗標整個省略則該範圍的既有樣式維持不變。
 - `--font-style`：選填字串。合法值為 `normal`（清除斜體樣式）或 `italic`（設定斜體）；省略則維持不變。
@@ -361,7 +361,7 @@ comotion text style set <presentation-id> <slide-path> <element-id> --range <sta
 | `--font-weight` 的值不是 `normal`、`bold`，也不是 100–900 之間 100 的倍數 | `failed` |
 | `--font-style` 的值不是 `normal` 或 `italic` | `failed` |
 | `element-id` 在該投影片裡找不到 | `failed` |
-| `element-id` 存在，但不是文字框（沒有 `data-comot-text-width`） | `failed` |
+| `element-id` 存在，但不是文字框（沒有 `data-slidra-text-width`） | `failed` |
 | 目標容器不是單一 `<text>` 子元素的合法文字框內容，或該 `<text>` 沒有內容 | `failed` |
 | `--range` 的 `end` 超出文字框目前內容的字元長度 | `failed` |
 | 目標元素是鎖定的版面骨架，且未加 `--force` | `failed` |
@@ -369,8 +369,8 @@ comotion text style set <presentation-id> <slide-path> <element-id> --range <sta
 **範例**
 
 ```
-comotion text style set pres-abc123 slides/001.svg el-body --range 0:5 --font-weight bold
-comotion text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-style italic --force
+slidra text style set pres-abc123 slides/001.svg el-body --range 0:5 --font-weight bold
+slidra text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-style italic --force
 ```
 
 ## `text list set`
@@ -378,7 +378,7 @@ comotion text style set pres-abc123 slides/001.svg el-body --range 5:12 --font-s
 **語法**
 
 ```
-comotion text list set <presentation-id> <slide-path> <element-id> --paragraph <n> --kind bullet|number|none [--force]
+slidra text list set <presentation-id> <slide-path> <element-id> --paragraph <n> --kind bullet|number|none [--force]
 ```
 
 **參數**
@@ -414,8 +414,8 @@ comotion text list set <presentation-id> <slide-path> <element-id> --paragraph <
 **範例**
 
 ```
-comotion text list set pres-abc123 slides/001.svg el-body --paragraph 0 --kind bullet
-comotion text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind none --force
+slidra text list set pres-abc123 slides/001.svg el-body --paragraph 0 --kind bullet
+slidra text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind none --force
 ```
 
 ## `textbox add`
@@ -423,7 +423,7 @@ comotion text list set pres-abc123 slides/001.svg el-body --paragraph 2 --kind n
 **語法**
 
 ```
-comotion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width <num> --text <string> [--font-size <num>] [--font-family <string>] [--font-weight <num>] [--fill <string>] [--align left|center|right]
+slidra textbox add <presentation-id> <slide-path> --x <num> --y <num> --width <num> --text <string> [--font-size <num>] [--font-family <string>] [--font-weight <num>] [--fill <string>] [--align left|center|right]
 ```
 
 **參數**
@@ -437,7 +437,7 @@ comotion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width 
 - `--font-family`：選填字串；省略則預設 `"Noto Sans TC"`，必須是簡報已內嵌的字型家族。
 - `--font-weight`：選填有限數字，純粹寫入 `font-weight` 屬性供渲染使用，不做範圍檢查、不影響量測排版。
 - `--fill`：選填字串，寫入文字顏色屬性，不做格式檢查。
-- `--align`：選填，固定集合 `left`、`center`、`right`；省略預設 `left`。只在**建立當下**決定，之後沒有任何指令能再修改既有文字框的對齊（`textbox align` 是另一個命令，見下）。省略或給 `left` 時完全不寫入 `data-comot-text-align` 屬性。
+- `--align`：選填，固定集合 `left`、`center`、`right`；省略預設 `left`。只在**建立當下**決定，之後沒有任何指令能再修改既有文字框的對齊（`textbox align` 是另一個命令，見下）。省略或給 `left` 時完全不寫入 `data-slidra-text-align` 屬性。
 
 **成功 `data`**
 
@@ -461,8 +461,8 @@ comotion textbox add <presentation-id> <slide-path> --x <num> --y <num> --width 
 **範例**
 
 ```
-comotion textbox add pres-abc123 slides/002.svg --x 100 --y 200 --width 400 --text '第一行\n第二行'
-comotion textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text '置中標題' --align center --font-size 32
+slidra textbox add pres-abc123 slides/002.svg --x 100 --y 200 --width 400 --text '第一行\n第二行'
+slidra textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text '置中標題' --align center --font-size 32
 ```
 
 ## `textbox width`
@@ -470,7 +470,7 @@ comotion textbox add pres-abc123 slides/002.svg --x 0 --y 0 --width 300 --text '
 **語法**
 
 ```
-comotion textbox width <presentation-id> <slide-path> <element-id> <width> [--force]
+slidra textbox width <presentation-id> <slide-path> <element-id> <width> [--force]
 ```
 
 **參數**
@@ -498,14 +498,14 @@ comotion textbox width <presentation-id> <slide-path> <element-id> <width> [--fo
 | `slide-path` 不在 `slides` 或 `templates` 清單裡 | `failed` |
 | `width` 不是大於 0 的數字，或四捨五入到小數點後 4 位後不是大於 0 | `failed` |
 | `element-id` 在該投影片裡找不到，或找到但不是文字承載結構 | `failed` |
-| `element-id` 存在，但不是文字框（沒有 `data-comot-text-width`） | `failed` |
+| `element-id` 存在，但不是文字框（沒有 `data-slidra-text-width`） | `failed` |
 | 目標元素是鎖定的版面骨架，且未加 `--force` | `failed` |
 
 **範例**
 
 ```
-comotion textbox width pres-abc123 slides/002.svg el-a1b2c3 500
-comotion textbox width pres-abc123 slides/002.svg el-locked 250 --force
+slidra textbox width pres-abc123 slides/002.svg el-a1b2c3 500
+slidra textbox width pres-abc123 slides/002.svg el-locked 250 --force
 ```
 
 ## `textbox align`
@@ -513,7 +513,7 @@ comotion textbox width pres-abc123 slides/002.svg el-locked 250 --force
 **語法**
 
 ```
-comotion textbox align <presentation-id> <slide-path> <element-id> <left|center|right> [--force]
+slidra textbox align <presentation-id> <slide-path> <element-id> <left|center|right> [--force]
 ```
 
 **參數**
@@ -540,14 +540,14 @@ comotion textbox align <presentation-id> <slide-path> <element-id> <left|center|
 | `slide-path` 對應不到任何檔案 | `not-found` |
 | `slide-path` 不在 `slides` 或 `templates` 清單裡 | `failed` |
 | `element-id` 在該投影片裡找不到，或找到但不是文字承載結構 | `failed` |
-| `element-id` 存在，但不是文字框（沒有 `data-comot-text-width`） | `failed` |
+| `element-id` 存在，但不是文字框（沒有 `data-slidra-text-width`） | `failed` |
 | 目標元素是鎖定的版面骨架，且未加 `--force` | `failed` |
 
 **範例**
 
 ```
-comotion textbox align pres-abc123 slides/002.svg el-a1b2c3 center
-comotion textbox align pres-abc123 slides/002.svg el-locked right --force
+slidra textbox align pres-abc123 slides/002.svg el-a1b2c3 center
+slidra textbox align pres-abc123 slides/002.svg el-locked right --force
 ```
 
 ## `convert`
@@ -555,7 +555,7 @@ comotion textbox align pres-abc123 slides/002.svg el-locked right --force
 **語法**
 
 ```
-comotion convert <presentation-id>
+slidra convert <presentation-id>
 ```
 
 **參數**
@@ -587,7 +587,7 @@ comotion convert <presentation-id>
 **範例**
 
 ```
-comotion convert pres-abc123
+slidra convert pres-abc123
 ```
 
 ## `undo`
@@ -595,7 +595,7 @@ comotion convert pres-abc123
 **語法**
 
 ```
-comotion undo <presentation-id>
+slidra undo <presentation-id>
 ```
 
 **參數**
@@ -621,7 +621,7 @@ comotion undo <presentation-id>
 **範例**
 
 ```
-comotion undo pres-abc123
+slidra undo pres-abc123
 ```
 
 ## `redo`
@@ -629,7 +629,7 @@ comotion undo pres-abc123
 **語法**
 
 ```
-comotion redo <presentation-id>
+slidra redo <presentation-id>
 ```
 
 **參數**
@@ -655,14 +655,14 @@ comotion redo <presentation-id>
 **範例**
 
 ```
-comotion redo pres-abc123
+slidra redo pres-abc123
 ```
 ## `element insert`
 
 **語法**
 
 ```
-comotion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [--width n] [--height n] [--x1 n] [--y1 n] [--x2 n] [--y2 n] [--d path-data] [--fill value] [--stroke value] [--stroke-width n] [--href value] [--media value] [--embed provider]
+slidra element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [--width n] [--height n] [--x1 n] [--y1 n] [--x2 n] [--y2 n] [--d path-data] [--fill value] [--stroke value] [--stroke-width n] [--href value] [--media value] [--embed provider]
 ```
 
 **參數**
@@ -678,7 +678,7 @@ comotion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [-
 - `--stroke`：字串，選填，任何 kind 皆可使用。
 - `--stroke-width`：數字，選填；只在同時給 `--stroke-width` 時驗證，必須是大於 0 的數字。
 - `--href`：字串，選填；`image` 必填（缺少會報錯）；`video`／`audio` 選填（給了就以海報圖 `<image>` 呈現，不給則呈現一個色塊 `<rect>`）；其餘 kind 不使用。
-- `--media`：字串，選填，任何 kind 皆可標記為媒體佔位符（`data-comot-media`）。
+- `--media`：字串，選填，任何 kind 皆可標記為媒體佔位符（`data-slidra-media`）。
 - `--embed`：字串，選填；只能搭配 `--kind video` 使用（否則報錯），且必須同時給 `--media`（否則報錯）；值必須是受支援的嵌入提供者（由 `requireEmbedProvider` 驗證）。
 
 **成功 `data`**
@@ -705,7 +705,7 @@ comotion element insert <kind> <presentation-id> <slide-path> [--x n] [--y n] [-
 **範例**
 
 ```
-comotion element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 --height 150 --fill '#3366ff'
+slidra element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 --height 150 --fill '#3366ff'
 ```
 
 ---
@@ -715,7 +715,7 @@ comotion element insert rect pres-123 slides/1.svg --x 100 --y 200 --width 300 -
 **語法**
 
 ```
-comotion element delete <presentation-id> <slide-path> <element-ids>
+slidra element delete <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -742,7 +742,7 @@ comotion element delete <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element delete pres-123 slides/1.svg el-1,el-2
+slidra element delete pres-123 slides/1.svg el-1,el-2
 ```
 
 （刪除一個群組時，其內部所有子元素連帶被刪除，不需個別列出；已被祖先涵蓋的目標不會被重複判定為「找不到」。）
@@ -754,7 +754,7 @@ comotion element delete pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-comotion element move <presentation-id> <slide-path> <element-ids> --dx n --dy n [--force]
+slidra element move <presentation-id> <slide-path> <element-ids> --dx n --dy n [--force]
 ```
 
 **參數**
@@ -786,7 +786,7 @@ comotion element move <presentation-id> <slide-path> <element-ids> --dx n --dy n
 **範例**
 
 ```
-comotion element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
+slidra element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
 ```
 
 ---
@@ -796,7 +796,7 @@ comotion element move pres-123 slides/1.svg el-1 --dx 10 --dy -5
 **語法**
 
 ```
-comotion element scale <presentation-id> <slide-path> <element-ids> --factor n [--force]
+slidra element scale <presentation-id> <slide-path> <element-ids> --factor n [--force]
 ```
 
 **參數**
@@ -832,7 +832,7 @@ comotion element scale <presentation-id> <slide-path> <element-ids> --factor n [
 **範例**
 
 ```
-comotion element scale pres-123 slides/1.svg el-1 --factor 1.5
+slidra element scale pres-123 slides/1.svg el-1 --factor 1.5
 ```
 
 （目標若為群組，會遞迴縮放所有子孫容器的位移與圖元幾何；文字框則同時縮放 font-size 並重新換行。）
@@ -844,7 +844,7 @@ comotion element scale pres-123 slides/1.svg el-1 --factor 1.5
 **語法**
 
 ```
-comotion element resize <presentation-id> <slide-path> <element-ids> --width n --height n [--anchor nw|ne|sw|se] [--force]
+slidra element resize <presentation-id> <slide-path> <element-ids> --width n --height n [--anchor nw|ne|sw|se] [--force]
 ```
 
 **參數**
@@ -881,7 +881,7 @@ comotion element resize <presentation-id> <slide-path> <element-ids> --width n -
 **範例**
 
 ```
-comotion element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --anchor nw
+slidra element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --anchor nw
 ```
 
 （`--width`/`--height` 是調整後的目標尺寸，非位移量；`--anchor` 指定的角落座標在調整前後保持不動。）
@@ -893,7 +893,7 @@ comotion element resize pres-123 slides/1.svg el-1 --width 400 --height 200 --an
 **語法**
 
 ```
-comotion element rotate <presentation-id> <slide-path> <element-ids> --degrees n [--force]
+slidra element rotate <presentation-id> <slide-path> <element-ids> --degrees n [--force]
 ```
 
 **參數**
@@ -924,7 +924,7 @@ comotion element rotate <presentation-id> <slide-path> <element-ids> --degrees n
 **範例**
 
 ```
-comotion element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
+slidra element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
 ```
 
 ---
@@ -934,7 +934,7 @@ comotion element rotate pres-123 slides/1.svg el-1,el-2 --degrees 15
 **語法**
 
 ```
-comotion element style set <presentation-id> <slide-path> <element-ids> <attr> <value> [--force]
+slidra element style set <presentation-id> <slide-path> <element-ids> <attr> <value> [--force]
 ```
 
 **參數**
@@ -961,7 +961,7 @@ comotion element style set <presentation-id> <slide-path> <element-ids> <attr> <
 | `slide-path` 存在但未列在 `project.json` 的 slides/templates 清單中 | `failed` |
 | `element-ids` 中有 id 找不到對應元素 | `failed` |
 | `attr` 是 `transform`/`x`/`y`/`width`/`height`（位置與大小需用 move/scale/resize） | `failed` |
-| `attr` 以 `data-comot-` 開頭（保留屬性前綴） | `failed` |
+| `attr` 以 `data-slidra-` 開頭（保留屬性前綴） | `failed` |
 | `attr` 不在樣式白名單內 | `failed` |
 | `attr` 為 `opacity` 但 `value` 不是 0 到 1 之間的數字 | `failed` |
 | `attr` 為 `font-size` 但 `value` 不是大於 0 的數字 | `failed` |
@@ -976,7 +976,7 @@ comotion element style set <presentation-id> <slide-path> <element-ids> <attr> <
 **範例**
 
 ```
-comotion element style set pres-123 slides/1.svg el-1 fill '#ff0000'
+slidra element style set pres-123 slides/1.svg el-1 fill '#ff0000'
 ```
 
 ---
@@ -986,7 +986,7 @@ comotion element style set pres-123 slides/1.svg el-1 fill '#ff0000'
 **語法**
 
 ```
-comotion element order <presentation-id> <slide-path> <element-ids> <direction> [--force]
+slidra element order <presentation-id> <slide-path> <element-ids> <direction> [--force]
 ```
 
 **參數**
@@ -1016,7 +1016,7 @@ comotion element order <presentation-id> <slide-path> <element-ids> <direction> 
 **範例**
 
 ```
-comotion element order pres-123 slides/1.svg el-1 front
+slidra element order pres-123 slides/1.svg el-1 front
 ```
 
 （若目標已在同層容器中的最上/最下層，或該層只有這一個子元素，此命令為無操作，仍視為成功。不同父容器下的目標互不影響彼此的順序。）
@@ -1028,7 +1028,7 @@ comotion element order pres-123 slides/1.svg el-1 front
 **語法**
 
 ```
-comotion element group <presentation-id> <slide-path> <element-ids>
+slidra element group <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1060,7 +1060,7 @@ comotion element group <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element group pres-123 slides/1.svg el-1,el-2,el-3
+slidra element group pres-123 slides/1.svg el-1,el-2,el-3
 ```
 
 （本命令不檢查鎖定狀態，也沒有 `--force`；新群組容器本身不帶 `transform`，落在清單中文件順序最後（最上層）目標原本的位置，其餘目標的原始 z-order 不受影響。）
@@ -1072,7 +1072,7 @@ comotion element group pres-123 slides/1.svg el-1,el-2,el-3
 **語法**
 
 ```
-comotion element ungroup <presentation-id> <slide-path> <element-ids>
+slidra element ungroup <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1104,7 +1104,7 @@ comotion element ungroup <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element ungroup pres-123 slides/1.svg el-group1
+slidra element ungroup pres-123 slides/1.svg el-group1
 ```
 
 （解散時群組自身的 `transform` 會被摺疊進每個子元素各自的 `transform`，使子元素的絕對位置不變；本命令不檢查鎖定狀態，也沒有 `--force`。）
@@ -1116,7 +1116,7 @@ comotion element ungroup pres-123 slides/1.svg el-group1
 **語法**
 
 ```
-comotion element align <presentation-id> <slide-path> <element-ids> <direction>
+slidra element align <presentation-id> <slide-path> <element-ids> <direction>
 ```
 
 **參數**
@@ -1147,7 +1147,7 @@ comotion element align <presentation-id> <slide-path> <element-ids> <direction>
 **範例**
 
 ```
-comotion element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
+slidra element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
 ```
 
 （對齊基準是所有目標邊界框的聯集（union），每個目標只移動自己容器的位移；本命令沒有 `--force`，不檢查鎖定狀態。）
@@ -1159,7 +1159,7 @@ comotion element align pres-123 slides/1.svg el-1,el-2,el-3 hcenter
 **語法**
 
 ```
-comotion element distribute <presentation-id> <slide-path> <element-ids> <axis>
+slidra element distribute <presentation-id> <slide-path> <element-ids> <axis>
 ```
 
 **參數**
@@ -1190,7 +1190,7 @@ comotion element distribute <presentation-id> <slide-path> <element-ids> <axis>
 **範例**
 
 ```
-comotion element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizontal
+slidra element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizontal
 ```
 
 （依邊界框「中心點」在指定軸上排序，取第一個與最後一個中心點固定不動，中間的目標被重新等距分佈；本命令沒有 `--force`。）
@@ -1202,7 +1202,7 @@ comotion element distribute pres-123 slides/1.svg el-1,el-2,el-3,el-4 horizontal
 **語法**
 
 ```
-comotion element name set <presentation-id> <slide-path> <element-ids> <name>
+slidra element name set <presentation-id> <slide-path> <element-ids> <name>
 ```
 
 **參數**
@@ -1230,7 +1230,7 @@ comotion element name set <presentation-id> <slide-path> <element-ids> <name>
 **範例**
 
 ```
-comotion element name set pres-123 slides/1.svg el-1 '標題文字'
+slidra element name set pres-123 slides/1.svg el-1 '標題文字'
 ```
 
 （多個 id 之間名稱不要求唯一；本命令沒有 `--force`，不檢查鎖定狀態。）
@@ -1242,7 +1242,7 @@ comotion element name set pres-123 slides/1.svg el-1 '標題文字'
 **語法**
 
 ```
-comotion element copy <presentation-id> <slide-path> <element-ids>
+slidra element copy <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1257,7 +1257,7 @@ comotion element copy <presentation-id> <slide-path> <element-ids>
 { "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" ...>...</svg>" }
 ```
 
-`svg` 是與系統剪貼簿交換格式相同的獨立 `<svg>` 字串（等同 GUI 按下 ⌘C 寫入 `navigator.clipboard` 的內容），同時也會寫入該簡報專屬的內部剪貼簿檔案（`<COMOTION_HOME>/clipboard/<presentation-id>.json`），供同一簡報之後的 `element paste`（未帶 `--svg-file`）讀取。
+`svg` 是與系統剪貼簿交換格式相同的獨立 `<svg>` 字串（等同 GUI 按下 ⌘C 寫入 `navigator.clipboard` 的內容），同時也會寫入該簡報專屬的內部剪貼簿檔案（`<SLIDRA_HOME>/clipboard/<presentation-id>.json`），供同一簡報之後的 `element paste`（未帶 `--svg-file`）讀取。
 
 **錯誤情境**
 
@@ -1271,7 +1271,7 @@ comotion element copy <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element copy pres-123 slides/1.svg el-1,el-2
+slidra element copy pres-123 slides/1.svg el-1,el-2
 ```
 
 （不修改簡報內容，不佔用復原/重做步驟；複製的元素若原本在群組內，其祖先鏈的 transform 會被摺疊進自身的 transform，確保貼到其他簡報的根層級時視覺位置不變。）
@@ -1283,7 +1283,7 @@ comotion element copy pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-comotion element cut <presentation-id> <slide-path> <element-ids>
+slidra element cut <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1312,7 +1312,7 @@ comotion element cut <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element cut pres-123 slides/1.svg el-1
+slidra element cut pres-123 slides/1.svg el-1
 ```
 
 （不檢查鎖定狀態——ADR-0013 明訂刪除鎖定元素不需要 `--force`；復原（undo）會還原被刪除的元素，但不會還原剪貼簿內容，與一般編輯器行為一致。）
@@ -1324,7 +1324,7 @@ comotion element cut pres-123 slides/1.svg el-1
 **語法**
 
 ```
-comotion element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-file path]
+slidra element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-file path]
 ```
 
 **參數**
@@ -1354,14 +1354,14 @@ comotion element paste <presentation-id> <slide-path> [--dx n] [--dy n] [--svg-f
 | 未給 `--svg-file` 且該簡報的內部剪貼簿檔案不存在（尚未複製/剪下過，或已被其他方式清除） | `failed` |
 | 內部剪貼簿檔案存在但讀取失敗（非「找不到檔案」的 I/O 錯誤） | `failed` |
 | 內部剪貼簿檔案內容不是合法 JSON | `failed` |
-| `--svg-file` 給的內容不是合法的 comotion 元素剪貼簿格式（缺少辨識標記或無法解析） | `failed` |
+| `--svg-file` 給的內容不是合法的 slidra 元素剪貼簿格式（缺少辨識標記或無法解析） | `failed` |
 | 剪貼簿內容為空（沒有任何元素可貼上） | `failed` |
 | 剪貼簿內容未通過三層驗證（結構、單一根節點、屬性/值白名單——ADR-0010，見 `sanitizeClipboardMarkup`） | `failed` |
 
 **範例**
 
 ```
-comotion element paste pres-123 slides/2.svg --dx 20 --dy 20
+slidra element paste pres-123 slides/2.svg --dx 20 --dy 20
 ```
 
 （`--svg` 這個系統剪貼簿字串輸入在 `ElementPasteInput` 型別中存在，但 CLI 的 argv 層目前只曝露 `--svg-file`，未曝露對應的 `--svg` 旗標；`--svg-file` 讀出的內容會作為該欄位的值。）
@@ -1373,7 +1373,7 @@ comotion element paste pres-123 slides/2.svg --dx 20 --dy 20
 **語法**
 
 ```
-comotion element duplicate <presentation-id> <slide-path> <element-ids> [--dx n] [--dy n]
+slidra element duplicate <presentation-id> <slide-path> <element-ids> [--dx n] [--dy n]
 ```
 
 **參數**
@@ -1404,7 +1404,7 @@ comotion element duplicate <presentation-id> <slide-path> <element-ids> [--dx n]
 **範例**
 
 ```
-comotion element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
+slidra element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
 ```
 
 （內部走與 `copy`＋`paste` 相同的抽取/貼上邏輯，但完全繞過剪貼簿檔案，不會覆寫使用者實際的剪貼簿內容；不檢查鎖定狀態，沒有 `--force`。）
@@ -1416,7 +1416,7 @@ comotion element duplicate pres-123 slides/1.svg el-1 --dx 10 --dy 10
 **語法**
 
 ```
-comotion element lock <presentation-id> <slide-path> <element-ids>
+slidra element lock <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1443,10 +1443,10 @@ comotion element lock <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element lock pres-123 slides/1.svg el-1,el-2
+slidra element lock pres-123 slides/1.svg el-1,el-2
 ```
 
-（在每個目標容器上設定 `data-comot-lock="true"`；具幂等性——鎖定一個已鎖定的元素不會報錯。）
+（在每個目標容器上設定 `data-slidra-lock="true"`；具幂等性——鎖定一個已鎖定的元素不會報錯。）
 
 ---
 
@@ -1455,7 +1455,7 @@ comotion element lock pres-123 slides/1.svg el-1,el-2
 **語法**
 
 ```
-comotion element unlock <presentation-id> <slide-path> <element-ids>
+slidra element unlock <presentation-id> <slide-path> <element-ids>
 ```
 
 **參數**
@@ -1482,16 +1482,16 @@ comotion element unlock <presentation-id> <slide-path> <element-ids>
 **範例**
 
 ```
-comotion element unlock pres-123 slides/1.svg el-1,el-2
+slidra element unlock pres-123 slides/1.svg el-1,el-2
 ```
 
-（移除目標容器上的 `data-comot-lock` 屬性——一律整個屬性移除，絕不寫入 `data-comot-lock="false"`；具幂等性——解鎖一個已解鎖的元素不會報錯。）
+（移除目標容器上的 `data-slidra-lock` 屬性——一律整個屬性移除，絕不寫入 `data-slidra-lock="false"`；具幂等性——解鎖一個已解鎖的元素不會報錯。）
 ## `table create`
 
 **語法**
 
 ```
-comotion table create <presentation-id> <slide-path> --rows <n> --cols <n> --x <x> --y <y> [--col-width <width>] [--theme dark|light|zebra] [--header true|false]
+slidra table create <presentation-id> <slide-path> --rows <n> --cols <n> --x <x> --y <y> [--col-width <width>] [--theme dark|light|zebra] [--header true|false]
 ```
 
 **參數**
@@ -1528,7 +1528,7 @@ comotion table create <presentation-id> <slide-path> --rows <n> --cols <n> --x <
 **範例**
 
 ```
-comotion table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --theme light --header true
+slidra table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --theme light --header true
 ```
 
 ## `table cell set`
@@ -1536,7 +1536,7 @@ comotion table create pres-1 slides/1.svg --rows 3 --cols 4 --x 40 --y 60 --them
 **語法**
 
 ```
-comotion table cell set <presentation-id> <slide-path> <element-id> --row <row> --col <col> --text <text>
+slidra table cell set <presentation-id> <slide-path> <element-id> --row <row> --col <col> --text <text>
 ```
 
 **參數**
@@ -1569,7 +1569,7 @@ comotion table cell set <presentation-id> <slide-path> <element-id> --row <row> 
 **範例**
 
 ```
-comotion table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '營收'
+slidra table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '營收'
 ```
 
 ## `table cell style set`
@@ -1577,7 +1577,7 @@ comotion table cell set pres-1 slides/1.svg el-table1 --row 0 --col 1 --text '�
 **語法**
 
 ```
-comotion table cell style set <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-end <row>] [--col-end <col>] <attr> <value>
+slidra table cell style set <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-end <row>] [--col-end <col>] <attr> <value>
 ```
 
 **參數**
@@ -1616,7 +1616,7 @@ comotion table cell style set <presentation-id> <slide-path> <element-id> --row 
 **範例**
 
 ```
-comotion table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-end 0 --col-end 3 align center
+slidra table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-end 0 --col-end 3 align center
 ```
 
 ## `table merge`
@@ -1624,7 +1624,7 @@ comotion table cell style set pres-1 slides/1.svg el-table1 --row 0 --col 0 --ro
 **語法**
 
 ```
-comotion table merge <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-span <n>] [--col-span <n>] [--unmerge]
+slidra table merge <presentation-id> <slide-path> <element-id> --row <row> --col <col> [--row-span <n>] [--col-span <n>] [--unmerge]
 ```
 
 **參數**
@@ -1663,7 +1663,7 @@ comotion table merge <presentation-id> <slide-path> <element-id> --row <row> --c
 **範例**
 
 ```
-comotion table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1 --col-span 2
+slidra table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1 --col-span 2
 ```
 
 ## `table col width`
@@ -1671,7 +1671,7 @@ comotion table merge pres-1 slides/1.svg el-table1 --row 0 --col 0 --row-span 1 
 **語法**
 
 ```
-comotion table col width <presentation-id> <slide-path> <element-id> --col <col> --width <width> [--keep-total]
+slidra table col width <presentation-id> <slide-path> <element-id> --col <col> --width <width> [--keep-total]
 ```
 
 **參數**
@@ -1705,7 +1705,7 @@ comotion table col width <presentation-id> <slide-path> <element-id> --col <col>
 **範例**
 
 ```
-comotion table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --keep-total
+slidra table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --keep-total
 ```
 
 ## `table col insert`
@@ -1713,7 +1713,7 @@ comotion table col width pres-1 slides/1.svg el-table1 --col 0 --width 220 --kee
 **語法**
 
 ```
-comotion table col insert <presentation-id> <slide-path> <element-id> --at <index>
+slidra table col insert <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1742,7 +1742,7 @@ comotion table col insert <presentation-id> <slide-path> <element-id> --at <inde
 **範例**
 
 ```
-comotion table col insert pres-1 slides/1.svg el-table1 --at 2
+slidra table col insert pres-1 slides/1.svg el-table1 --at 2
 ```
 
 ## `table col delete`
@@ -1750,7 +1750,7 @@ comotion table col insert pres-1 slides/1.svg el-table1 --at 2
 **語法**
 
 ```
-comotion table col delete <presentation-id> <slide-path> <element-id> --at <index>
+slidra table col delete <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1780,7 +1780,7 @@ comotion table col delete <presentation-id> <slide-path> <element-id> --at <inde
 **範例**
 
 ```
-comotion table col delete pres-1 slides/1.svg el-table1 --at 2
+slidra table col delete pres-1 slides/1.svg el-table1 --at 2
 ```
 
 ## `table row insert`
@@ -1788,7 +1788,7 @@ comotion table col delete pres-1 slides/1.svg el-table1 --at 2
 **語法**
 
 ```
-comotion table row insert <presentation-id> <slide-path> <element-id> --at <index>
+slidra table row insert <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1817,7 +1817,7 @@ comotion table row insert <presentation-id> <slide-path> <element-id> --at <inde
 **範例**
 
 ```
-comotion table row insert pres-1 slides/1.svg el-table1 --at 1
+slidra table row insert pres-1 slides/1.svg el-table1 --at 1
 ```
 
 ## `table row delete`
@@ -1825,7 +1825,7 @@ comotion table row insert pres-1 slides/1.svg el-table1 --at 1
 **語法**
 
 ```
-comotion table row delete <presentation-id> <slide-path> <element-id> --at <index>
+slidra table row delete <presentation-id> <slide-path> <element-id> --at <index>
 ```
 
 **參數**
@@ -1856,7 +1856,7 @@ comotion table row delete <presentation-id> <slide-path> <element-id> --at <inde
 **範例**
 
 ```
-comotion table row delete pres-1 slides/1.svg el-table1 --at 1
+slidra table row delete pres-1 slides/1.svg el-table1 --at 1
 ```
 
 ## `table theme set`
@@ -1864,7 +1864,7 @@ comotion table row delete pres-1 slides/1.svg el-table1 --at 1
 **語法**
 
 ```
-comotion table theme set <presentation-id> <slide-path> <element-id> <theme>
+slidra table theme set <presentation-id> <slide-path> <element-id> <theme>
 ```
 
 **參數**
@@ -1893,7 +1893,7 @@ comotion table theme set <presentation-id> <slide-path> <element-id> <theme>
 **範例**
 
 ```
-comotion table theme set pres-1 slides/1.svg el-table1 zebra
+slidra table theme set pres-1 slides/1.svg el-table1 zebra
 ```
 
 ## `table header set`
@@ -1901,7 +1901,7 @@ comotion table theme set pres-1 slides/1.svg el-table1 zebra
 **語法**
 
 ```
-comotion table header set <presentation-id> <slide-path> <element-id> <true|false>
+slidra table header set <presentation-id> <slide-path> <element-id> <true|false>
 ```
 
 **參數**
@@ -1929,7 +1929,7 @@ comotion table header set <presentation-id> <slide-path> <element-id> <true|fals
 **範例**
 
 ```
-comotion table header set pres-1 slides/1.svg el-table1 false
+slidra table header set pres-1 slides/1.svg el-table1 false
 ```
 
 ## `table bind`
@@ -1937,7 +1937,7 @@ comotion table header set pres-1 slides/1.svg el-table1 false
 **語法**
 
 ```
-comotion table bind <presentation-id> <slide-path> <element-id> --source <virtual-csv-path> [--template-row <row>]
+slidra table bind <presentation-id> <slide-path> <element-id> --source <virtual-csv-path> [--template-row <row>]
 ```
 
 **參數**
@@ -1972,7 +1972,7 @@ comotion table bind <presentation-id> <slide-path> <element-id> --source <virtua
 **範例**
 
 ```
-comotion table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.csv --template-row 1
+slidra table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.csv --template-row 1
 ```
 
 ## `table refresh`
@@ -1980,7 +1980,7 @@ comotion table bind pres-1 slides/1.svg el-table1 --source assets/data/sales.csv
 **語法**
 
 ```
-comotion table refresh <presentation-id> <slide-path> <element-id>
+slidra table refresh <presentation-id> <slide-path> <element-id>
 ```
 
 **參數**
@@ -2012,7 +2012,7 @@ comotion table refresh <presentation-id> <slide-path> <element-id>
 **範例**
 
 ```
-comotion table refresh pres-1 slides/1.svg el-table1
+slidra table refresh pres-1 slides/1.svg el-table1
 ```
 
 ## `table set`
@@ -2020,7 +2020,7 @@ comotion table refresh pres-1 slides/1.svg el-table1
 **語法**
 
 ```
-comotion table set <presentation-id> <slide-path> <element-id> (--from <virtual-csv-path> | --markdown <text> | --markdown-file <path>)
+slidra table set <presentation-id> <slide-path> <element-id> (--from <virtual-csv-path> | --markdown <text> | --markdown-file <path>)
 ```
 
 **參數**
@@ -2055,7 +2055,7 @@ comotion table set <presentation-id> <slide-path> <element-id> (--from <virtual-
 **範例**
 
 ```
-comotion table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
+slidra table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
 ```
 
 ## `table cell copy`
@@ -2063,7 +2063,7 @@ comotion table set pres-1 slides/1.svg el-table1 --markdown-file ./table.md
 **語法**
 
 ```
-comotion table cell copy <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
+slidra table cell copy <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
 ```
 
 **參數**
@@ -2095,7 +2095,7 @@ comotion table cell copy <presentation-id> <slide-path> <element-id> --range <r,
 **範例**
 
 ```
-comotion table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
+slidra table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
 ```
 
 ## `table cell cut`
@@ -2103,7 +2103,7 @@ comotion table cell copy pres-1 slides/1.svg el-table1 --range 0,0:2,1
 **語法**
 
 ```
-comotion table cell cut <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
+slidra table cell cut <presentation-id> <slide-path> <element-id> --range <r,c:r,c>
 ```
 
 **參數**
@@ -2135,7 +2135,7 @@ comotion table cell cut <presentation-id> <slide-path> <element-id> --range <r,c
 **範例**
 
 ```
-comotion table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
+slidra table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
 ```
 
 ## `table cell paste`
@@ -2143,7 +2143,7 @@ comotion table cell cut pres-1 slides/1.svg el-table1 --range 0,0:2,1
 **語法**
 
 ```
-comotion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c> --tsv-file <path>
+slidra table cell paste <presentation-id> <slide-path> <element-id> --at <r,c> --tsv-file <path>
 ```
 
 **參數**
@@ -2178,14 +2178,14 @@ comotion table cell paste <presentation-id> <slide-path> <element-id> --at <r,c>
 **範例**
 
 ```
-comotion table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./cells.tsv
+slidra table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./cells.tsv
 ```
 ## `plan set`
 
 **語法**
 
 ```
-comotion plan set <presentation-id> <name> <content> [--force]
+slidra plan set <presentation-id> <name> <content> [--force]
 ```
 
 **參數**
@@ -2227,7 +2227,7 @@ comotion plan set <presentation-id> <name> <content> [--force]
 **範例**
 
 ```
-comotion plan set pres-1 outline '```json
+slidra plan set pres-1 outline '```json
 { "status": "draft", "mode": "pyramid", "pages": [ { "n": 1, "type": "cover", "rhythm": "anchor", "title": "封面" } ] }
 ```
 
@@ -2240,7 +2240,7 @@ comotion plan set pres-1 outline '```json
 **語法**
 
 ```
-comotion plan list <presentation-id>
+slidra plan list <presentation-id>
 ```
 
 **參數**
@@ -2265,7 +2265,7 @@ comotion plan list <presentation-id>
 **範例**
 
 ```
-comotion plan list pres-1
+slidra plan list pres-1
 ```
 
 ## `plan delete`
@@ -2273,7 +2273,7 @@ comotion plan list pres-1
 **語法**
 
 ```
-comotion plan delete <presentation-id> [name]
+slidra plan delete <presentation-id> [name]
 ```
 
 **參數**
@@ -2300,8 +2300,8 @@ comotion plan delete <presentation-id> [name]
 **範例**
 
 ```
-comotion plan delete pres-1
-comotion plan delete pres-1 outline
+slidra plan delete pres-1
+slidra plan delete pres-1 outline
 ```
 
 ## `validate`
@@ -2309,7 +2309,7 @@ comotion plan delete pres-1 outline
 **語法**
 
 ```
-comotion validate <presentation-id> [slide-path]
+slidra validate <presentation-id> [slide-path]
 ```
 
 **參數**
@@ -2317,7 +2317,7 @@ comotion validate <presentation-id> [slide-path]
 - `presentation-id`：字串，必填。
 - `slide-path`：位置引數，選填，必須在 `slides` 清單裡；省略時驗整份（含跨頁規則）。
 
-規則寫死在 Rust 裡，門檻依 `plan/design-spec.md` 的 `density` 選組（presentation：標題 ≤ 24 字、要點 ≤ 32 字且 ≤ 2 行、2～7 條、全頁 ≤ 1000 字；balanced：32／48／3 行／2～8／1400；text：40／64／4 行／2～9／2000；門檻刻意寫鬆——放不下的版面由 `geometry.*` 擋，這裡只攔明顯誇張的那種；字數不含空白，`{{ … }}` 動態文字佔位算 0 字），配色、字級表、`shape_language`（選填，`plain`／`swiss-minimal`／`soft-rounded`／`glass`／`paper-cut`／`ink-wash`／`chalkboard`／`sketch-notes`／`brutalist`／`data-dense` 之一，省略時為 `plain`；它只描述形狀行為、不含顏色）與 `layout` 錨點（`side_margin` / `bottom_margin` / `footer_margin` / `gutter` / `spacing`，整組可省略，省略時分別是 80／72／16／24／`[8,16,24,40,64]`；寫了就必須是合法數字）也從它讀——`geometry.*` 的安全區邊界取自前三個，沒有 design-spec 時才用同樣的預設值；頁數、關係、頁型、節奏從 `plan/outline.md` 讀（每頁必填 `relationship` ∈ order／link／parent／membership／contrast／overlap／none；`type` 選填，只有填了才驗 `roster.page-type` 與 `structure.template`）。`rhythm.repeated-shape`（需 outline）：相鄰兩頁的 `relationship` 相同、`blueprint.shape` 相同、`blueprint.nodes` 也相同時報錯。`blueprint.required`（需 outline）：`status` 是 `confirmed` 時每頁都必須有 `blueprint`。`role.required`（需 outline）：`relationship` 不是 `none` 的頁面至少要有一個 `data-comot-role="node"` 的元素。`role.garnish-animated`（不需計畫）：`data-comot-role="garnish"` 的元素不得是任何 `<comot:effect>` 的 `target`。`roster.relationship-variety`（需 outline）：4 頁以上的簡報，單一 `relationship` 不得超過總頁數的一半。沒有計畫檔時只跑不需要計畫的規則（`geometry.*`、`structure.background`、`structure.notes`、`taboo.*`），`message` 加註「（沒有 plan/ 計畫檔，只驗幾何與骨架）」。`rule` 的固定值：`text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total`、`focus.single-title`、`geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap`、`style.font-size`、`style.text-fill`、`style.shape-fill`、`structure.background`、`structure.notes`、`structure.template`、`roster.page-count`、`roster.page-type`、`rhythm.breathing-cards`、`motion.transition`、`motion.enter`、`structure.scrim`、`structure.background-image`、`role.garnish-meaning`、`role.spine-count`、`role.edge-endpoints`、`role.node-label`、`blueprint.required`、`blueprint.nodes`、`blueprint.steps`、`role.required`、`role.garnish-animated`、`rhythm.repeated-shape`、`roster.relationship-variety`、`taboo.thank-you`、`taboo.duplicate-cover`、`taboo.stroke`。字級 ≤ 字級表 `caption` 的文字框（頁尾）允許延伸到畫布底 − 16·k，其餘文字框到畫布底 − 72·k。`structure.scrim`（需 design-spec）：頁面有 `data-comot-role="background"` 元素時，每個文字框（字級 ≤ caption 的頁尾與字級 ≥ claim 的大字除外）必須完全落在一個文件順序在它之前、fill 為 background 或 secondary_bg、opacity ≥ 0.6 的 rect 之內。背景圖元素本身不受任何規則約束。`blueprint.*`（需 outline）：`plan/outline.md` 的每頁可選擇性帶一個 `blueprint` 物件（非空字串 `shape`，加上非負整數 `nodes` 與 `steps`；寫了就必須完整）。有 blueprint 的頁面，`data-comot-role="node"` 的元素數必須等於 `nodes`，`on-click` 的 enter 效果數必須等於 `steps`。`role.*`（不需計畫）：元素可選擇性宣告 `data-comot-role`（`field`／`node`／`spine`／`edge`／`label`／`garnish`，另有 CLI 自己寫的 `background`）；沒有宣告的頁面驗法不變，有宣告則必須自洽——`garnish` 不得是文字框、一頁至多一條 `spine`、有 `edge` 時至少兩個 `node`、`label` 數不少於當作色塊的 `node`。文字框宣告上的角色會由 `slide add --svg`／`slide set --svg` 帶到正規化後的元素上；不在清單上的角色直接拒絕。`structure.background-image`（需 outline）：`plan/outline.md` 的 `background` 是 `on`（缺省值）時，每一頁都必須有 `data-comot-role="background"` 的元素。
+規則寫死在 Rust 裡，門檻依 `plan/design-spec.md` 的 `density` 選組（presentation：標題 ≤ 24 字、要點 ≤ 32 字且 ≤ 2 行、2～7 條、全頁 ≤ 1000 字；balanced：32／48／3 行／2～8／1400；text：40／64／4 行／2～9／2000；門檻刻意寫鬆——放不下的版面由 `geometry.*` 擋，這裡只攔明顯誇張的那種；字數不含空白，`{{ … }}` 動態文字佔位算 0 字），配色、字級表、`shape_language`（選填，`plain`／`swiss-minimal`／`soft-rounded`／`glass`／`paper-cut`／`ink-wash`／`chalkboard`／`sketch-notes`／`brutalist`／`data-dense` 之一，省略時為 `plain`；它只描述形狀行為、不含顏色）與 `layout` 錨點（`side_margin` / `bottom_margin` / `footer_margin` / `gutter` / `spacing`，整組可省略，省略時分別是 80／72／16／24／`[8,16,24,40,64]`；寫了就必須是合法數字）也從它讀——`geometry.*` 的安全區邊界取自前三個，沒有 design-spec 時才用同樣的預設值；頁數、關係、頁型、節奏從 `plan/outline.md` 讀（每頁必填 `relationship` ∈ order／link／parent／membership／contrast／overlap／none；`type` 選填，只有填了才驗 `roster.page-type` 與 `structure.template`）。`rhythm.repeated-shape`（需 outline）：相鄰兩頁的 `relationship` 相同、`blueprint.shape` 相同、`blueprint.nodes` 也相同時報錯。`blueprint.required`（需 outline）：`status` 是 `confirmed` 時每頁都必須有 `blueprint`。`role.required`（需 outline）：`relationship` 不是 `none` 的頁面至少要有一個 `data-slidra-role="node"` 的元素。`role.garnish-animated`（不需計畫）：`data-slidra-role="garnish"` 的元素不得是任何 `<slidra:effect>` 的 `target`。`roster.relationship-variety`（需 outline）：4 頁以上的簡報，單一 `relationship` 不得超過總頁數的一半。沒有計畫檔時只跑不需要計畫的規則（`geometry.*`、`structure.background`、`structure.notes`、`taboo.*`），`message` 加註「（沒有 plan/ 計畫檔，只驗幾何與骨架）」。`rule` 的固定值：`text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total`、`focus.single-title`、`geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap`、`style.font-size`、`style.text-fill`、`style.shape-fill`、`structure.background`、`structure.notes`、`structure.template`、`roster.page-count`、`roster.page-type`、`rhythm.breathing-cards`、`motion.transition`、`motion.enter`、`structure.scrim`、`structure.background-image`、`role.garnish-meaning`、`role.spine-count`、`role.edge-endpoints`、`role.node-label`、`blueprint.required`、`blueprint.nodes`、`blueprint.steps`、`role.required`、`role.garnish-animated`、`rhythm.repeated-shape`、`roster.relationship-variety`、`taboo.thank-you`、`taboo.duplicate-cover`、`taboo.stroke`。字級 ≤ 字級表 `caption` 的文字框（頁尾）允許延伸到畫布底 − 16·k，其餘文字框到畫布底 − 72·k。`structure.scrim`（需 design-spec）：頁面有 `data-slidra-role="background"` 元素時，每個文字框（字級 ≤ caption 的頁尾與字級 ≥ claim 的大字除外）必須完全落在一個文件順序在它之前、fill 為 background 或 secondary_bg、opacity ≥ 0.6 的 rect 之內。背景圖元素本身不受任何規則約束。`blueprint.*`（需 outline）：`plan/outline.md` 的每頁可選擇性帶一個 `blueprint` 物件（非空字串 `shape`，加上非負整數 `nodes` 與 `steps`；寫了就必須完整）。有 blueprint 的頁面，`data-slidra-role="node"` 的元素數必須等於 `nodes`，`on-click` 的 enter 效果數必須等於 `steps`。`role.*`（不需計畫）：元素可選擇性宣告 `data-slidra-role`（`field`／`node`／`spine`／`edge`／`label`／`garnish`，另有 CLI 自己寫的 `background`）；沒有宣告的頁面驗法不變，有宣告則必須自洽——`garnish` 不得是文字框、一頁至多一條 `spine`、有 `edge` 時至少兩個 `node`、`label` 數不少於當作色塊的 `node`。文字框宣告上的角色會由 `slide add --svg`／`slide set --svg` 帶到正規化後的元素上；不在清單上的角色直接拒絕。`structure.background-image`（需 outline）：`plan/outline.md` 的 `background` 是 `on`（缺省值）時，每一頁都必須有 `data-slidra-role="background"` 的元素。
 
 **成功 `data`**
 
@@ -2338,8 +2338,8 @@ comotion validate <presentation-id> [slide-path]
 **範例**
 
 ```
-comotion validate pres-1
-comotion validate pres-1 slides/003.svg
+slidra validate pres-1
+slidra validate pres-1 slides/003.svg
 ```
 
 ## `effect add`
@@ -2347,7 +2347,7 @@ comotion validate pres-1 slides/003.svg
 **語法**
 
 ```
-comotion effect add <presentation-id> <slide-path> <element-id>[,<element-id>...] --family <enter|emphasis|exit|path|media> --effect <effect-name> [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>] [--index <n>]
+slidra effect add <presentation-id> <slide-path> <element-id>[,<element-id>...] --family <enter|emphasis|exit|path|media> --effect <effect-name> [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>] [--index <n>]
 ```
 
 **參數**
@@ -2387,7 +2387,7 @@ comotion effect add <presentation-id> <slide-path> <element-id>[,<element-id>...
 **範例**
 
 ```
-comotion effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fade --duration 0.8
+slidra effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fade --duration 0.8
 ```
 
 ## `effect remove`
@@ -2395,7 +2395,7 @@ comotion effect add pres-1 slides/001.svg el-a,el-b --family enter --effect fade
 **語法**
 
 ```
-comotion effect remove <presentation-id> <slide-path> <index>[,<index>...]
+slidra effect remove <presentation-id> <slide-path> <index>[,<index>...]
 ```
 
 **參數**
@@ -2423,7 +2423,7 @@ comotion effect remove <presentation-id> <slide-path> <index>[,<index>...]
 **範例**
 
 ```
-comotion effect remove pres-1 slides/001.svg 2,3
+slidra effect remove pres-1 slides/001.svg 2,3
 ```
 
 ## `effect move`
@@ -2431,7 +2431,7 @@ comotion effect remove pres-1 slides/001.svg 2,3
 **語法**
 
 ```
-comotion effect move <presentation-id> <slide-path> <index> <up|down>
+slidra effect move <presentation-id> <slide-path> <index> <up|down>
 ```
 
 **參數**
@@ -2462,7 +2462,7 @@ comotion effect move <presentation-id> <slide-path> <index> <up|down>
 **範例**
 
 ```
-comotion effect move pres-1 slides/001.svg 2 up
+slidra effect move pres-1 slides/001.svg 2 up
 ```
 
 ## `effect set`
@@ -2470,7 +2470,7 @@ comotion effect move pres-1 slides/001.svg 2 up
 **語法**
 
 ```
-comotion effect set <presentation-id> <slide-path> <index> [--effect <effect-name>] [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>]
+slidra effect set <presentation-id> <slide-path> <index> [--effect <effect-name>] [--start <on-click|with-previous|after-previous>] [--duration <秒數>] [--delay <秒數>] [--d <svg-path-data>]
 ```
 
 **參數**
@@ -2511,7 +2511,7 @@ comotion effect set <presentation-id> <slide-path> <index> [--effect <effect-nam
 **範例**
 
 ```
-comotion effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previous
+slidra effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previous
 ```
 
 ## `effect list`
@@ -2519,7 +2519,7 @@ comotion effect set pres-1 slides/001.svg 1 --duration 1.2 --start after-previou
 **語法**
 
 ```
-comotion effect list <presentation-id> <slide-path>
+slidra effect list <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -2550,7 +2550,7 @@ comotion effect list <presentation-id> <slide-path>
 
 - `effects[]`：這張投影片的完整效果清單，依播放順序（等同 XML 文件順序）。`index` 是 **1-based**（`effect move`／`set`／`remove` 也吃 1-based `index`，兩者一致）；`d` 欄位只在 `family === "path"` 時才會出現，其餘 family 即使 XML 上有這個屬性也不會被驗證或使用（但寫入時逐字保留）。
 - `steps[]`：由 `effects[]` **推導**而來，不是儲存在檔案裡的獨立資料（ADR-0008）——`start === "on-click"` 的項目開啟一個新的 step，`with-previous`／`after-previous` 併入目前的 step。空效果清單回傳 `steps: []`。**`steps[].effects[]` 內的物件與頂層 `effects[]` 是同一個形狀、同一個 1-based `index`**，不是重新編號的子清單索引。
-- `transition`：**一律存在**，不是 `null`、不是省略。這張投影片沒有 `<comot:transition>` 時，回傳的是「缺席時的預設值」（`enter: { effect: "none", duration: 0.6 }`、`exit: { effect: "none", duration: 0.5 }`），語意上與「顯式設定成這個值」不可區分。
+- `transition`：**一律存在**，不是 `null`、不是省略。這張投影片沒有 `<slidra:transition>` 時，回傳的是「缺席時的預設值」（`enter: { effect: "none", duration: 0.6 }`、`exit: { effect: "none", duration: 0.5 }`），語意上與「顯式設定成這個值」不可區分。
 - `duration`／`delay` 一律是秒的數字；屬性缺席時填預設值（`family === "media"` 的效果預設 `duration: 0`，其餘 family 預設 `duration: 0.6`；`delay` 一律預設 `0`）。
 
 **錯誤情境**
@@ -2559,28 +2559,28 @@ comotion effect list <presentation-id> <slide-path>
 |---|---|
 | `presentation-id` 不存在 | `not-found` |
 | `slide-path` 不存在 | `not-found` |
-| 這張投影片還沒有任何 `<comot:effects>` 清單（從未新增過效果） | `not-found` |
+| 這張投影片還沒有任何 `<slidra:effects>` 清單（從未新增過效果） | `not-found` |
 | 清單裡任一項缺少必要屬性（`target`／`family`／`effect`／`start`） | `failed` |
 | `family`、`effect`、或 `start` 的值不在各自的固定集合裡 | `failed` |
 | `family === "path"` 但缺少 `d` 屬性 | `failed` |
 | `duration`／`delay` 屬性存在但不是合法的非負秒數（含屬性存在但為空字串的情形） | `failed` |
 | 某一項的 `target` 指向的元素不存在於這張投影片 | `failed` |
 | 清單第一項的 `start` 不是 `on-click`（沒有前面的 step 可以併入） | `failed` |
-| 這張投影片的 `<metadata>` 裡出現一組以上的 `<comot:effects>`（結構已損毀） | `failed` |
+| 這張投影片的 `<metadata>` 裡出現一組以上的 `<slidra:effects>`（結構已損毀） | `failed` |
 
-> 「這張投影片還沒有效果清單」是 `not-found`，這與其餘 `effect` 系列命令（`add` 之外，即 `remove`／`move`／`set`）共用同一個判斷：`effect list` 對一份「從未加過任何效果」的投影片回報 `not-found`，不是回傳 `effects: []` 的空清單——只有 `effect add` 會在清單不存在時建立它。清單存在但為空（理論上：曾經加過又全部移除，`<comot:effects>` 元素還在但沒有子節點）則正常回傳 `effects: []`、`steps: []`，不是錯誤。清單內容本身損毀（上表其餘各列）一律歸類為 `failed`，因為那是「內容不合法」而非「找不到清單」。
+> 「這張投影片還沒有效果清單」是 `not-found`，這與其餘 `effect` 系列命令（`add` 之外，即 `remove`／`move`／`set`）共用同一個判斷：`effect list` 對一份「從未加過任何效果」的投影片回報 `not-found`，不是回傳 `effects: []` 的空清單——只有 `effect add` 會在清單不存在時建立它。清單存在但為空（理論上：曾經加過又全部移除，`<slidra:effects>` 元素還在但沒有子節點）則正常回傳 `effects: []`、`steps: []`，不是錯誤。清單內容本身損毀（上表其餘各列）一律歸類為 `failed`，因為那是「內容不合法」而非「找不到清單」。
 
 **範例**
 
 ```
-comotion effect list pres-abc123 slides/001.svg
+slidra effect list pres-abc123 slides/001.svg
 ```
 ## `chart create`
 
 **語法**
 
 ```
-comotion chart create <presentation-id> <slide-path> [--type <bar|hbar|line|area|pie|donut>] [--series <n>] [--categories <n>] [--palette <brand|cool|warm>] [--x <n>] [--y <n>] [--width <n>] [--height <n>]
+slidra chart create <presentation-id> <slide-path> [--type <bar|hbar|line|area|pie|donut>] [--series <n>] [--categories <n>] [--palette <brand|cool|warm>] [--x <n>] [--y <n>] [--width <n>] [--height <n>]
 ```
 
 **參數**
@@ -2619,7 +2619,7 @@ comotion chart create <presentation-id> <slide-path> [--type <bar|hbar|line|area
 **範例**
 
 ```
-comotion chart create pres-1 slides/002.svg --type line --series 2 --categories 5
+slidra chart create pres-1 slides/002.svg --type line --series 2 --categories 5
 ```
 
 ## `chart data set`
@@ -2627,7 +2627,7 @@ comotion chart create pres-1 slides/002.svg --type line --series 2 --categories 
 **語法**
 
 ```
-comotion chart data set <presentation-id> <slide-path> <element-id> (--categories <c1,c2,...> --series 'name=v1,v2,...' (可重複) | --csv <path|-> | --csv-asset <虛擬路徑>)
+slidra chart data set <presentation-id> <slide-path> <element-id> (--categories <c1,c2,...> --series 'name=v1,v2,...' (可重複) | --csv <path|-> | --csv-asset <虛擬路徑>)
 ```
 
 **參數**
@@ -2637,8 +2637,8 @@ comotion chart data set <presentation-id> <slide-path> <element-id> (--categorie
   - `--categories <c1,c2,...>` 搭配一或多個 `--series 'name=v1,v2,...'`（可重複，每個系列一個旗標）；`values` 是逗號分隔數字列。
   - `--csv <path|->`：`path` 是本機檔案系統路徑，或字面字串 `-` 代表從標準輸入讀取（見通則「`-` 代表標準輸入」）。內容須是 RFC 4180 引號規則的 CSV（系列名可含逗號）、可有可無 BOM（會被去除）、`\r\n` 與 `\n` 皆可、忽略結尾空行；第一欄是類別名稱，其餘欄是各系列名稱與數值。
   - `--csv-asset <虛擬路徑>`：容器內 `assets/` 下某個 CSV 檔案的虛擬路徑；內容走同一支 CSV 剖析邏輯。
-  - 三選一是**驗證過的不變式**，不是三個各自獨立、恰巧只會給一個的旗標：命令列呼叫時，給 0 種或 2 種以上會在解析階段就直接失敗（見下方說明）；透過 `comotion serve` 直接以結構化輸入呼叫時，同樣必須恰好給一種，違反時回傳失敗。
-- `--csv -`：CLI 入口層會在 `dispatch` 之前把 `-` 代換成讀出的 stdin 全文，走內部欄位 `csvText`（不是 `csv`）。`comotion serve` 沒有終端機 stdin 可讀——若 handler 收到未被代換、字面值恰為 `"-"` 的 `csv`，必須直接失敗，訊息意義為「`--csv -` 只能從命令列使用」。
+  - 三選一是**驗證過的不變式**，不是三個各自獨立、恰巧只會給一個的旗標：命令列呼叫時，給 0 種或 2 種以上會在解析階段就直接失敗（見下方說明）；透過 `slidra serve` 直接以結構化輸入呼叫時，同樣必須恰好給一種，違反時回傳失敗。
+- `--csv -`：CLI 入口層會在 `dispatch` 之前把 `-` 代換成讀出的 stdin 全文，走內部欄位 `csvText`（不是 `csv`）。`slidra serve` 沒有終端機 stdin 可讀——若 handler 收到未被代換、字面值恰為 `"-"` 的 `csv`，必須直接失敗，訊息意義為「`--csv -` 只能從命令列使用」。
 
 **成功 `data`**
 
@@ -2653,7 +2653,7 @@ comotion chart data set <presentation-id> <slide-path> <element-id> (--categorie
 | `presentation-id` 不存在 | `not-found` |
 | `slide-path` 不存在 | `not-found` |
 | `slide-path` 存在但未列在該簡報的 `slides`／`templates` 清單裡 | `failed` |
-| `element-id` 在該投影片裡找不到，或找到但不是圖表元素（缺少 `data-comot-type="chart"`） | `failed` |
+| `element-id` 在該投影片裡找不到，或找到但不是圖表元素（缺少 `data-slidra-type="chart"`） | `failed` |
 | 三種資料來源給了 0 種或 2 種以上 | `failed` |
 | `--csv <path>` 指定的本機檔案不存在 | `not-found` |
 | `--csv-asset <虛擬路徑>` 在容器內找不到 | `not-found` |
@@ -2668,15 +2668,15 @@ comotion chart data set <presentation-id> <slide-path> <element-id> (--categorie
 **範例**
 
 ```
-comotion chart data set pres-1 slides/001.svg el-1 --categories Q1,Q2,Q3 --series '營收=100,120,140'
-cat sales.csv | comotion chart data set pres-1 slides/001.svg el-1 --csv -
+slidra chart data set pres-1 slides/001.svg el-1 --categories Q1,Q2,Q3 --series '營收=100,120,140'
+cat sales.csv | slidra chart data set pres-1 slides/001.svg el-1 --csv -
 ```
 ## `chart type set`
 
 **語法**
 
 ```
-comotion chart type set <presentation-id> <slide-path> <element-id> <type>
+slidra chart type set <presentation-id> <slide-path> <element-id> <type>
 ```
 
 **參數**
@@ -2702,7 +2702,7 @@ comotion chart type set <presentation-id> <slide-path> <element-id> <type>
 | `slide-path` 不存在 | `not-found` |
 | `slide-path` 存在但不是 `slides`/`templates` 清單裡的項目 | `failed` |
 | `element-id` 在這張投影片找不到 | `failed`（**不是** `not-found`——每一個 chart 子命令的「元素不存在」一律分類為 `failed`） |
-| `element-id` 存在，但不是圖表元素（沒有 `data-comot-type="chart"`） | `failed` |
+| `element-id` 存在，但不是圖表元素（沒有 `data-slidra-type="chart"`） | `failed` |
 | `type` 不屬於固定集合 | `failed` |
 | 新 `type` 與現有 `stacked=true` 不相容（新 type 不在 `bar/hbar/area` 之列） | `failed` |
 | 新 `type` 是 `pie`/`donut`，但現有 `axes` 是 `dual` | `failed` |
@@ -2710,7 +2710,7 @@ comotion chart type set <presentation-id> <slide-path> <element-id> <type>
 **範例**
 
 ```
-comotion chart type set pres-1 slides/002.svg chart-1 area
+slidra chart type set pres-1 slides/002.svg chart-1 area
 ```
 
 ## `chart palette set`
@@ -2718,7 +2718,7 @@ comotion chart type set pres-1 slides/002.svg chart-1 area
 **語法**
 
 ```
-comotion chart palette set <presentation-id> <slide-path> <element-id> <palette> [--color 'name=#hex'] (可重複)
+slidra chart palette set <presentation-id> <slide-path> <element-id> <palette> [--color 'name=#hex'] (可重複)
 ```
 
 **參數**
@@ -2751,7 +2751,7 @@ comotion chart palette set <presentation-id> <slide-path> <element-id> <palette>
 **範例**
 
 ```
-comotion chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1=#3366ff'
+slidra chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1=#3366ff'
 ```
 
 ## `chart axis set`
@@ -2759,7 +2759,7 @@ comotion chart palette set pres-1 slides/002.svg chart-1 cool --color 'Series 1=
 **語法**
 
 ```
-comotion chart axis set <presentation-id> <slide-path> <element-id> <single|dual> [--right <系列名>] (可重複)
+slidra chart axis set <presentation-id> <slide-path> <element-id> <single|dual> [--right <系列名>] (可重複)
 ```
 
 **參數**
@@ -2795,7 +2795,7 @@ comotion chart axis set <presentation-id> <slide-path> <element-id> <single|dual
 **範例**
 
 ```
-comotion chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
+slidra chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
 ```
 
 ## `chart stack set`
@@ -2803,7 +2803,7 @@ comotion chart axis set pres-1 slides/002.svg chart-1 dual --right 'Series 2'
 **語法**
 
 ```
-comotion chart stack set <presentation-id> <slide-path> <element-id> <on|off>
+slidra chart stack set <presentation-id> <slide-path> <element-id> <on|off>
 ```
 
 **參數**
@@ -2836,7 +2836,7 @@ comotion chart stack set <presentation-id> <slide-path> <element-id> <on|off>
 **範例**
 
 ```
-comotion chart stack set pres-1 slides/002.svg chart-1 on
+slidra chart stack set pres-1 slides/002.svg chart-1 on
 ```
 
 ## `chart legend set`
@@ -2844,7 +2844,7 @@ comotion chart stack set pres-1 slides/002.svg chart-1 on
 **語法**
 
 ```
-comotion chart legend set <presentation-id> <slide-path> <element-id> <legend>
+slidra chart legend set <presentation-id> <slide-path> <element-id> <legend>
 ```
 
 **參數**
@@ -2874,7 +2874,7 @@ comotion chart legend set <presentation-id> <slide-path> <element-id> <legend>
 **範例**
 
 ```
-comotion chart legend set pres-1 slides/002.svg chart-1 right
+slidra chart legend set pres-1 slides/002.svg chart-1 right
 ```
 
 ## `chart option set`
@@ -2882,7 +2882,7 @@ comotion chart legend set pres-1 slides/002.svg chart-1 right
 **語法**
 
 ```
-comotion chart option set <presentation-id> <slide-path> <element-id> <key> <value>
+slidra chart option set <presentation-id> <slide-path> <element-id> <key> <value>
 ```
 
 **參數**
@@ -2916,7 +2916,7 @@ comotion chart option set <presentation-id> <slide-path> <element-id> <key> <val
 **範例**
 
 ```
-comotion chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
+slidra chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
 ```
 
 ## `slide render`
@@ -2924,7 +2924,7 @@ comotion chart option set pres-1 slides/002.svg chart-1 x-title '銷售季度'
 **語法**
 
 ```
-comotion slide render <presentation-id> <slide-path>
+slidra slide render <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -2951,7 +2951,7 @@ comotion slide render <presentation-id> <slide-path>
 **範例**
 
 ```
-comotion slide render pres-abc123 slides/001.svg
+slidra slide render pres-abc123 slides/001.svg
 ```
 
 ## `font import`
@@ -2959,7 +2959,7 @@ comotion slide render pres-abc123 slides/001.svg
 **語法**
 
 ```
-comotion font import <presentation-id> <source> --family <家族名> --license <授權> --source <出處> [--license-file <路徑或 URL>]
+slidra font import <presentation-id> <source> --family <家族名> --license <授權> --source <出處> [--license-file <路徑或 URL>]
 ```
 
 **參數**
@@ -2971,7 +2971,7 @@ comotion font import <presentation-id> <source> --family <家族名> --license <
 - `--source`（旗標）：字串，必填。字型的出處（通常是下載頁網址）。
 - `--license-file`：字串，選填。授權全文的來源（路徑或 URL）；省略時以 `--license` 與 `--source` 的內容寫出一份 `fonts/LICENSE-<檔名>.txt`。
 
-`--license`／`--source` 之所以必填，是因為 `project.json` 的 `FontEntry` 五個欄位都必填（見 `comot-format.md`）：嵌入他人字型的簡報必須帶著它被嵌入時的條款。
+`--license`／`--source` 之所以必填，是因為 `project.json` 的 `FontEntry` 五個欄位都必填（見 `slidra-format.md`）：嵌入他人字型的簡報必須帶著它被嵌入時的條款。
 
 容器內的檔名取自**家族名**而非來源檔名（家族唯一，所以不會與既有字型撞名），副檔名沿用來源（`ttf`／`otf`／`ttc`／`woff2`／`woff`，認不出時用 `ttf`）。寫入走 `create_presentation_file`，所以匯入本身可以復原。
 
@@ -2995,7 +2995,7 @@ comotion font import <presentation-id> <source> --family <家族名> --license <
 **範例**
 
 ```
-comotion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'
+slidra font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'
 ```
 
 ## `asset import`
@@ -3003,8 +3003,8 @@ comotion font import 4Hw4-c-QfUbm https://fonts.example.org/NotoSerifTC-Regular.
 **語法**
 
 ```
-comotion asset import <presentation-id> <source> [--as csv]
-comotion asset import <presentation-id> --svg <markup> --name <檔名.svg>
+slidra asset import <presentation-id> <source> [--as csv]
+slidra asset import <presentation-id> --svg <markup> --name <檔名.svg>
 ```
 
 **參數**
@@ -3043,26 +3043,26 @@ comotion asset import <presentation-id> --svg <markup> --name <檔名.svg>
 | 檔頭位元組不符合任何支援的媒體格式（且未給 `--as csv`） | `failed` |
 | `--svg` 與 `<source>` 或 `--as` 同時給；`--svg` 缺 `--name`；`--name` 不合格式；`--svg` 根節點不是 `<svg>` 或含禁用元素；`assets/<檔名>` 已存在 | `failed` |
 
-> **本機來源檔案不存在 → `not-found`**：理由是與 `chart data set --csv` 讀本機檔案時 ENOENT 對應到 `CoMotionNotFoundError`（`not-found`）的慣例保持一致。
+> **本機來源檔案不存在 → `not-found`**：理由是與 `chart data set --csv` 讀本機檔案時 ENOENT 對應到 `SlidraNotFoundError`（`not-found`）的慣例保持一致。
 
 **範例**
 
 ```
-comotion asset import pres-abc123 https://example.com/photo.png
-comotion asset import pres-abc123 ./sales.csv --as csv
+slidra asset import pres-abc123 https://example.com/photo.png
+slidra asset import pres-abc123 ./sales.csv --as csv
 ```
 ## `slide add`
 
 **語法**
 
 ```
-comotion slide add <presentation-id> [--template <template-path>] [--svg <markup>] [--at <index>]
+slidra slide add <presentation-id> [--template <template-path>] [--svg <markup>] [--at <index>]
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
-- `--svg`：選填字串，一整頁的 SVG 標記（#303，ADR-0018）：agent 一次寫完一頁，CoMotion 寫入前跑 ingest——根節點必須是 `<svg>`；`viewBox` 省略時補成畫布尺寸、與畫布不同則拒絕；每個直接放在根 `<svg>` 底下、帶 `data-comot-text-width` 的 `<text>`「文字框宣告」會被換成真正的文字框（與 `textbox add` 產出相同的 `<g>` 結構：`x`／`y` 是左上角、內容以換行分段、`data-comot-list` 每段一個 token、`data-comot-text-align` 對齊、`font-size` 省略為 24、`font-family` 省略為 Noto Sans TC；宣告裡不得有子元素）；接著跑與 `convert` 相同的正規化（裸圖元包 `<g>`、補 id、transform 搬上容器），`<script>`／`<foreignObject>`、重複 id 等不可修的問題一律拒絕、不落地。`<defs>`、`<style>`、漸層、濾鏡、clipPath、`path` 皆允許。agent 可以自己給 `id`。與 `--template` 互斥。
+- `--svg`：選填字串，一整頁的 SVG 標記（#303，ADR-0018）：agent 一次寫完一頁，Slidra 寫入前跑 ingest——根節點必須是 `<svg>`；`viewBox` 省略時補成畫布尺寸、與畫布不同則拒絕；每個直接放在根 `<svg>` 底下、帶 `data-slidra-text-width` 的 `<text>`「文字框宣告」會被換成真正的文字框（與 `textbox add` 產出相同的 `<g>` 結構：`x`／`y` 是左上角、內容以換行分段、`data-slidra-list` 每段一個 token、`data-slidra-text-align` 對齊、`font-size` 省略為 24、`font-family` 省略為 Noto Sans TC；宣告裡不得有子元素）；接著跑與 `convert` 相同的正規化（裸圖元包 `<g>`、補 id、transform 搬上容器），`<script>`／`<foreignObject>`、重複 id 等不可修的問題一律拒絕、不落地。`<defs>`、`<style>`、漸層、濾鏡、clipPath、`path` 皆允許。agent 可以自己給 `id`。與 `--template` 互斥。
 - `--template`：選填字串，`project.json` 的 `templates` 清單裡某個範本的虛擬路徑；省略則新增一張空白投影片（依簡報目前畫布尺寸產生一個沒有任何元素的合規 `<svg>`）。套用範本時，範本內容會逐位元組複製，但每個元素的 `id`（以及引用這些 id 的效果/留言 `target`）都會重新產生，避免與範本本身或其他已套用過的投影片重複。
 - `--at`：選填，數字字串；省略則附加在最後一張投影片之後。必須是整數，且落在 `0`（清單最前）到「目前投影片總數」（清單最後，等同附加）之間，含端點；只有解析階段檢查「是否為合法數字」，是否為整數與是否落在範圍內是在實際執行時才驗證。
 
@@ -3092,9 +3092,9 @@ comotion slide add <presentation-id> [--template <template-path>] [--svg <markup
 **範例**
 
 ```
-comotion slide add pres-abc123
-comotion slide add pres-abc123 --template templates/001.svg --at 0
-comotion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'
+slidra slide add pres-abc123
+slidra slide add pres-abc123 --template templates/001.svg --at 0
+slidra slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'
 ```
 
 ## `slide set`
@@ -3102,7 +3102,7 @@ comotion slide add pres-abc123 --svg '<svg viewBox="0 0 1280 720" style="backgro
 **語法**
 
 ```
-comotion slide set <presentation-id> <slide-path> --svg <markup>
+slidra slide set <presentation-id> <slide-path> --svg <markup>
 ```
 
 **參數**
@@ -3131,7 +3131,7 @@ comotion slide set <presentation-id> <slide-path> --svg <markup>
 **範例**
 
 ```
-comotion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-comot-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'
+slidra slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-slidra-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'
 ```
 
 ## `slide background set`
@@ -3139,19 +3139,19 @@ comotion slide set pres-abc123 slides/003.svg --svg '<svg viewBox="0 0 1280 720"
 **語法**
 
 ```
-comotion slide background set <presentation-id> <slide-path> --asset <assets/檔名> [--opacity <0～1>]
-comotion slide background set <presentation-id> <slide-path> --none
+slidra slide background set <presentation-id> <slide-path> --asset <assets/檔名> [--opacity <0～1>]
+slidra slide background set <presentation-id> <slide-path> --none
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
 - `slide-path`：字串，必填，`slides` 或 `templates` 清單裡的虛擬路徑。
-- `--asset`：字串，`assets/` 底下既有資產的虛擬路徑。在該頁**最底層**（`<metadata>` 之後、所有元素之前）放一個滿版 `<image href x=0 y=0 width=畫布寬 height=畫布高>`，容器固定為 `id="el-background"`、`data-comot-name="背景圖"`、`data-comot-role="background"`、`data-comot-lock="true"`。該頁已有 `data-comot-role="background"` 的元素時整個替換，不重複。
+- `--asset`：字串，`assets/` 底下既有資產的虛擬路徑。在該頁**最底層**（`<metadata>` 之後、所有元素之前）放一個滿版 `<image href x=0 y=0 width=畫布寬 height=畫布高>`，容器固定為 `id="el-background"`、`data-slidra-name="背景圖"`、`data-slidra-role="background"`、`data-slidra-lock="true"`。該頁已有 `data-slidra-role="background"` 的元素時整個替換，不重複。
 - `--opacity`：數字，選填，0～1，寫在 `<image>` 上。
 - `--none`：移除該元素。`--asset` 與 `--none` 必須且只能給一個。
 
-`slide add --svg`／`slide set --svg` 的內容裡若已含 `data-comot-role="background"` 的容器，原樣保留並補上鎖定。這個寫入進入復原歷史。
+`slide add --svg`／`slide set --svg` 的內容裡若已含 `data-slidra-role="background"` 的容器，原樣保留並補上鎖定。這個寫入進入復原歷史。
 
 **成功 `data`**
 
@@ -3168,8 +3168,8 @@ comotion slide background set <presentation-id> <slide-path> --none
 **範例**
 
 ```
-comotion slide background set pres-abc123 slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8
-comotion slide background set pres-abc123 slides/002.svg --none
+slidra slide background set pres-abc123 slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8
+slidra slide background set pres-abc123 slides/002.svg --none
 ```
 
 ## `slide delete`
@@ -3177,7 +3177,7 @@ comotion slide background set pres-abc123 slides/002.svg --none
 **語法**
 
 ```
-comotion slide delete <presentation-id> <slide-path>
+slidra slide delete <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -3201,7 +3201,7 @@ comotion slide delete <presentation-id> <slide-path>
 **範例**
 
 ```
-comotion slide delete pres-abc123 slides/003.svg
+slidra slide delete pres-abc123 slides/003.svg
 ```
 
 ## `slide duplicate`
@@ -3209,7 +3209,7 @@ comotion slide delete pres-abc123 slides/003.svg
 **語法**
 
 ```
-comotion slide duplicate <presentation-id> <slide-path>
+slidra slide duplicate <presentation-id> <slide-path>
 ```
 
 **參數**
@@ -3234,7 +3234,7 @@ comotion slide duplicate <presentation-id> <slide-path>
 **範例**
 
 ```
-comotion slide duplicate pres-abc123 slides/001.svg
+slidra slide duplicate pres-abc123 slides/001.svg
 ```
 
 ## `slide move`
@@ -3242,7 +3242,7 @@ comotion slide duplicate pres-abc123 slides/001.svg
 **語法**
 
 ```
-comotion slide move <presentation-id> <slide-path> <new-index>
+slidra slide move <presentation-id> <slide-path> <new-index>
 ```
 
 **參數**
@@ -3268,7 +3268,7 @@ comotion slide move <presentation-id> <slide-path> <new-index>
 **範例**
 
 ```
-comotion slide move pres-abc123 slides/003.svg 0
+slidra slide move pres-abc123 slides/003.svg 0
 ```
 
 ## `slide notes set`
@@ -3276,7 +3276,7 @@ comotion slide move pres-abc123 slides/003.svg 0
 **語法**
 
 ```
-comotion slide notes set <presentation-id> <slide-path> <text>
+slidra slide notes set <presentation-id> <slide-path> <text>
 ```
 
 **參數**
@@ -3301,8 +3301,8 @@ comotion slide notes set <presentation-id> <slide-path> <text>
 **範例**
 
 ```
-comotion slide notes set pres-abc123 slides/001.svg '記得先講開場故事'
-comotion slide notes set pres-abc123 slides/001.svg ''
+slidra slide notes set pres-abc123 slides/001.svg '記得先講開場故事'
+slidra slide notes set pres-abc123 slides/001.svg ''
 ```
 
 ## `slide transition set`
@@ -3310,7 +3310,7 @@ comotion slide notes set pres-abc123 slides/001.svg ''
 **語法**
 
 ```
-comotion slide transition set <presentation-id> <slide-path> [--enter none|fade|slide|zoom] [--enter-duration <seconds>] [--exit none|fade|slide|zoom] [--exit-duration <seconds>] [--all]
+slidra slide transition set <presentation-id> <slide-path> [--enter none|fade|slide|zoom] [--enter-duration <seconds>] [--exit none|fade|slide|zoom] [--exit-duration <seconds>] [--all]
 ```
 
 **參數**
@@ -3341,8 +3341,8 @@ comotion slide transition set <presentation-id> <slide-path> [--enter none|fade|
 **範例**
 
 ```
-comotion slide transition set pres-abc123 slides/001.svg --enter fade --enter-duration 0.4
-comotion slide transition set pres-abc123 slides/001.svg --exit zoom --all
+slidra slide transition set pres-abc123 slides/001.svg --enter fade --enter-duration 0.4
+slidra slide transition set pres-abc123 slides/001.svg --exit zoom --all
 ```
 
 ## `slide style set`
@@ -3350,7 +3350,7 @@ comotion slide transition set pres-abc123 slides/001.svg --exit zoom --all
 **語法**
 
 ```
-comotion slide style set <presentation-id> <slide-path> [--background <color>] [--accent <color>]
+slidra slide style set <presentation-id> <slide-path> [--background <color>] [--accent <color>]
 ```
 
 **參數**
@@ -3358,7 +3358,7 @@ comotion slide style set <presentation-id> <slide-path> [--background <color>] [
 - `presentation-id`：字串，必填。
 - `slide-path`：字串，必填，可以是已登記的投影片或範本（跟 `text set` 那一族一樣，透過 `resolveVirtualFilePath` + 「必須列在 slides 或 templates」檢查，不是走 `slide-ops` 那一族的「只認 slides」規則）。
 - `--background`：選填字串，寫入該投影片根 `<svg>` 的 `style` 屬性裡的 `background-color` 宣告。**允許空字串 `''`，代表清除既有的 `background-color` 宣告**，而不是把它設成空字串的顏色值。
-- `--accent`：選填字串，同 `--background`，對應的 CSS 宣告是 `--comot-accent`（一個自訂屬性）；空字串 `''` 同樣代表清除。
+- `--accent`：選填字串，同 `--background`，對應的 CSS 宣告是 `--slidra-accent`（一個自訂屬性）；空字串 `''` 同樣代表清除。
 - `--background`、`--accent` 至少要提供一個，否則在命令解析階段就報錯（不會進入實際執行）。這個寫入會進入復原歷史（跟「頁面尺寸」那個唯一例外不同）。
 
 **成功 `data`**
@@ -3378,8 +3378,8 @@ comotion slide style set <presentation-id> <slide-path> [--background <color>] [
 **範例**
 
 ```
-comotion slide style set pres-abc123 slides/001.svg --background '#1a1a2e' --accent '#e94560'
-comotion slide style set pres-abc123 slides/001.svg --background ''
+slidra slide style set pres-abc123 slides/001.svg --background '#1a1a2e' --accent '#e94560'
+slidra slide style set pres-abc123 slides/001.svg --background ''
 ```
 
 ## `presentation canvas set`
@@ -3387,7 +3387,7 @@ comotion slide style set pres-abc123 slides/001.svg --background ''
 **語法**
 
 ```
-comotion presentation canvas set <presentation-id> --width <數值> --height <數值>
+slidra presentation canvas set <presentation-id> --width <數值> --height <數值>
 ```
 
 **參數**
@@ -3415,14 +3415,14 @@ comotion presentation canvas set <presentation-id> --width <數值> --height <�
 **範例**
 
 ```
-comotion presentation canvas set pres-abc123 --width 1920 --height 1080
+slidra presentation canvas set pres-abc123 --width 1920 --height 1080
 ```
 ## `template add`
 
 **語法**
 
 ```
-comotion template add <presentation-id> [--from <slide-path>] [--name <name>]
+slidra template add <presentation-id> [--from <slide-path>] [--name <name>]
 ```
 
 **參數**
@@ -3449,7 +3449,7 @@ comotion template add <presentation-id> [--from <slide-path>] [--name <name>]
 **範例**
 
 ```
-comotion template add pres-1 --from slides/001.svg --name '標題頁範本'
+slidra template add pres-1 --from slides/001.svg --name '標題頁範本'
 ```
 
 ## `template list`
@@ -3457,7 +3457,7 @@ comotion template add pres-1 --from slides/001.svg --name '標題頁範本'
 **語法**
 
 ```
-comotion template list <presentation-id>
+slidra template list <presentation-id>
 ```
 
 **參數**
@@ -3481,7 +3481,7 @@ comotion template list <presentation-id>
 **範例**
 
 ```
-comotion template list pres-1
+slidra template list pres-1
 ```
 
 ## `template rename`
@@ -3489,7 +3489,7 @@ comotion template list pres-1
 **語法**
 
 ```
-comotion template rename <presentation-id> <template-path> <new-name>
+slidra template rename <presentation-id> <template-path> <new-name>
 ```
 
 **參數**
@@ -3504,7 +3504,7 @@ comotion template rename <presentation-id> <template-path> <new-name>
 {}
 ```
 
-實際上這個指令的 handler 回傳 `{ ok: true, message }`，完全沒有設定 `data` 欄位（型別是 `void`，不是「空物件 `{}`」）；`comotion` bin 只有在 `result.data !== undefined` 時才印出 JSON 區塊，因此這個指令的終端輸出只有 `message` 那一行文字，不會印出任何 JSON。
+實際上這個指令的 handler 回傳 `{ ok: true, message }`，完全沒有設定 `data` 欄位（型別是 `void`，不是「空物件 `{}`」）；`slidra` bin 只有在 `result.data !== undefined` 時才印出 JSON 區塊，因此這個指令的終端輸出只有 `message` 那一行文字，不會印出任何 JSON。
 
 **錯誤情境**
 
@@ -3518,7 +3518,7 @@ comotion template rename <presentation-id> <template-path> <new-name>
 **範例**
 
 ```
-comotion template rename pres-1 templates/001.svg '新標題頁'
+slidra template rename pres-1 templates/001.svg '新標題頁'
 ```
 
 ## `template delete`
@@ -3526,7 +3526,7 @@ comotion template rename pres-1 templates/001.svg '新標題頁'
 **語法**
 
 ```
-comotion template delete <presentation-id> <template-path>
+slidra template delete <presentation-id> <template-path>
 ```
 
 **參數**
@@ -3553,14 +3553,14 @@ comotion template delete <presentation-id> <template-path>
 **範例**
 
 ```
-comotion template delete pres-1 templates/001.svg
+slidra template delete pres-1 templates/001.svg
 ```
 ## `comment add`
 
 **語法**
 
 ```
-comotion comment add <presentation-id> <slide-path> <target> <text> [--author <name>]
+slidra comment add <presentation-id> <slide-path> <target> <text> [--author <name>]
 ```
 
 **參數**
@@ -3591,8 +3591,8 @@ comotion comment add <presentation-id> <slide-path> <target> <text> [--author <n
 **範例**
 
 ```
-comotion comment add pres-abc123 slides/001.svg page '整體配色可以再深一點'
-comotion comment add pres-abc123 slides/001.svg el-title '標題字體太小' --author reviewer1
+slidra comment add pres-abc123 slides/001.svg page '整體配色可以再深一點'
+slidra comment add pres-abc123 slides/001.svg el-title '標題字體太小' --author reviewer1
 ```
 
 ## `comment edit`
@@ -3600,7 +3600,7 @@ comotion comment add pres-abc123 slides/001.svg el-title '標題字體太小' --
 **語法**
 
 ```
-comotion comment edit <presentation-id> <slide-path> <comment-id> <text>
+slidra comment edit <presentation-id> <slide-path> <comment-id> <text>
 ```
 
 **參數**
@@ -3628,7 +3628,7 @@ comotion comment edit <presentation-id> <slide-path> <comment-id> <text>
 **範例**
 
 ```
-comotion comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內容'
+slidra comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內容'
 ```
 
 ## `comment delete`
@@ -3636,14 +3636,14 @@ comotion comment edit pres-abc123 slides/001.svg c-a1b2c3d4 '改過的留言內�
 **語法**
 
 ```
-comotion comment delete <presentation-id> <slide-path> <comment-id>
+slidra comment delete <presentation-id> <slide-path> <comment-id>
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
 - `slide-path`：字串，必填，必須是 `slides` 清單裡的投影片。
-- `comment-id`：位置引數，必填，既有留言的 id。刪除最後一則留言時，留言容器本身（`<comot:comments>`）會留空，不會被整個移除。
+- `comment-id`：位置引數，必填，既有留言的 id。刪除最後一則留言時，留言容器本身（`<slidra:comments>`）會留空，不會被整個移除。
 
 **成功 `data`**
 
@@ -3662,7 +3662,7 @@ comotion comment delete <presentation-id> <slide-path> <comment-id>
 **範例**
 
 ```
-comotion comment delete pres-abc123 slides/001.svg c-a1b2c3d4
+slidra comment delete pres-abc123 slides/001.svg c-a1b2c3d4
 ```
 
 ## `comment list`
@@ -3670,7 +3670,7 @@ comotion comment delete pres-abc123 slides/001.svg c-a1b2c3d4
 **語法**
 
 ```
-comotion comment list <presentation-id> [slide-path]
+slidra comment list <presentation-id> [slide-path]
 ```
 
 **參數**
@@ -3707,6 +3707,6 @@ comotion comment list <presentation-id> [slide-path]
 **範例**
 
 ```
-comotion comment list pres-abc123
-comotion comment list pres-abc123 slides/001.svg
+slidra comment list pres-abc123
+slidra comment list pres-abc123 slides/001.svg
 ```

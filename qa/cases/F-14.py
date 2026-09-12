@@ -7,9 +7,9 @@
 
     open_deck() / goto_slide(n) / select(name_or_id) / js(expression)
 
-demo 第 3 頁（`demo/slides/003.svg`）固定有 3 個 `comot:effect`（第一點／
+demo 第 3 頁（`demo/slides/003.svg`）固定有 3 個 `slidra:effect`（第一點／
 第二點／第三點，皆 enter/fade 或 appear），已用
-`grep -c "comot:effect " demo/slides/003.svg` 核對過。Animate › Object 的
+`grep -c "slidra:effect " demo/slides/003.svg` 核對過。Animate › Object 的
 卡片清單列的是「目前投影片的全部效果」，不是只列被選取的元素
 （AnimateObjectPanel.tsx 的 `useSlideEffects`/`buildCards`），所以只要任
 一元素被選取（讓右欄的 Object 子分頁從 disabled 變成可切換、並依

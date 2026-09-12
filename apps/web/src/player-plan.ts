@@ -16,7 +16,7 @@ import { fetchSlideEffectPlan } from "./effects.js";
 import type { Effect, SlideTransition, Step } from "./effects.js";
 
 export interface MediaCue {
-  /** The raw `data-comot-media` value, unmodified — the play document's <base> resolves it. */
+  /** The raw `data-slidra-media` value, unmodified — the play document's <base> resolves it. */
   src: string;
   kind: "video" | "audio";
 }
@@ -42,7 +42,7 @@ export interface PlayerPlan {
   /** Keyed by the `family="media"` effect's target id — see mediaCuesFor below. */
   media: Record<string, MediaCue>;
   /**
-   * Every `data-comot-media` element on the slide, effect or no effect —
+   * Every `data-slidra-media` element on the slide, effect or no effect —
    * `stageMediaFor`'s own table, the same one view mode's stage layer
    * already gets. Play mode needs it because a video an author simply
    * inserted carries no `family="media"` effect at all: without this, the
@@ -60,7 +60,7 @@ export interface PlayerPlan {
    */
   embedIds: string[];
   /**
-   * F8 (NOOP-289 決定 E1): the slide's `<comot:transition>`, off the same
+   * F8 (NOOP-289 決定 E1): the slide's `<slidra:transition>`, off the same
    * `fetchSlideEffectPlan` call `steps`/`hidden` above already came from —
    * `renderPlay()` used to re-derive this itself by parsing `svgMarkup`
    * directly (`readSlideTransition`, core), which the web bundle no longer
@@ -156,19 +156,19 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
     // parseEffects already verified `target` resolves to an element in this
     // document — that check ran against the same markup, so it holds here too.
     const el = doc.getElementById(target) as Element;
-    // [E2.T17]: an embed's `data-comot-media` is a third-party player URL,
+    // [E2.T17]: an embed's `data-slidra-media` is a third-party player URL,
     // not a file — it has no extension for `mediaKindFor` to classify, and
     // there is no <video> element for the runtime to drive. A media effect
     // on one is legal and meaningful (it plays the embedded player, via
     // that player's own API from the parent document); it simply is not a
     // media CUE. `plan.embedIds` is how the runtime recognises it.
-    if (el.hasAttribute("data-comot-embed")) continue;
-    const src = el.getAttribute("data-comot-media");
+    if (el.hasAttribute("data-slidra-embed")) continue;
+    const src = el.getAttribute("data-slidra-media");
     if (!src) {
       // ADR-0009: every effect points at an element, and a media effect's
-      // element must carry data-comot-media (ADR-0005) — its absence is a
+      // element must carry data-slidra-media (ADR-0005) — its absence is a
       // damaged presentation, not a silently-skipped effect.
-      throw new Error(`元素「${target}」的效果是 family="media"，但沒有 data-comot-media，簡報已損毀。`);
+      throw new Error(`元素「${target}」的效果是 family="media"，但沒有 data-slidra-media，簡報已損毀。`);
     }
     media[target] = { src, kind: mediaKindFor(src, target) };
   }
@@ -182,19 +182,19 @@ function mediaKindFor(src: string, target: string): "video" | "audio" {
   if (VIDEO_EXTENSIONS.includes(extension)) return "video";
   if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
   throw new Error(
-    `元素「${target}」的 data-comot-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
+    `元素「${target}」的 data-slidra-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
   );
 }
 
 export interface StageMediaEntry {
-  /** The raw `data-comot-media` value, unmodified — same contract as `MediaCue.src`. */
+  /** The raw `data-slidra-media` value, unmodified — same contract as `MediaCue.src`. */
   src: string;
   kind: "video" | "audio";
 }
 
 /**
  * [E2.T17] plan §4.4: the stage (view-mode) counterpart of `mediaCuesFor`,
- * but scanning every `data-comot-media` element in the slide rather than
+ * but scanning every `data-slidra-media` element in the slide rather than
  * only the ones a `family="media"` effect points at — a slide can (and, per
  * the existing fixtures, does) carry ADR-0005 media placeholders with no
  * effect on them at all. Kept in this module, not `selection-runtime.js`
@@ -204,7 +204,7 @@ export interface StageMediaEntry {
  * Deliberately DOES NOT throw the way `mediaKindFor` does: `mediaCuesFor`
  * only ever sees elements an author explicitly wired a media effect to, so
  * an unsupported extension there is a damaged presentation. This function
- * walks every `data-comot-media` element on the page, image placeholders
+ * walks every `data-slidra-media` element on the page, image placeholders
  * (`style-panel-deck`'s photo) included — skipping what it cannot classify
  * is correct here, not silently degraded.
  */
@@ -213,17 +213,17 @@ export function stageMediaFor(svgMarkup: string): Record<string, StageMediaEntry
   // Object.create(null): same ADR-0010 untrusted-id reasoning as
   // mediaCuesFor above — a legal SVG id can be "__proto__".
   const result: Record<string, StageMediaEntry> = Object.create(null);
-  const elements = doc.querySelectorAll("[data-comot-media]");
+  const elements = doc.querySelectorAll("[data-slidra-media]");
   for (const el of Array.from(elements)) {
     const id = el.getAttribute("id");
-    const src = el.getAttribute("data-comot-media");
+    const src = el.getAttribute("data-slidra-media");
     if (!id || !src) continue;
     // An embed is not a media file: `src` is a third-party player URL with
     // no bytes and no extension to classify, and it is rendered by the
     // parent document's overlay (see stageEmbedsFor below), never by
     // either runtime's own <video>/<audio>.
-    if (el.hasAttribute("data-comot-embed")) continue;
-    const declaredType = el.getAttribute("data-comot-type");
+    if (el.hasAttribute("data-slidra-embed")) continue;
+    const declaredType = el.getAttribute("data-slidra-type");
     const kind = declaredType === "video" || declaredType === "audio" ? declaredType : mediaKindForStage(src);
     if (!kind) continue;
     result[id] = { src, kind };
@@ -232,9 +232,9 @@ export function stageMediaFor(svgMarkup: string): Record<string, StageMediaEntry
 }
 
 export interface StageEmbedEntry {
-  /** `data-comot-embed`'s value, already narrowed to a provider this build knows. */
+  /** `data-slidra-embed`'s value, already narrowed to a provider this build knows. */
   provider: EmbedProvider;
-  /** The player URL to load — `data-comot-media`'s raw value (`embed.ts` canonicalised it at insert time). */
+  /** The player URL to load — `data-slidra-media`'s raw value (`embed.ts` canonicalised it at insert time). */
   url: string;
 }
 
@@ -254,10 +254,10 @@ export interface StageEmbedEntry {
 export function stageEmbedsFor(svgMarkup: string): Record<string, StageEmbedEntry> {
   const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
   const result: Record<string, StageEmbedEntry> = Object.create(null);
-  for (const el of Array.from(doc.querySelectorAll("[data-comot-embed]"))) {
+  for (const el of Array.from(doc.querySelectorAll("[data-slidra-embed]"))) {
     const id = el.getAttribute("id");
-    const url = el.getAttribute("data-comot-media");
-    const provider = el.getAttribute("data-comot-embed");
+    const url = el.getAttribute("data-slidra-media");
+    const provider = el.getAttribute("data-slidra-embed");
     if (!id || !url || !provider) continue;
     if (!EMBED_PROVIDERS.includes(provider as EmbedProvider)) continue;
     result[id] = { provider: provider as EmbedProvider, url };
@@ -283,7 +283,7 @@ function mediaKindForStage(src: string): "video" | "audio" | null {
  * than an empty rule, which would be pointless CSS.
  *
  * [E2.T7]/D7: one rule per id, not one rule for a joined selector list, and
- * the `<style>` itself carries `id="comot-hide"` — the runtime unhides an
+ * the `<style>` itself carries `id="slidra-hide"` — the runtime unhides an
  * element by removing just that id's rule from this stylesheet's
  * `textContent` (via `plan.hideSelectors`) and re-running `el.animate(...)`
  * in the same synchronous task, never by touching every other still-hidden
@@ -310,7 +310,7 @@ function mediaKindForStage(src: string): "video" | "audio" | null {
 export function renderHideStyle(hidden: string[]): string {
   if (hidden.length === 0) return "";
   const rules = hidden.map((id) => `${hideSelectorsFor([id])[id]}{opacity:0 !important}`).join("");
-  return `<style id="comot-hide">${rules}</style>`;
+  return `<style id="slidra-hide">${rules}</style>`;
 }
 
 /** `plan.hideSelectors` (D7): `hidden[i]` -> its already-escaped CSS id selector, computed once here so the runtime never re-implements `cssEscapeId`. */
@@ -375,10 +375,10 @@ function cssEscapeId(id: string): string {
 
 /**
  * The `<script>` line that hands the plan to the runtime as
- * `window.__COMOT_PLAN__`.
+ * `window.__SLIDRA_PLAN__`.
  *
  * Reconstructed via `JSON.parse(...)`, never a bare object-literal
- * assignment (`window.__COMOT_PLAN__ = ${JSON.stringify(plan)}`, this
+ * assignment (`window.__SLIDRA_PLAN__ = ${JSON.stringify(plan)}`, this
  * function's previous shape) — that distinction is load-bearing, not
  * stylistic. `plan.media` is keyed by untrusted SVG element ids
  * (ADR-0010), and a legal id can be "__proto__". ECMAScript object-literal
@@ -418,5 +418,5 @@ function cssEscapeId(id: string): string {
  */
 export function renderPlanScript(plan: PlayerPlan, startStep: number = -1): string {
   const json = JSON.stringify({ ...plan, startStep });
-  return `window.__COMOT_PLAN__ = JSON.parse(${JSON.stringify(json)});`;
+  return `window.__SLIDRA_PLAN__ = JSON.parse(${JSON.stringify(json)});`;
 }

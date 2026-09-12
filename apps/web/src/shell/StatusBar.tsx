@@ -19,7 +19,7 @@ export function StatusBar({ state, controller }: StatusBarProps) {
   const slideCount = state.slides.length;
   const hasSlides = slideCount > 0;
 
-  // #56 (ADR-0011)：顯示 data-comot-name（若有）否則退回 id；多選顯示個數，
+  // #56 (ADR-0011)：顯示 data-slidra-name（若有）否則退回 id；多選顯示個數，
   // 邏輯逐字保留自舊 StatusBar.tsx，只是容器 class 換了名字。
   const selectionCount = state.selection.ids.length;
   const selectionLabel =

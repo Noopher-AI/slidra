@@ -1,12 +1,12 @@
 import type { ServerResponse } from "node:http";
-import { CoMotionError, CoMotionNotFoundError } from "./comotion/errors.js";
-import { listEntries as listCommandEntries, loadProject as loadProjectFromCli, readPresentationText, renderSlide } from "./comotion/reads.js";
-import { runJsonCommand } from "./comotion/command.js";
-import type { ProjectJson } from "./comotion/project-json.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
+import { listEntries as listCommandEntries, loadProject as loadProjectFromCli, readPresentationText, renderSlide } from "./slidra/reads.js";
+import { runJsonCommand } from "./slidra/command.js";
+import type { ProjectJson } from "./slidra/project-json.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
- * The three read-only routes every comotion HTTP server needs to render a
+ * The three read-only routes every slidra HTTP server needs to render a
  * presentation, extracted out of `serve.ts` (NOOP-93, §3.6) so the export
  * server (`export/server.ts`) can share them verbatim instead of keeping a
  * second, independently-drifting copy. In particular `/api/files/`'s "a
@@ -14,8 +14,8 @@ import { handleRawRequest } from "./raw.js";
  * kind of thing that silently stops doing `{{ slide_number }}` substitution
  * if it ever forks into two copies.
  *
- * [E4.T9]/F7: every read here now spawns the Rust `comotion` binary
- * (`comotion/reads.ts`) instead of dispatching against an in-process
+ * [E4.T9]/F7: every read here now spawns the Rust `slidra` binary
+ * (`slidra/reads.ts`) instead of dispatching against an in-process
  * `CommandRegistry` — the HTTP-facing behaviour is unchanged.
  */
 
@@ -52,7 +52,7 @@ export async function handleAssetsRoute(presentationId: string, res: ServerRespo
     const entries = await listCommandEntries(presentationId, "assets");
     sendJson(res, 200, { entries });
   } catch (error) {
-    if (error instanceof CoMotionNotFoundError) {
+    if (error instanceof SlidraNotFoundError) {
       sendJson(res, 200, { entries: [] });
       return;
     }
@@ -83,11 +83,11 @@ export async function handleFilesRoute(presentationId: string, virtualPath: stri
     // failure that positively proves absence is a 404. Everything else is
     // a 500, because "not classified as not-found" is not evidence the
     // file is missing.
-    if (error instanceof CoMotionNotFoundError) {
+    if (error instanceof SlidraNotFoundError) {
       sendJson(res, 404, { error: error.message });
       return;
     }
-    if (error instanceof CoMotionError) {
+    if (error instanceof SlidraError) {
       sendJson(res, 500, { error: error.message });
       return;
     }
@@ -97,7 +97,7 @@ export async function handleFilesRoute(presentationId: string, virtualPath: stri
 
 /**
  * The normalized "nothing here yet" shape `/api/effects/` returns for a
- * declared slide that has never had a `<comot:effects>` written to it
+ * declared slide that has never had a `<slidra:effects>` written to it
  * ([E4.T7] D3). Mirrors `effect list`'s own defaults
  * (`packages/core/src/effects/index.ts`'s step derivation and
  * `packages/core/src/slide/transition.ts`'s `DEFAULT_TRANSITION`) exactly,
@@ -117,7 +117,7 @@ export const EMPTY_EFFECT_PLAN = {
  * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
  * player and step-by-step export now fetch instead of computing themselves
  * in the browser (`apps/web/src/player-plan.ts`'s former `deriveSteps`/
- * `parseEffects`). Spawns the Rust `comotion effect list` command
+ * `parseEffects`). Spawns the Rust `slidra effect list` command
  * ([E4.T9]/F7) rather than dispatching against an in-process registry.
  *
  * Deliberately narrower than `effect list`'s own command-layer contract
@@ -136,7 +136,7 @@ export async function handleEffectsRoute(presentationId: string, virtualPath: st
   ]);
   if (!result.ok) {
     if (result.failureKind === "not-found") {
-      // A declared slide that has never had `<comot:effects>` written to
+      // A declared slide that has never had `<slidra:effects>` written to
       // it — the command reports "沒有效果清單" (not-found); the route
       // normalizes that into a legal empty plan (D3) rather than
       // forwarding a 404 for a path that IS a real slide.

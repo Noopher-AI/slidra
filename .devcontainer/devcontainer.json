@@ -1,5 +1,5 @@
 {
-  "name": "comotion",
+  "name": "slidra",
   "build": {
     "dockerfile": "Dockerfile",
     "args": { "UID": "1000" }

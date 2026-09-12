@@ -5,7 +5,7 @@ selection()/drag()/slide_svg()/status_bar()/console_errors()/shot()）是
 `qa/agent_helpers.py` 針對「投影片畫布手勢」提供的介面。這張票要操作的
 三個 UI（縮圖右鍵選單、Save as template 對話框、New 面板的 Layouts 清
 單）全部落在畫布 iframe 之外的一般 parent-document DOM——`agent_helpers.py`
-沒有對應原語（它的 select()/drag() 只查詢 iframe 內、帶 data-comot-name
+沒有對應原語（它的 select()/drag() 只查詢 iframe 內、帶 data-slidra-name
 的畫布元素）。`browser-use` 的核心層 `browser_harness.helpers`
 （`click_at_xy`/`js`/`fill_input`/`wait_for_element`/`http_get`）用同一
 套 `exec(code, globals())` 機制成為全域名稱（`browser_harness/run.py`：
@@ -32,7 +32,7 @@ def check(label: str, ok: bool, actual: object) -> None:
 
 
 def _server_url() -> str:
-    return os.environ.get("CO_MOTION_QA_URL", "http://127.0.0.1:5173").rstrip("/")
+    return os.environ.get("SLIDRA_QA_URL", "http://127.0.0.1:5173").rstrip("/")
 
 
 def _read_project() -> dict:

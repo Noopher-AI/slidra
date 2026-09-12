@@ -49,7 +49,7 @@ export interface OverviewController {
    * [E2.T8]: toggles `.overview-comment-button.has-comments` for every
    * index whose slide currently has at least one comment — a page-level
    * comment or any element-level one, either counts (prototype's own rule,
-   * `comotion-logic-v3.js:601`: the button is only ever red or not, never
+   * `slidra-logic-v3.js:601`: the button is only ever red or not, never
    * counts how many). Called by App.tsx whenever its own comment list is
    * (re)loaded; safe to call before `rebuildList` has ever run (a rebuild
    * re-applies whatever set was last given here).
@@ -481,7 +481,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
  * hard-coded copy of that one-family constant — so a deck with an imported
  * title font showed one typeface on the canvas and another in the rail.
  * The container's embedded fonts are only guaranteed correct inside a
- * CoMotion wrapper document, and a thumbnail is one.
+ * Slidra wrapper document, and a thumbnail is one.
  */
 
 /**
@@ -494,7 +494,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
  * aspect ratio correct and the whole slide visible instead of cropped.
  *
  * `html,body{background:#fff}` (#120): a slide with no background rect of
- * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `slidra new`'s blank title slide) otherwise leaves this
  * document fully transparent, so `.overview-thumb`'s `#000` loading
  * placeholder (rail.css) never gets painted over — the thumbnail reads as
  * solid black instead of an empty page. A presentation's mental model is a

@@ -18,11 +18,11 @@ export interface PlanGateModalProps {
 
 /**
  * #303: the plan-confirmation gate — ppt-master's "⛔ BLOCKING" gate as a
- * product feature. `comotion-plan` writes `plan/outline.md` with
+ * product feature. `slidra-plan` writes `plan/outline.md` with
  * `status: draft` and its `questions`; this dialog shows the page plan
  * read-only, one block per question with the agent's recommendation
- * preselected, and three exits (contract §4): 確認並建置 → `/comotion-build
- * 【計畫確認】…`, 重新規劃 → `/comotion-plan 【重做】…` (a reason is
+ * preselected, and three exits (contract §4): 確認並建置 → `/slidra-build
+ * 【計畫確認】…`, 重新規劃 → `/slidra-plan 【重做】…` (a reason is
  * required), 放棄 → `plan delete`. Deliberately blocking: no close button,
  * Esc does nothing, focus stays inside — the author decided (grilling on
  * #303) that a plan must be answered, not dismissed; 放棄 is the one exit

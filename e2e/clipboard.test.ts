@@ -29,7 +29,7 @@ function parseSlideSvg(svg: string): Document {
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const deckDir = path.join(e2eDir, "fixtures/clipboard-deck");
-const cliBinPath = path.join(rootDir, "target/release/comotion");
+const cliBinPath = path.join(rootDir, "target/release/slidra");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -124,7 +124,7 @@ function parseCliData<T>(stdout: string): T {
 
 const slideFrame = (page: Page) => page.frameLocator("iframe.slide-frame");
 
-it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法的 comotion 剪貼簿 SVG", async () => {
+it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法的 slidra 剪貼簿 SVG", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
@@ -132,7 +132,7 @@ it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法�
   const clipboardText = await copyAndWaitForClipboard(page, "el-solo");
 
   expect(clipboardText).toMatch(/^<svg/);
-  expect(clipboardText).toContain('data-comot-clipboard="elements"');
+  expect(clipboardText).toContain('data-slidra-clipboard="elements"');
   expect(clipboardText).toContain('id="el-solo"');
 });
 
@@ -154,7 +154,7 @@ it("06-KEYBOARD ⌘X：元素離開投影片且進系統剪貼簿，一筆歷史
 
   const clipboardText = await readSystemClipboardText(page);
   expect(clipboardText).toMatch(/^<svg/);
-  expect(clipboardText).toContain('data-comot-clipboard="elements"');
+  expect(clipboardText).toContain('data-slidra-clipboard="elements"');
   expect(clipboardText).toContain('id="el-solo"');
 
   const afterCut = await readSlide(started.registry, started.presentationId, "slides/001.svg");
@@ -184,7 +184,7 @@ it("A1：元素同頁貼上 — 新 <g>，新 id ≠ 原 id，位移恰為 PASTE
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   // el-solo's own translate is (100 100); the paste's first landing on its
   // own source slide gets one PASTE_OFFSET_STEP (20), per paste-offset.ts.
-  const match = /<g id="(el-[^"]+)" data-comot-name="單一元素" transform="translate\(120 120\)">/.exec(after);
+  const match = /<g id="(el-[^"]+)" data-slidra-name="單一元素" transform="translate\(120 120\)">/.exec(after);
   expect(match).not.toBeNull();
   expect(match![1]).not.toBe("el-solo");
 });
@@ -210,7 +210,7 @@ it("A2：跨頁貼上 — 目標頁多出元素與其效果（指向新 id），
   expect(idMatch).not.toBeNull();
   const newId = idMatch![1];
   expect(newId).not.toBe("el-solo");
-  expect(slide2).toContain(`<comot:effect target="${newId}"`);
+  expect(slide2).toContain(`<slidra:effect target="${newId}"`);
   expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before1);
 });
 
@@ -226,12 +226,12 @@ it("A3：群組貼上 — 兩個子容器 id 都是新的，且子元素相對�
   await expect
     .poll(async () => {
       const svg = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-      return (svg.match(/data-comot-name="群組"/g) ?? []).length;
+      return (svg.match(/data-slidra-name="群組"/g) ?? []).length;
     }, { timeout: 10_000 })
     .toBe(2);
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   const doc = parseSlideSvg(after);
-  const groups = [...doc.querySelectorAll('g[data-comot-name="群組"]')];
+  const groups = [...doc.querySelectorAll('g[data-slidra-name="群組"]')];
   const pastedGroup = groups.find((el) => el.id !== "el-group");
   expect(pastedGroup).toBeDefined();
   const children = [...pastedGroup!.children].filter((el) => el.tagName === "g");
@@ -256,7 +256,7 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   const { tsv } = parseCliData<{ tsv: string }>(copyResult.stdout);
   expect(tsv).toBe("A1\tB1\tC1");
 
-  const tsvFile = path.join(await mkdtemp(path.join(tmpdir(), "comotion-e2e-clipboard-tsv-")), "cells.tsv");
+  const tsvFile = path.join(await mkdtemp(path.join(tmpdir(), "slidra-e2e-clipboard-tsv-")), "cells.tsv");
   await writeFile(tsvFile, tsv, "utf-8");
   const pasteResult = await runCli([
     "table", "cell", "paste", started.presentationId, "slides/001.svg", "tbl-1", "--at", "2,0", "--tsv-file", tsvFile,
@@ -267,16 +267,16 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   const doc = parseSlideSvg(after);
   const row2 = ["2,0", "2,1", "2,2"].map(
-    (address) => doc.querySelector(`[data-comot-cell="${address}"] text`)?.textContent ?? "",
+    (address) => doc.querySelector(`[data-slidra-cell="${address}"] text`)?.textContent ?? "",
   );
   expect(row2).toEqual(["A1", "B1", "C1"]);
 
   // ADR-0001: confirm the static render, not just the file bytes.
   await page.locator('.overview-item[data-index="0"] .overview-thumb').click();
   await page.reload();
-  await expect.poll(() => slideFrame(page).locator('[data-comot-cell="2,0"] text').textContent(), { timeout: 10_000 }).toBe("A1");
-  expect(await slideFrame(page).locator('[data-comot-cell="2,1"] text').textContent()).toBe("B1");
-  expect(await slideFrame(page).locator('[data-comot-cell="2,2"] text').textContent()).toBe("C1");
+  await expect.poll(() => slideFrame(page).locator('[data-slidra-cell="2,0"] text').textContent(), { timeout: 10_000 }).toBe("A1");
+  expect(await slideFrame(page).locator('[data-slidra-cell="2,1"] text').textContent()).toBe("B1");
+  expect(await slideFrame(page).locator('[data-slidra-cell="2,2"] text').textContent()).toBe("C1");
 });
 
 it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent 走同一條路，僅隨機 id 不同）", async () => {
@@ -293,7 +293,7 @@ it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent
     })
     .toBe(true);
   const guiResult = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  const guiNewId = /<g id="(el-[^"]+)" data-comot-name="單一元素" transform="translate\(120 120\)">/.exec(guiResult)![1];
+  const guiNewId = /<g id="(el-[^"]+)" data-slidra-name="單一元素" transform="translate\(120 120\)">/.exec(guiResult)![1];
 
   await page.keyboard.press("Meta+z");
   await expect
@@ -303,7 +303,7 @@ it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent
     )
     .toBe(false);
 
-  const svgFile = path.join(await mkdtemp(path.join(tmpdir(), "comotion-e2e-clipboard-svg-")), "clip.svg");
+  const svgFile = path.join(await mkdtemp(path.join(tmpdir(), "slidra-e2e-clipboard-svg-")), "clip.svg");
   await writeFile(svgFile, clipboardSvg, "utf-8");
   const cliPaste = await runCli([
     "element", "paste", started.presentationId, "slides/001.svg", "--dx", "20", "--dy", "20", "--svg-file", svgFile,
@@ -327,7 +327,7 @@ it("A7：不可信內容貼不進去 — 含 onload 的偽造剪貼簿 SVG 貼�
   const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
 
   const hostileSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-slidra-clipboard="elements" data-slidra-source="slides/001.svg">' +
     '<g id="el-hostile" onload="fetch(\'https://evil.example\')"><rect width="10" height="10"/></g></svg>';
   await page.evaluate((svg) => navigator.clipboard.writeText(svg), hostileSvg);
   await page.keyboard.press("Meta+v");
@@ -394,7 +394,7 @@ it.each(A8_BYPASS_MATRIX)(
     });
 
     const hostileSvg =
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-comot-clipboard="elements" data-comot-source="slides/001.svg">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-slidra-clipboard="elements" data-slidra-source="slides/001.svg">' +
       hostileFragment +
       "</svg>";
     await page.evaluate((svg) => navigator.clipboard.writeText(svg), hostileSvg);

@@ -3,7 +3,7 @@ import { useCloseFloatingLayer } from "../use-floating-layer.js";
 
 /**
  * Placement constants — same shape as `ContextBar.tsx`'s own (prototype's
- * `placeComposer()`, comotion-logic-v3.js:413-428), except this composer
+ * `placeComposer()`, slidra-logic-v3.js:413-428), except this composer
  * centers horizontally on the selection instead of left-aligning (that's
  * `ContextBar`'s own review decision, not this component's).
  */

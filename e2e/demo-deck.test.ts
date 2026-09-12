@@ -10,7 +10,7 @@ import { PNG } from "pngjs";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { loadPdf } from "./helpers/pdf.js";
-import { workDirFor } from "../packages/server/src/comotion/home.js";
+import { workDirFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -46,15 +46,15 @@ const execFileAsync = promisify(execFile);
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let registry: CommandRegistry;
 let server: RunningServer;
 let presentationId: string;
@@ -65,16 +65,16 @@ beforeAll(async () => {
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-demo-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-demo-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-demo-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-demo-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "demo.comot");
-  await packDirectory(demoDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "demo.slidra");
+  await packDirectory(demoDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -95,10 +95,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
-  if (comotDir) await rm(comotDir, { recursive: true, force: true });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  if (slidraHome) await rm(slidraHome, { recursive: true, force: true });
+  if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
 async function requireBuilt(filePath: string, message: string): Promise<void> {
@@ -444,10 +444,10 @@ it("驗收簡報：一次連續的方向鍵推進走完四頁，再一路退回�
 // --- #72 -----------------------------------------------------------------
 
 /**
- * AC 7, 把轉檔後的投影片直接丟進瀏覽器打開: no CoMotion, no server, no
+ * AC 7, 把轉檔後的投影片直接丟進瀏覽器打開: no Slidra, no server, no
  * injected runtime — just `file://` and the browser's own SVG renderer.
  * This is the check that the container form is plain, native SVG and not
- * something only CoMotion knows how to draw.
+ * something only Slidra knows how to draw.
  */
 it("轉檔後的投影片用 file:// 直接開，靜態畫面正確：文字、位置、相對路徑的圖片都對", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -510,31 +510,31 @@ it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", a
   const bare =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">\n' +
     '  <rect x="0" y="0" width="1280" height="720" fill="#101418"/>\n' +
-    '  <text id="el-title" data-comot-name="標題" x="640" y="200" text-anchor="middle" font-size="86" fill="#f4f6f8">轉檔前後</text>\n' +
+    '  <text id="el-title" data-slidra-name="標題" x="640" y="200" text-anchor="middle" font-size="86" fill="#f4f6f8">轉檔前後</text>\n' +
     '  <image id="el-photo" href="assets/photo.svg" x="490" y="260" width="300" height="300"/>\n' +
     '  <line x1="100" y1="620" x2="1180" y2="620" stroke="#c66" stroke-width="6"/>\n' +
     '  <path d="M100 660 L200 700 L100 700 Z" fill="#9aa7b4"/>\n' +
-    '  <g id="el-icon" data-comot-name="圖示">\n' +
+    '  <g id="el-icon" data-slidra-name="圖示">\n' +
     '    <circle cx="1100" cy="670" r="30" fill="#c66"/>\n' +
     '  </g>\n' +
     "</svg>\n";
 
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pixel-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pixel-"));
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   try {
     // `normaliseSlideSvg`/`generateElementId` (the TypeScript engine's own
     // conversion functions) no longer exist ([E4.T12]) — the only public
-    // door to the same conversion is now `comotion convert`, which acts on
+    // door to the same conversion is now `slidra convert`, which acts on
     // an already-open presentation's slide file on disk, not a raw string.
-    // A throwaway presentation under the same `registry`/`COMOTION_HOME`
+    // A throwaway presentation under the same `registry`/`SLIDRA_HOME`
     // this file's `beforeAll` already set up (never the shared 4-page demo
     // presentation the walkthrough tests below depend on) gives `convert`
     // something to act on: write `bare` as its `slides/001.svg`, run
     // `convert`, read the result back.
-    const convertComotPath = path.join(dir, "convert-test.comot");
-    const newResult = await registry.dispatch("new", { path: convertComotPath, name: "轉檔前後像素比對" });
+    const convertSlidraPath = path.join(dir, "convert-test.slidra");
+    const newResult = await registry.dispatch("new", { path: convertSlidraPath, name: "轉檔前後像素比對" });
     expect(newResult.ok).toBe(true);
-    const opened = await registry.dispatch<{ id: string }>("open", { path: convertComotPath });
+    const opened = await registry.dispatch<{ id: string }>("open", { path: convertSlidraPath });
     const convertTestId = opened.data!.id;
     // `new` creates no slides (ADR-0018); mint slides/001.svg so `convert` has a page to rewrite.
     await registry.dispatch("slide add", { id: convertTestId });
@@ -631,9 +631,9 @@ it("demo 四頁的頁面底色由根 <svg> 的 background-color 決定：編輯�
     await page.close();
   }
 
-  const outPath = path.join(comotDir, "background-check.pdf");
-  await execFileAsync(coMotionBin, ["export", presentationId, "--format", "pdf", "--out", outPath], {
-    env: { ...process.env, COMOTION_HOME: coMotionHome, COMOTION_BIN: coMotionBin },
+  const outPath = path.join(slidraDir, "background-check.pdf");
+  await execFileAsync(slidraBin, ["export", presentationId, "--format", "pdf", "--out", outPath], {
+    env: { ...process.env, SLIDRA_HOME: slidraHome, SLIDRA_BIN: slidraBin },
   });
   const pdfBytes = await readFile(outPath);
   const info = await loadPdf(browser, pdfBytes);

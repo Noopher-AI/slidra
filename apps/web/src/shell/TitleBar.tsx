@@ -6,7 +6,7 @@ import type { ExportFormat } from "../live-reload.js";
 export interface TitleBarProps {
   /**
    * The name shown next to the brand mark. NOOP-93: once the save-state is
-   * `known`, this is `sourcePath`'s basename (the real `.comot` filename) —
+   * `known`, this is `sourcePath`'s basename (the real `.slidra` filename) —
    * otherwise it falls back to `project.json`'s `name` (§4.2's table).
    * `null` = neither is available yet (`/api/presentation` hasn't returned
    * or failed — see App.tsx's `presentationError`).
@@ -43,7 +43,7 @@ export interface TitleBarProps {
  * Open-Save-Export／Play。
  *
  * Open／Save 現在接上真實動作（NOOP-93）：Open 觸發隱藏的
- * `<input type="file" accept=".comot">`，選檔後把 `File` 交給
+ * `<input type="file" accept=".slidra">`，選檔後把 `File` 交給
  * `onOpenFile`（是否已有未儲存變更、要不要跳確認，都是 App.tsx 的事——
  * 這裡只負責把使用者選的檔案交出去）；Save 直接呼叫 `onSave`。Export
  * 面板另有專門元件（見 ExportPanel.tsx），不在這裡實作。
@@ -80,7 +80,7 @@ export function TitleBar({
   return (
     <header className="titlebar">
       <div className="titlebar-brand">
-        <span className="mark">CoMotion</span>
+        <span className="mark">Slidra</span>
         <span className="titlebar-beta">BETA</span>
       </div>
       <span className="titlebar-divider" />
@@ -120,7 +120,7 @@ export function TitleBar({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".comot"
+          accept=".slidra"
           className="titlebar-file-input"
           aria-hidden="true"
           tabIndex={-1}

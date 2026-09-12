@@ -13,7 +13,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * In-place text editing on the two shapes e2e/text-edit.test.ts's own
  * fixture never had: a text box whose <text> declares no `font-family`
  * (legal SVG — it used to be refused outright), and a plain <text> with no
- * `data-comot-text-width` at all (double-clicking it used to do nothing).
+ * `data-slidra-text-width` at all (double-clicking it used to do nothing).
  *
  * The fixture deliberately embeds NO fonts: measuring the first shape then
  * has to reach the build's own bundled family over /api/default-font,
@@ -22,7 +22,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/plain-text-deck");
@@ -61,16 +61,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-plain-text-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-plain-text-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-plain-text-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-plain-text-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -93,10 +93,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -156,7 +156,7 @@ async function isEditTextareaFocused(page: Page): Promise<boolean> {
     .frameLocator("iframe.slide-frame")
     .locator("body")
     .evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement | null;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement | null;
       const active = host?.shadowRoot?.activeElement;
       return !!active && active.tagName === "TEXTAREA";
     });
@@ -187,7 +187,7 @@ it("沒有 font-family 的文字框：雙擊可進入編輯，換行用內建預
   }
 });
 
-it("一般 <text>（沒有 data-comot-text-width）：雙擊可進入編輯，提交只換字串，x／y／text-anchor 原封不動", async () => {
+it("一般 <text>（沒有 data-slidra-text-width）：雙擊可進入編輯，提交只換字串，x／y／text-anchor 原封不動", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -217,18 +217,18 @@ async function readTextareaValue(page: Page): Promise<string> {
     .frameLocator("iframe.slide-frame")
     .locator("body")
     .evaluate(() => {
-      const host = document.querySelector("[data-comot-selection-host]") as HTMLElement;
+      const host = document.querySelector("[data-slidra-selection-host]") as HTMLElement;
       return (host.shadowRoot!.querySelector("textarea") as HTMLTextAreaElement).value;
     });
 }
 
-// F-04 (NOOP-399): a plain <text> (no data-comot-text-width) used to stay a
+// F-04 (NOOP-399): a plain <text> (no data-slidra-text-width) used to stay a
 // single DOM line while editing — Enter's hard break was invisible until
 // Esc committed and the SVG-side re-layout split it into tspans. This
 // proves the break is visible mid-edit (not just after commit), and that
 // it survives the commit as two tspans, the second carrying no
-// data-comot-break (only a line FOLLOWED by "\n" gets the marker).
-it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 tspan，第一個帶 data-comot-break", async () => {
+// data-slidra-break (only a line FOLLOWED by "\n" gets the marker).
+it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 tspan，第一個帶 data-slidra-break", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -250,7 +250,7 @@ it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 ts
     await page.keyboard.press("Escape");
 
     await expect
-      .poll(async () => readTextMarkup(await readSlide(registry, presentationId), "el-plain").includes("data-comot-break"), {
+      .poll(async () => readTextMarkup(await readSlide(registry, presentationId), "el-plain").includes("data-slidra-break"), {
         timeout: 10_000,
       })
       .toBe(true);
@@ -258,9 +258,9 @@ it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 ts
     const tspans = [...markupAfterCommit.matchAll(/<tspan([^>]*)>([^<]*)<\/tspan>/g)];
     expect(tspans.length).toBe(2);
     expect(tspans[0][2]).toBe("一般文字QA");
-    expect(tspans[0][1]).toContain('data-comot-break="1"');
+    expect(tspans[0][1]).toContain('data-slidra-break="1"');
     expect(tspans[1][2]).toBe("X");
-    expect(tspans[1][1]).not.toContain("data-comot-break");
+    expect(tspans[1][1]).not.toContain("data-slidra-break");
   } finally {
     await cleanup();
   }
@@ -268,9 +268,9 @@ it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 ts
 
 // F-04b (NOOP-399): the read-back side of the same fix — a plain <text>
 // that ALREADY has a hard break saved (`el-broken`, two tspans, the first
-// carrying data-comot-break="1") must reconstruct the exact "\n" on the
+// carrying data-slidra-break="1") must reconstruct the exact "\n" on the
 // next edit. Before F-04b, `render_plain_text_content` never wrote
-// data-comot-break at all, so slide-dom.ts's readTextContent (which only
+// data-slidra-break at all, so slide-dom.ts's readTextContent (which only
 // ever recognises that marker) saw two lines with nothing joining them and
 // dropped the break the moment the box was re-opened. Fixture-seeded
 // rather than chained onto F-04's own commit, to avoid racing the
@@ -278,7 +278,7 @@ it("F-04：Enter 插入的硬換行，編輯中立即可見、提交後兩個 ts
 // down and rebuilding the runtime's shadow host/textarea — re-entering
 // edit before that swap lands intermittently finds no `<textarea>` at all,
 // verified directly).
-it("F-04b：已存在的硬換行（data-comot-break）雙擊後，textarea 初值含 \\n", async () => {
+it("F-04b：已存在的硬換行（data-slidra-break）雙擊後，textarea 初值含 \\n", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);

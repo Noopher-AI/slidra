@@ -3,7 +3,7 @@ import type { AgentKind } from "./live-reload.js";
 /**
  * [E3.T5] NOOP-230 §4.4's `GET /api/agent` / `POST /api/agent/probe`
  * response, restated here as the exact shape this module parses (never
- * imported from `@comotion/server` — the browser bundle must never depend
+ * imported from `@slidra/server` — the browser bundle must never depend
  * on a Node-only package, same rule `ExportFormat`/`AgentKind` in
  * live-reload.ts already follow).
  */

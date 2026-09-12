@@ -1,10 +1,10 @@
 # 04 · 假想後端介面（Backend Interface, hypothetical）
 
-原型是純前端；以下是依前端資料模型與交互推導的後端契約，供實作參考。核心前提：**投影片＝SVG 檔**，deck 是一個資料夾（`.comot` 為 manifest），agent 以 CLI 操作檔案，GUI 與 agent 透過同一份檔案與事件流同步。
+原型是純前端；以下是依前端資料模型與交互推導的後端契約，供實作參考。核心前提：**投影片＝SVG 檔**，deck 是一個資料夾（`.slidra` 為 manifest），agent 以 CLI 操作檔案，GUI 與 agent 透過同一份檔案與事件流同步。
 
 ## 1. 檔案佈局
 ```
-Q3 產品路線圖.comot/          # 或單一 zip
+Q3 產品路線圖.slidra/          # 或單一 zip
   deck.json                   # Deck manifest
   slides/01.svg … 07.svg      # 每頁一個自包含 SVG（含 <style> keyframes）
   slides/03.notes.md          # 講者備忘
@@ -92,13 +92,13 @@ type ClientMsg =
 
 ## 5. Agent CLI（對應對話卡中的指令）
 ```
-comotion textbox set slides/03.svg --id title --text "…"
-comotion element move  slides/03.svg --id sub --box 8.4,45,44,7.5
-comotion anim add      slides/03.svg --id chart --effect zoom --trigger click --duration .7
-comotion table cell    slides/05.svg --id table --r 1 --c 2 --text "< 400 ms"
-comotion chart data    slides/03.svg --id chart --csv data.csv
-comotion deck draft    --from outline.md --after 03
-comotion export        --format pdf-frames
+slidra textbox set slides/03.svg --id title --text "…"
+slidra element move  slides/03.svg --id sub --box 8.4,45,44,7.5
+slidra anim add      slides/03.svg --id chart --effect zoom --trigger click --duration .7
+slidra table cell    slides/05.svg --id table --r 1 --c 2 --text "< 400 ms"
+slidra chart data    slides/03.svg --id chart --csv data.csv
+slidra deck draft    --from outline.md --after 03
+slidra export        --format pdf-frames
 ```
 每個指令執行前發 `lock`，完成後 `slide.updated` + `unlock`；GUI 對應顯示 Running → Done。
 

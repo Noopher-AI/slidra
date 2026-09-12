@@ -13,7 +13,7 @@ import type { ChartModel } from "../src/chart-model.js";
  * testing-library, so an interactive behaviour can only be unit tested by
  * extracting the computation) plus a `renderToStaticMarkup` smoke test of
  * `ChartWindow` itself, plus AC-12's DOMParser regression (§3.2 of the
- * plan: an unbound `<comot:chart>` produces a `parsererror` when the front
+ * plan: an unbound `<slidra:chart>` produces a `parsererror` when the front
  * end's effects parser reads the WHOLE slide document).
  */
 
@@ -143,15 +143,15 @@ describe("ChartWindow — renderToStaticMarkup (AC-2/AC-3/AC-4/AC-5/AC-6の靜�
 });
 
 describe("AC-12: a slide containing a chart parses without a DOMParser parsererror", () => {
-  it("含 <comot:chart>（帶 xmlns:comot）與內嵌 <svg> 的投影片，DOMParser 解析出 svg 根節點、無 parsererror", () => {
+  it("含 <slidra:chart>（帶 xmlns:slidra）與內嵌 <svg> 的投影片，DOMParser 解析出 svg 根節點、無 parsererror", () => {
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">` +
-      `<g id="el-chart" data-comot-type="chart" transform="translate(100 50)">` +
-      `<comot:chart xmlns:comot="https://co-motion.dev/ns" type="bar" stacked="false" axes="single" ` +
+      `<g id="el-chart" data-slidra-type="chart" transform="translate(100 50)">` +
+      `<slidra:chart xmlns:slidra="https://slidra.app/ns/2026" type="bar" stacked="false" axes="single" ` +
       `palette="brand" legend="bottom" grid="true" labels="true" x-title="" y-title="" width="480" height="300">` +
-      `<comot:series name="Revenue" values="120,150,170" axis="left"/>` +
-      `<comot:categories values="Q1,Q2,Q3"/>` +
-      `</comot:chart>` +
+      `<slidra:series name="Revenue" values="120,150,170" axis="left"/>` +
+      `<slidra:categories values="Q1,Q2,Q3"/>` +
+      `</slidra:chart>` +
       `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300"><rect width="1" height="1"/></svg>` +
       `</g></svg>`;
     const doc = new DOMParser().parseFromString(svg, "image/svg+xml");

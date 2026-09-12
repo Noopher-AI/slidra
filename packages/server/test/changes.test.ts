@@ -10,10 +10,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { createChangeBroadcaster } from "../src/changes.js";
-import { workDirFor } from "../src/comotion/home.js";
+import { workDirFor } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -24,7 +24,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -55,19 +55,19 @@ class FakeResponse extends EventEmitter {
 // fetch(), never open a browser. Always bind port 0 and read the assigned
 // port back — a hardcoded port collides with ticket #6's concurrently
 // running suite. Presentation state is only ever read through the real
-// `comotion cat` binary — never a direct poke at the work directory's
+// `slidra cat` binary — never a direct poke at the work directory's
 // real path.
 
-let coMotionHome: string;
-let comotDir: string;
+let slidraHome: string;
+let slidraDir: string;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-changes-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-changes-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-changes-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-changes-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
   streams = [];
 });
@@ -78,10 +78,10 @@ afterEach(async () => {
   // socket.
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
-  await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
+  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
@@ -91,10 +91,10 @@ async function serve(presentationId: string): Promise<RunningServer> {
 }
 
 async function openFreshPresentation(name = "測試簡報"): Promise<{ id: string; elementId: string }> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", name]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   // `new` creates no slides (ADR-0018, #303): the tests below edit
   // slides/001.svg, so mint one page with one title text box.
@@ -195,7 +195,7 @@ describe("GET /api/events", () => {
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
-  it("ignores the CLI's .comotion.lock, so a read command does not look like a change", async () => {
+  it("ignores the CLI's .slidra.lock, so a read command does not look like a change", async () => {
     // #303 regression: the lock is created and removed around every CLI
     // command, reads included, inside the watched work directory. Treating
     // it as content made every live-reload trigger a re-read that took the
@@ -205,7 +205,7 @@ describe("GET /api/events", () => {
     const server = await serve(id);
     const frameReader = await connectEvents(server);
 
-    const lockPath = path.join(await workDirFor(id), ".comotion.lock");
+    const lockPath = path.join(await workDirFor(id), ".slidra.lock");
     for (let i = 0; i < 3; i++) {
       await writeFile(lockPath, "");
       await rm(lockPath);
@@ -267,15 +267,15 @@ describe("GET /api/events", () => {
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
-    // [E4.T9]/F7: a fake COMOTION_BIN that answers `cat <id> project.json`
+    // [E4.T9]/F7: a fake SLIDRA_BIN that answers `cat <id> project.json`
     // for ANY id, real or not (the equivalent stub-registry test in
     // serve.test.ts uses the same technique) — loadProject succeeds
     // through it, but `watchPresentation`'s `workDirFor` reads the REAL
-    // `COMOTION_HOME/projects.json` directly (comotion/home.ts, not the
+    // `SLIDRA_HOME/projects.json` directly (slidra/home.ts, not the
     // CLI), which has no entry for this id at all. The failure must
     // surface as an explicit HTTP error, not a silently-opened stream.
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-changes-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-changes-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -296,7 +296,7 @@ describe("GET /api/events", () => {
       { mode: 0o755 },
     );
 
-    process.env.COMOTION_BIN = fakeBinPath;
+    process.env.SLIDRA_BIN = fakeBinPath;
     try {
       const server = await startServe({ presentationId: "unregistered-stub-id", port: 0 });
       servers.push(server);
@@ -307,7 +307,7 @@ describe("GET /api/events", () => {
       expect(response.status).toBe(500);
       expect(body.error).toMatch(/找不到識別碼對應的簡報/);
     } finally {
-      process.env.COMOTION_BIN = coMotionBinPath;
+      process.env.SLIDRA_BIN = slidraBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });
@@ -355,6 +355,6 @@ describe("GET /api/events", () => {
 
     expect(response.status).toBe(500);
     expect(body.error).not.toContain(workDir);
-    expect(body.error).not.toContain(coMotionHome);
+    expect(body.error).not.toContain(slidraHome);
   });
 });

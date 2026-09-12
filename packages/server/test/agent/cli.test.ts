@@ -9,7 +9,7 @@ import { runServeCli } from "../../src/cli.js";
 import { agentSettingsPath } from "../../src/agent/settings.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
+const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -20,7 +20,7 @@ interface CliEnvelope<T = unknown> {
 
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
-    const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
+    const { stdout } = await execFileAsync(slidraBinPath, [...args, "--json"], { env: process.env });
     return JSON.parse(stdout.trim()) as CliEnvelope<T>;
   } catch (error) {
     const err = error as { stdout?: string };
@@ -54,13 +54,13 @@ const FAKE_CLAUDE_NOT_LOGGED_IN = '#!/bin/sh\necho \'{"loggedIn":false}\'\nexit 
 const FAKE_CODEX_NOT_LOGGED_IN = "#!/bin/sh\necho 'Not logged in'\nexit 1\n";
 
 let home: string;
-let comotDir: string;
+let slidraDir: string;
 let fakeCliDir: string;
 let originalPath: string | undefined;
 
 /** Writes fake `claude`/`codex` scripts, both reporting "not logged in", into a fresh temp dir. */
 async function writeFakeCli(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "comotion-fake-cli-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "slidra-fake-cli-"));
   const claudePath = path.join(dir, "claude");
   const codexPath = path.join(dir, "codex");
   await writeFile(claudePath, FAKE_CLAUDE_NOT_LOGGED_IN);
@@ -71,10 +71,10 @@ async function writeFakeCli(): Promise<string> {
 }
 
 beforeEach(async () => {
-  home = await mkdtemp(path.join(tmpdir(), "comotion-cli-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cli-files-"));
-  process.env.COMOTION_HOME = home;
-  process.env.COMOTION_BIN = coMotionBinPath;
+  home = await mkdtemp(path.join(tmpdir(), "slidra-cli-home-"));
+  slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-cli-files-"));
+  process.env.SLIDRA_HOME = home;
+  process.env.SLIDRA_BIN = slidraBinPath;
 
   fakeCliDir = await writeFakeCli();
   originalPath = process.env.PATH;
@@ -82,19 +82,19 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  delete process.env.COMOTION_HOME;
-  delete process.env.COMOTION_BIN;
+  delete process.env.SLIDRA_HOME;
+  delete process.env.SLIDRA_BIN;
   process.env.PATH = originalPath;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(fakeCliDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 async function openFreshPresentation(): Promise<string> {
-  const comotPath = path.join(comotDir, "deck.comot");
-  const created = await runCli(["new", comotPath, "--name", "測試簡報"]);
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", comotPath]);
+  const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
   return opened.data!.id;
 }
@@ -155,7 +155,7 @@ describe("runServeCli", () => {
 
     const cli = await startCli([id, "--port", "0", "--agent", "claude"]);
     try {
-      expect(cli.logs[0]).toContain("CoMotion 已啟動：");
+      expect(cli.logs[0]).toContain("Slidra 已啟動：");
       const agentLines = cli.logs.filter((line) => line.startsWith("使用的 agent") || line.includes("尚未選擇 agent"));
       expect(agentLines).toHaveLength(1);
       expect(agentLines[0]).toContain("Claude Code");

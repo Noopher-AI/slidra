@@ -3,10 +3,10 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoMotionError, CoMotionInvalidRequestError } from "./comotion/errors.js";
-import { runJsonCommand } from "./comotion/command.js";
-import { readProjectsRegistry, resolveCoMotionHome } from "./comotion/home.js";
-import { readSaveState } from "./comotion/save-state.js";
+import { SlidraError, SlidraInvalidRequestError } from "./slidra/errors.js";
+import { runJsonCommand } from "./slidra/command.js";
+import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
+import { readSaveState } from "./slidra/save-state.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
@@ -34,14 +34,14 @@ import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 
 /**
- * `comotion serve` is a mode of the CLI, not a second backend (ADR-0002):
- * every read of presentation content spawns the real `comotion` binary
- * ([E4.T9]/F7 — `comotion/`), the exact same program one-shot
- * `comotion cat`/`ls` runs. This module never opens a presentation file
+ * `slidra serve` is a mode of the CLI, not a second backend (ADR-0002):
+ * every read of presentation content spawns the real `slidra` binary
+ * ([E4.T9]/F7 — `slidra/`), the exact same program one-shot
+ * `slidra cat`/`ls` runs. This module never opens a presentation file
  * directly.
  */
 export interface ServeOptions {
-  /** Opaque id of an already-opened presentation (see `comotion open`). */
+  /** Opaque id of an already-opened presentation (see `slidra open`). */
   presentationId: string;
   /**
    * Port to bind. Defaults to 5173. Tests must always pass 0 (let the OS
@@ -300,7 +300,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
       if (error.code === "EADDRINUSE") {
         // Never fall back to another port — a user who asked for a specific
         // port and silently got another has been lied to.
-        reject(new CoMotionError(`連接埠已被使用：${port}`));
+        reject(new SlidraError(`連接埠已被使用：${port}`));
       } else {
         reject(error);
       }
@@ -398,7 +398,7 @@ async function handleRequest(
         try {
           sendJson(res, 200, await manager.warmSession());
         } catch (error) {
-          if (error instanceof CoMotionError) {
+          if (error instanceof SlidraError) {
             sendJson(res, 409, { error: error.message });
             return;
           }
@@ -424,7 +424,7 @@ async function handleRequest(
         // T3/NOOP-142: the same "agent holds the floor" 409 gate as
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
-        // lock just because it does not spawn the comotion binary.
+        // lock just because it does not spawn the slidra binary.
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
@@ -583,7 +583,7 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/raw/")) {
       // Deliberately NOT `POST /api/command`'s whitelist, unlike every
       // other read in this file. Every whitelisted command is reachable by
-      // the agent (ADR-0004's permission hook allows `comotion *`). A
+      // the agent (ADR-0004's permission hook allows `slidra *`). A
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,
@@ -673,7 +673,7 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
  * way; 409 when nothing is running (no agent selected, or the agent is
  * idle) — the author pressed Stop on a turn that had already ended.
  *
- * What stopping does NOT do: a `comotion` command the agent had already
+ * What stopping does NOT do: a `slidra` command the agent had already
  * launched keeps running to completion (each command is atomic), and
  * nothing already written to the presentation is rolled back — the
  * author's undo is the tool for that.
@@ -744,7 +744,7 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
  * `POST /api/agent/model` — the chat panel's model picker. `modelId` must be
  * one of `GET /api/agent`'s `models[].id`; the switch goes to the live ACP
  * session (establishing one first if no message has been sent yet) and is
- * persisted per agent kind. A `CoMotionError` (mid-turn, unknown model, no
+ * persisted per agent kind. A `SlidraError` (mid-turn, unknown model, no
  * agent) is the author's problem to read, so it comes back as 409 with its
  * own wording rather than a generic 500.
  */
@@ -765,7 +765,7 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
     const status = await manager.setModel(modelId);
     sendJson(res, 200, { ok: true, modelId: status.modelId, model: status.model });
   } catch (error) {
-    if (error instanceof CoMotionError) {
+    if (error instanceof SlidraError) {
       sendJson(res, 409, { error: error.message });
       return;
     }
@@ -787,11 +787,11 @@ async function handleSavePost(
   try {
     await savePresentation(presentationId);
   } catch (error) {
-    if (error instanceof CoMotionInvalidRequestError) {
+    if (error instanceof SlidraInvalidRequestError) {
       sendJson(res, 400, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof CoMotionError ? error.message : "儲存失敗" });
+    sendJson(res, 500, { error: error instanceof SlidraError ? error.message : "儲存失敗" });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -837,7 +837,7 @@ async function handleExportPost(
       async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
         const project = await loadProject(presentationId);
         const fileName = exportFileName(project.name, jobFormat);
-        const outputPath = path.join(resolveCoMotionHome(), "exports", id, fileName);
+        const outputPath = path.join(resolveSlidraHome(), "exports", id, fileName);
         const result = await renderExportPdf({
           serverUrl: `http://${serverAddress.host}:${serverAddress.port}`,
           format: jobFormat,
@@ -887,15 +887,15 @@ async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: st
  * `undo <id> --json` / `redo <id> --json` (plan §3.7): neither is part of
  * `COMMAND_WHITELIST` (they are not reachable through `POST /api/command`),
  * so this is a direct `runJsonCommand` call rather than going through
- * `comotion/argv.ts`'s encoder table.
+ * `slidra/argv.ts`'s encoder table.
  */
 async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: string): Promise<{ restoredPaths: string[] }> {
   const result = await runJsonCommand<{ restoredPaths: string[] }>([name, presentationId]);
   if (!result.ok) {
-    throw new CoMotionError(result.message);
+    throw new SlidraError(result.message);
   }
   if (!Array.isArray(result.data?.restoredPaths)) {
-    throw new CoMotionError(`${name} 回傳的資料格式錯誤`);
+    throw new SlidraError(`${name} 回傳的資料格式錯誤`);
   }
   return { restoredPaths: result.data.restoredPaths };
 }
@@ -907,21 +907,21 @@ const runRedo = (id: string): Promise<{ restoredPaths: string[] }> => runCommand
  * `POST /api/save`'s actual pack (plan §3.7): reads `sourcePath` off
  * `projects.json` — there is no CLI command that already knows it — and
  * runs `pack <id> <sourcePath> --json`, which itself advances `savedAt`
- * when the output path equals `sourcePath` (`comotion/save-state.ts`'s
+ * when the output path equals `sourcePath` (`slidra/save-state.ts`'s
  * next read picks that up).
  */
 async function savePresentation(presentationId: string): Promise<{ fileName: string }> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(presentationId);
   if (!entry) {
-    throw new CoMotionError(`找不到識別碼對應的簡報：${presentationId}`);
+    throw new SlidraError(`找不到識別碼對應的簡報：${presentationId}`);
   }
   if (entry.sourcePath === undefined) {
-    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 comotion pack 指定路徑");
+    throw new SlidraInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 slidra pack 指定路徑");
   }
   const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
   if (!result.ok) {
-    throw new CoMotionError(result.message);
+    throw new SlidraError(result.message);
   }
   return { fileName: path.basename(entry.sourcePath) };
 }
@@ -930,7 +930,7 @@ async function savePresentation(presentationId: string): Promise<{ fileName: str
  * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
  * editing requests in the single-editor-lock sense (plan §4.1): refused
  * with 409 while the agent holds the floor, run unconditionally otherwise
- * — a thrown `CoMotionError` on an empty stack is relayed here as 400 with
+ * — a thrown `SlidraError` on an empty stack is relayed here as 400 with
  * the command's own message verbatim rather than a silent 200.
  */
 async function handleUndoRedoPost(
@@ -947,7 +947,7 @@ async function handleUndoRedoPost(
     const result = await run(presentationId);
     sendJson(res, 200, result);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "無法完成操作" });
+    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "無法完成操作" });
   }
 }
 
@@ -1017,7 +1017,7 @@ export function createChatStreamRegistry() {
      */
     open(manager: AgentManager, res: ServerResponse): void {
       if (closing) {
-        throw new CoMotionError("伺服器正在關閉");
+        throw new SlidraError("伺服器正在關閉");
       }
       const stream = openEventStream(res);
       streams.add(stream);
@@ -1070,7 +1070,7 @@ function resolveWebDist(): string {
  * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
  * longer imports that package). Repo-root `assets/fonts/` is the same
  * physical file the Rust binary's own `include_bytes!` embeds
- * (`crates/comotion/src/presentation.rs`) — both moved together off
+ * (`crates/slidra/src/presentation.rs`) — both moved together off
  * `packages/core/src/assets/fonts/` when that package was deleted
  * ([E4.T12]).
  */

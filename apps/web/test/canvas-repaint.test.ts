@@ -9,7 +9,7 @@ import { slidePaintKey } from "../src/slide-paint-key.js";
 // it for nothing — the flicker authors saw during generation. The stage
 // must repaint only when the picture itself changes.
 
-const NOTES = '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">講稿</comot:notes></metadata>';
+const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">講稿</slidra:notes></metadata>';
 const deck = { name: "測試簡報", slides: ["slides/001.svg", "slides/002.svg"] };
 let markup: Record<string, string>;
 let container: HTMLElement;
@@ -65,7 +65,7 @@ describe("mountCanvas 只在畫面真的變了才重畫 (#303)", () => {
     markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="1"/></svg>`;
     await controller.reload();
     expect(srcdoc()).toBe(painted);
-    expect(srcdoc()).not.toContain("comot:notes");
+    expect(srcdoc()).not.toContain("slidra:notes");
 
     // A real content change repaints (and carries whatever metadata is there).
     markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="2"/></svg>`;

@@ -2,17 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
-import { CoMotionError, CoMotionNotFoundError } from "../comotion/errors.js";
-import { readPresentationText } from "../comotion/reads.js";
-import { beginHistoryGroup, endHistoryGroup } from "../comotion/history-group.js";
-import { runJsonCommand } from "../comotion/command.js";
+import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
+import { readPresentationText } from "../slidra/reads.js";
+import { beginHistoryGroup, endHistoryGroup } from "../slidra/history-group.js";
+import { runJsonCommand } from "../slidra/command.js";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
-import { isCoMotionCommand } from "./command-allowlist.js";
+import { isSlidraCommand } from "./command-allowlist.js";
 import { hintForBlockedCommand } from "./command-hints.js";
 import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js";
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
-import { readProjectsRegistry, resolveCoMotionHome } from "../comotion/home.js";
+import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
 
 /**
@@ -28,7 +28,7 @@ const NO_MESSAGE_INSTRUCTION = "作者沒有輸入訊息，只送出上面這些
 const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，也沒有釘選的留言）";
 
 const WRITE_REFUSED_MESSAGE =
-  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `comotion text set` 命令。";
+  "Slidra 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `slidra text set` 命令。";
 
 /** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape, mirroring `packages/core`'s former `SlideCommentWithPath` ([E4.T9]/F7). */
 interface SlideCommentWithPath {
@@ -44,10 +44,10 @@ interface SlideCommentWithPath {
 async function listAllComments(presentationId: string): Promise<SlideCommentWithPath[]> {
   const result = await runJsonCommand<{ comments: SlideCommentWithPath[] }>(["comment", "list", presentationId]);
   if (!result.ok) {
-    throw new CoMotionError(result.message);
+    throw new SlidraError(result.message);
   }
   if (!Array.isArray(result.data?.comments)) {
-    throw new CoMotionError("comment list 回傳的資料格式錯誤");
+    throw new SlidraError("comment list 回傳的資料格式錯誤");
   }
   return result.data.comments;
 }
@@ -140,7 +140,7 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * This says what actually happened, on the author's side of the screen.
  */
 const BLOCKED_COMMAND_MESSAGE =
-  "CoMotion 擋下了這條命令（不是作者拒絕的）：它直接動到這份簡報的檔案，而簡報只能透過 comotion 命令讀寫。其他不碰簡報檔案的命令不受限制。";
+  "Slidra 擋下了這條命令（不是作者拒絕的）：它直接動到這份簡報的檔案，而簡報只能透過 slidra 命令讀寫。其他不碰簡報檔案的命令不受限制。";
 
 /**
  * Said once when a refused command took the whole turn down with it — see
@@ -157,12 +157,12 @@ const BLOCKED_COMMAND_MESSAGE =
  */
 const MAX_REFUSAL_CORRECTIONS = 2;
 
-/** What the agent is told after CoMotion takes the turn back — see the loop in `runTurn`. */
+/** What the agent is told after Slidra takes the turn back — see the loop in `runTurn`. */
 function refusalCorrectionPrompt(hints: string[]): string {
   const advice = hints.map((hint) => `- ${hint}`).join("\n");
   return [
-    "【CoMotion 系統訊息｜不是作者說的】",
-    "剛剛那條命令沒有執行：它直接動到這份簡報的檔案，而簡報的內容只能透過 `comotion` 命令讀寫（其他不碰簡報檔案的命令不受限制）。",
+    "【Slidra 系統訊息｜不是作者說的】",
+    "剛剛那條命令沒有執行：它直接動到這份簡報的檔案，而簡報的內容只能透過 `slidra` 命令讀寫（其他不碰簡報檔案的命令不受限制）。",
     "這不是作者拒絕你，也不需要問他——換成下面的做法就可以繼續：",
     advice,
     "請接著把剛才沒做完的部分做完，不要再送同一條被擋下的命令。",
@@ -172,16 +172,16 @@ function refusalCorrectionPrompt(hints: string[]): string {
 /**
  * The author's one line about a refusal. The command itself is not shown —
  * it is the agent's own shell work, which the timeline deliberately leaves
- * out (`relayCommandStart`) — so this says what CoMotion did and what it
+ * out (`relayCommandStart`) — so this says what Slidra did and what it
  * told the agent to do instead.
  */
 function refusalNotice(hint: string | undefined): string {
-  const head = "CoMotion 擋下了 agent 直接動簡報檔案的命令（簡報只能透過 comotion 命令改）";
+  const head = "Slidra 擋下了 agent 直接動簡報檔案的命令（簡報只能透過 slidra 命令改）";
   return hint === undefined ? `${head}。` : `${head}，並告訴它：${hint}`;
 }
 
 const TURN_ABORTED_BY_REFUSAL_MESSAGE =
-  "這一輪到此為止：CoMotion 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 comotion 命令重新發送即可。";
+  "這一輪到此為止：Slidra 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 slidra 命令重新發送即可。";
 
 /** The model a live session runs on, as its adapter reports it at `session/new`. */
 export interface AgentModel {
@@ -214,7 +214,7 @@ interface ChatEvents {
   /** A command the agent has started running — `command` verbatim from ACP's `rawInput.command`. */
   /**
    * A command the agent is about to run. `cli` says whether it is a
-   * `comotion` invocation — the only kind that carries a status the author
+   * `slidra` invocation — the only kind that carries a status the author
    * is meant to read (see `relayCommandStart`). A command with `cli: false`
    * is shown once and never followed by `chat-command-update`.
    */
@@ -222,7 +222,7 @@ interface ChatEvents {
   /**
    * A status change on a command already relayed by `chat-command`.
    * `output` only ever accompanies a failure. `blocked` marks the one
-   * failure that is not the command's own: CoMotion's allowlist refused to
+   * failure that is not the command's own: Slidra's allowlist refused to
    * let it run (see `BLOCKED_COMMAND_MESSAGE`).
    */
   "chat-command-update": (payload: {
@@ -250,7 +250,7 @@ interface ChatEvents {
 export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
 
 /**
- * Drives one ACP adapter subprocess for the lifetime of `comotion serve`.
+ * Drives one ACP adapter subprocess for the lifetime of `slidra serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
  * messages (§4 of the ticket), and the 編輯規約 is sent as its own, separate
@@ -268,7 +268,7 @@ export class AgentChatSession extends EventEmitter {
    * The deployed product work directory (`deployAgentWorkdir()`'s result),
    * already resolved to its real (symlink-free) form — handed to the agent
    * as its session `cwd` on every attempt, and never removed by this
-   * session (its lifetime is `COMOTION_HOME`'s, not the session's). A
+   * session (its lifetime is `SLIDRA_HOME`'s, not the session's). A
    * conforming ACP agent echoes back an *absolute* path rooted at the cwd
    * it was given — but resolved, not verbatim (confirmed against a real
    * `claude-code-acp` 0.12.6: the cwd sent to `session/new` was
@@ -280,10 +280,10 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly workdirReal: string;
   /**
-   * The open presentation's `.comot` file, read once from the registry
+   * The open presentation's `.slidra` file, read once from the registry
    * when the session is established. Undefined when the registry has no
    * `sourcePath` for this id (a presentation created but never saved out)
-   * — `<COMOTION_HOME>` still covers its live files either way.
+   * — `<SLIDRA_HOME>` still covers its live files either way.
    */
   private sourcePath: string | undefined;
   private readyPromise: Promise<void> | undefined;
@@ -342,7 +342,7 @@ export class AgentChatSession extends EventEmitter {
   /**
    * Tool calls this turn whose command the allowlist refused. Kept so the
    * failure the adapter reports for them can be shown to the author in
-   * CoMotion's own words rather than the adapter's misleading one — same
+   * Slidra's own words rather than the adapter's misleading one — same
    * turn scope, and cleared alongside, `relayedToolCalls`.
    */
   private readonly refusedToolCalls = new Set<string>();
@@ -464,12 +464,12 @@ export class AgentChatSession extends EventEmitter {
    */
   async setModel(modelId: string): Promise<void> {
     if (this.relayingCurrentTurn || this.pendingTurns.length > 0) {
-      throw new CoMotionError("agent 正在回覆中，等這一輪結束再切換模型");
+      throw new SlidraError("agent 正在回覆中，等這一輪結束再切換模型");
     }
     await this.ensureSession();
     const choice = this.modelChoices.find((candidate) => candidate.id === modelId);
     if (!choice || !this.modelMechanism || !this.connection || !this.sessionId) {
-      throw new CoMotionError(`${this.config.label} 沒有這個模型：${modelId}`);
+      throw new SlidraError(`${this.config.label} 沒有這個模型：${modelId}`);
     }
     await this.applyModel(this.connection, this.sessionId, this.modelMechanism, choice);
   }
@@ -567,7 +567,7 @@ export class AgentChatSession extends EventEmitter {
    * still controls, flushes pending updates, and answers the original
    * `session/prompt` with `stopReason: "cancelled"` — so the turn ends
    * through `runTurn`'s normal path (`chat-done` carrying that stopReason,
-   * history group closed, editing lock released). A `comotion` command
+   * history group closed, editing lock released). A `slidra` command
    * the agent had already launched runs to completion on its own (each
    * command is atomic); nothing written so far is rolled back — undo is
    * the author's tool for that, not this.
@@ -593,9 +593,9 @@ export class AgentChatSession extends EventEmitter {
       // so the next message starts from a clean spawn.
       const reject = this.activeReject;
       this.activeReject = undefined;
-      reject?.(new CoMotionError(`${this.config.label} 的連線在建立過程中被停止，請重新發送訊息`));
+      reject?.(new SlidraError(`${this.config.label} 的連線在建立過程中被停止，請重新發送訊息`));
     } else if (dropped === 0) {
-      throw new CoMotionError("目前沒有進行中的回合可以停止");
+      throw new SlidraError("目前沒有進行中的回合可以停止");
     }
 
     if (dropped > 0) {
@@ -658,7 +658,7 @@ export class AgentChatSession extends EventEmitter {
     try {
       // One author message can take more than one ACP turn: a command the
       // allowlist refused ends the turn under both adapters (see
-      // `findRejectOption`), and the agent is never told why — so CoMotion
+      // `findRejectOption`), and the agent is never told why — so Slidra
       // takes the turn back, says what to use instead, and lets the agent
       // carry on. Bounded, because an agent that ignores the advice twice
       // will ignore it a third time.
@@ -802,7 +802,7 @@ export class AgentChatSession extends EventEmitter {
    * more than once for the same attempt.
    *
    * Does **not** touch `workdirReal` — the product work directory belongs
-   * to `COMOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
+   * to `SLIDRA_HOME`, deployed once by `deployAgentWorkdir()` before this
    * session is ever constructed, and outlives every session teardown,
    * including the process's own shutdown.
    */
@@ -834,15 +834,15 @@ export class AgentChatSession extends EventEmitter {
     if (generation !== this.generation) return;
     const reject = this.activeReject;
     this.activeReject = undefined;
-    reject?.(new CoMotionError(`${this.config.label} 的連線已中斷（${reason}），請重新發送訊息`));
+    reject?.(new SlidraError(`${this.config.label} 的連線已中斷（${reason}），請重新發送訊息`));
     void this.teardownSession();
   }
 
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
-    // The `.comot` this presentation was opened from, for the permission
+    // The `.slidra` this presentation was opened from, for the permission
     // policy's protected set. A registry that cannot be read is not worth
-    // failing the session over: `<COMOTION_HOME>` still covers the live
+    // failing the session over: `<SLIDRA_HOME>` still covers the live
     // files, and the container is only reachable through a path the agent
     // was never told.
     this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
@@ -855,7 +855,7 @@ export class AgentChatSession extends EventEmitter {
     // an adapter-side failure reached serve's log as nothing at all —
     // every question about *why* a turn behaved oddly had to be answered
     // by re-running it against a hand-written ACP client. Tagged with the
-    // adapter's name so it is never mistaken for CoMotion's own output.
+    // adapter's name so it is never mistaken for Slidra's own output.
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => {
       for (const line of chunk.split("\n")) {
@@ -917,7 +917,7 @@ export class AgentChatSession extends EventEmitter {
       // `.code` structurally, not `instanceof`, is what actually catches
       // `RequestError.authRequired()` from the other side of the pipe.
       if (jsonRpcErrorCode(error) === AUTH_REQUIRED_CODE) {
-        throw new CoMotionError(
+        throw new SlidraError(
           `${this.config.label} 尚未登入。請在終端機完成 ${this.config.label} 的登入流程後，再重新發送訊息。`,
         );
       }
@@ -943,7 +943,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     const brief = buildEditorialBrief(this.presentationId);
     const executionGuidance = this.config.kind === "codex"
-      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 comotion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；comotion cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
+      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 slidra 命令時請使用工具的 sandbox_permissions=require_escalated，讓 Slidra 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 Slidra 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；slidra cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
       : "";
     await connection.prompt({
       sessionId: this.sessionId,
@@ -1004,7 +1004,7 @@ export class AgentChatSession extends EventEmitter {
         // disk, so freezing for it would be pure side effect with no
         // corresponding write to protect (and would open/immediately-close
         // an empty history group for every refused command, for nothing).
-        if (isCoMotionCliCommand(params)) {
+        if (isSlidraCliCommand(params)) {
           await this.openEditLockOnFirstCommand();
         }
         return this.decidePermission(params);
@@ -1050,7 +1050,7 @@ export class AgentChatSession extends EventEmitter {
     // own notes is the agent's problem to solve, not an outcome the author
     // is being asked to read. So a non-CLI command is relayed once, as the
     // line it is, and never updated.
-    const cli = namesCoMotionProgram(command);
+    const cli = namesSlidraProgram(command);
     if (cli) this.relayedToolCalls.add(update.toolCallId);
     this.emitTyped("chat-command", {
       toolCallId: update.toolCallId,
@@ -1086,7 +1086,7 @@ export class AgentChatSession extends EventEmitter {
     if (update.status == null) return;
     // A command the allowlist refused never ran, so the adapter's own
     // "the user rejected this" text describes neither what happened nor
-    // who did it — CoMotion's wording replaces it.
+    // who did it — Slidra's wording replaces it.
     const blocked = update.status === "failed" && this.refusedToolCalls.has(update.toolCallId);
     const hint = this.refusalHints.get(update.toolCallId);
     const output = blocked
@@ -1126,7 +1126,7 @@ export class AgentChatSession extends EventEmitter {
   /**
    * `session/request_permission` — the second layer of ADR-0004. Allows a
    * request only when the command it names is structurally guaranteed to
-   * invoke the `comotion` program and nothing else (see
+   * invoke the `slidra` program and nothing else (see
    * `command-allowlist.ts`); refuses everything else, including any request
    * the command cannot be extracted from at all. The rule is hard-coded —
    * the author is never asked (user story 12).
@@ -1135,7 +1135,7 @@ export class AgentChatSession extends EventEmitter {
    * `allow_always`. Some adapters stop calling `session/request_permission`
    * for a tool entirely once a persistent grant has been given, which would
    * silently disable this whole gate for every later command in the
-   * session, including ones that are not `comotion` at all. If the
+   * session, including ones that are not `slidra` at all. If the
    * adapter does not offer `allow_once`, the request is refused rather than
    * falling back to a permanent grant — a visible, recoverable refusal
    * beats a permission layer that quietly stops running. (The real
@@ -1145,8 +1145,8 @@ export class AgentChatSession extends EventEmitter {
    */
   /**
    * The permission policy (ADR-0004's second layer, as re-drawn): the CLI
-   * is the only way to change a `.comot`, and everything else the agent
-   * wants to run is its own business. So a `comotion` command is allowed
+   * is the only way to change a `.slidra`, and everything else the agent
+   * wants to run is its own business. So a `slidra` command is allowed
    * because it *is* the CLI, and every other command is allowed unless it
    * names one of the presentation's real files (`touchesProtectedPath`).
    *
@@ -1159,11 +1159,11 @@ export class AgentChatSession extends EventEmitter {
   private isPermittedCommand(params: acp.RequestPermissionRequest): boolean {
     const command = extractCommand(params.toolCall);
     if (command !== undefined) {
-      if (isCoMotionCommand(command)) return true;
+      if (isSlidraCommand(command)) return true;
       // A command an encoder shell-quoted (see `unquoteShellWord`) is
       // judged on the literal text it stands for, never on the quoting.
       const literal = unquoteShellWord(command);
-      if (literal !== undefined && isCoMotionCommand(literal)) return true;
+      if (literal !== undefined && isSlidraCommand(literal)) return true;
       return !touchesProtectedPath(literal ?? command, this.protectedPaths);
     }
     return !touchesProtectedPath(collectStrings(params.toolCall.rawInput).join(" "), this.protectedPaths);
@@ -1172,7 +1172,7 @@ export class AgentChatSession extends EventEmitter {
   /** Where the presentation's real files live — see `protected-paths.ts`. */
   private get protectedPaths(): ProtectedPaths {
     return {
-      comotionHome: resolveCoMotionHome(),
+      slidraHome: resolveSlidraHome(),
       agentWorkdir: this.workdirReal,
       ...(this.sourcePath === undefined ? {} : { sourcePath: this.sourcePath }),
     };
@@ -1191,8 +1191,8 @@ export class AgentChatSession extends EventEmitter {
       const hint = command === undefined ? undefined : hintForBlockedCommand(command, this.presentationId);
       if (hint !== undefined) this.refusalHints.set(params.toolCall.toolCallId, hint);
       // The refused command itself never reaches the timeline (it is not a
-      // `comotion` command, and `relayCommandStart` shows only those), so
-      // this one line is the whole of what the author sees: CoMotion acted,
+      // `slidra` command, and `relayCommandStart` shows only those), so
+      // this one line is the whole of what the author sees: Slidra acted,
       // here is what it said. Once per turn — an agent that tries three
       // spellings of the same forbidden thing is not three events.
       if (first) this.emitTyped("chat-notice", { text: refusalNotice(hint) });
@@ -1265,10 +1265,10 @@ export class AgentChatSession extends EventEmitter {
       // makes (readVirtualFile / raw.ts): only a positively-absent path
       // gets the "not found" JSON-RPC code, everything else is a generic
       // internal error.
-      if (error instanceof CoMotionNotFoundError) {
+      if (error instanceof SlidraNotFoundError) {
         throw new acp.RequestError(READ_NOT_FOUND_CODE, error.message);
       }
-      if (error instanceof CoMotionError) {
+      if (error instanceof SlidraError) {
         throw new acp.RequestError(READ_FAILED_CODE, error.message);
       }
       throw error;
@@ -1328,25 +1328,25 @@ function toChoice(info: acp.ModelInfo): AgentModelChoice {
 }
 
 /**
- * True for an invocation of the `comotion` CLI itself. The T5 freeze gate
+ * True for an invocation of the `slidra` CLI itself. The T5 freeze gate
  * uses this (and not the permission decision) because it is the CLI, and
  * only the CLI, that writes to the presentation — a `curl` the policy now
  * allows must not open a history group.
  */
-function isCoMotionCliCommand(params: acp.RequestPermissionRequest): boolean {
+function isSlidraCliCommand(params: acp.RequestPermissionRequest): boolean {
   const command = extractCommand(params.toolCall);
   if (command === undefined) return false;
-  if (isCoMotionCommand(command)) return true;
+  if (isSlidraCommand(command)) return true;
   // The strict grammar is no longer what decides whether a command runs,
-  // so the gate cannot depend on it either: `comotion undo X | head` is
+  // so the gate cannot depend on it either: `slidra undo X | head` is
   // still the CLI writing to the presentation and still has to freeze.
-  if (namesCoMotionProgram(command)) return true;
+  if (namesSlidraProgram(command)) return true;
   // Second chance for a command that reached us shell-*quoted* rather than
   // as the script itself (see `unquoteShellWord`). The allowlist itself is
   // unchanged and still has the last word — this only decides which string
   // it is asked about.
   const literal = unquoteShellWord(command);
-  return literal !== undefined && isCoMotionCommand(literal);
+  return literal !== undefined && isSlidraCommand(literal);
 }
 
 /**
@@ -1354,8 +1354,8 @@ function isCoMotionCliCommand(params: acp.RequestPermissionRequest): boolean {
  * `session/request_permission` the shell-quoted *display* form of the
  * command rather than the script itself, so a command carrying any
  * quoting of its own arrives as e.g.
- * `"comotion plan set abc outline '"'…'` where the `tool_call` update
- * carried `comotion plan set abc outline '…'`. The allowlist refuses that
+ * `"slidra plan set abc outline '"'…'` where the `tool_call` update
+ * carried `slidra plan set abc outline '…'`. The allowlist refuses that
  * on the leading `"` — which is why every writing command was blocked
  * under this adapter while every read (which the sandbox runs without
  * asking) went through.
@@ -1443,10 +1443,10 @@ function collectStrings(value: unknown, depth = 0): string[] {
   return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, depth + 1));
 }
 
-/** True when the command's first word invokes `comotion`, whatever follows it. */
-function namesCoMotionProgram(command: string): boolean {
+/** True when the command's first word invokes `slidra`, whatever follows it. */
+function namesSlidraProgram(command: string): boolean {
   const first = command.trim().split(/\s+/)[0];
-  return first !== undefined && first.replace(/^['"]|['"]$/g, "").split("/").pop() === "comotion";
+  return first !== undefined && first.replace(/^['"]|['"]$/g, "").split("/").pop() === "slidra";
 }
 
 /** Recognizes Claude's command string and Codex's shell argv; unknown shapes fail closed. */
@@ -1523,7 +1523,7 @@ function jsonRpcErrorCode(error: unknown): number | undefined {
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof CoMotionError) return error.message;
+  if (error instanceof SlidraError) return error.message;
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = (error as { message: unknown }).message;

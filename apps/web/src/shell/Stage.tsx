@@ -91,7 +91,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
   const [hand, setHand] = useState<HandState>(initialHandState);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; startPan: ZoomPanState["pan"] } | null>(null);
-  // 播放模式時舞台導航整個停用（比照 comotion-logic-v3.js 的 wellWheel/
+  // 播放模式時舞台導航整個停用（比照 slidra-logic-v3.js 的 wellWheel/
   // wellDown 兩者都對 `mode === "play"` 提前 return），Dock／疊層也跟著
   // shellVisible 一起從 DOM 消失，比照 App.tsx 對 Titlebar/Rail/側欄的既有
   // 作法（播放模式時整組不掛載，不是 CSS 隱藏）。
@@ -239,7 +239,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     if (!shellVisible || isOnStageChrome(event.target)) return;
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
-      // 錨點是相對 well 中心的偏移量（比照 comotion-logic-v3.js 的
+      // 錨點是相對 well 中心的偏移量（比照 slidra-logic-v3.js 的
       // wellWheel），因為 `.stage` 的置中／平移／縮放全部疊在同一個原點上。
       const rect = wellRef.current?.getBoundingClientRect();
       const anchor = rect

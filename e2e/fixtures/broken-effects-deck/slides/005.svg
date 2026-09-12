@@ -1,13 +1,13 @@
 <svg style="background-color:#101418" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
-    <comot:effects xmlns:comot="https://co-motion.dev/ns">
+    <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
       <!-- 損壞之處：family/effect 都合法，但 start="on-hover" 不在
            SUPPORTED_STARTS（on-click／with-previous／after-previous 三種
            全開，D3）。[E2.T7] 把 with-previous 改成真正實作的 start 值，不
            能再拿來當「未實作」的反例；"on-hover" 是這輪的新守門值
            （[E2.T7] 測試盤點）。 -->
-      <comot:effect target="el-with-previous-target" family="enter" effect="fade" start="on-hover"/>
-    </comot:effects>
+      <slidra:effect target="el-with-previous-target" family="enter" effect="fade" start="on-hover"/>
+    </slidra:effects>
   </metadata>
   <text id="el-broken-title-5" x="640" y="120" text-anchor="middle" font-size="48" fill="#f4f6f8">第 5 頁：未實作的 start</text>
   <text id="el-with-previous-target" x="640" y="400" text-anchor="middle" font-size="32" fill="#9aa7b4">這個元素是真的存在的</text>

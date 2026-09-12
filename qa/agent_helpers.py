@@ -1,4 +1,4 @@
-"""CoMotion primitives for browser-use (BH_AGENT_WORKSPACE/agent_helpers.py).
+"""Slidra primitives for browser-use (BH_AGENT_WORKSPACE/agent_helpers.py).
 
 Loaded once per `browser-use` invocation by browser_harness.helpers
 (_load_agent_helpers): every top-level name not starting with "_" becomes a
@@ -72,17 +72,17 @@ _REBUILD_START_GRACE = 0.3
 
 
 def _ipc_timeout():
-    """CO_MOTION_QA_IPC_TIMEOUT, parsed lazily (never at import time — this
+    """SLIDRA_QA_IPC_TIMEOUT, parsed lazily (never at import time — this
     module's top-level code must never raise, see module docstring)."""
-    raw = os.environ.get("CO_MOTION_QA_IPC_TIMEOUT")
+    raw = os.environ.get("SLIDRA_QA_IPC_TIMEOUT")
     if raw is None or raw == "":
         return _DEFAULT_IPC_TIMEOUT
     try:
         value = float(raw)
     except ValueError:
-        raise ValueError(f"CO_MOTION_QA_IPC_TIMEOUT 必須是數字，收到 {raw!r}") from None
+        raise ValueError(f"SLIDRA_QA_IPC_TIMEOUT 必須是數字，收到 {raw!r}") from None
     if value <= 0:
-        raise ValueError(f"CO_MOTION_QA_IPC_TIMEOUT 必須是正數，收到 {raw!r}")
+        raise ValueError(f"SLIDRA_QA_IPC_TIMEOUT 必須是正數，收到 {raw!r}")
     return value
 
 
@@ -190,7 +190,7 @@ def _qa_dir():
 
 
 def _server_url():
-    return os.environ.get("CO_MOTION_QA_URL", _DEFAULT_URL).rstrip("/")
+    return os.environ.get("SLIDRA_QA_URL", _DEFAULT_URL).rstrip("/")
 
 
 def _http_get(url):
@@ -198,8 +198,8 @@ def _http_get(url):
         return _bh_http_get(url)
     except Exception as exc:
         hint = ""
-        if not os.environ.get("CO_MOTION_QA_URL"):
-            hint = "（CO_MOTION_QA_URL 未設，已使用預設值 http://127.0.0.1:5173；請先 source .quickstart/qa/qa.env）"
+        if not os.environ.get("SLIDRA_QA_URL"):
+            hint = "（SLIDRA_QA_URL 未設，已使用預設值 http://127.0.0.1:5173；請先 source .quickstart/qa/qa.env）"
         raise RuntimeError(f"HTTP GET {url} 失敗：{exc}{hint}") from exc
 
 
@@ -465,7 +465,7 @@ def _wait_frame_ready(timeout=_FRAME_READY_TIMEOUT):
         if tid:
             try:
                 ready = _js_ro(
-                    "document.querySelector('[data-comot-selection-host]') != null "
+                    "document.querySelector('[data-slidra-selection-host]') != null "
                     "&& document.querySelector('svg') != null",
                     target_id=tid,
                 )
@@ -493,8 +493,8 @@ def _find_target_box(tid, name_or_id):
         f"(()=>{{const want={json.dumps(name_or_id)};const order={json.dumps(order)};"
         "let e=null;for(const kind of order){"
         "if(kind==='id'){e=document.getElementById(want);}"
-        "else{e=Array.from(document.querySelectorAll('[data-comot-name]'))"
-        ".find(x=>x.getAttribute('data-comot-name')===want)||null;}"
+        "else{e=Array.from(document.querySelectorAll('[data-slidra-name]'))"
+        ".find(x=>x.getAttribute('data-slidra-name')===want)||null;}"
         "if(e)break;}"
         "if(!e)return null;const r=e.getBoundingClientRect();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height};})()"
@@ -514,7 +514,7 @@ def _wait_chip_update(timeout=_CHIP_UPDATE_TIMEOUT):
 
 
 def open_deck():
-    """Open (or reuse) the tab on CO_MOTION_QA_URL and wait for the deck to
+    """Open (or reuse) the tab on SLIDRA_QA_URL and wait for the deck to
     render. Returns {"url", "presentation_id", "slides"}."""
     url = _server_url()
     same = False
@@ -577,7 +577,7 @@ def open_deck():
     # alone. In this harness `navigated` alone routinely comes back False on
     # the very first open_deck() of a brand-new `--qa` session too — not just
     # on the daemon-staleness case the comment above documents — because
-    # Chromium is launched already pointed at CO_MOTION_QA_URL, so the
+    # Chromium is launched already pointed at SLIDRA_QA_URL, so the
     # daemon's `current_tab()` matches from the start. The bundle-freshness
     # reload above (`reloaded`) is what actually tells us a real navigation —
     # with a real iframe rebuild racing the exact same probe-installation
@@ -600,7 +600,7 @@ def open_deck():
     _wait_frame_ready(_INITIAL_LOAD_TIMEOUT if cold else _FRAME_READY_TIMEOUT)
     return {
         "url": url,
-        "presentation_id": os.environ.get("CO_MOTION_QA_PRESENTATION_ID", ""),
+        "presentation_id": os.environ.get("SLIDRA_QA_PRESENTATION_ID", ""),
         "slides": slide_count(),
     }
 
@@ -653,7 +653,7 @@ def slide_count():
 
 
 def select(name_or_id, additive=False):
-    """Click the element matched by `data-comot-name` (or `#id` for an
+    """Click the element matched by `data-slidra-name` (or `#id` for an
     `el-`-prefixed id) inside the slide iframe. `additive=True` holds Shift
     (CDP modifiers=8) so the click adds to/toggles the current selection
     instead of replacing it. Returns selection()."""
@@ -661,10 +661,10 @@ def select(name_or_id, additive=False):
     box = _find_target_box(tid, name_or_id)
     if box is None:
         names = _js_ro(
-            "Array.from(document.querySelectorAll('[data-comot-name]')).map(e=>e.getAttribute('data-comot-name'))",
+            "Array.from(document.querySelectorAll('[data-slidra-name]')).map(e=>e.getAttribute('data-slidra-name'))",
             target_id=tid,
         )
-        raise RuntimeError(f"select: 找不到元素 {name_or_id!r}；本頁現有的 data-comot-name：{names!r}")
+        raise RuntimeError(f"select: 找不到元素 {name_or_id!r}；本頁現有的 data-slidra-name：{names!r}")
     off = _iframe_offset()
     cx = box["x"] + box["width"] / 2 + off["x"]
     cy = box["y"] + box["height"] / 2 + off["y"]
@@ -697,13 +697,13 @@ def selection():
     # getComputedStyle, not the class list — showing/hiding is driven by
     # style.display writes on re-render, not a CSS class toggle.
     result = _js_ro(
-        "(()=>{const host=document.querySelector('[data-comot-selection-host]');"
+        "(()=>{const host=document.querySelector('[data-slidra-selection-host]');"
         "if(!host||!host.shadowRoot)return {box:null,handles:{}};"
         "const root=host.shadowRoot;const sel=root.querySelector('.sel');"
         "let box=null;if(sel){const r=sel.getBoundingClientRect();"
         "box={x:r.x,y:r.y,w:r.width,h:r.height};}"
         "const handles={};root.querySelectorAll('.handle').forEach(h=>{"
-        "const name=h.getAttribute('data-comot-handle');if(!name)return;"
+        "const name=h.getAttribute('data-slidra-handle');if(!name)return;"
         "if(getComputedStyle(h).display==='none')return;"
         "const r=h.getBoundingClientRect();"
         "handles[name]=[r.x+r.width/2,r.y+r.height/2];});"
@@ -743,7 +743,7 @@ def click_at(x, y, shift=False):
     before a cold double-click on a never-selected table reliably opens the
     cell editor, the same race e2e/table.test.ts's E8 documents). `shift=True`
     holds Shift (CDP modifiers=8), for an additive click that is not on a
-    `data-comot-name`'d element (e.g. a context bar button)."""
+    `data-slidra-name`'d element (e.g. a context bar button)."""
     _click(x, y, modifiers=8 if shift else 0)
 
 
@@ -948,12 +948,12 @@ def click_ui(selector):
 
 def cell_box(row, col):
     """Parent-document client rect of table cell (row, col) — the
-    `[data-comot-cell="row,col"]` group inside the slide iframe — or
+    `[data-slidra-cell="row,col"]` group inside the slide iframe — or
     `None` when nothing is currently rendered there (a merge-covered
     position, or a hidden `repeat` template row)."""
     tid = _wait_frame_ready()
     box = _js_ro(
-        f"(()=>{{const e=document.querySelector('[data-comot-cell=\"{int(row)},{int(col)}\"]');"
+        f"(()=>{{const e=document.querySelector('[data-slidra-cell=\"{int(row)},{int(col)}\"]');"
         "if(!e)return null;const r=e.getBoundingClientRect();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height};})()",
         target_id=tid,
@@ -991,7 +991,7 @@ def edit_textarea_user_select():
     selectable."""
     tid = _wait_frame_ready()
     return _js_ro(
-        "(()=>{const h=document.querySelector('[data-comot-selection-host]');"
+        "(()=>{const h=document.querySelector('[data-slidra-selection-host]');"
         "if(!h||!h.shadowRoot)return null;const t=h.shadowRoot.querySelector('textarea');"
         "return t?getComputedStyle(t).userSelect:null;})()",
         target_id=tid,

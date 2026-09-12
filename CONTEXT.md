@@ -1,4 +1,4 @@
-# CoMotion
+# Slidra
 
 以 SVG 為本體的簡報編輯器。人與 agent 共同編輯同一份簡報，agent 透過 CLI 操作，人透過視覺編輯器操作。
 
@@ -7,7 +7,7 @@
 ### 簡報內容
 
 **簡報**：
-一份完整的 CoMotion 作品，由有序的投影片、資產與設定組成。
+一份完整的 Slidra 作品，由有序的投影片、資產與設定組成。
 _Avoid_: 專案、deck、PPT、檔案
 
 **投影片**：
@@ -43,7 +43,7 @@ _Avoid_: 組合、集合、group、圖層群組
 _Avoid_: 文字方塊、text box、標籤、字串
 
 **動態文字**：
-內容不是打出來的，而是 CoMotion 依當下情境算出來的文字，例如頁碼。
+內容不是打出來的，而是 Slidra 依當下情境算出來的文字，例如頁碼。
 _Avoid_: 欄位、變數、佔位符、placeholder
 
 **範本**：
@@ -101,5 +101,5 @@ _Avoid_: API、指令、動作、operation
 _Avoid_: 評論、comment、備註、標記
 
 **編輯規約**：
-對話開始時送給 agent 的第一則訊息，說明 CoMotion 的操作規則與可用命令。
+對話開始時送給 agent 的第一則訊息，說明 Slidra 的操作規則與可用命令。
 _Avoid_: 系統提示、system prompt、skill、指示

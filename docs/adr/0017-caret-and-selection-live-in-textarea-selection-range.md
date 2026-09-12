@@ -6,7 +6,7 @@
 
 ## 背景
 
-NOOP-272（#155）要求就地編輯支援游標移動與文字選取（A1–A9）：方向鍵移動、點擊定位、拖曳選取後打字取代、跨行選取的視覺、Backspace 整段刪除、IME 組字期間不亂跳、Esc 仍然 commit。這些全部要在 `apps/web/src/selection-runtime.js`——沙盒 iframe 裡那支無 import、無 export、不能引用 `@comotion/core` 的 runtime（ADR-0011）——的既有編輯模型上加上去。
+NOOP-272（#155）要求就地編輯支援游標移動與文字選取（A1–A9）：方向鍵移動、點擊定位、拖曳選取後打字取代、跨行選取的視覺、Backspace 整段刪除、IME 組字期間不亂跳、Esc 仍然 commit。這些全部要在 `apps/web/src/selection-runtime.js`——沙盒 iframe 裡那支無 import、無 export、不能引用 `@slidra/core` 的 runtime（ADR-0011）——的既有編輯模型上加上去。
 
 ## 決定一：`textarea.selectionStart`/`selectionEnd` 是游標與選取的唯一事實來源
 
@@ -39,9 +39,9 @@ host（`canvas.ts`）在 `begin-text-edit` 時已把整段字串送進 runtime�
 
 「決定二」證明的是 SVG 字元索引（`getStartPositionOfChar`/`getEndPositionOfChar`）與 DOM 字元序列零偏移——這件事在硬換行、富文字、列表符號都加進來之後**依然成立**，三者都不改變任何一個字元在 DOM 裡的順序或存在與否。但「決定二」原本額外斷言「DOM 索引空間 = `textarea.value` 索引空間」，這一條在硬換行出現後**不再成立**，理由分三點：
 
-1. **硬換行字元 `\n` 不進任何 tspan 內容**（NOOP-65 決定 A）：由 `data-comot-break="1"` 標記行尾，`\n` 本身沒有 DOM 位置。`textarea.value` 的索引空間 = Σ(每行內容長度 + 該行是否硬換行)；DOM 索引空間 = 單純的字元計數，不含硬換行。兩者從第一個硬換行之後就永久錯開一位，且每多一個硬換行多錯一位。
+1. **硬換行字元 `\n` 不進任何 tspan 內容**（NOOP-65 決定 A）：由 `data-slidra-break="1"` 標記行尾，`\n` 本身沒有 DOM 位置。`textarea.value` 的索引空間 = Σ(每行內容長度 + 該行是否硬換行)；DOM 索引空間 = 單純的字元計數，不含硬換行。兩者從第一個硬換行之後就永久錯開一位，且每多一個硬換行多錯一位。
 2. **富文字的 run 切段是巢狀 tspan**（NOOP-65 決定 B）：不改變字元順序、不插入任何字元，因此對兩個索引空間都是零影響——巢狀本身不是索引空間分歧的原因，只有硬換行才是。
-3. **列表符號是同一個 `<g>` 內另一個帶 `data-comot-list-marker` 的 `<text>`**（NOOP-65 決定 E）：符號本身在另一個完全獨立的 `<text>` 元素裡，既不進內容 `<text>` 的 DOM 字元序列，也不進 `textarea.value`；`selection-runtime.js` 每一處「找內容 `<text>`」都經 `contentTextElement()` 排除這個 marker，避免它的存在干擾任何一個索引空間的計算。
+3. **列表符號是同一個 `<g>` 內另一個帶 `data-slidra-list-marker` 的 `<text>`**（NOOP-65 決定 E）：符號本身在另一個完全獨立的 `<text>` 元素裡，既不進內容 `<text>` 的 DOM 字元序列，也不進 `textarea.value`；`selection-runtime.js` 每一處「找內容 `<text>`」都經 `contentTextElement()` 排除這個 marker，避免它的存在干擾任何一個索引空間的計算。
 
 因此 `selection-runtime.js` 的 `textLineRanges()` 現在對每一行回報兩組計數，`domStart/domEnd`（餵給 `getStartPositionOfChar`/`getEndPositionOfChar`）與 `valueStart/valueEnd`（`textarea.selectionStart/End` 所在的空間），只在行尾差一位（該行是否 `hardBreak`）；`indexAtPoint()` 對外仍然只回傳 value 索引（`textarea.selectionStart` 要的那個），`caretRectForIndex()`/`selectionRectsForRange()` 收的參數也維持 value 索引，內部才轉成 domIndex 去查詢 SVG 幾何——呼叫端完全不需要知道這個轉換存在。
 

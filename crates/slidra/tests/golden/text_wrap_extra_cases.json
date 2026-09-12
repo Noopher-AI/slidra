@@ -1,0 +1,73 @@
+[
+  {
+    "label": "cjk-only",
+    "input": {
+      "text": "中文測試內容全形標點，句子換行示範文字排版效果如何",
+      "width": 200,
+      "fontSizePx": 20,
+      "fontFamily": "Noto Sans TC"
+    },
+    "expectedInnerMarkup": "<tspan x=\"0\" y=\"23.2\">中文測試內容全形標</tspan><tspan x=\"0\" y=\"52.16\">點，句子換行示範文字</tspan><tspan x=\"0\" y=\"81.12\">排版效果如何</tspan>",
+    "expectedTextHeight": "86.88"
+  },
+  {
+    "label": "ascii-only",
+    "input": {
+      "text": "The quick brown fox jumps over the lazy dog and keeps running",
+      "width": 180,
+      "fontSizePx": 16,
+      "fontFamily": "Noto Sans TC"
+    },
+    "expectedInnerMarkup": "<tspan x=\"0\" y=\"18.56\">The quick brown fox </tspan><tspan x=\"0\" y=\"41.728\">jumps over the lazy dog </tspan><tspan x=\"0\" y=\"64.896\">and keeps running</tspan>",
+    "expectedTextHeight": "69.504"
+  },
+  {
+    "label": "hard-break",
+    "input": {
+      "text": "第一段內容\n第二段內容，稍微長一點以便換行測試",
+      "width": 150,
+      "fontSizePx": 18,
+      "fontFamily": "Noto Sans TC"
+    },
+    "expectedInnerMarkup": "<tspan x=\"0\" y=\"20.88\" data-slidra-break=\"1\">第一段內容</tspan><tspan x=\"0\" y=\"46.944\">第二段內容，稍微</tspan><tspan x=\"0\" y=\"73.008\">長一點以便換行測</tspan><tspan x=\"0\" y=\"99.072\">試</tspan>",
+    "expectedTextHeight": "104.256"
+  },
+  {
+    "label": "list-bullet-and-number-indent",
+    "input": {
+      "text": "項目一內容稍長會自動換行測試\n一般段落沒有清單樣式\n第二個列表項目也需要編號",
+      "width": 140,
+      "fontSizePx": 16,
+      "fontFamily": "Noto Sans TC",
+      "indents": [
+        24,
+        0,
+        24
+      ]
+    },
+    "expectedInnerMarkup": "<tspan x=\"24\" y=\"18.56\">項目一內容稍長</tspan><tspan x=\"24\" y=\"41.728\" data-slidra-break=\"1\">會自動換行測試</tspan><tspan x=\"0\" y=\"64.896\">一般段落沒有清單</tspan><tspan x=\"0\" y=\"88.064\" data-slidra-break=\"1\">樣式</tspan><tspan x=\"24\" y=\"111.232\">第二個列表項目</tspan><tspan x=\"24\" y=\"134.4\">也需要編號</tspan>",
+    "expectedTextHeight": "139.008"
+  },
+  {
+    "label": "overlong-single-word",
+    "input": {
+      "text": "Supercalifragilisticexpialidocious",
+      "width": 50,
+      "fontSizePx": 20,
+      "fontFamily": "Noto Sans TC"
+    },
+    "expectedInnerMarkup": "<tspan x=\"0\" y=\"23.2\">Supe</tspan><tspan x=\"0\" y=\"52.16\">rcalif</tspan><tspan x=\"0\" y=\"81.12\">ragili</tspan><tspan x=\"0\" y=\"110.08\">stice</tspan><tspan x=\"0\" y=\"139.04\">xpial</tspan><tspan x=\"0\" y=\"168\">idoci</tspan><tspan x=\"0\" y=\"196.96\">ous</tspan>",
+    "expectedTextHeight": "202.72"
+  },
+  {
+    "label": "empty-paragraph",
+    "input": {
+      "text": "第一段落內容\n\n第三段落內容在此",
+      "width": 200,
+      "fontSizePx": 18,
+      "fontFamily": "Noto Sans TC"
+    },
+    "expectedInnerMarkup": "<tspan x=\"0\" y=\"20.88\" data-slidra-break=\"1\">第一段落內容</tspan><tspan x=\"0\" y=\"46.944\" data-slidra-break=\"1\"></tspan><tspan x=\"0\" y=\"73.008\">第三段落內容在此</tspan>",
+    "expectedTextHeight": "78.192"
+  }
+]

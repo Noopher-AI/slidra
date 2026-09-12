@@ -19,7 +19,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * gap with a hand-written broken fixture
  * (`e2e/fixtures/broken-effects-deck/`): five slides, five different
  * kinds of damage —
- *   1. a `family="media"` effect target missing `data-comot-media` (the
+ *   1. a `family="media"` effect target missing `data-slidra-media` (the
  *      exact mistake made while hand-authoring `demo/slides/004.svg` for
  *      this same ticket)
  *   2. a `target` that does not resolve to any element on the slide (a
@@ -86,7 +86,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/broken-effects-deck");
@@ -110,16 +110,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-effecterror-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-effecterror-files-"));
-  process.env["COMOTION_HOME"] = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env["COMOTION_BIN"] = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-effecterror-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-effecterror-files-"));
+  process.env["SLIDRA_HOME"] = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env["SLIDRA_BIN"] = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "broken-effects-deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "broken-effects-deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -141,10 +141,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env["COMOTION_HOME"];
-      delete process.env["COMOTION_BIN"];
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env["SLIDRA_HOME"];
+      delete process.env["SLIDRA_BIN"];
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -170,12 +170,12 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     // 內容就看得到——壞掉的只是效果清單，不是投影片本身。
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("第 1 頁：缺少 data-slidra-media");
 
     await page.locator('.play-button').click();
 
     // 進入播放：effects.ts 對第 1 頁的效果清單解析會拋錯（media 效果的
-    // 目標缺少 data-comot-media），canvas.ts 把它顯示成畫面上的橫幅。
+    // 目標缺少 data-slidra-media），canvas.ts 把它顯示成畫面上的橫幅。
     const notice = page.locator(".player-error-notice");
     await expect.poll(() => notice.count(), { timeout: 10_000 }).toBeGreaterThan(0);
 
@@ -183,7 +183,7 @@ it("進入播放時效果清單解析失敗：畫面上出現指名問題所在�
     // 訊息要指名是哪個元素、缺了哪個屬性——不是「發生錯誤」這種空話，
     // 這樣作者才找得到要修哪一行。
     expect(noticeText).toContain("el-speaker");
-    expect(noticeText).toContain("data-comot-media");
+    expect(noticeText).toContain("data-slidra-media");
 
     // 降級行為要誠實：解析失敗不等於畫面空白，投影片本身的內容仍在。
     const opacityOf = (selector: string) =>
@@ -235,7 +235,7 @@ it("進入播放時 family 未實作：畫面上出現指名該 family 值的錯
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("第 1 頁：缺少 data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -282,7 +282,7 @@ it("進入播放時 effect 未實作：畫面上出現指名該 effect 值的錯
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("第 1 頁：缺少 data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -329,7 +329,7 @@ it("進入播放時 start 未實作：畫面上出現指名該 start 值的錯�
 
     await expect
       .poll(() => playFrame().locator("#el-broken-title").textContent().catch(() => null), { timeout: 30_000 })
-      .toBe("第 1 頁：缺少 data-comot-media");
+      .toBe("第 1 頁：缺少 data-slidra-media");
 
     await page.locator('.play-button').click();
     await expect.poll(() => page.locator(".player-error-notice").count(), { timeout: 10_000 }).toBeGreaterThan(0);

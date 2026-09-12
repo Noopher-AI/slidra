@@ -6,7 +6,7 @@
  * not duplicate this logic themselves.
  *
  * Ground truth for the numeric behaviour is
- * docs/design/prototype/comotion-logic-v3.js's `setZoom`/`wellWheel`
+ * docs/design/prototype/slidra-logic-v3.js's `setZoom`/`wellWheel`
  * (`Math.max(.25, Math.min(4, z))`, the `nz/zoom` anchor-preserving pan
  * formula, `Math.exp(-deltaY * .0025)` for wheel-to-zoom-factor) — see
  * 05-INTERACTIONS.feature's "舞台導航" scenarios for the behaviour rules.

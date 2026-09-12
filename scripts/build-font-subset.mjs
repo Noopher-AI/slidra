@@ -17,7 +17,7 @@
 //
 //   1. A fixed printable-ASCII range (0x20–0x7E) — always included so the
 //      Latin letters, digits and punctuation the UI mixes into Chinese
-//      sentences (e.g. "CoMotion", "1280 × 720", slide numbers) never
+//      sentences (e.g. "Slidra", "1280 × 720", slide numbers) never
 //      depend on what happens to appear in the scanned files below.
 //   2. Every CJK Unified Ideograph found by scanning the UTF-8 text of:
 //        apps/web/index.html

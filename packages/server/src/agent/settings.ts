@@ -1,15 +1,15 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { CoMotionError } from "../comotion/errors.js";
-import { resolveCoMotionHome } from "../comotion/home.js";
+import { SlidraError } from "../slidra/errors.js";
+import { resolveSlidraHome } from "../slidra/home.js";
 import type { AgentKind } from "./adapters.js";
 
 /**
- * User-level agent selection, persisted at `<COMOTION_HOME>/settings.json`
+ * User-level agent selection, persisted at `<SLIDRA_HOME>/settings.json`
  * (F2/F1 — NOOP-230 §4.1). This is the only file this module touches;
- * `resolveCoMotionHome()` (never `homedir()` built by hand here) is the
- * single source of truth for where `COMOTION_HOME` actually is, shared
+ * `resolveSlidraHome()` (never `homedir()` built by hand here) is the
+ * single source of truth for where `SLIDRA_HOME` actually is, shared
  * with every other module that reads/writes under it.
  *
  * The file may carry other keys in the future (F3/F4) — this module only
@@ -25,7 +25,7 @@ export interface AgentSettings {
 const SETTINGS_FILE_NAME = "settings.json";
 
 export function agentSettingsPath(): string {
-  return path.join(resolveCoMotionHome(), SETTINGS_FILE_NAME);
+  return path.join(resolveSlidraHome(), SETTINGS_FILE_NAME);
 }
 
 /**
@@ -35,7 +35,7 @@ export function agentSettingsPath(): string {
  * function never creates one just because it was asked to read it; only
  * `writeAgentSelection` ever creates the file. Everything else that does not
  * parse as `{ agent: "claude" | "codex" | null, ... }` is an honest failure
- * (`CoMotionError`): this module never silently patches a broken file into
+ * (`SlidraError`): this module never silently patches a broken file into
  * a default value. The caller (`cli.ts`) is the one place allowed to catch
  * that failure and continue with `agent: null` — this module's job stops at
  * reporting the truth.
@@ -56,10 +56,10 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new CoMotionError(`設定檔格式錯誤，不是合法的 JSON：${filePath}`);
+    throw new SlidraError(`設定檔格式錯誤，不是合法的 JSON：${filePath}`);
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new CoMotionError(`設定檔格式錯誤，最外層必須是一個物件：${filePath}`);
+    throw new SlidraError(`設定檔格式錯誤，最外層必須是一個物件：${filePath}`);
   }
 
   const models = readModels((parsed as Record<string, unknown>).models, filePath);
@@ -70,21 +70,21 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   if (value === "claude" || value === "codex") {
     return { agent: value, models };
   }
-  throw new CoMotionError(`設定檔的 agent 欄位值無效（必須是 claude、codex 或 null）：${filePath}`);
+  throw new SlidraError(`設定檔的 agent 欄位值無效（必須是 claude、codex 或 null）：${filePath}`);
 }
 
 /** `models` is `{ claude?: string, codex?: string }`; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */
 function readModels(value: unknown, filePath: string): Partial<Record<AgentKind, string>> {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new CoMotionError(`設定檔的 models 欄位必須是物件：${filePath}`);
+    throw new SlidraError(`設定檔的 models 欄位必須是物件：${filePath}`);
   }
   const models: Partial<Record<AgentKind, string>> = {};
   for (const kind of ["claude", "codex"] as const) {
     const id = (value as Record<string, unknown>)[kind];
     if (id === undefined) continue;
     if (typeof id !== "string" || id === "") {
-      throw new CoMotionError(`設定檔的 models.${kind} 必須是非空字串：${filePath}`);
+      throw new SlidraError(`設定檔的 models.${kind} 必須是非空字串：${filePath}`);
     }
     models[kind] = id;
   }
@@ -94,7 +94,7 @@ function readModels(value: unknown, filePath: string): Partial<Record<AgentKind,
 /**
  * Persists the user's agent selection. Preserves every other top-level key
  * already in the file (future F3/F4 settings) — only `agent` is overwritten.
- * `mkdir`s `COMOTION_HOME` if it does not exist yet, and writes through a
+ * `mkdir`s `SLIDRA_HOME` if it does not exist yet, and writes through a
  * temp file + `rename` in the same directory so a crash or full disk
  * mid-write can never leave `settings.json` truncated or half-written —
  * the same discipline `workspace.ts`'s `writeRegistry` uses for
@@ -113,7 +113,7 @@ export async function writeAgentModel(kind: AgentKind, modelId: string): Promise
 }
 
 async function updateSettings(patch: (existing: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
-  const home = resolveCoMotionHome();
+  const home = resolveSlidraHome();
   const finalPath = agentSettingsPath();
   await mkdir(home, { recursive: true });
 

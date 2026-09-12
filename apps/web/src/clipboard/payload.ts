@@ -5,7 +5,7 @@
  * imported (F8, NOOP-289 決定 C1): the web bundle no longer depends on
  * core at all.
  */
-const CLIPBOARD_MARKER_ATTR = "data-comot-clipboard";
+const CLIPBOARD_MARKER_ATTR = "data-slidra-clipboard";
 const CLIPBOARD_MARKER_VALUE = "elements";
 
 /**
@@ -14,18 +14,18 @@ const CLIPBOARD_MARKER_VALUE = "elements";
  * §4.3). Recognition is deliberately shallow: only the root `<svg>`'s own
  * marker attribute is checked with the browser's native `DOMParser` —
  * `sourceSlidePath`/`viewBox`/sanitize-worthy content are NOT this module's
- * concern any more (決定 C1/(d)): a payload that looks like comotion
+ * concern any more (決定 C1/(d)): a payload that looks like slidra
  * clipboard content but is actually malformed (e.g. carries `onload`) is
- * still classified as `comotion-elements` and sent straight through to
+ * still classified as `slidra-elements` and sent straight through to
  * `element paste`, which the CLI's own three-layer validation rejects —
  * the browser never sanitizes.
  */
 export type ClipboardTextKind =
   | { kind: "empty" }
-  | { kind: "comotion-elements"; svg: string }
+  | { kind: "slidra-elements"; svg: string }
   | { kind: "plain"; text: string };
 
-function isCoMotionClipboardSvg(text: string): boolean {
+function isSlidraClipboardSvg(text: string): boolean {
   const doc = new DOMParser().parseFromString(text, "image/svg+xml");
   if (doc.getElementsByTagName("parsererror").length === 0) {
     const root = doc.documentElement;
@@ -40,7 +40,7 @@ function isCoMotionClipboardSvg(text: string): boolean {
   // never sanitizes. A loose textual check on just the root tag's own
   // opening substring (the part that, by construction, parsed fine — the
   // failure is always deeper in) is enough to tell "meant to be a
-  // comotion payload" apart from some other broken SVG.
+  // slidra payload" apart from some other broken SVG.
   const rootTagMatch = /^\s*(?:<\?xml[^>]*>\s*)?<svg\b[^>]*>/.exec(text);
   return !!rootTagMatch && rootTagMatch[0].includes(`${CLIPBOARD_MARKER_ATTR}="${CLIPBOARD_MARKER_VALUE}"`);
 }
@@ -49,8 +49,8 @@ export function classifyClipboardText(text: string | null | undefined): Clipboar
   if (!text || text.trim() === "") {
     return { kind: "empty" };
   }
-  if (isCoMotionClipboardSvg(text)) {
-    return { kind: "comotion-elements", svg: text };
+  if (isSlidraClipboardSvg(text)) {
+    return { kind: "slidra-elements", svg: text };
   }
   return { kind: "plain", text };
 }

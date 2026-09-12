@@ -3,7 +3,7 @@
 // sandboxed iframe with `allow-scripts` and no `allow-same-origin`, so it
 // has no way to reach anything outside itself except `postMessage`.
 //
-// Its whole job: read window.__COMOT_PLAN__ (injected by the parent before
+// Its whole job: read window.__SLIDRA_PLAN__ (injected by the parent before
 // this script runs — see player-plan.ts / canvas.ts), listen for the
 // forward arrow key, apply each step's effects to the DOM via the Web
 // Animations API (ADR-0005: no SMIL, no CSS `animation`), and report what
@@ -19,7 +19,7 @@
 (function () {
   "use strict";
 
-  var plan = window.__COMOT_PLAN__;
+  var plan = window.__SLIDRA_PLAN__;
   var steps = (plan && plan.steps) || [];
   var media = (plan && plan.media) || {};
   var hideSelectors = (plan && plan.hideSelectors) || {};
@@ -62,7 +62,7 @@
   for (var hi = 0; hi < ((plan && plan.hidden) || []).length; hi++) {
     hiddenNow[plan.hidden[hi]] = true;
   }
-  var hideStyleEl = document.getElementById("comot-hide");
+  var hideStyleEl = document.getElementById("slidra-hide");
 
   function post(message) {
     // The parent document has an opaque origin from this frame's point of
@@ -70,7 +70,7 @@
     // so there is no meaningful target origin to name — "*" is correct
     // here, not a shortcut. The parent authenticates the sender by identity
     // (`event.source === iframe.contentWindow`), never by trusting origin.
-    var payload = { source: "comot-player" };
+    var payload = { source: "slidra-player" };
     for (var key in message) {
       if (Object.prototype.hasOwnProperty.call(message, key)) {
         payload[key] = message[key];
@@ -80,7 +80,7 @@
   }
 
   /**
-   * Rewrites `<style id="comot-hide">`'s content to exactly the ids still in
+   * Rewrites `<style id="slidra-hide">`'s content to exactly the ids still in
    * `hiddenNow` (D7): one `{opacity:0 !important}` rule per id, using the
    * already-escaped selector the parent computed (`plan.hideSelectors`) —
    * this runtime never re-implements CSS id escaping.
@@ -153,7 +153,7 @@
    */
   function createStageMedia(id, cue, placeholder) {
     var el = document.createElement(cue.kind === "video" ? "video" : "audio");
-    // The raw data-comot-media value, unmodified — same <base href>
+    // The raw data-slidra-media value, unmodified — same <base href>
     // contract as playMedia() below.
     el.src = cue.src;
     el.preload = "metadata";
@@ -162,7 +162,7 @@
     var button = document.createElement("button");
     button.type = "button";
     button.textContent = "\u25B6";
-    button.setAttribute("data-comot-stage-media-control", "play");
+    button.setAttribute("data-slidra-stage-media-control", "play");
     button.style.position = "absolute";
     button.style.zIndex = "2";
     button.style.width = "48px";
@@ -297,7 +297,7 @@
     }
 
     var el = document.createElement(cue.kind === "video" ? "video" : "audio");
-    // The raw data-comot-media value, unmodified (settled decision #3): the
+    // The raw data-slidra-media value, unmodified (settled decision #3): the
     // play document already carries a <base href="/api/raw/<slide dir>">
     // (see wrapPlayDocument in canvas.ts), so the browser's own relative-URL
     // resolution turns this into the right /api/raw/ request — no URL
@@ -768,7 +768,7 @@
 
   window.addEventListener("message", function (event) {
     var data = event.data;
-    if (!data || data.source !== "comot-host") return;
+    if (!data || data.source !== "slidra-host") return;
     if (data.command === "focus") {
       window.focus();
       return;
@@ -806,7 +806,7 @@
   }
 
   // "ready" must stay the last message this runtime posts ON BOOT, and its
-  // shape must stay exactly `{ source: "comot-player", event: "ready" }` —
+  // shape must stay exactly `{ source: "slidra-player", event: "ready" }` —
   // apps/web/test/canvas.test.ts:851 asserts on that literal substring
   // to prove the runtime was injected. Preview's own `preview-done` is a
   // later, separate message (D8) — it does not change this contract.

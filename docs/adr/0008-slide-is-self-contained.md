@@ -1,8 +1,8 @@
 # 一張投影片自成一體
 
-> 一張投影片自成一體是**決策**，不因規格化而改變；投影片 `<metadata>` 內 `comot:*` 元素（`<comot:effects>`／
-> `<comot:notes>`／`<comot:comments>`／`<comot:transition>`）的完整屬性表、命名空間、與圖表／表格容器各自的例外
-> 結構，細節見 [`docs/spec/comot-format.md`](../spec/comot-format.md)。
+> 一張投影片自成一體是**決策**，不因規格化而改變；投影片 `<metadata>` 內 `slidra:*` 元素（`<slidra:effects>`／
+> `<slidra:notes>`／`<slidra:comments>`／`<slidra:transition>`）的完整屬性表、命名空間、與圖表／表格容器各自的例外
+> 結構，細節見 [`docs/spec/slidra-format.md`](../spec/slidra-format.md)。
 
 一張投影片需要的一切——圖形、元素識別碼、顯示名稱、效果清單——都寫在那張 SVG 裡。`project.json` 只保留跨投影片才有意義的東西：`formatVersion`、`name`、`canvas`、`slides` 順序陣列。
 
@@ -17,5 +17,5 @@
 - 「整份簡報總共幾步」不存在於任何單一檔案，由 runtime 掃過所有投影片推導。進度指示是算出來的，不是存起來的——存起來就是快取，快取就會不同步。
 - 投影片可以被複製到另一份簡報而不失去動態。這不是這個決定追求的目標，是它的副產品。
 - 代價：跨投影片才成立的效果（例如貫穿全簡報的轉場序列）在這個結構下沒有位置。真的需要時，那會是一個新的決定，不是把清單搬去 `project.json`。
-- **[E2.T8]**：作者釘在簡報上的留言（對元素，或對整頁）也住在該張投影片 SVG 的 `<metadata>` 裡，`<comot:comments>` 底下的 `<comot:comment>` 清單，與 `<comot:effects>` 同一個位置、同一條理由。複製一頁時留言隨之複製（`slide duplicate`），`target` 重新指向新元素 id；`element delete` 一併清掉指向被刪元素的留言。
-- **[E2.T11]**：頁面進出場動畫（Enter／Exit）同樣住在該張投影片 SVG 的 `<metadata>` 裡，`<comot:transition>`，取代原本活在 `project.json`（`transition` 欄位，T3）的簡報層級單一轉場——那個欄位從沒被播放過，只是存著；現在每一頁各自的 Enter／Exit 效果與時長才是真正驅動播放模式換頁動畫的資料。對調兩頁、複製一頁時，進出場設定跟著投影片本身走，不需要另外搬動或重新映射一份跨檔案的對照表。
+- **[E2.T8]**：作者釘在簡報上的留言（對元素，或對整頁）也住在該張投影片 SVG 的 `<metadata>` 裡，`<slidra:comments>` 底下的 `<slidra:comment>` 清單，與 `<slidra:effects>` 同一個位置、同一條理由。複製一頁時留言隨之複製（`slide duplicate`），`target` 重新指向新元素 id；`element delete` 一併清掉指向被刪元素的留言。
+- **[E2.T11]**：頁面進出場動畫（Enter／Exit）同樣住在該張投影片 SVG 的 `<metadata>` 裡，`<slidra:transition>`，取代原本活在 `project.json`（`transition` 欄位，T3）的簡報層級單一轉場——那個欄位從沒被播放過，只是存著；現在每一頁各自的 Enter／Exit 效果與時長才是真正驅動播放模式換頁動畫的資料。對調兩頁、複製一頁時，進出場設定跟著投影片本身走，不需要另外搬動或重新映射一份跨檔案的對照表。

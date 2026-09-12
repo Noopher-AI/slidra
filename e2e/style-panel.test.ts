@@ -27,7 +27,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/style-panel-deck");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -68,16 +68,16 @@ interface TestServer {
 }
 
 async function startServerFor(): Promise<TestServer> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-style-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-style-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-style-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-style-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -100,10 +100,10 @@ async function startServerFor(): Promise<TestServer> {
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-      await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },
   };
 }
@@ -267,7 +267,7 @@ it("A4 Text·Text color：改成 #ff0000 → 檔案 fill=#ff0000；undo 回退",
   }
 });
 
-it("A5 Text·Align（文字框）：改成 center → 檔案 data-comot-text-align=center 且 tspan x 改變；undo 回退", async () => {
+it("A5 Text·Align（文字框）：改成 center → 檔案 data-slidra-text-align=center 且 tspan x 改變；undo 回退", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -281,13 +281,13 @@ it("A5 Text·Align（文字框）：改成 center → 檔案 data-comot-text-ali
       let latest = before;
       await expect.poll(async () => {
         latest = await readSlide(registry, presentationId);
-        return latest.includes('data-comot-text-align="center"');
+        return latest.includes('data-slidra-text-align="center"');
       }).toBe(true);
       return latest;
     })();
     const newX = /<tspan x="([^"]*)"/.exec(updated)![1];
     expect(newX).not.toBe(originalX);
-    await expect.poll(() => frame.locator("#el-text").getAttribute("data-comot-text-align")).toBe("center");
+    await expect.poll(() => frame.locator("#el-text").getAttribute("data-slidra-text-align")).toBe("center");
 
     await undo(registry, presentationId);
     expect(await readSlide(registry, presentationId)).toBe(before);
@@ -415,7 +415,7 @@ it("B1 Background：改成 #202020 → 根 <svg> style 含 background-color；if
   }
 });
 
-it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --comot-accent；iframe 反映；undo 回退", async () => {
+it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --slidra-accent；iframe 反映；undo 回退", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -424,9 +424,9 @@ it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --comot-accent；iframe �
     await openStylePage(page);
 
     await fillField(page, "accent", "#00ff00");
-    await expect.poll(async () => readSlide(registry, presentationId)).toContain("--comot-accent:#00ff00");
+    await expect.poll(async () => readSlide(registry, presentationId)).toContain("--slidra-accent:#00ff00");
     await expect
-      .poll(() => frame.locator("svg").evaluate((el) => (el as unknown as SVGElement).style.getPropertyValue("--comot-accent")))
+      .poll(() => frame.locator("svg").evaluate((el) => (el as unknown as SVGElement).style.getPropertyValue("--slidra-accent")))
       .toBe("#00ff00");
 
     await undo(registry, presentationId);

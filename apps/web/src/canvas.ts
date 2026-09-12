@@ -8,7 +8,7 @@
  * calls it directly when the watched file changes on disk, redrawing the
  * slide without React re-rendering anything.
  *
- * A `.comot` is meant to be opened by people other than its author (ADR-0003
+ * A `.slidra` is meant to be opened by people other than its author (ADR-0003
  * — that's the point of it being a single shareable file). Slide markup is
  * therefore untrusted: a legal SVG can carry `onload`/`onerror` handlers or
  * an active `<foreignObject>`, and if it were injected with `innerHTML` into
@@ -40,7 +40,7 @@
  * ancestor — an element's `<g>` container, or the whole group when the
  * element sits inside one (ADR-0012). Nothing changes on this side of the
  * seam: the `{ id, name }` arriving over postMessage has always been the
- * resolved node's own `id` and `data-comot-name`, and after conversion
+ * resolved node's own `id` and `data-slidra-name`, and after conversion
  * that node is the container.
  *
  * NOOP-91 (direct manipulation) extends the same runtime with drag-to-move
@@ -120,7 +120,7 @@ export type StageInputEvent =
 export interface CanvasSelection {
   /** Selected in order; length 0 means nothing is selected. */
   ids: string[];
-  /** `ids[i]`'s `data-comot-name`; `null` when the element carries none. */
+  /** `ids[i]`'s `data-slidra-name`; `null` when the element carries none. */
   names: (string | null)[];
   /**
    * Group ids entered via double-click, outermost first; [] = top level.
@@ -530,7 +530,7 @@ export interface CanvasController {
   copySelection: () => Promise<string | null>;
   /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
   cutSelection: () => Promise<string | null>;
-  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a comotion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
+  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a slidra elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
   pasteFromText: (text: string) => Promise<void>;
   /**
    * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
@@ -622,7 +622,7 @@ export interface EmbedCommand {
 
 /** Message shapes the runtime sends (C4 in the design doc). */
 interface PlayerMessage {
-  source: "comot-player";
+  source: "slidra-player";
   // [E2.T7]/D8: "preview-done" — the runtime's own signal that Preview has
   // finished playing every effect it was asked to; only ever sent while
   // `mode === "preview"`.
@@ -664,7 +664,7 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
   return (
     typeof data === "object" &&
     data !== null &&
-    (data as { source?: unknown }).source === "comot-player" &&
+    (data as { source?: unknown }).source === "slidra-player" &&
     typeof (data as { event?: unknown }).event === "string"
   );
 }
@@ -677,7 +677,7 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
  * never trusting a NaN/Infinity/wrong-type field into a command input.
  */
 interface SelectionMessage {
-  source: "comot-selection";
+  source: "slidra-selection";
   event:
     | "select"
     | "clear"
@@ -893,7 +893,7 @@ function isSelectionMessage(data: unknown): data is SelectionMessage {
   return (
     typeof data === "object" &&
     data !== null &&
-    (data as { source?: unknown }).source === "comot-selection" &&
+    (data as { source?: unknown }).source === "slidra-selection" &&
     typeof (data as { event?: unknown }).event === "string"
   );
 }
@@ -1048,7 +1048,7 @@ interface RotateGesture {
  */
 /**
  * Textbox mid-edge width drag (F8, NOOP-289 決定 (b)): no font is fetched
- * any more — the drag only ever touches `data-comot-text-width`, never the
+ * any more — the drag only ever touches `data-slidra-text-width`, never the
  * `<text>` content (the runtime's `selectionClientRect` computes the
  * live-previewed box from the element's own unchanged bbox + this width,
  * see selection-runtime.js), so there is nothing left to measure.
@@ -1508,7 +1508,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
   }
 
-  /** Dispatches one already-validated-as-comot-selection message to the right handler (NOOP-91 §4.1). */
+  /** Dispatches one already-validated-as-slidra-selection message to the right handler (NOOP-91 §4.1). */
   function handleSelectionMessage(message: SelectionMessage): void {
     if (message.event === "viewport") {
       if (isValidRect(message.svgRect) && isValidRect(message.viewBox)) {
@@ -2132,7 +2132,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   function postToFrame(message: Record<string, unknown>): void {
-    frame.contentWindow?.postMessage({ source: "comot-host", ...message }, "*");
+    frame.contentWindow?.postMessage({ source: "slidra-host", ...message }, "*");
   }
 
   function toUserPoint(point: { x: number; y: number }): { x: number; y: number } {
@@ -2301,7 +2301,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const bytes = await file.arrayBuffer();
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Comotion-Asset-Name": encodeURIComponent(file.name) },
+        headers: { "X-Slidra-Asset-Name": encodeURIComponent(file.name) },
         body: bytes,
       });
       return parseAssetResponse(response);
@@ -2314,7 +2314,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     try {
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Comotion-Asset-Url": encodeURIComponent(url) },
+        headers: { "X-Slidra-Asset-Url": encodeURIComponent(url) },
       });
       return parseAssetResponse(response);
     } catch (err) {
@@ -2420,7 +2420,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (result.ok) clearSelectionState([]);
   }
 
-  /** `+3% / +4%` of the viewBox (prototype's own `comotion-logic-v3.js` offset) — `runCommand`'s existing `SELECT_AFTER_COMMAND` entry for `"element duplicate"` selects the new copy on success. */
+  /** `+3% / +4%` of the viewBox (prototype's own `slidra-logic-v3.js` offset) — `runCommand`'s existing `SELECT_AFTER_COMMAND` entry for `"element duplicate"` selects the new copy on success. */
   async function duplicateSelection(): Promise<void> {
     if (mode !== "view" || selectionIds.length === 0 || !viewport) return;
     await runCommand("element duplicate", {
@@ -3153,7 +3153,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return gesture.handle === "right" ? gesture.originalWidth + dx : gesture.originalWidth - dx;
   }
 
-  /** Tells the runtime to show `width` — it only ever updates `data-comot-text-width` and the selection box/handles (`selectionClientRect` in selection-runtime.js), never the `<text>` content itself. */
+  /** Tells the runtime to show `width` — it only ever updates `data-slidra-text-width` and the selection box/handles (`selectionClientRect` in selection-runtime.js), never the `<text>` content itself. */
   function previewTextboxWidth(id: string, width: number): void {
     postToFrame({ command: "preview-textbox-width", id, width });
   }
@@ -3218,7 +3218,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * Opens `id` for editing — the shared entry point for `beginTextEdit`
    * (CanvasController) and the runtime's own "dblclick-textbox" report.
    * Lock is NOT checked here: the parsed slide model (`elementIndex`) never
-   * carries `data-comot-lock` (it is a container attribute the normal-form
+   * carries `data-slidra-lock` (it is a container attribute the normal-form
    * parser does not surface on `SlideElement`), so the only place that can
    * answer "is this locked" is the runtime's own DOM — see the
    * "begin-text-edit"/"text-edit-denied" round trip below and
@@ -3395,7 +3395,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
-    // [E4.T7]: an external change (an agent's command, another tab, `comotion
+    // [E4.T7]: an external change (an agent's command, another tab, `slidra
     // effect *` from the CLI) may have touched any slide's effect list —
     // reload() has no way to know which, so invalidate every cached plan
     // rather than one. render()/renderPlay() below re-fetch as needed.
@@ -3663,7 +3663,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    *
    * `playEnter` ([E2.T11], replacing T6's `animate`): whether THIS
    * particular call should play the new page's own enter transition, on
-   * top of whatever `<comot:transition>` it declares. §4.6's table: every
+   * top of whatever `<slidra:transition>` it declares. §4.6's table: every
    * caller passes `true` except `reload()`'s background refresh and
    * `previewEffects()` — a page change (forward or backward), and
    * entering play mode itself, all count as a real arrival. This is a
@@ -3717,7 +3717,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
-      // [E2.T11]: a slide whose <comot:transition> is present but malformed
+      // [E2.T11]: a slide whose <slidra:transition> is present but malformed
       // (§4.2: an unknown effect value, an illegal duration, more than one
       // node) surfaces through the exact same `error` banner + static-
       // fallback path a broken effect list already does, rather than a
@@ -4056,12 +4056,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // listener in headless Chromium during testing. Asking the runtime to
     // call `window.focus()` on itself, from inside its own document, is
     // the half that actually lands.
-    frame.contentWindow?.postMessage({ source: "comot-host", command: "focus" }, "*");
+    frame.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
   }
 
   function stepPlayer(direction: "advance" | "retreat"): void {
     if (destroyed || mode !== "play") return;
-    frame.contentWindow?.postMessage({ source: "comot-host", command: direction }, "*");
+    frame.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
   }
 
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
@@ -4394,7 +4394,7 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
 }
 
 /**
- * `@font-face` for the presentation font every `.comot` embeds (ticket
+ * `@font-face` for the presentation font every `.slidra` embeds (ticket
  * #71), injected into every srcdoc `<head>` below so a slide's
  * `font-family="Noto Sans TC"` renders from the font the container ships,
  * not whatever "Noto Sans TC" happens to resolve to (or not) on the host
@@ -4411,7 +4411,7 @@ const DEFAULT_PRESENTATION_FONT_FACE_STYLE =
 /**
  * The faces actually injected, rebuilt from `project.json` whenever the
  * presentation loads (#305). This used to be the constant above, naming
- * one family — so a deck that imported a second font (`comotion font
+ * one family — so a deck that imported a second font (`slidra font
  * import`, e.g. `Noto Serif TC` for its titles) rendered that font from
  * whatever the host OS happened to have, on screen and in the PDF alike.
  * The container ships the bytes; every document that shows a slide must
@@ -4484,7 +4484,7 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
  * this and wrapPlayDocument/slideDirectory are exported.
  *
  * `background:#fff` on `<body>` (#120): a slide with no background rect of
- * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `slidra new`'s blank title slide) otherwise leaves this
  * document fully transparent. This function's own callers only ever render
  * inside a black loading/error placeholder (the empty-deck message and
  * renderPlay()'s parse-error fallback, both painted over play.css's `.canvas`
@@ -4586,7 +4586,7 @@ export function wrapSelectionDocument(
   // selection, so no qa/cases script or e2e test can catch a regression here.
   // Applied to this wrapper only: play mode is a separate document where
   // letting a viewer select text is a different decision.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__SLIDRA_SELECTION_COLORS__=${safeColorsJson};window.__SLIDRA_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__SLIDRA_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4600,7 +4600,7 @@ export function wrapSelectionDocument(
  * `background:#fff` on `<body>` (#120): this is play mode's normal
  * rendering path (renderPlay()'s non-error branch), painted over play.css's
  * `.canvas` `#000` loading placeholder. A slide with no background rect of
- * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `slidra new`'s blank title slide) otherwise leaves this
  * document transparent, so the black placeholder never gets covered — the
  * whole point of #000 there (avoid a flash of white before content paints)
  * regresses into the opposite failure: a flash of black that never clears.

@@ -13,7 +13,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 /**
  * [E2.T3] `05-INTERACTIONS.feature`「頁面管理」的 New／Templates 與拖曳排
  * 序場景（#208 的驗收硬性下限），加上 T3 plan §0 的根因迴歸守門測試（E）
- * ——`slide notes set` 曾經寫出未繫結 `comot:` 前綴的 `<comot:notes>`，讓
+ * ——`slide notes set` 曾經寫出未繫結 `slidra:` 前綴的 `<slidra:notes>`，讓
  * 那一頁的播放模式解析失敗；這個檔案的 "root cause" 測試就是防止它再發
  * 生的迴歸測試。
  *
@@ -28,7 +28,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/comotion");
+const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/page-management-deck");
@@ -69,16 +69,16 @@ async function startServerFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
@@ -101,10 +101,10 @@ async function startServerFor(): Promise<{
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -119,26 +119,26 @@ async function startRegistryFor(): Promise<{
   presentationId: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-cli-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-pm-cli-files-"));
-  process.env.COMOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
-  process.env.COMOTION_BIN = coMotionBin;
+  const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-cli-home-"));
+  const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-cli-files-"));
+  process.env.SLIDRA_HOME = slidraHome;
+  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
-  const comotPath = path.join(comotDir, "deck.comot");
-  await packDirectory(deckDir, comotPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
+  const slidraPath = path.join(slidraDir, "deck.slidra");
+  await packDirectory(deckDir, slidraPath);
+  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
   return {
     registry,
     presentationId,
     cleanup: async () => {
-      delete process.env.COMOTION_HOME;
-      delete process.env.COMOTION_BIN;
-      await rm(coMotionHome, { recursive: true, force: true });
-      await rm(comotDir, { recursive: true, force: true });
+      delete process.env.SLIDRA_HOME;
+      delete process.env.SLIDRA_BIN;
+      await rm(slidraHome, { recursive: true, force: true });
+      await rm(slidraDir, { recursive: true, force: true });
     },
   };
 }
@@ -375,7 +375,7 @@ it("根因迴歸守門測試（T3 plan §0/§5-E）：slide notes set 之後進�
     });
     expect(result.ok).toBe(true);
     const content = await readSlide(registry, presentationId, "slides/001.svg");
-    expect(content).toContain('<comot:notes xmlns:comot="https://co-motion.dev/ns">');
+    expect(content).toContain('<slidra:notes xmlns:slidra="https://slidra.app/ns/2026">');
 
     const page = await openApp(server);
 
@@ -414,7 +414,7 @@ it("備忘稿（T3 plan §4.1／§5-D）：打字 → blur → 檔案內容；�
     await page.locator(".rail-slides-label").click(); // blur the textarea
     await expect
       .poll(async () => readSlide(registry, presentationId, "slides/001.svg"), { timeout: 10_000 })
-      .toEqual(expect.stringContaining('<comot:notes xmlns:comot="https://co-motion.dev/ns">第一頁的講稿</comot:notes>'));
+      .toEqual(expect.stringContaining('<slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一頁的講稿</slidra:notes>'));
 
     // 換頁往返：切到第二頁（沒有備忘稿，顯示 placeholder），再切回第一頁，
     // 欄位要顯示剛才存的內容——不是空的，也不是第二頁的草稿。
@@ -646,7 +646,7 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
   // 經在單元測試裡覆蓋過的東西，這裡重複沒有增加驗證力道。「各做一次」照
   // 字面：同一個操作，兩條路徑，同一份起始位元組。
   //
-  // GUI 與 CLI 兩側絕不能同時開著：`COMOTION_HOME` 是行程層級的環境變數
+  // GUI 與 CLI 兩側絕不能同時開著：`SLIDRA_HOME` 是行程層級的環境變數
   // （`workspace.ts` 每次呼叫都重新讀一次，見它自己的說明），`startServerFor`
   // 與 `startRegistryFor` 都會覆寫它。GUI 側必須先跑完、`cleanup()` 收尾之
   // 後，CLI 側才能開始，否則兩邊的檔案操作會打到同一個暫存目錄。

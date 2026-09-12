@@ -784,7 +784,7 @@ describe("mountOverview", () => {
 
 describe("縮圖只在畫面真的變了才重畫 (#303)", () => {
   it("refresh() 遇到只有 <metadata> 變動的投影片不重設 srcdoc；內容變了才重設", async () => {
-    const NOTES = '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">講稿</comot:notes></metadata>';
+    const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">講稿</slidra:notes></metadata>';
     let s1 = '<svg data-testid="s1"><circle r="1"/></svg>';
     vi.stubGlobal(
       "fetch",
@@ -811,7 +811,7 @@ describe("縮圖只在畫面真的變了才重畫 (#303)", () => {
     overview.refresh();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(frame.srcdoc).toBe(painted);
-    expect(frame.srcdoc).not.toContain("comot:notes");
+    expect(frame.srcdoc).not.toContain("slidra:notes");
 
     // A real content change repaints.
     s1 = `<svg data-testid="s1">${NOTES}<circle r="2"/></svg>`;

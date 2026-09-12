@@ -1,18 +1,18 @@
-# CoMotion
+# Slidra
 
 > An AX- and UX-friendly SVG presentation editor. From idea to presented, fast.
 
 ## 專案定位
 
-CoMotion 是一個開源的 SVG-first 投影片編輯工具，做給**要用 agent 做簡報、而且簡報要拿得出手**的人。
+Slidra 是一個開源的 SVG-first 投影片編輯工具，做給**要用 agent 做簡報、而且簡報要拿得出手**的人。
 
 用 agent 做簡報，內容通常很快就到位。剩下的時間多半花在版面：一段文字比框長了半行、兩欄的起始位置差三像素、圖片壓到說明文字。這些都不難修，難的是要一頁一頁看過才知道哪裡該修；而再請 agent 調整一輪，前一輪對好的地方可能又跟著動了。
 
-CoMotion 想處理的是這段來回，以及它背後的三件事。
+Slidra 想處理的是這段來回，以及它背後的三件事。
 
 ## 一、版面對不對，是算得出來的
 
-在 CoMotion 裡，一頁排得對不對有確定的答案，不必靠眼睛判斷。
+在 Slidra 裡，一頁排得對不對有確定的答案，不必靠眼睛判斷。
 
 每個元素都有明確的座標、尺寸與角度；文字的實際寬高由簡報自帶的字型在 Node 端量出來，不需要瀏覽器、不需要截圖，也不需要模型看圖。所以下面這幾件事都算得出來：
 
@@ -25,7 +25,7 @@ CoMotion 想處理的是這段來回，以及它背後的三件事。
 
 偵測與修正都在機器這一邊，因此可以合成一個閉環——agent 改完自己量一次，沒過就再調，調完再量。人看的是收斂之後的結果。
 
-量測與幾何都已經在 `@comotion/core` 裡：`elementBounds()`、`primitiveBounds()`、`measureTextWidth()`，以及對齊、分布與吸附，全部跑在 Node 端。把它們接成一條 `comotion check` 是接下來的第一件事（見〈接下來〉）。
+量測與幾何都已經在 `@slidra/core` 裡：`elementBounds()`、`primitiveBounds()`、`measureTextWidth()`，以及對齊、分布與吸附，全部跑在 Node 端。把它們接成一條 `slidra check` 是接下來的第一件事（見〈接下來〉）。
 
 ## 二、人跟 agent 在同一份東西上工作
 
@@ -42,7 +42,7 @@ CoMotion 想處理的是這段來回，以及它背後的三件事。
 
 團隊的簡報規範通常寫在另一份文件裡，靠人記得。交給 agent 之後，記得的責任多半落在提示詞上。
 
-CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
+Slidra 讓規範住在簡報裡，由編輯路徑本身維持：
 
 - **範本**：新增投影片時整份複製過去，該固定的位置已經固定。一份簡報可以有好幾份範本——封面、內頁、章節頁。
 - **鎖定**：背景、色塊、logo、頁尾、頁碼標記為版面骨架，日常編輯不會動到它們，人和 agent 一樣。
@@ -58,9 +58,9 @@ CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
 
 **一張投影片是一份 SVG，不是產生 SVG 的程式**（ADR-0001）。你拖的、agent 改的、瀏覽器畫的是同一份檔案，中間沒有編譯步驟，背後也沒有另一份更權威的表示法。座標是絕對的，所以「元素在哪裡」不必等瀏覽器算完才知道——這是第一件事的來源。每張投影片自成一體（ADR-0008）：圖形、識別碼、顯示名稱、效果清單全寫在那一張 SVG 裡，對調兩頁只是動 `slides` 陣列裡的兩個字串。
 
-**所有修改都經由語意化的 CLI 命令，人與 agent 走同一條路**（ADR-0002）。`comotion serve` 是 CLI 的常駐模式，前端與 agent 派送到的是同一份命令註冊表——這是第二件事的來源。簡報內容對 agent 唯讀，透過虛擬檔案系統存取，`fs/write_text_file` 一律拒絕（ADR-0004）；樣式走白名單（ADR-0014）；資產匯入驗證真實媒體格式（ADR-0015）——這些是第三件事的來源。
+**所有修改都經由語意化的 CLI 命令，人與 agent 走同一條路**（ADR-0002）。`slidra serve` 是 CLI 的常駐模式，前端與 agent 派送到的是同一份命令註冊表——這是第二件事的來源。簡報內容對 agent 唯讀，透過虛擬檔案系統存取，`fs/write_text_file` 一律拒絕（ADR-0004）；樣式走白名單（ADR-0014）；資產匯入驗證真實媒體格式（ADR-0015）——這些是第三件事的來源。
 
-**簡報字型隨 `.comot` 一起打包**（ADR-0016）。Node 端的文字量測與瀏覽器渲染用的是同一顆字型，所以量出來的寬度就是畫出來的寬度，排版不會在編輯與播放之間跳動。離線且快取未命中時直接拋錯，不會靜默改用系統字型。
+**簡報字型隨 `.slidra` 一起打包**（ADR-0016）。Node 端的文字量測與瀏覽器渲染用的是同一顆字型，所以量出來的寬度就是畫出來的寬度，排版不會在編輯與播放之間跳動。離線且快取未命中時直接拋錯，不會靜默改用系統字型。
 
 **動態是每張投影片自己持有的一份有序效果清單**，寫在該張 SVG 的 `<metadata>` 裡（ADR-0009）。效果分家族（進場、強調、退場；影音的播放本身也是一種效果），步驟不被儲存而是由清單推導。因為它是資料，所以調得動——拖順序、改觸發方式，都在面板上完成。
 
@@ -68,26 +68,26 @@ CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
 
 **投影片內容一律當作不可信來處理。** 檢視與播放都跑在 sandbox iframe 裡，**永遠不加 `allow-same-origin`**，server 拒絕 `Origin: null`（ADR-0010、ADR-0011）。
 
-**內建聊天接你已經在用的 agent。** CoMotion 是 Agent Client Protocol（ACP）client（ADR-0006），透過現成 adapter 接上 Claude Code 或 Codex。不重做一次 OAuth、provider 抽象與 tool-calling 迴圈，也不碰註冊、雲端儲存與計費。
+**內建聊天接你已經在用的 agent。** Slidra 是 Agent Client Protocol（ACP）client（ADR-0006），透過現成 adapter 接上 Claude Code 或 Codex。不重做一次 OAuth、provider 抽象與 tool-calling 迴圈，也不碰註冊、雲端儲存與計費。
 
 ## 形狀
 
 ```
 React 外殼（頂列／左側縮圖軌／舞台底部 Dock／右側 Chat·Style·Animate 分頁）＋ vanilla 畫布
     ↓
-comotion serve          ← CLI 的常駐模式
+slidra serve          ← CLI 的常駐模式
     ↓
    CLI（Rust 二進位）     ← 唯一的操作語彙 ← 外部 agent 也走這裡
     ↓
  簡報內容
 ```
 
-- `comotion` 是單一 Rust 執行檔；`serve`／`export` 由它 exec Node 執行 `@comotion/server`，其餘所有命令都由 Rust 自己處理，不再有並存期的 Node 回退。
-- 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。編輯期間解壓在工作目錄，儲存時重新打包（ADR-0003）。
+- `slidra` 是單一 Rust 執行檔；`serve`／`export` 由它 exec Node 執行 `@slidra/server`，其餘所有命令都由 Rust 自己處理，不再有並存期的 Node 回退。
+- 一份 `.slidra` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。編輯期間解壓在工作目錄，儲存時重新打包（ADR-0003）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
-- 動態是投影片 `<metadata>` 裡一份有序的效果清單（`<comot:effect>`，ADR-0009），由 CoMotion 的 runtime 依清單切出的步驟驅動。
-- 播放與編輯是同一個 web app 的兩個模式。播放 `.comot` 需要安裝 CoMotion，分享靠匯出（ADR-0007）。
+- 動態是投影片 `<metadata>` 裡一份有序的效果清單（`<slidra:effect>`，ADR-0009），由 Slidra 的 runtime 依清單切出的步驟驅動。
+- 播放與編輯是同一個 web app 的兩個模式。播放 `.slidra` 需要安裝 Slidra，分享靠匯出（ADR-0007）。
 - 內建聊天透過 Agent Client Protocol 接上使用者已安裝的 agent。
 
 命令與格式的規範性定義見 [`docs/spec/`](docs/spec/)，決策脈絡見 [`docs/adr/`](docs/adr/)，領域詞彙見 [`CONTEXT.md`](CONTEXT.md)。
@@ -95,7 +95,7 @@ comotion serve          ← CLI 的常駐模式
 ## 命令與格式以 `docs/spec/` 為準
 
 - [`docs/spec/cli.md`](docs/spec/cli.md)：81 條命令的唯一規範性文件——參數、成功時的 `data` JSON 形狀、錯誤情境與 `failureKind`、exit code、renderer 規則。
-- [`docs/spec/comot-format.md`](docs/spec/comot-format.md)：`.comot` 容器與 `~/.comotion/` 工作區的唯一規範性文件——zip 佈局、`project.json` 欄位、SVG `<metadata>` 內的 `comot:*` 元素、`formatVersion` 與遷移規則。
+- [`docs/spec/slidra-format.md`](docs/spec/slidra-format.md)：`.slidra` 容器與 `~/.slidra/` 工作區的唯一規範性文件——zip 佈局、`project.json` 欄位、SVG `<metadata>` 內的 `slidra:*` 元素、`formatVersion` 與遷移規則。
 
 `docs/adr/` 留作**決策史**，記錄當初為什麼那樣選；規格與實作對不上時，以 `docs/spec/` 為準。`packages/server/agent-workdir/reference/commands.md` 是給 agent 的用法摘要，是 `docs/spec/cli.md` 的子集，由 `scripts/check-reference-subset.mjs` 檢查。
 
@@ -117,13 +117,13 @@ comotion serve          ← CLI 的常駐模式
 | 歷程 | `undo` `redo` |
 | 其他 | `convert` |
 
-常駐與輸出不走命令註冊表：`comotion serve` 啟動編輯與播放的 web app，`comotion export --format pdf｜pdf-frames` 以 headless Chromium 匯出。
+常駐與輸出不走命令註冊表：`slidra serve` 啟動編輯與播放的 web app，`slidra export --format pdf｜pdf-frames` 以 headless Chromium 匯出。
 
 ## 目標使用者
 
 已安裝並登入 Codex 或 Claude Code、願意在自己電腦上安裝軟體的人。
 
-介面仍要低壓力、一般人也能直接上手，但不為零技術背景的使用者做妥協。CoMotion 不處理註冊、雲端儲存或計費——agent 的授權由使用者既有的 CLI 工具負責。
+介面仍要低壓力、一般人也能直接上手，但不為零技術背景的使用者做妥協。Slidra 不處理註冊、雲端儲存或計費——agent 的授權由使用者既有的 CLI 工具負責。
 
 ## 驗證
 
@@ -135,29 +135,29 @@ comotion serve          ← CLI 的常駐模式
 
 | 用途 | 名稱 |
 | --- | --- |
-| 正式產品名稱 | `CoMotion` |
-| 專案資料夾與 GitHub repository | `co-motion`（尚未搬遷，維持原名） |
-| npm 套件 scope | `@comotion/*` |
-| CLI 執行檔 | `comotion` |
-| 簡報檔副檔名 | `.comot` |
-| 文件與使用者可見文案 | `CoMotion` |
+| 正式產品名稱 | `Slidra` |
+| 專案資料夾與 GitHub repository | `slidra`（尚未搬遷，維持原名） |
+| npm 套件 scope | `@slidra/*` |
+| CLI 執行檔 | `slidra` |
+| 簡報檔副檔名 | `.slidra` |
+| 文件與使用者可見文案 | `Slidra` |
 
-`CoMotion` 表達人與 agent 的共同創作（Co-），以及 SVG 元素、動畫與影音共同形成的動態演出（Motion）。
+`Slidra` 表達人與 agent 的共同創作（Co-），以及 SVG 元素、動畫與影音共同形成的動態演出（Motion）。
 
 ## 第三方素材授權
 
 - **Noto Sans TC**（`apps/web/src/assets/fonts/NotoSansTC-subset.woff2`、`NotoSansTC-subset-500.woff2`、`NotoSansTC-subset-700.woff2`）：Google 的開源中文字型，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC`），這裡收錄的是子集版本——只保留 UI 實際用到的字元，400/500/700 三個字重各自子集化，由 `scripts/build-font-subset.mjs` 產生（子集使用 [`subset-font`](https://github.com/papandreou/subset-font)，wasm 版 harfbuzz，不需要 Python 工具鏈）。
-- **Noto Sans TC — 簡報字型**（`assets/fonts/NotoSansTC-Presentation.ttf`，授權全文隨每份 `.comot` 一起打包在 `fonts/LICENSE-NotoSansTC.txt`）：與上一條同樣是 Google 的開源中文字型，授權同為 [SIL Open Font License 1.1](https://openfontlicense.org/)，但這是獨立的一份子集——每份新簡報建立時都會把這顆字型連同授權文字一起內嵌進 `.comot`，讓簡報在沒有安裝該字型的環境（包含沒有瀏覽器的 Node 端文字量測）也能算出、畫出一致的結果。子集範圍固定為 ASCII、Latin-1 補充、標點、CJK 符號／全形／半形與整個 CJK 統一表意文字區塊，格式是 sfnt（`.ttf`，不是 woff2），由 `scripts/build-presentation-font.mjs` 產生。
+- **Noto Sans TC — 簡報字型**（`assets/fonts/NotoSansTC-Presentation.ttf`，授權全文隨每份 `.slidra` 一起打包在 `fonts/LICENSE-NotoSansTC.txt`）：與上一條同樣是 Google 的開源中文字型，授權同為 [SIL Open Font License 1.1](https://openfontlicense.org/)，但這是獨立的一份子集——每份新簡報建立時都會把這顆字型連同授權文字一起內嵌進 `.slidra`，讓簡報在沒有安裝該字型的環境（包含沒有瀏覽器的 Node 端文字量測）也能算出、畫出一致的結果。子集範圍固定為 ASCII、Latin-1 補充、標點、CJK 符號／全形／半形與整個 CJK 統一表意文字區塊，格式是 sfnt（`.ttf`，不是 woff2），由 `scripts/build-presentation-font.mjs` 產生。
 
-- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文見其 [SIL Open Font License 1.1](https://openfontlicense.org/) 發佈頁——字型檔本身不進版控，repo 內沒有隨附的 `OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/comotion/fonts/`（可用 `COMOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
+- **Noto Sans TC 完整版**（打包進 `.slidra` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文見其 [SIL Open Font License 1.1](https://openfontlicense.org/) 發佈頁——字型檔本身不進版控，repo 內沒有隨附的 `OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/slidra/fonts/`（可用 `SLIDRA_FONT_CACHE` 指定）。打包進 `.slidra` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.slidra` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
 
 ## 接下來
 
 按重要性排序。第一條是上面第一件事的兌現點，其餘是已知的缺口。
 
-- **`comotion check`**：把版面正確性串成一條命令——溢出、出界、重疊、跨頁對齊全部驗一次，回報哪一頁哪個元素差多少。量測與幾何都在 `@comotion/core` 裡了，缺的是把它們接成 agent 跑得動的閉環。
+- **`slidra check`**：把版面正確性串成一條命令——溢出、出界、重疊、跨頁對齊全部驗一次，回報哪一頁哪個元素差多少。量測與幾何都在 `@slidra/core` 裡了，缺的是把它們接成 agent 跑得動的閉環。
 - **簡報者畫面**：第二視窗、下一頁預覽、備忘稿、計時器。目前播放只有全螢幕。
 - **一次退回整個回合**：agent 執行多條命令後，使用者要能一次退回，不是逐條 undo。
 - **匯出的其餘出口**：目前只有 PDF（`--format pdf｜pdf-frames`），HTML 尚未做。
-- 是否讓 agent 看得到渲染後的畫面（`comotion screenshot`）。目前延後。
+- 是否讓 agent 看得到渲染後的畫面（`slidra screenshot`）。目前延後。
 - 即時多人協作、雲端服務、PPTX 匯入匯出：暫不預設要做。是否需要，等主要路徑穩定後再決定。
