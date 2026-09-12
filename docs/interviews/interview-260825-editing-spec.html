@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>編輯功能 spec 設計 — 使用者訪談紀錄</title>
+<title>Editing Feature Spec Design — User Interview Record</title>
 <style>
   :root {
     --bg: #fbfaf8; --fg: #23201d; --muted: #6b645d; --rule: #e2ddd6;
@@ -64,858 +64,858 @@
 <body>
 <main>
 
-  <h1>編輯功能 spec 設計</h1>
-  <p class="meta">使用者訪談紀錄 · 2026-08-25 · Slidra（SVG-first 簡報編輯器）· 來源：session 逐字檔</p>
+  <h1>Editing Feature Spec Design</h1>
+  <p class="meta">User interview record · 2026-08-25 · Slidra (an SVG-first presentation editor) · source: session transcript</p>
 
   <div class="summary">
-    <h2>本次做成的決定</h2>
+    <h2>Decisions made in this session</h2>
     <ul>
-      <li><b>範圍</b>：一份大 spec，收「物件／幾何／樣式／組織」骨幹——插入刪除、搬移縮放旋轉、樣式、疊置順序、群組、對齊、剪貼簿、投影片增刪複製重排、復原、範本。表格、圖表另開票；轉場效果全簡報只有一種，存 <code>project.json</code>。</li>
-      <li><b>幾何模型</b>：每個元素包一層 <code>&lt;g transform&gt;</code>「相框」——搬移、旋轉、群組一個機制解決，任何軟體原樣打開都正確。</li>
-      <li><b>文字框</b>：Slidra 自己算斷行，寫成多行 <code>&lt;tspan&gt;</code> 存進 SVG。</li>
-      <li><b>縮放語意</b>：Keynote 做法——拉邊改框寬文字重排，拉角等比縮放含字級，群組一律等比。</li>
-      <li><b>SVG 合規性</b>：嚴格格式，不合規拋錯；另有使用者主動執行的 <code>normalize</code> 轉換命令。</li>
-      <li><b>復原模型</b>：一條時間軸，人的每個操作一格，agent 一回合綁成一格；用快照實作，關檔就清空。</li>
-      <li><b>併發凍結</b>：agent 動手期間凍結編輯，從它第一條命令凍到回合結束，思考期間不擋。</li>
-      <li><b>範本與鎖定</b>：範本是死的 SVG，套用＝整份複製；元素帶鎖定標記，UI 完全擋住，CLI 拒絕但留 <code>--force</code>。不做母片同步、不做換範本，交給 agent 掃頁改。</li>
-      <li><b>動態文字</b>：<code>{{ slide_number }}</code> 直接寫在內文，顯示時才替換；只做變數替換不做邏輯，先三個變數。</li>
-      <li><b>資產匯入</b>：agent 可用絕對路徑或 URL 匯入，一律進 <code>assets/</code>，匯入時驗證真實媒體格式。</li>
-      <li><b>命令顆粒度</b>：一條命令吃多個元素，一次操作一格復原。</li>
-      <li><b>樣式命令</b>：通用的 <code>element style set</code>，屬性名直接用 SVG 屬性名，但走白名單——擋的是幾何不變式，不是安全。</li>
-      <li><b>元素種類</b>：固定清單＋任意 path（path 只能整塊操作，不支援節點編輯）。</li>
-      <li><b>複製與效果</b>：效果跟著元素走，插在目標清單最後。</li>
-      <li><b>剪貼簿範圍</b>：只在同一份簡報內＋支援從系統剪貼簿貼入圖片。</li>
-      <li><b>換範本</b>：不提供，讓 agent 幫忙搬內容。</li>
-      <li><b>另開的票</b>：字型打包進 <code>.slidra</code>、表格、圖表、跨簡報搬運。</li>
+      <li><b>Scope</b>: one large spec covering the "object / geometry / style / organization" core — insert/delete, move/resize/rotate, styling, stacking order, groups, alignment, clipboard, slide add/delete/duplicate/reorder, undo, templates. Tables and charts get their own future spec; the whole deck has exactly one transition effect, stored in <code>project.json</code>.</li>
+      <li><b>Geometry model</b>: every element is wrapped in a <code>&lt;g transform&gt;</code> "frame" — move, rotate, and group all resolve to one mechanism, and any software opens the file correctly as-is.</li>
+      <li><b>Text boxes</b>: Slidra computes its own line breaks and writes them as multi-line <code>&lt;tspan&gt;</code>s into the SVG.</li>
+      <li><b>Resize semantics</b>: Keynote's approach — dragging an edge changes the box width and rewraps text; dragging a corner scales the whole thing proportionally, font size included; groups always scale proportionally.</li>
+      <li><b>SVG conformance</b>: strict format, throws on non-conforming input; a separate user-triggered <code>normalize</code> command handles conversion.</li>
+      <li><b>Undo model</b>: a single timeline, one entry per human action, one entry per agent turn; implemented with snapshots, cleared when the file closes.</li>
+      <li><b>Concurrency freeze</b>: editing is frozen while the agent is acting, from its first command until the end of its turn; thinking time doesn't block editing.</li>
+      <li><b>Templates and locking</b>: a template is a static SVG; applying it means copying the whole thing. Elements carry a lock flag: fully blocked in the UI, rejected by the CLI but overridable with <code>--force</code>. No master-slide sync, no template swapping — left to the agent to handle by editing pages directly.</li>
+      <li><b>Dynamic text</b>: <code>{{ slide_number }}</code> is written directly into the text content and substituted at render time; only variable substitution, no logic, starting with three variables.</li>
+      <li><b>Asset import</b>: the agent can import via an absolute path or a URL, always landing in <code>assets/</code>, with the actual media format validated on import.</li>
+      <li><b>Command granularity</b>: one command can act on multiple elements; one operation is one undo entry.</li>
+      <li><b>Style commands</b>: a general-purpose <code>element style set</code> command, with attribute names matching SVG attribute names directly, gated by an allowlist — the allowlist protects geometric invariants, not security.</li>
+      <li><b>Element kinds</b>: a fixed list plus arbitrary paths (paths can only be manipulated as a whole, no node editing).</li>
+      <li><b>Duplication and effects</b>: effects travel with the element, appended to the end of the target's effect list.</li>
+      <li><b>Clipboard scope</b>: limited to within the same deck, plus support for pasting images from the system clipboard.</li>
+      <li><b>Template swapping</b>: not provided; the agent helps migrate content instead.</li>
+      <li><b>Deferred to future tickets</b>: bundling fonts into <code>.slidra</code>, tables, charts, cross-deck content transfer.</li>
     </ul>
   </div>
 
   <p class="preamble">
-    （這場對話的節奏值得先說一句：使用者多次打斷 AskUserQuestion，要求「用 15 歲聽得懂的話跟我說清楚」「以白話方式跟我說一下各個方案的優劣」——每次都逼出一輪更平實的解釋，而整場對話最大的特徵是大量的反轉：先選的答案常常在下一輪被使用者整個推翻。以下逐一標註。）
+    (Worth noting the rhythm of this conversation up front: the user repeatedly interrupted AskUserQuestion prompts, asking to "explain it to me like I'm 15" and "walk me through the pros and cons of each option in plain language" — each time forcing a plainer explanation. The biggest feature of the whole session is how often the answer chosen was completely overturned in the very next turn. Each of these is flagged below as it happens.)
   </p>
 
-  <h2>開場：從「一般 slide app 的編輯功能」開始</h2>
+  <h2>Opening: starting from "the editing features of a typical slide app"</h2>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>我想要接續一個新的 spec，目標是做到一般 slide app 可以做到的編輯功能（如 PPT、Keynote），你思考要怎麼訂下 spec，不確定之處再跟我討論。</p>
+    <div class="who">User</div>
+    <p>I want to continue with a new spec, aiming for the editing capabilities of a typical slide app (like PowerPoint or Keynote). Think through how to draft the spec, and raise anything unclear with me for discussion.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>盤點現況：能改簡報的命令目前只有 <code>text set</code> 一條，沒有 undo；ADR-0002 定死命令集合就是產品規格；ADR-0004 定死 agent 不碰真實檔案系統、SVG 必須精簡；ADR-0008 定死一張投影片自成一體；demo 的 SVG 是裸元素，沒有 group、transform、邊界框。所以真正的問題不是「要哪些按鈕」，而是要新增哪些命令、SVG 要不要換一套幾何模型。</p>
+    <p>Taking stock of the current state: the only command that can currently change a deck is <code>text set</code>, and there's no undo; ADR-0002 fixes the command set as the product spec; ADR-0004 fixes that the agent never touches the real filesystem and that SVGs must stay minimal; ADR-0008 fixes that a single slide is self-contained; the demo SVGs are bare elements with no groups, transforms, or bounding boxes. So the real question isn't "which buttons to add," but which commands to add, and whether the SVG needs a new geometry model.</p>
   </div>
 
-  <h2>Spec 範圍怎麼切（問題 1）</h2>
+  <h2>How to cut the spec's scope (question 1)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>這份 spec 的範圍形狀要怎麼切？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>What shape should this spec's scope take?</b></p>
     <ul>
-      <li><b>編輯基座＋一條薄垂直切片（推薦）</b> — 只定幾何模型、undo 模型、直接操作↔命令對應，配一條選取→搬移→縮放→改文字→刪除的切片驗證。</li>
-      <li><b>完整編輯功能一份大 spec</b> — 一票到底寫完插入、樣式、排列、群組、對齊、投影片增刪、undo，再拆成十幾張 issue。</li>
-      <li><b>照功能區分頁切</b> — 對齊 #48 已做的外殼，但切法來自 PowerPoint 介面而非 Slidra 模型。</li>
+      <li><b>An editing foundation plus one thin vertical slice (recommended)</b> — only define the geometry model, the undo model, and the mapping from direct manipulation to commands, validated by one slice: select → move → resize → edit text → delete.</li>
+      <li><b>One large spec covering the full editing feature set</b> — write insert, styling, arrangement, grouping, alignment, slide add/delete, and undo all the way through in one pass, then split it into a dozen or so issues.</li>
+      <li><b>Split by feature tabs</b> — matches the shell already built for the tabbed UI, but the split follows PowerPoint's interface rather than Slidra's own model.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>完整編輯功能一份大 spec</p>
+    <div class="who">User (answer)</div>
+    <p>One large spec covering the full editing feature set</p>
   </div>
 
-  <h2>功能邊界：從「骨幹」到「全都要」（問題 2）</h2>
+  <h2>Feature boundary: from "core" to "I want it all" (question 2)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>這份 spec 要收哪些概念族？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Which concept families should this spec cover?</b></p>
     <ul>
-      <li><b>骨幹：物件／幾何／樣式／組織（推薦）</b> — 插入刪除、搬移縮放旋轉、樣式、z-order、群組、對齊、剪貼簿、投影片增刪、undo。不收表格、圖表、SmartArt、母片／版面配置、切換效果。</li>
-      <li><b>骨幹＋套版（母片／版面配置）</b> — 加上版型與母片。代價：正面撞上 ADR-0003 與 ADR-0008，需要新 ADR。</li>
-      <li><b>只做物件／幾何／樣式</b> — 再砍一層，群組、對齊、剪貼簿、投影片增刪都下一份。</li>
+      <li><b>Core: object / geometry / style / organization (recommended)</b> — insert/delete, move/resize/rotate, styling, z-order, groups, alignment, clipboard, slide add/delete, undo. Excludes tables, charts, SmartArt, masters/layouts, and transition effects.</li>
+      <li><b>Core + templating (masters/layouts)</b> — adds layouts and master slides. Cost: runs straight into ADR-0003 and ADR-0008, requiring a new ADR.</li>
+      <li><b>Object/geometry/style only</b> — cut one more layer, pushing groups, alignment, clipboard, and slide add/delete to a later spec.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>骨幹：物件／幾何／樣式／組織（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Core: object / geometry / style / organization (recommended)</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>進最深一層：幾何模型。這是整份——</p>
+    <p>Going one level deeper: the geometry model. This is the whole—</p>
     <div class="reversed">
-      <b>此處被使用者立刻打斷並推翻。</b>下一則訊息裡使用者直接引用 AI 自己說過的話「Slidra 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo」，回一句「我全都要」——把邊界從「骨幹（明確不含版面配置）」擴大成含群組、transform、z-order、版面配置、剪貼簿、undo 全部收進來。版面配置／母片因為正面撞上 ADR-0003 與 ADR-0008，被標記為需要一份新 ADR 另外處理。
+      <b>Interrupted and overturned by the user immediately.</b> In the next message the user directly quoted the AI's own earlier statement that "Slidra currently has no concept of groups, transforms, z-order, layouts, clipboard, or undo," and replied "I want all of it" — expanding the boundary from "core (explicitly excluding layouts)" to include groups, transforms, z-order, layouts, clipboard, and undo, all at once. Layouts/masters were flagged as needing a separate new ADR since they run straight into ADR-0003 and ADR-0008.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>「Slidra 現在沒有群組、沒有 transform、沒有 z-order 概念、沒有版面配置、沒有剪貼簿、沒有 undo。」我全都要。</p>
+    <div class="who">User</div>
+    <p>"Slidra currently has no concept of groups, transforms, z-order, layouts, clipboard, or undo." I want all of it.</p>
   </div>
 
-  <h2>還有這三族：表格、圖表、轉場（問題 3）</h2>
+  <h2>What about these three families: tables, charts, transitions (question 3)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>表格、圖表、投影片切換效果，算不算在這份 spec 裡？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Do tables, charts, and slide transition effects belong in this spec?</b></p>
     <ul>
-      <li><b>不收，這三族另外算（推薦）</b> — 表格圖表是「結構化資料」跟其他物件不同質；切換效果屬於效果清單那條線（ADR-0009），且 ADR-0008 已註明跨投影片效果「在這個結構下沒有位置」。</li>
-      <li><b>切換效果也要，表格圖表不要</b> — 需要新 ADR 回答「跨頁效果住哪裡」。</li>
-      <li><b>三族全收</b> — 表格圖表在 SVG 裡沒有原生表達，得先發明一套表達法。</li>
+      <li><b>Exclude all three, handle them separately (recommended)</b> — tables and charts are "structured data," qualitatively different from other objects; transitions belong to the effect-list line of work (ADR-0009), and ADR-0008 already notes that cross-slide effects "have no place under this structure."</li>
+      <li><b>Include transitions, exclude tables and charts</b> — requires a new ADR to answer "where does a cross-page effect live."</li>
+      <li><b>Include all three</b> — tables and charts have no native representation in SVG, so a representation would need to be invented first.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>用 15 歲聽得懂的話跟我說清楚。</p>
+    <div class="who">User</div>
+    <p>Explain it to me like I'm 15.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>表格：SVG 只認得線和文字，沒有「表格」這種東西，得偷偷在 SVG 裡藏一份「這其實是 3×4 的表」的資料。圖表：同樣問題，還要多存數字與圖種。轉場效果：麻煩不在技術，在存哪裡——ADR-0008 規定一張投影片自己就是完整的一份，但轉場天生屬於兩頁之間，存進任一頁都會在對調頁面時跟錯人。</p>
+    <p>Tables: SVG only understands lines and text — there's no such thing as a "table" — so a "this is actually a 3×4 table" fact would have to be secretly encoded into the SVG. Charts: same problem, plus numbers and a chart type to store. Transitions: the difficulty isn't technical, it's about where to store it — ADR-0008 requires that a single slide is a complete, self-contained unit, but a transition inherently belongs between two pages; storing it on either page would attach it to the wrong neighbor the moment pages get swapped.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>表格、圖表、投影片切換效果──這三樣要不要進這份 spec？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Tables, charts, slide transition effects — should any of these go into this spec?</b></p>
     <ul>
-      <li><b>都不要，以後再說（推薦）</b> — 這三樣各自都是新發明，各值得自己的 spec。</li>
-      <li><b>只要切換效果</b> — 得重新回答「跨頁的東西存哪裡」這個已寫死的規矩。</li>
-      <li><b>三樣全要</b> — 份量大一個量級。</li>
+      <li><b>None of them, revisit later (recommended)</b> — each of these three is its own invention, each deserving its own spec.</li>
+      <li><b>Transitions only</b> — requires re-answering the already-settled question of "where does cross-page data live."</li>
+      <li><b>All three</b> — an order of magnitude more work.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>表格和圖表另開一張 spec 未來再做（pending）。投影片切換效果統一讓一份投影片只有一種轉場效果。</p>
+    <div class="who">User (answer)</div>
+    <p>Tables and charts get their own future spec (pending). Transition effects: keep it simple — a whole deck has exactly one transition effect.</p>
   </div>
 
-  <h2>轉場範圍定案（問題 4）</h2>
+  <h2>Settling the transition scope (question 4)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>「一份投影片」混了「簡報」和「投影片」兩個詞，兩種讀法會導向完全不同設計，需要先確認：全簡報共用一種轉場（存 <code>project.json</code>，ADR-0008 不用動），還是每頁各自帶一種（存該頁 SVG，要定義進場/離場歸屬）。</p>
+    <p>"A deck" conflates "presentation" and "slide" — two readings that lead to completely different designs, so this needs clarifying first: one transition shared by the whole deck (stored in <code>project.json</code>, no change to ADR-0008), or each page carrying its own (stored in that page's SVG, requiring a defined enter/exit ownership).</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>轉場效果是全簡報一個設定，還是每頁各自一個？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Is the transition effect one setting for the whole deck, or one per page?</b></p>
     <ul>
-      <li><b>全簡報一個設定（推薦）</b> — 存 <code>project.json</code>，對調兩頁、複製投影片、刪頁都不影響轉場。代價：不能「這一頁特別用推移」。</li>
-      <li><b>每頁各自一個</b> — 需要新 ADR 交代為什麼這不算違反「投影片自成一體」。</li>
+      <li><b>One setting for the whole deck (recommended)</b> — stored in <code>project.json</code>; swapping two pages, duplicating a slide, or deleting a page never affects the transition. Cost: can't have "this one page uses a special wipe."</li>
+      <li><b>One per page</b> — requires a new ADR to explain why this doesn't violate "a slide is self-contained."</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>全簡報一個設定（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>One setting for the whole deck (recommended)</p>
   </div>
 
-  <h2>幾何模型：一個元素的位置要怎麼寫（問題 5）</h2>
+  <h2>Geometry model: how should an element's position be written (question 5)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>現況：SVG 裡每種東西各講各的——文字說基準點，矩形說左上角＋寬高，沒有統一講法，也沒有地方寫「我轉了 15 度」。要搬移、縮放、旋轉、群組，就得先發明這個統一講法，這是整份 spec 的地基。</p>
+    <p>Current state: every kind of thing in SVG speaks its own dialect — text has an anchor point, rectangles have a top-left corner plus width/height, with no unified way to talk about position, and nowhere to write "I'm rotated 15 degrees." Moving, resizing, rotating, and grouping all require inventing this unified vocabulary first — it's the foundation the whole spec rests on.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>一個元素的位置與旋轉，要怎麼寫進 SVG？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How should an element's position and rotation be written into the SVG?</b></p>
     <ul>
-      <li><b>每個元素包一層容器（推薦）</b> — 一律是 <code>&lt;g&gt;</code>，位置旋轉寫在 transform，尺寸各講各的。三件事一個機制解決。代價：每個元素多一行，絕對座標要算。</li>
-      <li><b>每個元素記一個明確方框</b> — 縮放意思最清楚，但同一件事存兩份會靜默不一致，且旋轉是自創屬性、違反 ADR-0001。</li>
-      <li><b>不包容器，直接改原屬性</b> — SVG 最乾淨，但旋轉無解，群組搬移要改揉每個子元素。</li>
+      <li><b>Wrap each element in a container (recommended)</b> — always a <code>&lt;g&gt;</code>, with position and rotation written into its transform, while size stays element-specific. One mechanism resolves all three concerns. Cost: one extra element per object, and absolute coordinates need computing.</li>
+      <li><b>Record an explicit box on each element</b> — clearest for resizing, but storing the same fact in two places will drift out of sync silently, and rotation would be a made-up attribute, violating ADR-0001.</li>
+      <li><b>No container, edit the native attributes directly</b> — the cleanest SVG, but rotation has no solution, and moving a group means touching every child element.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>以白話方式跟我說一下各個方案的優劣。</p>
+    <div class="who">User</div>
+    <p>Walk me through the pros and cons of each option in plain language.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>用「相框」比喻講一遍：方案一是物件裝進看不見的相框，搬它是搬相框、轉它是轉相框，群組是相框裡再放相框——群組搬一公分只改最外面那個相框。方案二是每個物件自己記一塊方框，縮放與對齊最清楚，但方框跟 x/y 兩份真相會打架，而且旋轉屬性是自創的，別的軟體打開看不到轉。方案三維持裸屬性，SVG 最乾淨但旋轉無解、群組搬移要改揉每個子元素。判斷：方案一，因為只有它一個機制同時解決搬移、旋轉、群組，另兩個方案早晚要在半路上再長出 <code>&lt;g transform&gt;</code> 補洞。</p>
+    <p>Using a "picture frame" analogy: option one puts the object inside an invisible frame — moving it means moving the frame, rotating it means rotating the frame, and a group is a frame containing more frames — moving a group by one centimeter only touches the outermost frame. Option two has each object keep its own box, which is clearest for resizing and alignment, but the box and the x/y coordinates become two competing sources of truth, and the rotation attribute is invented, so other software opens the file and sees no rotation at all. Option three keeps bare attributes — the cleanest SVG, but rotation has no solution and moving a group means touching every child element. Verdict: option one, because it's the only one where a single mechanism solves moving, rotating, and grouping together — the other two will eventually have to grow a <code>&lt;g transform&gt;</code> halfway through anyway to patch the gap.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>如果我希望在 SVG 原圖打開就能看到其原樣，有沒有什麼好方案？</p>
+    <div class="who">User</div>
+    <p>If I want the original SVG to look correct when opened as-is, is there a good option for that?</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這個要求直接把答案選出來了——而且選的是方案一。<code>&lt;g&gt;</code> 與 transform 是 SVG 核心語法，不是 Slidra 發明的，任何軟體打開都是正確樣子，包括旋轉。方案二會壞掉：自創屬性別的軟體會直接忽略，轉了 15 度的標題打開是正的。唯一要留意的是字型——那是另一題。</p>
+    <p>This requirement picks the answer directly — and it picks option one. <code>&lt;g&gt;</code> and transform are core SVG syntax, not something Slidra invented, so any software opens it correctly, rotation included. Option two breaks: other software ignores the made-up attribute, so a title rotated 15 degrees opens looking upright. The one thing still worth watching is fonts — that's a separate question.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>幾何模型拍板：元素的位置與旋轉怎麼寫進 SVG？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Geometry model, final call: how should an element's position and rotation be written into the SVG?</b></p>
     <ul>
-      <li><b>方案一：包一層相框（推薦）</b> — 完全原生 SVG，任何軟體打開都正確。</li>
-      <li><b>方案二：明確方框</b> — 旋轉是自創屬性，直接違反剛提出的要求。</li>
-      <li><b>方案三：不包，直接改原屬性</b> — 靠放棄旋轉功能換原樣打開正確。</li>
+      <li><b>Option 1: wrap in a frame (recommended)</b> — fully native SVG, opens correctly in any software.</li>
+      <li><b>Option 2: explicit box</b> — rotation is a made-up attribute, directly violating the requirement just raised.</li>
+      <li><b>Option 3: no wrapping, edit native attributes directly</b> — trades away rotation to get a correct as-is view.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>採用方案一。另開一張票把字型打包進 <code>.slidra</code> 中。</p>
+    <div class="who">User (answer)</div>
+    <p>Going with option 1. Open a separate ticket for bundling fonts into <code>.slidra</code>.</p>
   </div>
 
-  <h2>文字框（問題 6）</h2>
+  <h2>Text boxes (question 6)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>SVG 的 <code>&lt;text&gt;</code> 不會自動換行，這是規格不是實作偷懶。PPT／Keynote 的文字框會自動折行，是使用者的基本預期。三條路：A 自己實作文字框（Slidra 算斷行寫成多行 tspan，別的軟體打開也正確；代價是每次改文字都要重算斷行，風險已被「字型打包」那票關掉）；B 一行一個元素（誠實但打一段話會痛不欲生）；C <code>&lt;foreignObject&gt;</code>（已被 ADR-0005 擋掉，不用考慮）。</p>
+    <p>SVG's <code>&lt;text&gt;</code> doesn't wrap automatically — that's a spec limitation, not a lazy implementation. PowerPoint/Keynote text boxes auto-wrap, which is a basic user expectation. Three routes: A, implement text boxes ourselves (Slidra computes line breaks and writes multiple tspans; other software still opens it correctly; the cost is recomputing line breaks on every text edit, a risk already mitigated by the font-bundling ticket); B, one element per line (honest, but typing a paragraph would be painful); C, <code>&lt;foreignObject&gt;</code> (already blocked by ADR-0005, not worth considering).</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>文字要不要有「文字框」（有寬度、會自動換行）？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Should text have a "text box" (with a width, auto-wrapping)?</b></p>
     <ul>
-      <li><b>A：自己實作文字框（推薦）</b> — 使用者體驗跟 PPT 一樣，別的軟體打開也正確。</li>
-      <li><b>B：一行就是一個元素</b> — 打一段話極痛苦，調字級要改一堆元素。</li>
+      <li><b>A: implement text boxes ourselves (recommended)</b> — user experience matches PPT, and other software still opens the file correctly.</li>
+      <li><b>B: one element per line</b> — typing a paragraph is extremely painful, and changing font size means editing a pile of elements.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>A：自己實作文字框（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>A: implement text boxes ourselves (recommended)</p>
   </div>
 
-  <h2>縮放語意：PowerPoint 還是 Keynote（問題 7）</h2>
+  <h2>Resize semantics: PowerPoint or Keynote (question 7)</h2>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>「拉大拉小」的定義：文字與群組被縮放時，字級要不要跟著變？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Defining "resize": when text and groups are resized, should font size change with them?</b></p>
     <ul>
-      <li><b>拉邊改框、拉角等比（推薦）</b> — Keynote 做法。拉邊只改框寬文字重排，拉角整塊等比縮放含字級，群組一律等比。代價：字級會出現小數。</li>
-      <li><b>一律只改框，字級不變</b> — PowerPoint 單一物件預設，最可預期，但群組縮小時字不跟著縮，會爆框。</li>
+      <li><b>Dragging an edge changes the box, dragging a corner scales proportionally (recommended)</b> — Keynote's approach. Dragging an edge only changes box width and rewraps text; dragging a corner scales the whole thing proportionally, font size included; groups always scale proportionally. Cost: font sizes can end up with decimals.</li>
+      <li><b>Always change only the box, font size stays fixed</b> — PowerPoint's default for a single object, the most predictable, but a group's text doesn't shrink with it when the group shrinks, and it will overflow the box.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>一律只改框，字級不變</p>
+    <div class="who">User (answer)</div>
+    <p>Always change only the box, font size stays fixed</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>記下後立刻指出一個實際會壞掉的後果：群組的框是子元素框的聯集，縮到 50% 時「只改框」意味著每個子元素框位置寬高都乘 0.5、但字級不動——一個寬 400、字級 40 的兩行標題，框變寬 200 字還是 40，重排成四五行，往下溢出，整組排版當場散掉。</p>
+    <p>After recording it, immediately flagged a real consequence that would break: a group's box is the union of its children's boxes, so at 50% scale, "only change the box" means every child's box position/width/height gets multiplied by 0.5, but font size stays put — a two-line title with a 400-wide box and 40px font would end up with a 200-wide box but still 40px text, rewrapping into four or five lines, overflowing downward, and blowing apart the whole group's layout instantly.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>那群組被拉大拉小時要怎麼辦？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>So what should happen when a group is resized?</b></p>
     <ul>
-      <li><b>群組不能縮放（推薦）</b> — 規則真的只有一條，但跟 PPT/Keynote 不一樣，使用者會困惑。</li>
-      <li><b>群組例外，等比縮放含字級</b> — PowerPoint 實際行為，但兩套規則並存。</li>
-      <li><b>群組也只改框，排版散掉就散掉</b> — 規則絕對統一，但幾乎必定得到壞掉的結果。</li>
+      <li><b>Groups cannot be resized (recommended)</b> — genuinely just one rule, but it differs from PPT/Keynote and will confuse users.</li>
+      <li><b>Groups are an exception, scaled proportionally including font size</b> — matches PowerPoint's actual behavior, but now two rules coexist.</li>
+      <li><b>Groups also only change the box, and broken layout is accepted</b> — perfectly uniform rule, but the result is almost guaranteed to look broken.</li>
     </ul>
     <div class="reversed">
-      <b>此處整個作廢，被使用者直接改成 Keynote 做法。</b>使用者沒有從三個「群組縮放怎麼辦」的選項裡挑，而是直接回頭把上一題（拉大拉小的定義）從「一律只改框」改成「Keynote 做法」——群組縮放的問題因此自動消失，不需要再另外決定。
+      <b>This was thrown out entirely — the user changed the earlier decision to Keynote's approach instead.</b> The user didn't pick from the three "what happens when a group is resized" options, but instead went back and changed the previous question's answer (the definition of "resize") from "always change only the box" to "Keynote's approach" — which makes the group-resize question disappear on its own, with nothing left to decide.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>「拉大拉小」的定義：文字與群組被縮放時，字級要不要跟著變？改成以 Keynote 的方法。</p>
+    <div class="who">User</div>
+    <p>Defining "resize": when text and groups are resized, should font size change with them? Switch to Keynote's method.</p>
   </div>
 
-  <h2>SVG 合規性（問題 8）</h2>
+  <h2>SVG conformance (question 8)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>方案一是一個格式約定，但 SVG 不強制任何人這樣寫。不合規來源有三：現有 demo（裸元素）、使用者自己動手改、從 Figma／別處來的 SVG。三條路：A 嚴格拋錯＋一條使用者主動的轉換命令（規則單一，不會靜默改檔）；B 寬容、不合規元素唯讀（會出現「點得到卻拖不動」）；C 開檔自動修（靜默改寫使用者檔案，複雜插畫會被包成巨大 SVG）。</p>
+    <p>Option one is a format convention, but SVG doesn't force anyone to follow it. Three sources of non-conformance: the existing demo (bare elements), the user hand-editing files, and SVGs coming in from Figma or elsewhere. Three routes: A, throw strictly, plus a user-triggered conversion command (a single rule, never silently rewrites a file); B, be lenient, non-conforming elements become read-only (leads to "you can click it but can't drag it"); C, auto-fix on open (silently rewrites the user's file, and complex illustrations get wrapped into a giant SVG).</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>不合規的 SVG 打開時要怎麼辦？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>What should happen when a non-conforming SVG is opened?</b></p>
     <ul>
-      <li><b>A：嚴格＋一條轉換命令（推薦）</b></li>
-      <li><b>B：寬容，不合規的元素唯讀</b></li>
-      <li><b>C：開檔自動修成合規</b></li>
+      <li><b>A: strict + a conversion command (recommended)</b></li>
+      <li><b>B: lenient, non-conforming elements are read-only</b></li>
+      <li><b>C: auto-fix into conformance on open</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>A：嚴格＋一條轉換命令（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>A: strict + a conversion command (recommended)</p>
   </div>
 
-  <h2>復原模型：兩問一起定（問題 9）</h2>
+  <h2>Undo model: two questions settled together (question 9)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>Slidra 現在一條 undo 都沒有。ADR-0002 定死「一次操作＝一條命令＝一步 undo」，沒定的是「上一步」是誰的上一步。C（人、agent 各自獨立堆疊）直接排除——selective undo 沒有正確解。</p>
+    <p>Slidra currently has zero undo. ADR-0002 fixes "one operation = one command = one undo step," but leaves open whose "previous step" is meant. Option C (separate stacks for human and agent) is ruled out immediately — selective undo has no correct solution.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>Ctrl+Z 的「上一步」是誰的上一步？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>When you press Ctrl+Z, whose "previous step" is it?</b></p>
     <ul>
-      <li><b>B：一條時間軸，agent 一回合算一格（推薦）</b> — 解掉「使用者想退自己的操作，得先一條條退掉 agent 剛做的十幾件事」這個場景。</li>
-      <li><b>A：一條時間軸，一條命令一格</b> — 最簡單，但使用者想退自己的操作很痛苦。</li>
+      <li><b>B: one timeline, one entry per agent turn (recommended)</b> — solves the scenario where a user wants to undo their own action, but would otherwise have to undo a dozen things the agent just did, one at a time.</li>
+      <li><b>A: one timeline, one entry per command</b> — simplest, but painful when the user wants to undo their own action.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>B：一條時間軸，agent 一回合算一格（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>B: one timeline, one entry per agent turn (recommended)</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>復原要怎麼實作，歷史活多久？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How should undo be implemented, and how long does history live?</b></p>
     <ul>
-      <li><b>快照＋關檔就清空（推薦）</b> — 每條命令前存副本，寫一次永遠正確，行為跟 PPT/Keynote 一致。</li>
-      <li><b>反向命令＋關檔就清空</b> — 省空間，但每新增一條命令就多一份容易寫錯的反向邏輯。</li>
-      <li><b>快照＋寫進 .slidra 永久保存</b> — .slidra 會一直變大，還要決定「留幾步」。</li>
+      <li><b>Snapshots + cleared on file close (recommended)</b> — save a copy before each command; writing once is always correct; behavior matches PPT/Keynote.</li>
+      <li><b>Inverse commands + cleared on file close</b> — saves space, but every new command needs its own easy-to-get-wrong inverse logic.</li>
+      <li><b>Snapshots, persisted permanently into .slidra</b> — .slidra keeps growing, and "how many steps to keep" still needs deciding.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>快照＋關檔就清空（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Snapshots + cleared on file close (recommended)</p>
   </div>
 
-  <h2>版面與母片：從「母片」一路走到「範本＋鎖定」</h2>
+  <h2>Layouts and masters: from "master slide" all the way to "template + lock"</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>「改母片全部一起變」天生違反 ADR-0003＋ADR-0008（投影片自成一體）。第一輪提三案：A 版面配置是起始範本（複製一次，之後獨立，ADR 不動，「改一次全部變」交給 agent）；B 真正的母片（顯示時合成，但單獨打開缺背景，推翻 ADR-0001）；C 母片是真的但改時烘焙進每頁（體驗像 PPT，代價是要逐屬性記錄「母片給的還是使用者改的」，這是整份 spec 最容易做壞的部分）。AI 推 A：Slidra 有 agent，「改全簡報底色」對它是一句話，不需要用複雜的繼承機制去買一個 agent 已經免費給的東西。</p>
+    <p>"Change the master, everything changes together" inherently violates ADR-0003 + ADR-0008 (a slide is self-contained). First round, three proposals: A, a layout is a starting template (copied once, then independent; the ADRs stay untouched, and "change once, apply everywhere" is left to the agent); B, a true master slide (composited at display time, but a single opened page would be missing its background, overturning ADR-0001); C, the master is real but baked into every page on edit (feels like PPT, at the cost of tracking per-attribute "was this given by the master or edited by the user," which is the easiest part of this whole spec to get wrong). AI recommends A: Slidra has an agent, so "change the whole deck's background color" is one sentence to it — no need to buy, through a complex inheritance mechanism, something the agent already gives for free.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>版面配置／母片要怎麼做？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How should layouts/masters work?</b></p>
     <ul>
-      <li><b>A：版面配置是起始範本（推薦）</b></li>
-      <li><b>C：母片是真的，改時烘焙進每頁</b></li>
-      <li><b>B：真正的母片，播放時合成</b></li>
+      <li><b>A: a layout is a starting template (recommended)</b></li>
+      <li><b>C: the master is real, baked into each page on edit</b></li>
+      <li><b>B: a true master, composited at playback time</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>如果我選方案 C，是不是最容易讓 agent 去調整版面，因為他可以「看」到和使用者相同的頁面？</p>
+    <div class="who">User</div>
+    <p>If I choose option C, wouldn't that make it easiest for the agent to adjust the layout, since it can "see" the same page the user sees?</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這個問題的前提要修正：agent 不是「看」畫面的，它只能 <code>cat</code> SVG 檔讀出來。比較三方案 agent 讀到什麼：A 讀到完整一頁跟使用者看到的一樣；B 讀到的沒有底色沒有母片給的框，得自己合成，是三個裡對 agent 最不友善的；C 因為烘焙過，跟 A 完全一樣——C 的優勢不在「agent 看得到什麼」。而且 C 對 agent 其實更難用：它得看懂並維護「哪個屬性是母片給的、哪個是使用者改的」標記，多耗 SVG 大小、多一套規則、多一種弄壞的方式。</p>
+    <p>The premise of this question needs correcting: the agent doesn't "see" the rendered picture — it can only <code>cat</code> the SVG file and read it as text. Comparing what the agent reads under each option: under A it reads a complete page, identical to what the user sees; under B what it reads is missing the background and whatever the master provides, and it would have to composite that itself — the least agent-friendly of the three; under C, because it's already baked in, it reads exactly the same as A — so C's advantage isn't actually about "what the agent can see." In fact C is harder for the agent to work with: it has to understand and maintain the marker for "which attribute came from the master versus which was edited by the user," which costs more SVG size, adds another rule set, and adds another way to break things.</p>
     <div class="reversed">
-      <b>這裡是助理主動修正使用者問題裡的一個錯誤前提</b>（agent 不看渲染畫面，只讀 SVG），而不是使用者的反轉——但它直接推翻了使用者這句話背後「C 對 agent 更友善」的假設，讓推薦維持 A 不變。
+      <b>This is the assistant proactively correcting a false premise in the user's question</b> (the agent doesn't view rendered output, it only reads the SVG) — not a user reversal — but it directly overturns the "C is more agent-friendly" assumption behind the user's question, leaving the recommendation at A unchanged.
     </div>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>清楚了嗎？版面配置／母片拍板：</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Is that clear? Final call on layouts/masters:</b></p>
     <ul>
-      <li><b>A：版面配置是起始範本（推薦）</b> — agent 讀到的跟 C 一模一樣完整，但 SVG 更小、規則更少、ADR 不動。</li>
-      <li><b>C：母片真的存在，改時烘焙進每頁</b></li>
-      <li><b>B：真正的母片，顯示時才疊上</b></li>
+      <li><b>A: a layout is a starting template (recommended)</b> — what the agent reads is just as complete as under C, but the SVG is smaller, there are fewer rules, and no ADR changes.</li>
+      <li><b>C: the master is real, baked into each page on edit</b></li>
+      <li><b>B: a true master, overlaid only at display time</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>C 如果在 SVG 用類似 label 的方式來區分母片還是前景，是不是不會有 agent 難讀的問題？</p>
+    <div class="who">User</div>
+    <p>What if C used something like a label in the SVG to distinguish master content from foreground content — wouldn't that remove the "hard for the agent to read" problem?</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>對，這一招確實把「讀」的問題解掉了，而且很便宜——一個 <code>data-slidra-from="layout"/"slide"</code> 屬性，token 成本幾乎零。但它解掉的是「讀」的問題，沒解掉「寫」的問題：使用者動了一個來自版面配置的元素之後，下次烘焙要不要蓋掉他？這個標籤只有兩個值，回答不了逐屬性的問題。</p>
-    <p>提出折衷版 <b>C′：碰過就脫離</b>——使用者一旦動到來自版面配置的元素，它立刻整個脫離（標籤翻成 slide），之後烘焙永遠不再碰它。規則一句話，但顆粒度很粗：挪兩公分，代價是從此不再跟著版面配置走，且沒有任何提示。</p>
+    <p>Right, that move does solve the "reading" problem, and cheaply — a <code>data-slidra-from="layout"/"slide"</code> attribute costs almost nothing in tokens. But it only solves "reading," not "writing": once the user changes an element that came from the layout, should the next bake overwrite it? This tag only has two values, and can't answer that at the per-attribute level.</p>
+    <p>A middle-ground proposal, <b>C′: touch it and it detaches</b> — the moment the user changes an element that came from the layout, it detaches entirely (its tag flips to "slide"), and baking never touches it again. The rule is one sentence, but coarse-grained: nudging it two centimeters means it stops following the layout forever, with no warning given.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>版面配置／母片：這三個層次選哪一個？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Layouts/masters: which of these three tiers?</b></p>
     <ul>
-      <li><b>C′：碰過就脫離（推薦）</b> — 改版面配置會烘焙，但只碰沒被碰過的元素；使用者一動它就永久脫離。</li>
-      <li><b>A：版面配置只是起始範本</b></li>
-      <li><b>C：屬性層級的繼承與覆寫</b></li>
+      <li><b>C′: touch it and it detaches (recommended)</b> — editing the layout bakes into pages, but only touches elements that haven't been touched; the moment the user edits one, it detaches permanently.</li>
+      <li><b>A: the layout is just a starting template</b></li>
+      <li><b>C: attribute-level inheritance and override</b></li>
     </ul>
     <div class="reversed">
-      <b>C′ 從未被選中，使用者直接提出了第四條路。</b>下一則訊息裡使用者沒有從三個選項挑，而是提議「規定使用者或 agent 不能在一般模式修改母片，母片修改要在母片模式」，把整個問題從根上消掉——見下方 C″。
+      <b>C′ was never chosen — the user proposed a fourth path outright.</b> In the next message, the user didn't pick from the three options, but proposed instead that "the user or the agent should be barred from editing the master in normal mode; master edits happen only in a dedicated master mode" — dissolving the whole problem at its root. See C″ below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>如果是規定使用者或 agent 不能在一般模式修改母片，母片修改要在母片模式，這樣是不是就可以了？</p>
+    <div class="who">User</div>
+    <p>What if we simply require that the user or the agent can't edit the master in normal mode, and master edits only happen in a master mode — would that solve it?</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這一招很漂亮，把問題從根上消掉了——不准改，就永遠不會出現分歧，烘焙時沒有東西需要裁決。這正是 PowerPoint「投影片母片檢視」的做法。推到底成 <b>C″</b>：版面配置是一張 SVG，有幾個空的預留框；一般模式下預留框半唯讀；母片模式下編輯版面配置本身，存檔時烘焙進每頁對應預留框、保留每頁自己的文字。兩個必須一起決定的細節：一、「不准改」必須有例外——內容可以改，外觀位置不可以改（這是「預留框」這個新概念）；二、使用者想單頁微調時，給不給逃生門？</p>
+    <p>That's an elegant move — it dissolves the problem at its root. If edits are forbidden, divergence can never arise, and baking never has anything to arbitrate. This is exactly PowerPoint's "Slide Master view." Pushed all the way, this becomes <b>C″</b>: a layout is one SVG with a few empty placeholder boxes; in normal mode the placeholders are semi-read-only; in master mode you edit the layout itself, and on save it bakes into each page's corresponding placeholder, preserving each page's own text. Two details need deciding together: first, "no edits allowed" needs an exception — content can be edited, appearance and position cannot (this is the new "placeholder" concept); second, should there be an escape hatch for one-off per-page tweaks?</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>採用 C″。那單頁微調的逃生門要不要給？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Adopting C″. Should there be an escape hatch for per-page tweaks?</b></p>
     <ul>
-      <li><b>給，但要明確按下去（推薦）</b> — 按「脫離版面配置」，發生了什麼看得到，可 undo。</li>
-      <li><b>不給，要改就進母片模式</b> — 規則最純，全簡報絕對一致，但單頁微調無解。</li>
-      <li><b>先不做母片，回到 A</b></li>
+      <li><b>Yes, but it must be an explicit action (recommended)</b> — click "detach from layout"; what happened is visible, and it's undoable.</li>
+      <li><b>No, changes require entering master mode</b> — the purest rule, perfectly consistent across the whole deck, but no way to do a one-off per-page tweak.</li>
+      <li><b>Skip masters for now, go back to A</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>不給，要改就進母片模式</p>
+    <div class="who">User (answer)</div>
+    <p>No, changes require entering master mode</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>緊接著一個必須配套的小問題：預留框可不可以刪掉？如果可以刪，使用者其實就有了一條土法煉鋼的逃生門——刪掉預留框、自己畫一個文字框、打一樣的字，繞過剛才的「不給」。</p>
+    <p>Immediately followed by a small question that has to be settled alongside it: can a placeholder be deleted? If it can, the user effectively gets a crude escape hatch anyway — delete the placeholder, draw your own text box, type the same text — bypassing the "no" just decided.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>單一頁上的預留框可不可以刪掉？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Can a placeholder on a single page be deleted?</b></p>
     <ul>
-      <li><b>可以刪（推薦）</b> — 烘焙規則反而更簡單：只更新既有預留框，不增不減。</li>
-      <li><b>不能刪，只能留白</b> — 結構絕對一致，但編輯滿版圖片頁時永遠浮著虛線框。</li>
+      <li><b>Yes, deletable (recommended)</b> — actually simplifies the bake rule: it only ever updates existing placeholders, never adds or removes any.</li>
+      <li><b>No, can only be left blank</b> — perfectly consistent structure, but a full-bleed image page would always have a dashed placeholder box floating on it.</li>
     </ul>
     <div class="reversed">
-      <b>母片模式、預留框、烘焙、脫離、逃生門——這整條分支到這裡全部作廢。</b>使用者沒有回答這一題，而是直接喊停，改用一段長口述提出全新的「範本」框架：不要母片、不要版面配置兩層階級，只有一層「範本」，範本裡每個元素明確標「可改／不可改」。以下開始新的一輪。
+      <b>This whole branch — master mode, placeholders, baking, detaching, escape hatches — is thrown out entirely from here.</b> The user didn't answer this question, but instead called a stop and, in a long spoken passage, proposed a completely new "template" framework: no master/layout two-tier hierarchy, just a single tier of "templates," where every element in a template is explicitly marked "editable" or "not editable." A new round starts below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>好，這邊我想要停一下，然後你跟我一起構思一下。在 PowerPoint 的母片模式，的確就是在母片編輯，母片編輯完之後，你就會有背景、輸入框的位置，可能還有一些版型等等。母片模式編輯完之後，回到正常的頁面，正常頁面就可以選你要的版型，然後修改標題、修改內文。的確這是 PowerPoint 或 Keynote 這種母片模式。那我這邊想要帶的概念是，我可以設定類似像範本的東西。這個範本後面也有背景，也可能會有下面色塊的橫欄，然後甚至會打上公司 logo 或一些固定的文字，還有頁碼等等，這些東西像投影片我還是要有這樣的功能。但是我好像不需要太被拘泥住，其實我也可以用範本的概念來做。只是這個範本，有一些東西是要固定住，不可以讓使用者改，也不可以讓 agent 去改。比如說背景，比如說下方的橫條或文字，所以這個範本比較像是另外一份投影片、另外一個 SVG。這些 SVG 就要明確地標出哪些是可改、哪些是不可改。假設像標題或內文這種東西你放上去，是可以改的；下方橫條或背景或頁碼，是不可以改的。用這樣的方法設計，我們好像不需要有母片模式，比較像是我們需要一個範本模式。範本模式可以去編輯範本那一份。agent 在使用範本的時候也很方便，他可以從範本裡挑合適的範本來使用，做事情也會做得更到位一點。最後補充一下：我的 SVG 裡有一些東西其實是有程式化的必要的，比如說頁碼，我需要知道自己現在在第幾頁，這是程式化的。所以我的 SVG 裡有一些東西，仍然是可以在外面的 App 針對裡面的程式的東西去執行，然後注入相應的 render。這個是我必要的東西。</p>
+    <div class="who">User</div>
+    <p>Okay, I want to pause here and think this through with you. In PowerPoint's master mode, you really are editing the master — once you finish editing the master, you have your background, the position of input boxes, maybe some layout variants, and so on. Once you're done editing the master and go back to a normal page, that normal page lets you pick the layout you want, then edit the title and body content. That's really how master mode works in PowerPoint or Keynote. What I want to introduce instead is something more like a "template." This template would also have a background, possibly a colored bar at the bottom, maybe even a company logo or some fixed text and a page number, and so on — I still want that kind of capability for slides. But I don't think I need to be too bound by the master-mode structure — I can actually achieve this with the template concept instead. It's just that within this template, some things need to be fixed and not editable by the user or by the agent. For example, the background; for example, the bar or text at the bottom. So this template is more like a separate slide, another SVG. These SVGs need to explicitly mark which parts are editable and which aren't. Say something like a title or body text you place on it — that should be editable; the bottom bar, background, or page number — those shouldn't be editable. Designed this way, it seems like we don't need a master mode at all — what we need instead is more like a template mode, where you edit that one template. It's also convenient for the agent when using templates — it can pick a suitable template from the collection to use, and do a better job of things. One more thing to add: some things in my SVG genuinely need to be programmatic — page numbers, for instance, where I need to know which page I'm currently on — that's programmatic. So some things in my SVG still need to be executed by logic in the outer app and have the corresponding render injected. This is something I need.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>重新表述：只有一層「範本」，沒有母片、版面配置兩層階級。範本就是一張 SVG，裡面每個元素明確標可改／不可改。一份簡報可以有好幾份範本，agent 也能自己挑。有一個範本模式編輯範本本身。有些元素需要程式化（頁碼）。這個設計比前面推的都乾淨——「不可改」把「使用者改過的東西要不要被蓋掉」這個死結從根上消滅了，因為根本不存在「使用者改過的版本」。</p>
-    <p>但有一件事沒說清楚：範本是「活的」（改範本，已做好的頁立刻同步）還是「死的」（範本只在新增投影片那一刻被複製一次）？「不可改」這個詞強烈暗示活的。</p>
+    <p>Restating: only one tier, "templates" — no master/layout two-tier hierarchy. A template is just an SVG, with every element explicitly marked editable or not. A deck can have several templates, and the agent can pick among them itself. There's a template mode for editing the templates themselves. Some elements need to be programmatic (page numbers). This design is cleaner than everything proposed so far — "not editable" dissolves the deadlock of "should the user's edit get overwritten" at the root, because there's no such thing as an "edited-by-the-user version" to begin with.</p>
+    <p>But one thing is still unclear: is a template "live" (editing the template instantly syncs into pages already built from it) or "static" (the template is only copied once, at the moment a new slide is created)? The word "not editable" strongly implies "live."</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>範本是活的還是死的？你在範本模式把橫條改成綠色，已經做好的 12 頁會怎樣？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Is a template live or static? If you change the bottom bar to green in template mode, what happens to the 12 pages already built from it?</b></p>
     <ul>
-      <li><b>活的，當場烘焙進每頁（推薦）</b> — 因為元素鎖住了，烘焙不可能蓋掉任何人的修改。</li>
-      <li><b>活的，但顯示時才疊上</b> — 檔案最小，但單獨打開一張投影片會缺背景缺 logo，推翻 ADR-0001。</li>
-      <li><b>死的，只是起始內容</b> — 12 頁不變，「不可改」的標記只剩防手滑的作用。</li>
+      <li><b>Live, baked into every page immediately (recommended)</b> — because the elements are locked, baking can never overwrite anyone's edits.</li>
+      <li><b>Live, but only overlaid at display time</b> — smallest file, but opening a single slide on its own would be missing the background and logo, overturning ADR-0001.</li>
+      <li><b>Static, just starting content</b> — the 12 pages stay unchanged; "not editable" only serves as a slip-guard.</li>
     </ul>
     <div class="reversed">
-      <b>這整個「活的」框架是助理誤解，下一則訊息被使用者直接糾正。</b>使用者說的「不可改」從頭到尾指的是死的範本＋一個布林鎖定標記，不是同步機制——範本只提供一開始的 SVG，可改／不可改由 UI 與 CLI 限制，不涉及烘焙或同步。
+      <b>This entire "live" framing was the assistant misreading the user, and was directly corrected in the next message.</b> The user's "not editable" had, from the start, meant a static template plus a boolean lock flag — not a sync mechanism. The template only supplies the initial SVG; editable/not-editable is enforced by the UI and CLI, with no baking or syncing involved.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>欸，我覺得你還是沒有很了解我意思。我再藉由這個問題再說一次。我所謂的範本裡面，其實應該要分，有一些物件是可改，有些物件是不可改。什麼物件是不可改？比如說這個背景、背景的色塊，這個我是設為不能改。能改的是什麼？比如說標題，標題可能一開始範本寫說就標題兩個字這樣，這個應該要能改。那今天這些範本被存在裡面，一旦這個範本被使用了，它就是直接整份範本複製貼上到你當下的那個頁面上面。針對不可改的部分，在使用者操作的時候就沒辦法去點選它、沒辦法去改變它。對 agent 來說，agent 在操作 CLI 來改我的 SVG，在 CLI 裡我也會排除它可以更動這些不可改的部分。能改的部分就跟其他都一樣。所以等於說範本只是提供一個一開始的 SVG，後續這種可改不可改就由我的介面跟我的 CLI 來限制它。</p>
+    <div class="who">User</div>
+    <p>Hm, I don't think you've quite understood what I mean. Let me say it again through this question. What I mean by a template is that it should split into objects that are editable and objects that aren't. What's not editable? Things like the background, the background color block — I'm setting that as not-editable. What's editable? Things like the title — the template might initially just say "Title" as placeholder text, and that should be editable. Now, once this template is stored and gets used, it's directly copy-pasted as a whole onto whatever page you're currently on. For the parts marked not-editable, when the user is interacting with it, they simply can't click or change it. For the agent, when it's operating the CLI to modify my SVG, the CLI will likewise exclude it from being able to touch those not-editable parts. The editable parts behave just like everything else. So effectively, the template only provides an initial SVG, and afterward, what's editable or not is enforced by my UI and my CLI.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>懂了，我剛才確實想歪了。範本是死的：一份起始 SVG，套用時整份複製貼上到那一頁，之後這一頁跟範本再無關係。「可改／不可改」是元素身上一個標記，跟著複製一起帶過去並持續生效——使用者在 UI 點不到不可改的元素，agent 下 CLI 命令碰到會直接被拒絕。目的不是同步，是保護版面骨架不被誰不小心拖歪。這個設計不需要烘焙、不需要繼承、不需要脫離機制，只需要一個布林標記加 UI 與 CLI 兩道守衛。</p>
-    <p>順帶處理「程式化的元素」：頁碼不能是寫死的字，姑且叫它「欄位」——一個由 Slidra 算出來而非使用者打出來的文字。問題是這個值要不要寫進 SVG：做法一標記＋當下的值都寫進去（靜態打開完全正確，但這是一份快取，需靠 Slidra 在頁序變動時同步重寫）；做法二只寫標記、值由 App 顯示時注入（唯一真相，但靜態打開頁碼是空的）。AI 推做法一。</p>
+    <p>Understood — I did misread it. The template is static: a starting SVG that gets copy-pasted whole into a page when applied, after which that page has no further relationship to the template. "Editable/not-editable" is a marker carried on each element, copied along with it and staying in effect afterward — the user can't click a not-editable element in the UI, and an agent's CLI command that touches one is simply rejected. The goal isn't syncing, it's protecting the layout skeleton from being accidentally dragged out of shape. This design needs no baking, no inheritance, no detach mechanism — just a boolean flag plus two guard rails, one in the UI and one in the CLI.</p>
+    <p>While we're at it, handling "programmatic elements": a page number can't be hardcoded text — call it a "field" — text computed by Slidra rather than typed by the user. The question is whether that value gets written into the SVG: approach one writes both the marker and the current value (opening it statically is fully correct, but it's a cache that Slidra has to keep resynced whenever page order changes); approach two writes only the marker, with the value injected by the app at display time (a single source of truth, but the page number is blank when opened statically). AI recommends approach one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>頁碼這種「程式化的文字」，值要不要寫進 SVG？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>For "programmatic text" like page numbers, should the value be written into the SVG?</b></p>
     <ul>
-      <li><b>寫進去，頁序變動時重寫（推薦）</b> — 靜態打開頁碼正確，ADR-0001 不破。</li>
-      <li><b>不寫，顯示時才注入</b> — 永遠不會不同步，但別人拿到 SVG 打開右下角缺一塊。</li>
+      <li><b>Write it in, rewrite on reordering (recommended)</b> — opening the file statically shows the correct page number; doesn't break ADR-0001.</li>
+      <li><b>Don't write it, inject at display time</b> — never goes out of sync, but the file's bottom-right corner is missing a piece for anyone else who opens it.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>用類似 python jinja 方式呈現</p>
+    <div class="who">User (answer)</div>
+    <p>Present it the way python jinja does.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>jinja 比「欄位標記」好，因為能組合（<code>第 {{ slide_number }} 頁，共 {{ slide_total }} 頁</code>）。但直接把 <code>{{ slide_number }}</code> 寫進文字內容，別人用預覽程式打開會看到字面的那六個字元原樣顯示——比「缺一塊」更糟，因為看起來像壞掉。解法：模板寫在屬性裡、算出來的值寫在文字內容裡（<code>data-slidra-template="第 {{ slide_number }} 頁"</code>，內文是「第 7 頁」）。這跟前面否決的「兩份真相會打架」不一樣，因為文字內容是沒有人能編輯的衍生值，單向、無分歧。另外建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知的攻擊面；變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>。</p>
+    <p>jinja is better than a plain "field marker" because it composes (<code>Page {{ slide_number }} of {{ slide_total }}</code>). But writing <code>{{ slide_number }}</code> directly into the text content means someone opening the file in a preview tool sees those literal six characters rendered as-is — worse than "missing a piece," because it looks broken. Fix: write the template in an attribute, and the computed value in the text content (<code>data-slidra-template="Page {{ slide_number }}"</code>, with the body reading "Page 7"). This differs from the earlier rejected "two sources of truth will conflict" case, because the text content here is a derived value nobody can edit — one-directional, no possible divergence. Also recommending variable substitution only, no logic — ADR-0010 already treats slide content as untrusted, and running a template engine over untrusted input is a known attack surface; start with just three variables: <code>slide_number</code>, <code>slide_total</code>, <code>presentation_name</code>.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>動態文字用 jinja 語法，但模板寫哪裡？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Dynamic text uses jinja syntax, but where does the template itself get written?</b></p>
     <ul>
-      <li><b>模板寫屬性、值寫內文（推薦）</b> — 靜態打開顯示正確的「第 7 頁」，模板是唯一真相。</li>
-      <li><b>直接寫在內文，顯示時才替換</b> — 寫法最直覺，但用別的軟體打開會看到 <code>{{ slide_number }}</code> 印在畫面上，像壞掉。</li>
+      <li><b>Template in an attribute, value in the text content (recommended)</b> — opening it statically shows the correct "Page 7"; the template is the single source of truth.</li>
+      <li><b>Written directly in the text content, substituted at display time</b> — the most intuitive to write, but opening it in other software shows <code>{{ slide_number }}</code> printed on screen, looking broken.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>模板寫屬性、值寫內文（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Template in an attribute, value in the text content (recommended)</p>
     <div class="reversed">
-      <b>這個回答緊接著被使用者自己撤回。</b>使用者中斷後說「ask me again」，AI 原題重問一次，這次使用者改選了另一個選項——見下方。
+      <b>This answer was retracted by the user right afterward.</b> The user interrupted and said "ask me again," so the AI re-asked the same question, and this time the user chose the other option instead — see below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
+    <div class="who">User</div>
     <p>ask me again</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問，重問）</div>
-    <p><b>動態文字（頁碼等）用 jinja 語法，但模板要寫在哪裡？</b></p>
+    <div class="who">AI (asking again)</div>
+    <p><b>Dynamic text (page numbers, etc.) uses jinja syntax — but where should the template itself be written?</b></p>
     <ul>
-      <li><b>模板寫屬性、值寫內文（推薦）</b> — 別的軟體打開看到正確的「第 7 頁」；代價：每個動態文字存兩份。</li>
-      <li><b>直接寫在內文，顯示時才替換</b> — 只存一份，但用預覽程式或 Figma 打開會看到 <code>{{ slide_number }}</code> 這串字，看起來像壞掉。</li>
+      <li><b>Template in an attribute, value in the text content (recommended)</b> — other software sees the correct "Page 7"; cost: every piece of dynamic text is stored twice.</li>
+      <li><b>Written directly in the text content, substituted at display time</b> — stored only once, but opening it in a preview tool or Figma shows the literal string <code>{{ slide_number }}</code>, looking broken.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>直接寫在內文，顯示時才替換</p>
+    <div class="who">User (answer)</div>
+    <p>Written directly in the text content, substituted at display time</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>內文寫法定案。已知代價：用別的軟體打開會看到 <code>{{ slide_number }}</code> 印在畫面上，使用者已經知道並接受。</p>
-    <p>回到「等一下會問」的死路：公司換 logo，簡報已做了 30 頁——logo 在每頁 SVG 裡，標記不可改，UI 點不到，CLI 拒絕，範本是死的改了也不回頭影響已建立的頁。結論是沒有任何人能換掉那 30 個 logo，連 agent 都不行，唯一的路是把 30 頁刪掉重做，這不能接受。三條路：一、一條「同步範本」命令（安全但要多記一份跨檔案引用）；二、允許單頁解除鎖定（沒真解決問題，還打了個洞）；三、不解決（連頁尾打錯一個字都得重做整份簡報）。</p>
+    <p>Settled on the text-content approach. Known cost: opening it in other software shows <code>{{ slide_number }}</code> printed on screen — the user already knows and accepts this.</p>
+    <p>Back to the dead end flagged earlier: the company changes its logo, and a deck already has 30 pages built — the logo lives in every page's SVG, is marked not-editable, unclickable in the UI, rejected by the CLI, and the template is static, so editing it never retroactively affects pages already created. Conclusion: nobody — not even the agent — can replace those 30 logos; the only path is deleting all 30 pages and redoing them, which is unacceptable. Three routes: one, a "sync template" command (safe, but adds one more cross-file reference to track); two, allow per-page unlocking (doesn't really solve the problem, and punches a hole in it); three, don't solve it (even fixing one typo in a footer means redoing the whole deck).</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>範本的固定元素用出去之後要怎麼改？（換 logo、改頁尾年份）</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Once a template's locked elements are already in use, how do you change them? (swapping a logo, updating a footer year)</b></p>
     <ul>
-      <li><b>一條「同步範本」命令（推薦）</b> — 因為鎖定元素從未被任何人改過，替換結構上不可能蓋掉心血。</li>
-      <li><b>允許單頁解除鎖定</b> — 30 頁要做 60 個動作，沒真的解決問題。</li>
-      <li><b>不解決，用出去就定了</b></li>
+      <li><b>A "sync template" command (recommended)</b> — since a locked element was never edited by anyone, replacing it can never structurally overwrite anyone's work.</li>
+      <li><b>Allow per-page unlocking</b> — 30 pages means 60 separate actions; doesn't really solve the problem.</li>
+      <li><b>Don't solve it — once shipped, it's fixed</b></li>
     </ul>
     <div class="reversed">
-      <b>使用者選的不是助理推薦的選項，而是第三個「不解決」——但附了一句話，讓它變成第四種結果。</b>助理指出這句附帶條件與前面「CLI 也擋住 agent」的決定矛盾，兩人一起把它演化成「不解決＋<code>--force</code> 可破」，見下方。
+      <b>The user didn't pick the recommended option, but the third, "don't solve it" — with one added condition that turned it into a fourth outcome.</b> The assistant pointed out that this condition contradicted the earlier decision that "the CLI also blocks the agent," and together they evolved it into "don't solve it, but allow <code>--force</code> to break through" — see below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>不解決，但是可以在設計上面讓 agent 很容易做到這件事情</p>
+    <div class="who">User (answer)</div>
+    <p>Don't solve it, but design it so the agent can easily do this itself</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這句話跟前面「agent 在操作 CLI 來改我的 SVG，在 CLI 裡我也會排除它可以更動這些不可改的部分」有矛盾——如果 CLI 完全擋住，agent 也換不了 logo。所以真正的意思是：不需要發明「同步範本」這種新機制，改 30 頁 logo 讓 agent 一頁一頁去改就好，因為對 agent，30 頁跑 60 條命令是一分鐘的事，還能綁成一格 undo。那麼「不可改」到底擋誰、擋到什麼程度就要重新定：一、一般命令拒絕但有明確的 <code>--force</code>（人被擋死，agent 多打六個字，跟 ADR-0004「拒絕並指引」一致）；二、鎖定只擋 UI、CLI 完全不擋（agent 可能不小心弄歪版面）；三、一對 lock/unlock 命令（agent 忘記鎖回去，版面保護悄悄漏掉）。順帶把詞改對：這個標記該叫「鎖定」，不是「不可改」——它防的是手滑，不是絕對禁止。</p>
+    <p>This contradicts the earlier statement that "when the agent operates the CLI to modify my SVG, the CLI will also exclude it from touching the not-editable parts" — if the CLI blocks it completely, the agent can't change the logo either. So what's really meant is: there's no need to invent a new "sync template" mechanism — for 30 pages, just let the agent go page by page, since for an agent, running 60 commands across 30 pages takes about a minute, and it can still be bundled into one undo entry. That means "not editable" needs redefining — who it blocks, and how far: one, ordinary commands are rejected but with an explicit <code>--force</code> (humans are fully blocked, the agent types six extra characters, consistent with ADR-0004's "reject, then guide"); two, the lock only blocks the UI, the CLI doesn't block at all (the agent could accidentally distort the layout); three, a pair of lock/unlock commands (the agent might forget to lock it back, silently leaking the protection). Also fixing the terminology while at it: this marker should be called "locked," not "not-editable" — it guards against slips, not an absolute prohibition.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>範本的固定元素，對 agent 擋到什麼程度？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How far should a template's locked elements block the agent?</b></p>
     <ul>
-      <li><b>一般命令拒絕，有 --force 可破（推薦）</b></li>
-      <li><b>只擋 UI，CLI 不擋</b></li>
-      <li><b>一對 lock / unlock 命令</b></li>
+      <li><b>Ordinary commands rejected, breakable with --force (recommended)</b></li>
+      <li><b>Only blocks the UI, the CLI doesn't block</b></li>
+      <li><b>A pair of lock / unlock commands</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>一般命令拒絕，有 --force 可破（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Ordinary commands rejected, breakable with --force (recommended)</p>
   </div>
 
-  <h2>資產匯入（問題 10）</h2>
+  <h2>Asset import (question 10)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>這題正面碰到 ADR-0004——三層防護確保 agent 完全接觸不到真實檔案系統。人這邊沒爭議：拖進編輯器、server 收下、複製進 <code>assets/</code>。有爭議的是 agent。三做法：一、agent 不能帶新資產進來（隔離完好，但「幫我找張圖」做不到，agent 仍可自己畫向量圖形）；二、給一條匯入命令、agent 指定本機路徑（agent 真的能放照片，但等於開一條「把使用者電腦上任意檔案複製進簡報」的通道——<code>slidra asset import ~/.ssh/id_rsa</code> 會被權限鉤子放行，三層防護全繞過）；三、只能從指定收件匣資料夾匯入（安全但使用者還是得自己搬檔，多一個概念）。AI 推做法一。</p>
+    <p>This question runs straight into ADR-0004 — three layers of protection ensure the agent never touches the real filesystem. The human side is uncontroversial: drag into the editor, the server accepts it, copies it into <code>assets/</code>. The agent side is the contested part. Three approaches: one, the agent can't bring in new assets at all (isolation stays intact, but "find me an image" becomes impossible, though the agent can still draw its own vector graphics); two, give it an import command, with the agent specifying a local path (the agent can genuinely place a photo, but this opens a channel for "copy any file on the user's machine into the deck" — <code>slidra asset import ~/.ssh/id_rsa</code> would sail past the permission hook, bypassing all three layers of protection); three, import only from a designated inbox folder (safe, but the user still has to move the file there manually, adding a new concept). AI recommends option one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>agent 能不能把新的圖片影音帶進簡報？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Can the agent bring new images or media into the deck?</b></p>
     <ul>
-      <li><b>不能，只能用現有資產（推薦）</b></li>
-      <li><b>能，吃任意本機路徑</b> — 三層防護全破。</li>
-      <li><b>能，但只限一個收件匣資料夾</b></li>
+      <li><b>No, only existing assets (recommended)</b></li>
+      <li><b>Yes, from any local path</b> — breaks all three layers of protection.</li>
+      <li><b>Yes, but only from a single inbox folder</b></li>
     </ul>
     <div class="reversed">
-      <b>使用者沒有選任一選項，而是提出第四種安排。</b>agent 可以插入圖片影音，但只能放進 <code>.slidra</code> 的 <code>assets/</code>（唯一可放的地方），可透過絕對路徑或 URL 帶入——等於做法一與做法二的折衷：agent 有能力，但一律落地在 <code>assets/</code>。
+      <b>The user didn't pick any option, but proposed a fourth arrangement.</b> The agent can insert images and video, but only into <code>.slidra</code>'s <code>assets/</code> folder (the sole allowed destination), reachable via an absolute path or a URL — effectively a middle ground between options one and two: the agent has the capability, but it always lands in <code>assets/</code>.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>可以插入圖片影音帶進簡報，會放在 <code>.slidra</code> 中的 <code>assets/</code>（唯一可以放的地方）被使用。也可以透過 file abs path 或 url 來帶入圖片影音。</p>
+    <div class="who">User (answer)</div>
+    <p>It can insert images and video into the deck, landing in <code>.slidra</code>'s <code>assets/</code> folder (the only place it's allowed to go). Images and video can also be brought in via an absolute file path or a URL.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>那就是 agent 可以匯入，來源可以是絕對路徑或 URL，一律下載／複製進 <code>assets/</code>。有一個低成本的護欄值得順帶決定：匯入時要不要驗證這個檔案真的是圖片或影音（讀檔案開頭位元組，不是看副檔名）？驗證能擋掉「把任意檔案複製進 assets/」的大部分，例如 <code>id_rsa</code> 直接拋錯；不驗證則什麼都能進，未來想放 PDF、字型不用改設計，但代價是任何東西都能被複製進去。</p>
+    <p>So: the agent can import, from either an absolute path or a URL, always downloaded/copied into <code>assets/</code>. One low-cost guard rail worth deciding alongside this: should import validate that the file is genuinely an image or media file (reading the actual file header bytes, not the extension)? Validation blocks most of the "copy an arbitrary file into assets/" risk — e.g. <code>id_rsa</code> would throw immediately; without it, anything could get in, which means no design change is needed to later support PDFs or fonts, at the cost of anything being copyable in.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>匯入資產時要不要驗證它真的是媒體檔？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Should imported assets be validated as genuine media files?</b></p>
     <ul>
-      <li><b>驗證，非媒體一律拋錯（推薦）</b></li>
-      <li><b>不驗證，什麼都能進</b></li>
+      <li><b>Validate, throw on anything non-media (recommended)</b></li>
+      <li><b>Don't validate, anything can be imported</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>驗證，非媒體一律拋錯（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Validate, throw on anything non-media (recommended)</p>
   </div>
 
-  <h2>命令顆粒度（問題 11）</h2>
+  <h2>Command granularity (question 11)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>框選 5 個元素一起拖，ADR-0002「一次操作＝一條命令＝一步 undo」有兩種實現：一、一條命令吃多個元素（符合原則，對齊天生就是多元素操作，agent 省 token，但每條命令要各自宣告接不接受多目標）；二、拆成 5 條命令綁成一組（每條命令保持單一元素，但「五個靠左對齊」拆不成獨立搬移命令，除非對齊邏輯住在前端——直接違反 ADR-0002）；三、5 條命令 5 格復原，直接排除。</p>
+    <p>Marquee-selecting 5 elements and dragging them together: ADR-0002's "one operation = one command = one undo step" has two possible implementations: one, a single command that acts on multiple elements (matches the principle — alignment is inherently a multi-element operation, saves the agent tokens — but every command needs to declare whether it accepts multiple targets); two, split into 5 commands bundled into one group (each command stays single-element, but "align these five to the left" can't be decomposed into independent move commands unless the alignment logic lives in the frontend — a direct violation of ADR-0002); three, 5 commands as 5 separate undo entries, ruled out immediately.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>一次拖 5 個元素，算幾條命令？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Dragging 5 elements at once — how many commands does that count as?</b></p>
     <ul>
-      <li><b>一條命令吃多個元素（推薦）</b></li>
-      <li><b>拆成 5 條，綁成一組復原</b> — 對齊邏輯會跑到前端，違反 ADR-0002。</li>
+      <li><b>One command acting on multiple elements (recommended)</b></li>
+      <li><b>Split into 5, bundled into one undo group</b> — the alignment logic would end up in the frontend, violating ADR-0002.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>一條命令吃多個元素（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>One command acting on multiple elements (recommended)</p>
   </div>
 
-  <h2>樣式命令的形狀（問題 12）</h2>
+  <h2>Shape of the style commands (question 12)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>ADR-0002 明文：命令必須語意化，不能是通用低階屬性操作。但樣式屬性有十幾種。三做法：一、一個屬性一條命令（最符合 ADR-0002，但會有一二十條，淹掉整份命令集）；二、一條通用的 <code>element style set</code>（ADR-0002 明文禁止，只是把 SVG 屬性名換成參數值，不建議）；三、按物件族分幾條、屬性當具名旗標（能力等價於做法一，命令壓到兩三條，但旗標名必須用領域詞）。AI 推做法三。</p>
+    <p>ADR-0002 states explicitly: commands must be semantic, not generic low-level attribute setters. But there are a dozen or more style attributes. Three approaches: one, one command per attribute (most faithful to ADR-0002, but would produce ten or twenty commands, drowning out the rest of the command set); two, one general-purpose <code>element style set</code> command (explicitly forbidden by ADR-0002 — it's just SVG attribute names swapped for parameter values, not recommended); three, split by object family into a few commands, with attributes as named flags (equivalent capability to option one, condensed to two or three commands, but the flag names must use domain vocabulary). AI recommends option three.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>改樣式的命令要怎麼切？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How should style-editing commands be split?</b></p>
     <ul>
-      <li><b>按物件族分幾條，屬性當具名旗標（推薦）</b></li>
-      <li><b>一個屬性一條命令</b> — 會被淹掉。</li>
-      <li><b>一條通用 element style set</b> — ADR-0002 明文禁止。</li>
+      <li><b>Split by object family, attributes as named flags (recommended)</b></li>
+      <li><b>One command per attribute</b> — would get drowned out.</li>
+      <li><b>One general-purpose element style set</b> — explicitly forbidden by ADR-0002.</li>
     </ul>
     <div class="reversed">
-      <b>使用者選了助理標為「ADR-0002 明文禁止」的那個選項。</b>連續兩題都沒有照推薦走，見下一題還有第二次。
+      <b>The user picked the option the assistant labeled "explicitly forbidden by ADR-0002."</b> Two questions in a row have now gone against the recommendation — see the next question for a second instance.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>一條通用 element style set</p>
+    <div class="who">User (answer)</div>
+    <p>One general-purpose element style set</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>選了通用命令，得補一件事，否則它會真的變成 ADR-0002 擔心的東西——問題不在命令有幾條，而在屬性名叫什麼、agent 怎麼知道有哪些屬性可用。做法一：屬性名用 Slidra 自己的詞彙＋一條列舉命令（agent 不用懂 SVG，值可驗證，但要維護對照表＋寫新 ADR）。做法二：屬性名直接用 SVG 名字（零維護成本，agent 大多懂 SVG，但等於放棄「agent 不必精通 SVG」這個前提，且沒有屬性表就沒有邊界，<code>filter</code>、<code>clip-path</code> 拒絕的理由也消失）。AI 推做法一。</p>
+    <p>Having chosen the general-purpose command, one more thing needs settling, or it really will become what ADR-0002 warned against — the issue isn't how many commands there are, but what the attribute names are called, and how the agent knows which attributes are even available. Approach one: attribute names use Slidra's own vocabulary, plus a listing command (the agent doesn't need to know SVG, values are validatable, but a lookup table needs maintaining, plus a new ADR). Approach two: attribute names are the literal SVG names (zero maintenance cost, and the agent mostly already knows SVG — but this abandons the premise that "the agent doesn't need to be fluent in SVG," and with no attribute table there's no boundary — the reasons for rejecting <code>filter</code> or <code>clip-path</code> also disappear). AI recommends approach one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>element style set 的屬性名用什麼詞彙？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>What vocabulary should element style set's attribute names use?</b></p>
     <ul>
-      <li><b>Slidra 自己的詞＋一條列舉命令（推薦）</b></li>
-      <li><b>直接用 SVG 屬性名</b> — 正式放棄「agent 不必精通 SVG」的前提。</li>
+      <li><b>Slidra's own vocabulary + a listing command (recommended)</b></li>
+      <li><b>The literal SVG attribute names</b> — formally abandons the premise that the agent doesn't need to be fluent in SVG.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>直接用 SVG 屬性名</p>
+    <div class="who">User (answer)</div>
+    <p>The literal SVG attribute names</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>上一則我說「沒有屬性表就沒有邊界，會變成把任意 SVG 屬性寫進投影片的通道」——這個安全論點站不住。</p>
+    <p>Earlier I said "with no attribute table there's no boundary — it turns into a channel for writing arbitrary SVG attributes into the slide." That security argument doesn't actually hold up.</p>
     <div class="reversed">
-      <b>助理自己撤回上一輪的安全論點。</b>ADR-0010 已經認定投影片內容一律不可信，防線是 sandbox iframe，而且那份 ADR 明確拒絕伺服器端消毒（「消毒器繞過是一整族已知攻防」）。一個屬性能不能寫進去，不改變安全姿態——檔案本來就可能從別處帶著任何東西進來。白名單真正的理由不是安全，是它保護幾何模型的不變式：如果 <code>element style set</code> 什麼屬性都能設，agent 可以直接繞過 <code>element move</code> 寫死 <code>transform</code> 或 <code>x</code>，畫面看起來是對的，直到有人拖動它或加進群組，位置突然跳掉——因為現在有兩個地方在講位置。白名單擋的不是攻擊者，是「命令之間互相打架」。
+      <b>The assistant retracted its own prior security argument.</b> ADR-0010 already treats slide content as fully untrusted, with the sandboxed iframe as the defense line, and that same ADR explicitly rejects server-side sanitization ("sanitizer bypasses are a whole well-known family of attacks"). Whether or not one particular attribute can be set doesn't change the security posture — a file can already carry anything in from elsewhere. The real reason for an allowlist isn't security, it's protecting the invariants of the geometry model: if <code>element style set</code> can set anything, the agent could bypass <code>element move</code> entirely and hardcode <code>transform</code> or <code>x</code> directly. The picture looks right until someone drags the element or adds it to a group, and its position suddenly jumps — because now two places are claiming to define its position. The allowlist doesn't guard against an attacker; it guards against commands fighting each other.
     </div>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>element style set 可以設哪些 SVG 屬性？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Which SVG attributes can element style set touch?</b></p>
     <ul>
-      <li><b>A：白名單（推薦）</b> — 明列可設樣式屬性，幾何屬性與 <code>data-slidra-*</code> 排除，有自己的命令。</li>
-      <li><b>B：黑名單</b> — 只擋幾何屬性與 <code>data-slidra-*</code>，其餘放行；<code>style</code>、<code>class</code>、<code>clip-path</code> 這些 Slidra 不認得的東西也進得來。</li>
-      <li><b>C：完全不限制</b> — 連 transform、x、width 都能設，幾何模型只剩紙上約定。</li>
+      <li><b>A: allowlist (recommended)</b> — explicitly lists settable style attributes; geometry attributes and <code>data-slidra-*</code> are excluded and have their own commands.</li>
+      <li><b>B: blocklist</b> — only blocks geometry attributes and <code>data-slidra-*</code>, everything else passes through; things Slidra doesn't recognize, like <code>style</code>, <code>class</code>, <code>clip-path</code>, would also get in.</li>
+      <li><b>C: no restriction at all</b> — even transform, x, and width could be set, leaving the geometry model as nothing more than a paper convention.</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>A：白名單（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>A: allowlist (recommended)</p>
   </div>
 
-  <h2>元素種類（問題 13）</h2>
+  <h2>Element kinds (question 13)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>爭議在任意向量圖形（<code>&lt;path&gt;</code>）：沒辦法語意化地操作它的控制點，那是 Illustrator 的領域。做法一：只支援固定圖元清單，不收 path（每種都能語意化操作，但 agent 畫不出箭頭，Figma 圖示進不來）。做法二：固定清單＋任意 path、但只能整塊操作（因為每個元素已經包在相框裡，path 的搬移縮放旋轉全部免費，唯一限制是不能編輯節點——agent 表達力從「矩形和線」跳到「任何向量圖形」）。做法三完全開放：<code>normalize</code> 無法定義，不是真選項。AI 推做法二。</p>
+    <p>The contested case is an arbitrary vector shape (<code>&lt;path&gt;</code>): there's no way to manipulate its control points semantically — that's Illustrator's territory. Approach one: only support a fixed list of primitives, excluding path (every primitive can be manipulated semantically, but the agent can't draw an arrow, and Figma icons can't come in). Approach two: fixed list plus arbitrary paths, but only manipulable as a whole (since every element is already wrapped in a frame, a path's move/resize/rotate come for free; the only restriction is no node editing — the agent's expressive range jumps from "rectangles and lines" to "any vector shape"). Approach three, fully open: <code>normalize</code> becomes undefinable, not a real option. AI recommends approach two.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>投影片上可以有哪些種類的元素？要不要收任意向量圖形（path）？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>What element kinds can a slide contain? Should arbitrary vector shapes (path) be included?</b></p>
     <ul>
-      <li><b>固定清單＋ path（只能整塊操作）（推薦）</b></li>
-      <li><b>只收固定清單，不收 path</b></li>
+      <li><b>Fixed list + path (whole-shape manipulation only) (recommended)</b></li>
+      <li><b>Fixed list only, no path</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>固定清單＋ path（只能整塊操作）（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Fixed list + path (whole-shape manipulation only) (recommended)</p>
   </div>
 
-  <h2>併發與凍結（問題 14）</h2>
+  <h2>Concurrency and freezing (question 14)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>現況：<code>live-reload.ts</code> 的事件不帶任何內容，前端收到就整份重載——這在只有 agent 改東西時沒問題，但編輯功能上線後會出事：使用者正拖著一個方塊，agent 改完另一個元素，畫面整份重載，手上的方塊跳回原位。三做法：一、拖曳期間緩衝，放手後再套用（成本低，但不保證正確只降低機率）；二、命令帶預期狀態的樂觀鎖（唯一真正正確，但 agent 思考期間人一動東西命令就失敗，得重讀重算）；三、完全不處理（場景常見但無害發生機率其實不高）。AI 推做法一。</p>
+    <p>Current state: <code>live-reload.ts</code>'s events carry no content — the frontend just fully reloads on receipt. That's fine when only the agent is making changes, but once editing ships, it will break: the user is dragging a box, the agent finishes editing a different element, the screen fully reloads, and the box in the user's hand snaps back to its original position. Three approaches: one, buffer during dragging, apply once released (low cost, but doesn't guarantee correctness, only lowers the odds of a problem); two, commands carry expected state as an optimistic lock (the only genuinely correct option, but if the user moves something while the agent is still thinking, the command fails and has to reread and recompute); three, don't handle it at all (this scenario is common, but the actual odds of harm are fairly low). AI recommends approach one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>人在拖曳、agent 同時改東西，要怎麼處理？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>How should it be handled when a human is dragging something while the agent is simultaneously making changes?</b></p>
     <ul>
-      <li><b>拖曳期間緩衝，放手後再套用（推薦）</b></li>
-      <li><b>命令帶預期狀態（樂觀鎖）</b></li>
-      <li><b>不處理</b></li>
+      <li><b>Buffer during dragging, apply once released (recommended)</b></li>
+      <li><b>Commands carry expected state (optimistic lock)</b></li>
+      <li><b>Don't handle it</b></li>
     </ul>
     <div class="reversed">
-      <b>使用者沒有從三選項挑，而是給了第四個更乾脆的方向。</b>「同一時間只有一個人在編輯」，衝突不是被緩解，是不存在——見下方。
+      <b>The user didn't pick from the three options, but gave a cleaner fourth direction instead.</b> "Only one person is ever editing at a time" — the conflict isn't mitigated, it simply doesn't exist. See below.
     </div>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>agent 改動期間必須暫時 freeze 頁面</p>
+    <div class="who">User (answer)</div>
+    <p>The page must temporarily freeze while the agent is making changes.</p>
   </div>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>凍的是編輯不是瀏覽——使用者仍可捲動、切頁、進播放模式，只是不能拖不能改。要定清楚的是「凍多久」。三做法：一、整個 agent 回合都凍（狀態最簡單，但 agent 想三十秒你就不能動三十秒，而那段時間根本不會有衝突）；二、只在執行每條命令的瞬間凍（凍結時間最短，但一回合閃十次，拖曳跨越那些瞬間依然會被打斷）；三、從第一條命令凍到回合結束（agent 思考讀檔時可以編輯，一動手就鎖到回合結束，跟「agent 一回合一格 undo」共用同一條界線）。AI 推做法三。</p>
+    <p>What freezes is editing, not browsing — the user can still scroll, switch pages, and enter play mode; they just can't drag or edit. What needs pinning down is "how long is frozen." Three approaches: one, freeze for the agent's entire turn (simplest state, but if the agent thinks for thirty seconds, editing is blocked for those thirty seconds even though no conflict could actually occur then); two, freeze only for the instant each command executes (shortest freeze duration, but a turn might flash a dozen brief freezes, and a drag spanning one of those moments still gets interrupted); three, freeze from the first command until the end of the turn (editing is allowed while the agent is still thinking/reading, locks the moment it starts acting, and stays locked until the turn ends — sharing the same boundary as "one undo entry per agent turn"). AI recommends approach three.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>agent 工作時凍結編輯，但凍多久？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Editing freezes while the agent works — but for how long?</b></p>
     <ul>
-      <li><b>從第一條命令凍到回合結束（推薦）</b></li>
-      <li><b>整個 agent 回合都凍</b></li>
-      <li><b>只凍執行每條命令的瞬間</b></li>
+      <li><b>From the first command until the end of the turn (recommended)</b></li>
+      <li><b>The agent's entire turn</b></li>
+      <li><b>Only the instant each command executes</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>從第一條命令凍到回合結束（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>From the first command until the end of the turn (recommended)</p>
   </div>
 
-  <h2>複製與效果（問題 15）</h2>
+  <h2>Duplication and effects (question 15)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>ADR-0009 已答一半：刪除元素時懸空的效果項必須一併清除。沒答的是複製——貼出來的元素有沒有效果？做法一：效果跟著元素走，插在目標清單最後（PPT/Keynote 行為，也跟「複製投影片時效果必然跟著走」一致）。做法二：效果不跟（最單純，但跟複製投影片的行為自相矛盾）。AI 推做法一。</p>
+    <p>ADR-0009 already half-answers this: when an element is deleted, any orphaned effect entries pointing at it must be cleaned up too. What's unanswered is duplication — does the pasted copy of an element keep its effects? Approach one: effects travel with the element, appended to the end of the target list (matches PPT/Keynote behavior, and is consistent with "duplicating a slide necessarily brings its effects along"). Approach two: effects don't travel (simplest, but self-contradictory next to how duplicating a slide behaves). AI recommends approach one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>複製一個有進場效果的元素，貼出來的那個有沒有效果？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>When you duplicate an element that has an entrance effect, does the pasted copy have that effect too?</b></p>
     <ul>
-      <li><b>效果跟著走，排在清單最後（推薦）</b></li>
-      <li><b>效果不跟，貼出來是靜態的</b></li>
+      <li><b>Effects travel with it, appended to the end of the list (recommended)</b></li>
+      <li><b>Effects don't travel, the paste is static</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>效果跟著走，排在清單最後（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Effects travel with it, appended to the end of the list (recommended)</p>
   </div>
 
-  <h2>剪貼簿範圍（問題 16）</h2>
+  <h2>Clipboard scope (question 16)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>跨簡報複製貼上有三個獨立問題：資產跟不跟、畫布尺寸不同怎麼換算、鎖定元素怎麼辦（來源的範本目標簡報根本沒有）。做法一：剪貼簿只在同一份簡報內＋支援從系統剪貼簿貼圖片（三個問題全部不存在，實作最小，代價是「從舊簡報偷一頁」做不到）。做法二：支援跨簡報，資產一併搬（真的好用，但這其實是一個獨立功能，份量足以自成一張票，且跟「複製投影片到另一份簡報」高度重疊）。AI 推做法一，把跨簡報搬運列成獨立票。</p>
+    <p>Cross-deck copy/paste raises three independent problems: whether assets travel along, how to convert between different canvas sizes, and what happens to locked elements (the source's template doesn't even exist in the target deck). Approach one: clipboard works only within the same deck, plus support for pasting images from the system clipboard (all three problems disappear, minimal implementation, at the cost of not being able to "steal a page from an old deck"). Approach two: support cross-deck, with assets moving along too (genuinely useful, but this is really its own separate feature, substantial enough to be its own ticket, and heavily overlaps with "duplicate a slide into another deck"). AI recommends approach one, filing cross-deck transfer as a separate ticket.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>剪貼簿要不要支援跨簡報？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Should the clipboard support working across decks?</b></p>
     <ul>
-      <li><b>只在同一份簡報內（推薦）</b></li>
-      <li><b>這份 spec 就把跨簡報做掉</b></li>
+      <li><b>Only within the same deck (recommended)</b></li>
+      <li><b>Handle cross-deck in this spec too</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>只在同一份簡報內（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Only within the same deck (recommended)</p>
   </div>
 
-  <h2>換範本（問題 17）</h2>
+  <h2>Swapping templates (question 17)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>做到一半想換範本——按目前定義範本是死的，只在新增投影片那一刻複製一次，所以現在沒有任何方式換範本。做法一：不提供，選了就是選了（要換就新增一頁選新範本，內容叫 agent 幫忙搬；跟「換 logo 不另設同步機制」的決定一致，零設計成本，但使用者會直接撞上這個限制）。做法二：提供命令、只換鎖定的部分（結構上安全，但可改元素留在原位，換得了外觀換不了版型，而且等於推翻前面「不做同步命令」的決定）。做法三：完整換範本、內容自動對應（需要一整套「槽位」概念，份量足以自成一張票）。AI 推做法一。</p>
+    <p>Midway through, the thought comes up: wanting to swap templates. By the current definition a template is static — copied once, at the moment a slide is created — so there's currently no way to swap one out at all. Approach one: don't provide it, a choice is a choice (to switch, add a new page with the new template and ask the agent to migrate the content; consistent with the earlier "no sync mechanism for logo changes" decision, zero design cost, but users will run straight into this limitation). Approach two: provide a command that swaps only the locked parts (structurally safe, but editable elements stay put — you can swap the look but not the layout, and it effectively reverses the earlier "no sync command" decision). Approach three: full template swap with automatic content mapping (needs a whole "slot" concept, substantial enough to be its own ticket). AI recommends approach one.</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>做到一半想換範本，支不支援？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>If someone wants to swap templates midway through, should that be supported?</b></p>
     <ul>
-      <li><b>不提供，讓 agent 幫忙搬（推薦）</b></li>
-      <li><b>提供，但只換鎖定的部分</b></li>
-      <li><b>完整換範本，內容自動對應</b></li>
+      <li><b>Not provided, let the agent help migrate (recommended)</b></li>
+      <li><b>Provided, but only swaps the locked parts</b></li>
+      <li><b>Full template swap with automatic content mapping</b></li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>不提供，讓 agent 幫忙搬（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Not provided, let the agent help migrate (recommended)</p>
   </div>
 
-  <h2>動態文字的能力邊界（問題 18）</h2>
+  <h2>Boundaries of dynamic text (question 18)</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>已定「<code>{{ slide_number }}</code> 直接寫在文字內容裡，顯示時才替換」，衍生兩件事必須定死：要不要支援邏輯（<code>if</code>／<code>for</code>／filter）？以及有哪些變數？建議只做變數替換不做邏輯——ADR-0010 已認定投影片內容不可信，模板引擎在不可信輸入上跑是已知攻擊面，模板替換又發生在 sandbox 之外，是 Slidra 自己的程式在跑。變數先只有三個：<code>slide_number</code>、<code>slide_total</code>、<code>presentation_name</code>；每加一個變數就是一個新能力，且大多能用普通文字解決（公司名不會變，直接打在範本上就好）。</p>
+    <p>Already settled: "<code>{{ slide_number }}</code> is written directly into the text content, substituted at display time." Two things still need pinning down: should logic be supported (<code>if</code>/<code>for</code>/filters)? And which variables exist? Recommending variable substitution only, no logic — ADR-0010 already treats slide content as untrusted, and running a template engine over untrusted input is a known attack surface; template substitution also happens outside the sandbox, in Slidra's own code. Starting with just three variables: <code>slide_number</code>, <code>slide_total</code>, <code>presentation_name</code> — each additional variable is a new capability, and most needs can already be met with plain text (a company name doesn't change, so just type it into the template).</p>
   </div>
 
   <div class="turn assistant">
-    <div class="who">AI（提問）</div>
-    <p><b>動態文字的能力邊界到哪裡？</b></p>
+    <div class="who">AI (asking)</div>
+    <p><b>Where should the capability boundary for dynamic text sit?</b></p>
     <ul>
-      <li><b>只做變數替換，三個變數（推薦）</b></li>
-      <li><b>只做變數替換，但變數多一些</b></li>
-      <li><b>支援完整模板語法</b> — 撞 ADR-0010</li>
+      <li><b>Variable substitution only, three variables (recommended)</b></li>
+      <li><b>Variable substitution only, but a few more variables</b></li>
+      <li><b>Support full template syntax</b> — runs into ADR-0010</li>
     </ul>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者（回答）</div>
-    <p>只做變數替換，三個變數（推薦）</p>
+    <div class="who">User (answer)</div>
+    <p>Variable substitution only, three variables (recommended)</p>
   </div>
 
-  <h2>收尾：照既有 ADR 直接推導的部分</h2>
+  <h2>Wrapping up: parts that follow directly from existing ADRs</h2>
 
   <div class="turn assistant">
     <div class="who">AI</div>
-    <p>該問的都問完了，剩下的直接照既有 ADR 推導、不再問：備忘稿存在該頁 SVG 的 <code>&lt;metadata&gt;</code>，跟效果清單同一個地方；貼齊與輔助線是前端輔助，不新增命令，對齊是命令（天生多元素）；疊置順序是四條語意化操作；選取的擴充（多選、框選、進入群組編輯）是前端行為，不產生命令；群組本身是一個元素，有識別碼與顯示名稱，可巢狀；範本住在 <code>.slidra</code> 的 <code>templates/*.svg</code>；投影片層級（新增、刪除、複製、重排）各一條命令。</p>
-    <p>彙整出的共識與需要寫的三份 ADR（幾何模型、範本與鎖定、樣式命令用 SVG 屬性名）如本頁開頭摘要所列。</p>
+    <p>Everything worth asking has been asked; the rest follows directly from existing ADRs without further discussion: speaker notes live in that page's SVG <code>&lt;metadata&gt;</code>, the same place as the effect list; snapping and guide lines are frontend assistance and don't add new commands, while alignment is a command (inherently multi-element); stacking order is four semantic operations; extensions to selection (multi-select, marquee-select, entering a group to edit) are frontend behavior and produce no commands; a group is itself an element, with an id and a display name, and can be nested; templates live in <code>.slidra</code>'s <code>templates/*.svg</code>; slide-level operations (add, delete, duplicate, reorder) are each one command.</p>
+    <p>The consensus reached, and the three ADRs that need writing (geometry model, templates and locking, style commands using SVG attribute names), are listed in the summary at the top of this page.</p>
   </div>
 
   <div class="turn user">
-    <div class="who">使用者</div>
-    <p>apply in order: 1. <code>/session-to-interview</code> 存到 <code>docs/interviews</code>；2. 更新 spec（<code>/to-spec</code>）與 ADR；3. <code>/to-tickets</code>。</p>
+    <div class="who">User</div>
+    <p>apply in order: 1. save this via <code>/session-to-interview</code> into <code>docs/interviews</code>; 2. update the spec (<code>/to-spec</code>) and the ADRs; 3. <code>/to-tickets</code>.</p>
   </div>
 
 </main>

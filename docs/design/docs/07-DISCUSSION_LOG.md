@@ -1,53 +1,53 @@
-# 07 · 討論串紀錄（決策與否決）
+# 07 · Discussion Log (decisions made and rejected)
 
-按時間順序整理；「→」為採納結果，「✕」為否決或還原。
+Organized chronologically; "→" marks the adopted outcome, "✕" marks something rejected or reverted.
 
-## 第一階段：從 web/ 舊版到 New
-- 讀取 `web/`（React + CSS tokens 的深色 Office 式 ribbon）與 Holspire 設計語言（暖白、#C8233B、Plus Jakarta Sans、圓角卡片）。
-- 問卷決策：重設計全部畫面；**暖白外殼＋深色舞台**；右側維持分頁側欄；Plus Jakarta Sans + Noto Sans TC；直接做一個高保真。
-- 先重建舊版 `Slidra (Old)` 作對照，再產生 `Slidra (New)`。
-- 工具列走向：分頁 pill + 單列精簡指令 + 選取時浮動情境列。
+## Phase 1: from the old web/ version to New
+- Reviewed `web/` (a dark, Office-style ribbon built with React + CSS tokens) and the Holspire design language (warm white, #C8233B, Plus Jakarta Sans, rounded cards).
+- Decided by survey: redesign every screen; **warm-white shell + dark stage**; keep a tabbed side panel on the right; Plus Jakarta Sans + Noto Sans TC; go straight to a high-fidelity build.
+- Rebuilt the old version as `Slidra (Old)` for comparison first, then produced `Slidra (New)`.
+- Toolbar direction: tab pills + a single condensed command row + a floating contextual bar on selection.
 
-## 第二階段：AI 留言（pin）系統
-- 選取框不再固定，點選才出現。
-- 選框旁「留言給 agent」→ 對話欄出現對應元素（可跳轉、✕ 刪除）。
-- 對話欄標注列高度縮短（30px），只顯示編號／頁數／截斷留言；最多 6.5 列可視，超過捲動。
-- 整頁留言改由左欄縮圖進入（不在對話框常駐「第 N 頁」）。
-- 編號從圓改為圓角方框（實心）；舞台上也要有對應編號；再次點擊可修改；對話欄與整頁留言同樣可編輯。
-- 編號位置：取代對話圖示；舞台右上整頁編號移除；排序＝頁序→左上到右下。
-- 編號未 hover 時透明 → 後改回實心。
-- 留言框：預設在選框下方（不夠翻上方）、玻璃感、外框不要白、距離加倍、更模糊、輸入區半透明、左下文字對比提高；點已有留言的元素再按留言會帶出舊內容。
+## Phase 2: the AI comment (pin) system
+- The selection box is no longer persistent; it now appears only on click.
+- "Comment to agent" next to the selection box → a corresponding entry appears in the chat panel (clickable to jump, ✕ to delete).
+- Reduced the row height of chat-panel entries (30px), showing only the number, page, and a truncated comment; up to 6.5 rows visible, scrollable beyond that.
+- Whole-page comments are now entered via the left-rail thumbnail instead of a persistent "page N" row in the chat panel.
+- Pin numbers changed from circles to filled rounded squares; a matching number also appears on the stage; clicking again lets you edit it; entries in both the chat panel and whole-page comments are editable the same way.
+- Pin position: replaces the chat icon; the whole-page number in the stage's top-right corner was removed; ordering is page order → top-left to bottom-right.
+- Pin numbers were transparent when not hovered → later reverted to solid.
+- Comment box: defaults to below the selection box (flips above if there isn't room); glass material; border no longer white; doubled the offset distance; more blur; semi-transparent input area; increased text contrast at the bottom-left; clicking an element that already has a comment and pressing comment again brings back the existing text.
 
-## 第三階段：介面英文化與功能補齊
-- 非內容 UI 全面英文。
-- 新增 Open / Save / Export（PPTX、PDF、By-frame PDF）。
-- 選取框可拖曳移動與四角縮放。
-- 示範頁與範本多元化：圖片、聲音、影片、表格、SVG 動畫；動畫改為自包含 SVG（keyframes 在 `<svg><style>` 內）。
-- 「還有什麼沒做」建議清單 → 選定「基礎補齊」全項（多選、拖曳排序、快捷鍵、Undo/Redo、右鍵、空狀態 onboarding、雙擊編輯、輔助線吸附）；pin 閉環暫不做。
-- 進一步：每物件動畫與編排、New slide 從大綱、表格可編輯、bar 獨立矩形、Text box / Shape、Arrange 實作。
-- ▾ 全移除，按了直接出選單；修正 overflow:hidden 把選單裁掉的 bug。
-- Table / Chart 真實作（規劃問卷後）：表格每格樣式、欄寬拖曳、範圍選取、右鍵行列合併、主題面板；圖表資料模型、6 類型、樣式、浮動資料視窗、自包含 SVG 輸出。修正 `<colgroup>` 未渲染（改用第一列 width）與資料格被壓扁（flex:none）。
+## Phase 3: interface English-ization and feature completion
+- All non-content UI switched to English.
+- Added Open / Save / Export (PPTX, PDF, By-frame PDF).
+- The selection box can now be dragged to move and resized from its corners.
+- Diversified sample pages and templates: images, audio, video, tables, SVG animation; animation switched to self-contained SVG (keyframes inside `<svg><style>`).
+- Drew up a "what's still missing" candidate list → selected the whole "core completeness" batch (multi-select, drag reorder, keyboard shortcuts, Undo/Redo, right-click menu, empty-state onboarding, double-click to edit, snapping guides); closing the pin loop was deferred.
+- Further work: per-object animation and sequencing, New slide from outline, editable tables, bar as an independent rectangle, Text box / Shape, Arrange implementation.
+- Removed all ▾ carets so buttons open their menu directly on click; fixed a bug where `overflow:hidden` clipped the menu.
+- Real implementation of Table / Chart (after a planning survey): per-cell table styling, column-width dragging, range selection, right-click row/column merge, theme panel; chart data model, 6 chart types, styling, a floating data window, self-contained SVG output. Fixed `<colgroup>` not rendering (switched to using the first row's width) and data cells being squashed (fixed with `flex:none`).
 
-## 第四階段：簡化嘗試
-- 提出 10 項簡化建議。採納：刪 1280×720 chip。✕ Style+Animate 合成 Inspector（做了又還原）。
-- **v2**（激進版）：無分頁工具列、右側全給聊天、屬性全部放舞台下方 Dock。做到一半使用者不喜歡 → 放棄。
+## Phase 4: simplification attempts
+- Proposed 10 simplification ideas. Adopted: removed the 1280×720 chip. ✕ Merging Style+Animate into a single Inspector (tried it, then reverted).
+- **v2** (a radical variant): no tabbed toolbar, the whole right side given to chat, all properties moved to a dock below the stage. Abandoned partway through because users didn't like it.
 
-## 第五階段：v3（由 New 重新產生，最終版）
-- 移除 Present 分頁；Transitions 移到 Animate（Page animate：Enter/Exit；Object animate）。
-- Home + Insert 平攤置中；Fullscreen/Play 併入 → 後 Play 移到頂列 Export 右側，全螢幕圖示刪除。
-- 工具列位置：舞台下方 → 懸浮玻璃於舞台上方 → 最終**懸浮玻璃於舞台下方**。過程中修正寬度溢出（縮小間距、Insert 一度改純圖示又恢復標籤、tooltip 需單一 hole）。
-- ✕ 左右欄也改玻璃懸浮並刪備忘稿 → 還原。
-- New / Templates 移到左欄上方（白底同款）。
-- 標題列：Undo/Redo 移到檔名左；檔名顯示 `.slidra`；Logo 改 CM → 刪除；agent connected 刪除；AI 頭像改 🤖。
-- 情境列：移除 Left/Center/Front 與 sub 標籤；順序 Comment to AI ｜ Edit style · Edit animation ｜ Delete；箭頭移除、分隔線調整；「Comment to agent」→「Comment to AI」；Revise → **Edit**；無動畫時不顯示 Edit animation。
-- pin 編號移到選框名稱標籤右側、僅選取時出現、實心。
-- 留言框：刪頂部說明與左下提示；按鈕改 Save changes / Add comment 並留在框內。
-- 插入類（Image/Video/Audio/Table/Chart）先詢問再插入 → 面板一律從工具列正上方中央長出 → Text 亦然（緊湊）。
-- Style 分頁加入 Page（投影片尺寸）/ Object；Style、Animate 內改為 Page｜Object 子分頁（無選取時 Object 停用）；區塊標題移除。
-- Shape / Arrange / Zoom 選單改左右排列。
-- Table 尺寸格：hover 只預覽、click 鎖定（修正「定不住」）。
-- Animate：工具列新增 Animate（與 Arrange 同段、無選取時停用），面板含效果預覽 + Start 時機 + Duration。
-- Group：工具列新增 Group/Ungroup；支援巢狀；雙擊鑽入；動畫以 PPTX 方式處理（整組一段；Group/Ungroup 清除相關動畫）。
-- 畫布：Figma 式縮放平移；✋ 抓取模式（lock 時投影片亦可抓、清除選取）；縮放百分比放工具列左側並展開橫向選單。
-- 舞台背景 → 暗灰 → 再淺一點（#3A3A3D）。
-- 使用者確認 **New v3** 為最終版本。
+## Phase 5: v3 (regenerated from New, the final version)
+- Removed the Present tab; moved Transitions into Animate (Page animate: Enter/Exit; Object animate).
+- Home + Insert laid out flat and centered; Fullscreen/Play merged → Play later moved to the top row, right of Export, and the fullscreen icon was removed.
+- Toolbar position: below the stage → floating glass above the stage → finally **floating glass below the stage**. Along the way, fixed width overflow (tightened spacing; Insert briefly switched to icon-only, then restored labels; tooltips need a single anchor point).
+- ✕ Tried making the left/right rails floating glass too and removing speaker notes → reverted.
+- New / Templates moved above the left rail (same white-background style).
+- Title bar: moved Undo/Redo to the left of the filename; filename now shows `.slidra`; the logo changed from "CM" to removed entirely; "agent connected" indicator removed; AI avatar changed to 🤖.
+- Contextual bar: removed Left/Center/Front and the sub-labels; order is Comment to AI ｜ Edit style · Edit animation ｜ Delete; removed the arrow, adjusted dividers; "Comment to agent" → "Comment to AI"; "Revise" → **Edit**; Edit animation hidden when there's no animation.
+- Pin numbers moved to the right of the selection box's name label, shown only while selected, solid fill.
+- Comment box: removed the header explanation and the bottom-left hint; buttons changed to Save changes / Add comment and kept inside the box.
+- Insert types (Image/Video/Audio/Table/Chart) ask for input before inserting → panels always grow from directly above and centered on the toolbar → Text follows the same pattern (compact).
+- Added a Page tab (slide dimensions) to Style, alongside Object; Style and Animate both restructured into Page｜Object sub-tabs (Object disabled when nothing is selected); removed section headers.
+- Shape / Arrange / Zoom menus rearranged to a horizontal layout.
+- Table size grid: hover only previews, click locks in the size (fixed a bug where the size wouldn't "stick").
+- Animate: added an Animate button to the toolbar (grouped with Arrange, disabled when nothing is selected); the panel includes an effect preview + Start timing + Duration.
+- Group: added Group/Ungroup to the toolbar; supports nesting; double-click drills in; animation follows PPTX behavior (the whole group as one segment; Group/Ungroup clears related animation).
+- Canvas: Figma-style zoom/pan; ✋ grab mode (when locked, the slide itself can also be grabbed, and the selection is cleared); the zoom percentage sits on the left of the toolbar and expands into a horizontal menu.
+- Stage background → dark gray → lightened slightly (#3A3A3D).
+- The user confirmed **New v3** as the final version.

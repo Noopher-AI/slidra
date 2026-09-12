@@ -1,30 +1,33 @@
 # Slidra — New v3 Handoff
 
-AI-agent-first slide editor. 這個包是 **設計交付**：可互動原型、設計語言、介面意義、假想後端介面、BDD 交互規格與討論紀錄。
+AI-agent-first slide editor. This package is the **design handoff**: an interactive prototype, the design language, the meaning behind the interface, an imagined backend interface, BDD interaction specs, and the discussion log.
 
-## 目錄
-| 路徑 | 內容 |
+## Directory
+
+| Path | Contents |
 |---|---|
-| `prototype/` | 可執行原型（`Slidra (New v3).dc.html` + `slidra-logic-v3.js` + `support.js` + 字型）。`reference/` 內為舊版重建與 v1 對照 |
-| `docs/01-DESIGN_TOKENS.md` | 色彩、字體、間距、圓角、陰影、玻璃材質、動效 token |
-| `docs/02-DESIGN_DOC.md` | 設計原則、版面結構、狀態機、資料模型、視覺系統 |
-| `docs/03-UI_RATIONALE.md` | 每個區塊／每個介面元件背後的意義與決策 |
-| `docs/04-BACKEND_INTERFACE.md` | 假想後端：TypeScript 型別、REST／WebSocket 介面、agent 協定 |
-| `docs/05-INTERACTIONS.feature` | 前端交互模式（Gherkin／BDD） |
-| `docs/06-KEYBOARD_AND_GESTURES.md` | 快捷鍵、滑鼠／手勢對照 |
-| `docs/07-DISCUSSION_LOG.md` | 討論串紀錄（決策與否決的方案） |
-| `docs/08-KNOWN_GAPS_AND_ROADMAP.md` | 原型未實作的部分、建議下一步 |
+| `prototype/` | Runnable prototype (`Slidra (New v3).dc.html` + `slidra-logic-v3.js` + `support.js` + fonts). `reference/` holds the old-version rebuild and the v1 comparison |
+| `docs/01-DESIGN_TOKENS.md` | Color, type, spacing, radius, shadow, glass material, and motion tokens |
+| `docs/02-DESIGN_DOC.md` | Design principles, layout structure, state machines, data model, visual system |
+| `docs/03-UI_RATIONALE.md` | The meaning and rationale behind every region and UI element |
+| `docs/04-BACKEND_INTERFACE.md` | Imagined backend: TypeScript types, REST/WebSocket interface, agent protocol |
+| `docs/05-INTERACTIONS.feature` | Frontend interaction patterns (Gherkin/BDD) |
+| `docs/06-KEYBOARD_AND_GESTURES.md` | Keyboard shortcuts and mouse/gesture reference |
+| `docs/07-DISCUSSION_LOG.md` | Discussion log (decisions made and options rejected) |
+| `docs/08-KNOWN_GAPS_AND_ROADMAP.md` | What the prototype doesn't implement yet, suggested next steps |
 
-## 執行原型
-原型以 ES module 動態載入 `slidra-logic-v3.js`，需透過 HTTP 伺服器開啟（不能直接 file://）：
+## Running the prototype
+
+The prototype dynamically loads `slidra-logic-v3.js` as an ES module, so it must be served over HTTP (not opened directly via `file://`):
 
 ```bash
 cd prototype
 python3 -m http.server 8080
-# 開 http://localhost:8080/Slidra%20(New%20v3).dc.html
+# open http://localhost:8080/Slidra%20(New%20v3).dc.html
 ```
 
-## 原型結構
-- `Slidra (New v3).dc.html`：宣告式模板（所有樣式 inline），`<x-dc>` 內為 UI；底部 `<script data-dc-script>` 為極薄的殼，動態載入邏輯。
-- `slidra-logic-v3.js`：`INITIAL_STATE` + `Logic` class（狀態、歷史、元素、表格、圖表 SVG、動畫、群組、畫布縮放、插入面板、AI 留言）。`renderVals()` 把狀態攤平成模板可讀的值。
-- `support.js`：模板執行時期（第三方提供，不需修改）。
+## Prototype structure
+
+- `Slidra (New v3).dc.html`: a declarative template (all styles inline); the UI lives inside `<x-dc>`; the `<script data-dc-script>` at the bottom is a thin shell that dynamically loads the logic.
+- `slidra-logic-v3.js`: `INITIAL_STATE` + the `Logic` class (state, history, elements, tables, chart SVG, animation, groups, canvas zoom, insert panel, AI comments). `renderVals()` flattens state into values the template can read.
+- `support.js`: the template runtime (provided by a third party, not to be modified).

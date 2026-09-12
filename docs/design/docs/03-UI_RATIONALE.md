@@ -1,86 +1,86 @@
-# 03 · UI Rationale — 每個區塊、每個介面背後的意義
+# 03 · UI Rationale — the meaning behind every region and every interface element
 
-## A. 標題列（Titlebar）
-| 元件 | 意義 / 決策 |
+## A. Title bar
+| Element | Meaning / rationale |
 |---|---|
-| `Slidra` + `BETA` | 品牌僅文字，Logo 方塊經討論移除（資訊價值低）。 |
-| ↶ ↷ | 放在檔名左側、緊鄰內容——「歷史屬於這份檔案」。凍結時停用並 toast。 |
-| `檔名.slidra` | 顯示副檔名以強化「這是一個檔案、由 agent 以 CLI 操作」的心智；`Saved · just now` / `Unsaved changes` 即時反映 dirty。 |
-| `Agent editing · undo paused` | 凍結態明示：agent 寫檔期間人類不能回退，避免衝突。 |
-| Open / Save / Export | 檔案動作集中右側。Export 提供 PPTX、PDF、By-frame PDF（每個動畫步一頁）——後者是動畫簡報的關鍵輸出。 |
-| ▶ Play ▏▶| | 主要 CTA 紅色，分裂鈕：從目前頁／從頭。移到頂列右端是因為「放映」屬檔案層級，不是編輯工具。 |
+| `Slidra` + `BETA` | Text-only brand mark; the logo square was removed after discussion (low information value). |
+| ↶ ↷ | Placed to the left of the filename, right next to the content — "history belongs to this file." Disabled and shown as a toast when frozen. |
+| `filename.slidra` | Showing the extension reinforces the mental model that "this is a file, operated on by an agent via CLI"; `Saved · just now` / `Unsaved changes` reflects dirty state in real time. |
+| `Agent editing · undo paused` | Explicitly signals the frozen state: while the agent is writing to the file, the human cannot undo, avoiding conflicts. |
+| Open / Save / Export | File actions are grouped on the right. Export offers PPTX, PDF, and By-frame PDF (one page per animation step) — the latter is the key output for animated presentations. |
+| ▶ Play ▏▶| | The primary CTA is red, split into two: play from the current slide, or from the start. It sits at the far right of the top row because "playback" is a file-level action, not an editing tool. |
 
-## B. 左欄（Rail）
-| 元件 | 意義 |
+## B. Left rail
+| Element | Meaning |
 |---|---|
-| New / Templates | 新頁與範本屬「頁」的操作，故放在頁清單上方而非編輯工具列。New 展開版面清單（含 From outline… AI 起手）。 |
-| 縮圖 | 以真實元素（cqw 定位）縮放繪製，不是截圖——永遠與內容同步。 |
-| 頁碼圓點 | 當前頁紅底白字；`✦ n` 標示該頁動畫數。 |
-| 右上留言鈕 | 對「整頁」留言給 AI；有留言時顯示 pin 編號。滑入才顯示，避免噪音。 |
-| 拖曳排序 | 紅色插入線；可拖到最後一格。右鍵：新增／複製／留言／上移下移／刪除／從大綱新增。 |
+| New / Templates | New slide and templates are "page" operations, so they sit above the page list rather than in the editing toolbar. New expands a layout list (including "From outline…" as an AI-driven starting point). |
+| Thumbnails | Rendered by scaling the real elements (positioned in cqw), not screenshots — always in sync with the content. |
+| Page-number dot | The current page has a red fill and white text; `✦ n` indicates the number of animations on that page. |
+| Comment button (top-right) | Comments on the "whole page" for the AI; shows a pin number when comments exist. Appears only on hover to reduce visual noise. |
+| Drag to reorder | A red insertion line; can be dragged to the last slot. Right-click: add / duplicate / comment / move up-down / delete / add from outline. |
 
-## C. 舞台（Stage well）
-| 元件 | 意義 |
+## C. Stage well
+| Element | Meaning |
 |---|---|
-| 深灰背景 + 投影片 | 深底突出內容色彩；灰而非黑以免與黑色投影片邊界消失。 |
-| Figma 式縮放平移 | ⌘滾輪縮放（以游標為中心）、滾輪平移、Space／✋ 抓取。編輯細節與總覽同一畫布，不需另開檢視。 |
-| 選取框 | 紅描邊、四角把手、左上名稱標籤；多選虛線、整組實線。名稱標籤旁附該元素的 pin 編號（只在選取時出現）。 |
-| 輔助線 | 拖曳時吸附到畫面邊／中線／其他元素邊與中心；⌥ 暫時關閉。 |
-| 情境列（玻璃） | 出現在選框正下方（不夠空間翻到上方），內容依序：Comment to AI ｜ Edit style · Edit animation（有動畫才出現）｜ Delete。移除 Left/Center/Front 等可由 Arrange 或右鍵完成的操作，讓它只保留「下一步最可能做的事」。 |
-| 留言框（玻璃） | 從選框長出；只留輸入與動作，去掉冗餘說明。 |
-| pin 編號 | 紅色圓角方塊，與對話欄的「Pinned context」一一對應，可點擊跳轉。 |
-| 雙擊 | 文字→就地編輯；圖表→資料視窗；群組→鑽入下一層。 |
+| Dark gray background + slide | A dark background makes the slide's colors stand out; gray rather than black so the boundary doesn't disappear against black slides. |
+| Figma-style zoom/pan | ⌘+wheel to zoom (centered on the cursor), wheel to pan, Space/✋ to grab. Editing detail and the overview share the same canvas, so no separate view is needed. |
+| Selection box | Red outline, four corner handles, name label at top-left; multi-select uses a dashed outline, a whole group uses a solid outline. The name label is accompanied by that element's pin number (shown only while selected). |
+| Alignment guides | Snap to canvas edges/centerlines and to other elements' edges/centers while dragging; ⌥ temporarily disables snapping. |
+| Contextual bar (glass) | Appears directly below the selection box (or flips above if there isn't enough room), with actions in order: Comment to AI ｜ Edit style · Edit animation (only when animation exists) ｜ Delete. Operations like Left/Center/Front that can already be done via Arrange or the right-click menu are omitted, so the bar only holds "the most likely next action." |
+| Comment box (glass) | Grows from the selection box; keeps only the input and action, with no extra explanatory text. |
+| Pin numbers | A red rounded square, corresponding one-to-one with "Pinned context" in the chat panel; clicking it jumps to the target. |
+| Double-click | Text → edit in place; chart → data window; group → drill into the next layer. |
 
-### 覆蓋層只有兩層
+### Only two overlay layers
 
-舞台覆蓋層收斂成兩層：`.stage-geometry`（幾何層）是所有「畫給人看、不接受操作」的東西——名稱標籤旁的視覺、吸附輔助線、動畫編號徽章；`.stage-widgets`（widget 層）是所有「要按的」東西——情境列、留言 pin 與留言框、儲存格編輯框／欄寬把手／右鍵選單、Chart 資料視窗、第三方播放器。
+The stage overlay is collapsed into two layers: `.stage-geometry` (the geometry layer) holds everything that's "drawn for the eye, not meant to be interacted with" — the visual next to the name label, snapping guides, animation-number badges; `.stage-widgets` (the widget layer) holds everything that's "meant to be clicked" — the contextual bar, comment pins and comment box, cell edit box/column-width handles/right-click menu, chart data window, third-party player.
 
-這是結構，不是慣例：幾何層以 `pointer-events: none !important` 強制，個別元件沒有辦法把自己開回可點。舊做法是每個元件自己決定要不要吃事件，於是「顯示用的動畫徽章開了 `auto`，蓋住元素左上的縮放把手」這種錯誤寫得出來也看不出來（F-16）。分層之後這一類錯誤在結構上不存在。
+This is a structural guarantee, not a convention. The geometry layer is forced to `pointer-events: none !important`, so no individual component can turn its own events back on. Under the old approach, each component decided for itself whether to consume events, which let a bug slip through unnoticed — a display-only animation badge left as `auto` covering an element's top-left resize handle. Once the layers are split, that whole class of bug becomes structurally impossible.
 
-widget 層的規則：widget 不得蓋住投影片內容，或自己處理 hover（情境列走後者）。明示例外：第三方播放器 iframe 被 sandbox（ADR-0011）逼到父文件，只能待在 widget 層；另有三個顯示用元素因為與可互動的兄弟節點由同一個元件渲染而留在 widget 層，但一律維持 `pointer-events: none`（名稱標籤列、播放器容器、儲存格範圍框）。
+Rule for the widget layer: a widget must not cover the slide's content, and must not handle its own hover state (the contextual bar is the one exception). The explicit exceptions: a third-party player iframe is forced into the parent document by its sandbox (see ADR-0011) and has nowhere else to live but the widget layer; three other display-only elements stay in the widget layer because they're rendered by the same component as their interactive siblings, but they always keep `pointer-events: none` (the name-label row, the player container, the cell-range box).
 
-情境列自己處理 hover 的具體行為（F-17）：未 hover 時半透明（`opacity: .55`）且 `pointer-events: none`——指標可以直接穿透它點到、加選底下被壓住的內容；指標停留在情境列範圍內達 `HOVER_SOLIDIFY_MS`（120ms）才轉為實體（`opacity: 1`、`pointer-events: auto`，按鈕才吃得到點擊），離開範圍達 `HOVER_GHOST_MS`（250ms）才轉回半透明——兩段各自的延遲讓「快速掃過」與「邊界抖動」都不會誤觸或誤閃。指標位置由舞台（iframe 內走新的 `stage-hover` 訊息、iframe 外走父文件的 `mousemove`）追蹤後與情境列當下的矩形比對得出。
+The contextual bar's own hover handling works like this: while not hovered it's semi-transparent (`opacity: .55`) with `pointer-events: none` — the cursor passes straight through it to click or add to a selection on whatever it's covering underneath. Only once the cursor stays within the bar's bounds for `HOVER_SOLIDIFY_MS` (120ms) does it become solid (`opacity: 1`, `pointer-events: auto`, so its buttons can receive clicks); only once the cursor has been outside for `HOVER_GHOST_MS` (250ms) does it fade back to semi-transparent. The two separate delays mean neither a quick pass-through nor jitter at the boundary triggers a false click or a false flicker. Cursor position is tracked (via the new `stage-hover` message inside the iframe, and via `mousemove` on the parent document outside it) and compared against the contextual bar's current bounding rect.
 
-舞台覆蓋層只有兩個 z 值（幾何 1、widget 2），widget 之間的前後順序由 widget 層內部決定。
+The stage overlay uses only two z-index values (geometry 1, widget 2); ordering among widgets themselves is decided within the widget layer.
 
-## D. 底部玻璃工具列
-| 段 | 元件 | 意義 |
+## D. Bottom glass toolbar
+| Section | Element | Meaning |
 |---|---|---|
-| 左 | ✋ 抓取 / `100%` | 畫布導航工具；✋ lock 後整個舞台（含投影片）可拖，同時清除選取避免誤操作。百分比展開橫向縮放選單。 |
-| 中 | Text Shape Image Video Audio Table Chart | 「插入」是編輯的第一步，放在最容易到達的中央。全部先詢問再插入（避免先產生佈局垃圾），面板一律從工具列正上方中央長出。 |
-| 右 | Animate Arrange Group | 作用於選取的操作；無選取時停用。Animate 面板含效果預覽、Start 時機、時長；Group/Ungroup 依選取狀態切換。三者之間不加分隔線以表示同類。 |
+| Left | ✋ grab / `100%` | Canvas navigation tools; once ✋ is locked, the whole stage (including the slide) can be dragged, and the selection is cleared to avoid accidental edits. The percentage expands into a horizontal zoom menu. |
+| Center | Text Shape Image Video Audio Table Chart | "Insert" is the first step of editing, so it sits in the most reachable, central position. Everything asks for input first before inserting (to avoid producing layout clutter up front); panels always grow from directly above and centered on the toolbar. |
+| Right | Animate Arrange Group | Operations that act on the current selection; disabled when nothing is selected. The Animate panel includes an effect preview, start timing, and duration; Group/Ungroup toggles based on selection state. No divider separates these three, signaling that they belong to the same category. |
 
-為何浮在舞台上：頂列已被檔案動作佔用；固定在舞台下方會壓縮舞台高度；浮動玻璃在任何縮放下都貼近工作區，且舞台下方保留 76px 讓情境列不會與之相撞。
+Why it floats above the stage: the top row is already occupied by file actions; anchoring it below the stage would shrink the stage's height; a floating glass bar stays close to the working area at any zoom level, and 76px is reserved below the stage so the contextual bar never collides with it.
 
-## E. 右欄（Side panel）
-| 分頁 | 意義 |
+## E. Right rail (side panel)
+| Tab | Meaning |
 |---|---|
-| Chat | AI 是主角，保留獨立分頁。訊息三種：使用者、agent、指令卡（Done／Running 狀態 + 目標檔）。底部「Pinned context」以 30px 一列堆疊（最多 6.5 列可視，超過捲動），排序＝頁序→位置左上到右下；輸入框顯示 `n pinned` 提示這些會一起送出。 |
-| Style › Page | 投影片尺寸（16:9／4:3／16:10／A4／自訂）——屬整份 deck。 |
-| Style › Object | 依元素類型顯示：文字（字級、粗細、色、對齊、位置）、表格（主題、表頭、框線、儲存格：粗體／對齊／填色／文字色／合併）、圖表（位置＋圖表資料視窗入口）。無選取時 disabled 並自動回 Page。 |
-| Animate › Page | Enter／Exit 效果與時長、Apply to all。將「轉場」改名為頁面動畫並與物件動畫並列，是為了把「動畫」概念統一。 |
-| Animate › Object | 卡片清單＝點擊順序；群組動畫顯示為一張卡（PPTX 行為）。Preview 播整頁序列。 |
+| Chat | AI is the main character here, so it gets its own dedicated tab. Three message types: user, agent, and command card (Done/Running state + target file). "Pinned context" at the bottom stacks in 30px rows (up to 6.5 rows visible, scrollable beyond that), ordered by page order → top-left-to-bottom-right position; the input shows an `n pinned` hint indicating these will be sent together. |
+| Style › Page | Slide dimensions (16:9 / 4:3 / 16:10 / A4 / custom) — a whole-deck property. |
+| Style › Object | Shown per element type: text (size, weight, color, alignment, position), table (theme, header, borders, cell: bold/alignment/fill/text color/merge), chart (position + entry point to the chart data window). Disabled and auto-reverts to Page when nothing is selected. |
+| Animate › Page | Enter/Exit effects and durations, Apply to all. "Transition" was renamed to page animation and placed alongside object animation to unify the concept of "animation." |
+| Animate › Object | The card list = click order; a group's animation shows as a single card (matching PPTX behavior). Preview plays the whole page sequence. |
 
-## F. 備忘稿
-保留在舞台正下方（原 web/ 位置）；播放時給講者看。
+## F. Speaker notes
+Kept directly below the stage (its original position in web/); shown to the presenter during playback.
 
-## G. 狀態列
-選取名稱 chip、快捷鍵提示、頁碼與 ‹ ›、檢視切換（Normal／Grid／Play）。Grid 為總覽覆蓋層。
+## G. Status bar
+Selection name chip, keyboard-shortcut hints, page number and ‹ ›, view switch (Normal / Grid / Play). Grid is the overview overlay.
 
-## H. 對話框／面板
-| 面板 | 意義 |
+## H. Dialogs / panels
+| Panel | Meaning |
 |---|---|
-| Insert Text | 文字內容 + 樣式預設（Title/Subtitle/Body/Caption）+ 對齊；Enter 直接插入。 |
-| Insert Image/Video/Audio | 拖放或選檔、URL、caption（給 AI 的 context）；留空插入占位。 |
-| Insert Table | 8×6 格點選尺寸（hover 預覽、click 鎖定）、主題、表頭。 |
-| Insert Chart | 類型、系列數、類別數、調色盤；插入帶樣本資料。 |
-| Animate | 效果卡（循環預覽）、Start、Duration → Add animation。 |
-| Chart data（浮動視窗） | 類型列、資料格（類別 × 系列）、調色盤／圖例／格線／標籤／軸標題、Copy SVG。可拖曳。 |
-| Templates | 版面卡片、儲存目前頁為範本。 |
-| From outline | 貼大綱 → agent 草擬（縮排為副標）。空狀態亦以此起手。 |
+| Insert Text | Text content + style presets (Title/Subtitle/Body/Caption) + alignment; Enter inserts directly. |
+| Insert Image/Video/Audio | Drag-and-drop or file picker, URL, caption (context for the AI); inserts a placeholder if left empty. |
+| Insert Table | An 8×6 grid to pick dimensions (hover preview, click to lock in), theme, header. |
+| Insert Chart | Type, number of series, number of categories, palette; inserted with sample data. |
+| Animate | Effect cards (looping preview), Start, Duration → Add animation. |
+| Chart data (floating window) | Type row, data grid (categories × series), palette/legend/gridlines/labels/axis titles, Copy SVG. Draggable. |
+| Templates | Layout cards, save current page as a template. |
+| From outline | Paste an outline → the agent drafts slides (indentation becomes subtitles). Also used as the starting point from an empty state. |
 
-## I. 播放模式
-黑底全幅；底部膠囊控制列（‹ 頁碼·步數 › ｜全螢幕｜Exit）；點畫面或 → 前進一步（物件動畫步→頁）；頁面 Enter／Exit 動畫實際播放。
+## I. Play mode
+Full-bleed black background; a pill-shaped control bar at the bottom (‹ page·step › ｜ fullscreen ｜ Exit); clicking anywhere or pressing → advances one step (object animation step → page). Page Enter/Exit animations actually play.
 
-## J. 右鍵選單
-元素：Edit text／Edit chart data／Add·Edit animation／Comment／前後層四項／Duplicate／Delete。縮圖：New below／From outline／Duplicate／Comment／Move up·down／Delete。表格儲存格：Edit／Bold／插列插欄／合併／刪列刪欄。
+## J. Right-click menu
+Element: Edit text / Edit chart data / Add·Edit animation / Comment / four layer-order items / Duplicate / Delete. Thumbnail: New below / From outline / Duplicate / Comment / Move up·down / Delete. Table cell: Edit / Bold / insert row·column / merge / delete row·column.
