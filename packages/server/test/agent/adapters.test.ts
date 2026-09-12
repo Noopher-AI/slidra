@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,14 +26,37 @@ describe("resolveAdapterConfig", () => {
     expect(config.args![0]).toContain(path.join("@zed-industries", "claude-code-acp"));
   });
 
-  it("codex: resolves to a real file on disk, spawned via process.execPath", () => {
+  it("codex: resolves to a real file on disk, spawned via process.execPath, in the read-only preset", () => {
     const config = resolveAdapterConfig("codex");
     expect(config.command).toBe(process.execPath);
-    expect(config.args?.slice(1)).toEqual([
-      "-c", 'approval_policy="on-request"', "-c", 'sandbox_mode="read-only"',
-    ]);
+    expect(config.args).toHaveLength(1);
     expect(existsSync(config.args![0])).toBe(true);
-    expect(config.args![0]).toContain(path.join("@zed-industries", "codex-acp"));
+    expect(config.args![0]).toContain(path.join("@agentclientprotocol", "codex-acp"));
+    expect(config.env?.INITIAL_AGENT_MODE).toBe("read-only");
+  });
+
+  it("codex: with `codex` on PATH, CODEX_PATH is a launcher in CO_MOTION_HOME that execs it with allow_login_shell=false", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "co-motion-codex-on-path-"));
+    const originalPath = process.env.PATH;
+    const originalHome = process.env.CO_MOTION_HOME;
+    try {
+      await writeFile(path.join(dir, "codex"), "#!/bin/sh\n", { mode: 0o755 });
+      process.env.PATH = `${dir}${path.delimiter}${originalPath ?? ""}`;
+      process.env.CO_MOTION_HOME = path.join(dir, "home");
+      const launcher = resolveAdapterConfig("codex").env?.CODEX_PATH;
+      expect(launcher).toBe(path.join(dir, "home", "codex-launcher.sh"));
+      const text = await readFile(launcher!, "utf8");
+      expect(text).toBe(`#!/bin/sh\nexec '${await realpath(path.join(dir, "codex"))}' -c allow_login_shell=false "$@"\n`);
+      expect(((await stat(launcher!)).mode & 0o111) !== 0).toBe(true);
+
+      process.env.PATH = dir.replace(/[^/]+$/, "nowhere");
+      expect(resolveAdapterConfig("codex").env?.CODEX_PATH).toBeUndefined();
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalHome === undefined) delete process.env.CO_MOTION_HOME;
+      else process.env.CO_MOTION_HOME = originalHome;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("claude: points claude-code-acp at the `claude` on PATH (resolved through symlinks) so the model list is the author's own CLI's", async () => {
@@ -59,6 +82,7 @@ describe("resolveAdapterConfig", () => {
     const raw = await readFile(packageJsonPath, "utf8");
     const pkg = JSON.parse(raw) as { dependencies: Record<string, string> };
     expect(pkg.dependencies["@zed-industries/claude-code-acp"]).toBe("0.16.2");
-    expect(pkg.dependencies["@zed-industries/codex-acp"]).toBe("0.16.0");
+    expect(pkg.dependencies["@agentclientprotocol/codex-acp"]).toBe("1.11.0");
+    expect(pkg.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
   });
 });

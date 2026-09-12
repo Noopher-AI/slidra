@@ -431,19 +431,21 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
-   * Reads the model list out of a `session/new` response, preferring ACP's
-   * own `models` state over a `configOptions` entry. Leaves everything null
-   * when the adapter reports neither — the chat panel then shows no model
-   * rather than a guessed one.
+   * Reads the model list out of a `session/new` response. Leaves everything
+   * null when the adapter reports neither shape — the chat panel then shows
+   * no model rather than a guessed one.
    */
   private readModelState(session: acp.NewSessionResponse): void {
-    if (session.models) {
-      this.modelMechanism = { kind: "models" };
-      this.modelChoices = session.models.availableModels.map(toChoice);
-      this.setCurrentModel(session.models.currentModelId);
-      return;
-    }
+    // `@agentclientprotocol/codex-acp` reports both: `models` is every
+    // model × reasoning effort (dozens of rows), the `model` config option
+    // is one row per model — the list a person actually picks from. So the
+    // config option wins when present; `models` is what `claude-code-acp`
+    // sends and the only shape it has.
     this.readConfigOptions(session.configOptions ?? []);
+    if (this.modelMechanism || !session.models) return;
+    this.modelMechanism = { kind: "models" };
+    this.modelChoices = session.models.availableModels.map(toChoice);
+    this.setCurrentModel(session.models.currentModelId);
   }
 
   /** `codex-acp`'s shape: the `configOptions` entry whose `category` is `model`. Grouped options are flattened. */
@@ -817,7 +819,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     const brief = buildEditorialBrief(this.presentationId);
     const executionGuidance = this.config.kind === "codex"
-      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 co-motion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權或執行其他 shell 命令。"
+      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 co-motion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；co-motion cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
       : "";
     await connection.prompt({
       sessionId: this.sessionId,
@@ -891,6 +893,11 @@ export class AgentChatSession extends EventEmitter {
         // for why the capability is nonetheless advertised as available.
         throw new acp.RequestError(WRITE_REFUSED_CODE, WRITE_REFUSED_MESSAGE);
       },
+      // `@agentclientprotocol/codex-acp` sends `_auth/status_update` (which
+      // account the session is on) as an extension notification. Nothing
+      // here needs it, and without a handler the SDK logs a "Method not
+      // found" error for every one.
+      extNotification: async () => {},
     };
   }
 
@@ -937,6 +944,7 @@ export class AgentChatSession extends EventEmitter {
     toolCallId: string;
     status?: acp.ToolCallStatus | null;
     content?: acp.ToolCallContent[] | null;
+    rawOutput?: unknown;
   }): void {
     if (!this.relayedToolCalls.has(update.toolCallId)) return;
     // An update carrying no status is a content/location-only update —
@@ -949,7 +957,7 @@ export class AgentChatSession extends EventEmitter {
     const output = blocked
       ? BLOCKED_COMMAND_MESSAGE
       : update.status === "failed"
-        ? extractCommandOutput(update.content)
+        ? extractCommandOutput(update.content, update.rawOutput)
         : undefined;
     this.emitTyped("chat-command-update", {
       toolCallId: update.toolCallId,
@@ -1143,13 +1151,19 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
  * carries no `output` field rather than an empty string pretending to be
  * output.
  */
-function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined): string | undefined {
-  if (!content) return undefined;
+function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined, rawOutput?: unknown): string | undefined {
   const texts: string[] = [];
-  for (const block of content) {
+  for (const block of content ?? []) {
     if (block.type === "content" && block.content.type === "text") {
       texts.push(block.content.text);
     }
+  }
+  // `@agentclientprotocol/codex-acp` puts a command's output in
+  // `rawOutput.formatted_output` (its `content` is a terminal reference,
+  // not text); `claude-code-acp` puts it in text content blocks.
+  if (texts.length === 0 && typeof rawOutput === "object" && rawOutput !== null) {
+    const formatted = (rawOutput as Record<string, unknown>).formatted_output;
+    if (typeof formatted === "string" && formatted !== "") texts.push(formatted);
   }
   if (texts.length === 0) return undefined;
   const joined = texts.join("\n");

@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
-import { accessSync, constants, realpathSync } from "node:fs";
+import { accessSync, chmodSync, constants, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path, { dirname } from "node:path";
+import { resolveCoMotionHome } from "../comotion/home.js";
 import type { AgentAdapterConfig } from "./session.js";
 
 /**
@@ -52,8 +53,8 @@ export const ADAPTER_SPECS: readonly AdapterSpec[] = [
   {
     kind: "codex",
     label: "Codex",
-    npmPackage: "@zed-industries/codex-acp",
-    modulePath: "bin/codex-acp.js",
+    npmPackage: "@agentclientprotocol/codex-acp",
+    modulePath: "dist/index.js",
     probeCommand: { command: "codex", args: ["login", "status"] },
     loginCommand: "codex login",
   },
@@ -88,13 +89,7 @@ const require = createRequire(import.meta.url);
 export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   const spec = adapterSpecFor(kind);
   const resolved = require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
-  // Ask CoMotion before running untrusted commands. Its allow_once gate
-  // authorizes the CLI to write presentation history outside the empty
-  // ACP cwd, without granting the agent a writable presentation directory.
-  const args = kind === "codex"
-    ? [resolved, "-c", 'approval_policy="on-request"', "-c", 'sandbox_mode="read-only"']
-    : [resolved];
-  const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args };
+  const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
 
   // NOOP-278: when the co-motion Rust binary execs this Node process as its
   // fallback (crates/co-motion/src/fallback.rs), it sets CO_MOTION_BIN to
@@ -127,7 +122,52 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
     if (claude) config.env = { ...config.env, CLAUDE_CODE_EXECUTABLE: claude };
   }
 
+  if (kind === "codex") {
+    // The read-only preset is what makes CoMotion the gate: a `co-motion`
+    // command that writes cannot run inside the sandbox, so Codex has to
+    // ask, and `decidePermission` answers with the allowlist. The mode is
+    // the adapter's own env knob (it replaces the old `-c approval_policy`
+    // / `-c sandbox_mode` flags of @zed-industries/codex-acp).
+    config.env = { ...config.env, INITIAL_AGENT_MODE: "read-only" };
+    // `@agentclientprotocol/codex-acp` bundles its own Codex, but the one
+    // the author installed (and logged in with — `probeCommand` looks it up
+    // on PATH) is the one whose model list and account they expect to see.
+    // It goes through a tiny launcher rather than straight into
+    // `CODEX_PATH` because Codex runs commands in a login shell whose
+    // startup files rebuild PATH — the serve process's own PATH (where
+    // `co-motion` lives) never reaches the sandbox otherwise. The launcher
+    // passes `-c allow_login_shell=false`, which the adapter offers no other
+    // way to set (`CODEX_CONFIG` is merged per thread, and Codex reads this
+    // key at startup only).
+    const codex = findOnPath("codex");
+    if (codex && process.platform !== "win32") {
+      config.env = { ...config.env, CODEX_PATH: writeCodexLauncher(codex) };
+    }
+  }
+
   return config;
+}
+
+/**
+ * Writes `<CO_MOTION_HOME>/codex-launcher.sh`, an `exec` of the real Codex
+ * with `-c allow_login_shell=false` in front of the adapter's own
+ * `app-server` argument, and returns its path. Rewritten on every resolve
+ * (the Codex path may have moved since last time); a stale copy from an
+ * older serve is simply overwritten.
+ */
+function writeCodexLauncher(codexPath: string): string {
+  const home = resolveCoMotionHome();
+  mkdirSync(home, { recursive: true });
+  const launcher = path.join(home, "codex-launcher.sh");
+  writeFileSync(launcher, `#!/bin/sh
+exec ${shellQuote(codexPath)} -c allow_login_shell=false "$@"
+`, { mode: 0o755 });
+  chmodSync(launcher, 0o755);
+  return launcher;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\''`)}'`;
 }
 
 /** The first `name` on PATH, resolved through its symlinks (Claude's launcher is a symlink into a versioned directory); undefined when none. */

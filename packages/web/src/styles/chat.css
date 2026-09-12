@@ -456,6 +456,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* Codex 一次報十幾個模型：超過側欄一半高就在選單裡捲，不把整欄撐開。 */
+  max-height: 50vh;
+  overflow-y: auto;
 }
 @keyframes chat-chip-menu-in {
   from {
