@@ -60,10 +60,12 @@ pub mod comment;
 pub mod convert;
 pub mod effect;
 pub mod element;
+pub mod font;
 pub mod ls;
 pub mod new;
 pub mod open;
 pub mod pack;
+pub mod plan;
 pub mod presentation;
 pub mod redo;
 pub mod slide;
@@ -72,6 +74,7 @@ pub mod template;
 pub mod text;
 pub mod textbox;
 pub mod undo;
+pub mod validate;
 
 use crate::result::CommandResult;
 
@@ -162,16 +165,19 @@ pub const TAKEOVER_TABLE: &[&str] = &[
     "effect move",
     "effect remove",
     "effect set",
+    "font",
     "ls",
     "new",
     "open",
     "pack",
+    "plan",
     "presentation",
     "redo",
     "slide",
     "table",
     "template",
     "undo",
+    "validate",
 ];
 
 /// Tries to match `argv`'s first one or two tokens against
@@ -201,7 +207,7 @@ pub fn is_in_takeover_table(name: &str) -> bool {
     TAKEOVER_TABLE.contains(&name)
 }
 
-/// The 52 full registered command names this crate's scope covers —
+/// The 58 full registered command names this crate's scope covers —
 /// `argv[0]` alone for the single-level commands, `"<family> <sub...>"` for
 /// the rest. `undo`/`redo` are commands F2 already registered; [E4.T4] left
 /// their entries exactly as they were, [E4.T7] added the five `effect`
@@ -223,10 +229,16 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "slide style set",
     "slide transition set",
     "slide render",
+    "slide set",
+    "slide background set",
     "template add",
     "template list",
     "template rename",
     "template delete",
+    "plan set",
+    "plan list",
+    "plan delete",
+    "validate",
     "effect add",
     "effect list",
     "effect move",
@@ -260,6 +272,7 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "table col delete",
     "table col width",
     "asset import",
+    "font import",
 ];
 
 #[cfg(test)]
@@ -356,23 +369,26 @@ mod tests {
                 "effect move",
                 "effect remove",
                 "effect set",
+                "font",
                 "ls",
                 "new",
                 "open",
                 "pack",
+                "plan",
                 "presentation",
                 "redo",
                 "slide",
                 "table",
                 "template",
                 "undo",
+                "validate",
             ]
         );
     }
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
-        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 52);
+        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 59);
         assert_eq!(
             REGISTERED_COMMAND_NAMES,
             [
@@ -391,10 +407,16 @@ mod tests {
                 "slide style set",
                 "slide transition set",
                 "slide render",
+                "slide set",
+                "slide background set",
                 "template add",
                 "template list",
                 "template rename",
                 "template delete",
+                "plan set",
+                "plan list",
+                "plan delete",
+                "validate",
                 "effect add",
                 "effect list",
                 "effect move",
@@ -428,6 +450,7 @@ mod tests {
                 "table col delete",
                 "table col width",
                 "asset import",
+                "font import",
             ]
         );
     }

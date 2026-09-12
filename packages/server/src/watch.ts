@@ -21,6 +21,24 @@ export interface PresentationWatcher {
   close(): Promise<void>;
 }
 
+/**
+ * The CLI's per-presentation file lock (`.co-motion.lock`, #303) lives
+ * inside the watched work directory and is created and removed around
+ * every command — reads included. It is coordination, never content, so a
+ * change to it must not reach `onChange`: `serve` answers a live-reload
+ * notification by re-reading the presentation *through the CLI*, which
+ * takes the lock again, which notifies again — a loop that never settles.
+ * Its visible symptom is the editor reloading constantly, which drops the
+ * author's selection the instant they click an element.
+ */
+const LOCK_FILE_NAME = ".co-motion.lock";
+
+function isCoordinationFile(filename: string | Buffer | null): boolean {
+  if (filename === null) return false;
+  const name = typeof filename === "string" ? filename : filename.toString("utf-8");
+  return name === LOCK_FILE_NAME || name.endsWith(`/${LOCK_FILE_NAME}`);
+}
+
 // Trailing debounce window: a single logical edit (e.g. `text set`) can
 // produce more than one raw filesystem event, and this coalesces them into
 // one `onChange` call without swallowing distinct, separately-timed edits.
@@ -64,7 +82,8 @@ export async function watchPresentation(
 
   let watcher: ReturnType<typeof fsWatch>;
   try {
-    watcher = fsWatch(workDir, { recursive: true }, () => {
+    watcher = fsWatch(workDir, { recursive: true }, (_event, filename) => {
+      if (isCoordinationFile(filename)) return;
       scheduleNotify();
     });
   } catch {

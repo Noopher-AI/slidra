@@ -39,6 +39,7 @@
 //!   — `asset import`'s conflict-free-filename scan of `assets/`/`assets/data/`.
 
 pub mod fonts;
+pub mod lock;
 pub mod migrate;
 pub mod project;
 pub mod virtual_fs;

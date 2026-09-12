@@ -67,6 +67,19 @@ pub fn run(args: &[String]) -> CommandResult {
         }
     };
 
+    if let Some(svg) = parsed.svg.as_deref() {
+        let name = parsed.name.as_deref().unwrap_or_default();
+        return match import_svg_asset(&parsed.id, name, svg) {
+            Ok(path) => CommandResult::success(
+                format!("已建立 SVG 資產：{path}"),
+                Some(
+                    serde_json::json!({ "path": path, "mimeType": "image/svg+xml", "kind": "image" }),
+                ),
+            ),
+            Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
+        };
+    }
+
     let bytes = if is_url(&parsed.source) {
         match crate::http::download_source(&parsed.source) {
             Ok(bytes) => bytes,
@@ -168,6 +181,51 @@ fn import_data_asset_bytes(
         mime_type: "text/csv".to_string(),
         kind: "data".to_string(),
     })
+}
+
+/// `asset import --svg '<markup>' --name <file>.svg` (#303 §13): writes an
+/// SVG asset from inline markup. The name is the caller's (no conflict
+/// renaming — a background recipe is reused by path, so a silent rename
+/// would break that reuse); root must be `<svg>`; `<script>`/
+/// `<foreignObject>` are refused like a slide.
+fn import_svg_asset(id: &str, name: &str, svg: &str) -> Result<String, CoMotionError> {
+    let valid_name = name.ends_with(".svg")
+        && name.len() > 4
+        && name[..name.len() - 4]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if !valid_name {
+        return Err(CoMotionError::invalid(format!(
+            "--name 只能是英數字、底線、連字號組成的 .svg 檔名：{name}"
+        )));
+    }
+    let roots = crate::slide::scan::scan_document(svg)?;
+    if !roots.iter().any(|n| n.tag == "svg") {
+        return Err(CoMotionError::invalid("--svg 的根節點必須是 <svg>"));
+    }
+    fn has_forbidden(nodes: &[crate::slide::scan::ScannedNode]) -> Option<String> {
+        for node in nodes {
+            if crate::slide::format::FORBIDDEN_TAGS.contains(&node.tag.as_str()) {
+                return Some(node.tag.clone());
+            }
+            if let Some(tag) = has_forbidden(&node.children) {
+                return Some(tag);
+            }
+        }
+        None
+    }
+    if let Some(tag) = has_forbidden(&roots) {
+        return Err(CoMotionError::invalid(format!("--svg 不允許 <{tag}> 元素")));
+    }
+    let existing = list_presentation_entries(id, "assets")?;
+    if existing.iter().any(|e| e == name) {
+        return Err(CoMotionError::invalid(format!(
+            "資產已存在：assets/{name}；請換一個 --name，或先刪除既有的資產"
+        )));
+    }
+    let virtual_path = format!("assets/{name}");
+    create_presentation_file(id, &virtual_path, svg.as_bytes())?;
+    Ok(virtual_path)
 }
 
 /// Mirrors TS's `URL_PATTERN = /^https?:\/\//i`.

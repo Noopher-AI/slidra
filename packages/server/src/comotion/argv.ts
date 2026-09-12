@@ -173,6 +173,10 @@ export const ARGV_ENCODERS: Record<string, ArgvEncoder> = {
 
   "template delete": (i) => plain(["template", "delete", str(i.id), str(i.templatePath)]),
 
+  "plan list": (i) => plain(["plan", "list", str(i.id)]),
+
+  "plan delete": (i) => plain(["plan", "delete", str(i.id), ...(i.name === undefined ? [] : [str(i.name)])]),
+
   "element resize": (i) =>
     plain([
       "element", "resize", str(i.id), str(i.slidePath), idsToken(i.elementIds),

@@ -13,6 +13,14 @@ export interface ChatPanelProps {
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /**
+   * #303: while `working` the Send button becomes a Stop button
+   * (`.chat-stop`) that asks the server to cancel the agent's turn; Esc
+   * in the textarea does the same. `stopping` disables it while the
+   * cancel request is in flight.
+   */
+  onStop(): void;
+  stopping: boolean;
   /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
   agent: AgentUiStatus;
   /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
@@ -54,6 +62,8 @@ export function ChatPanel({
   draft,
   onDraftChange,
   onSubmit,
+  onStop,
+  stopping,
   agent,
   onOpenSettings,
   comments,
@@ -95,6 +105,26 @@ export function ChatPanel({
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [draft]);
+
+  // Auto-scroll: keep the newest line visible as the agent streams, but
+  // only while the author is already reading the bottom. Someone who
+  // scrolled up to re-read an earlier command must not be yanked back
+  // down by the next chunk — so the panel stops following the moment they
+  // leave the bottom, and resumes when they return to it.
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followBottomRef = useRef(true);
+  function handleMessagesScroll(): void {
+    const el = messagesRef.current;
+    if (!el) return;
+    followBottomRef.current = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+  }
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el || !followBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    // `working` is in the deps because the "agent is working…" line below
+    // the messages changes the scroll height on its own.
+  }, [messages, working]);
 
   const query = slashQuery(draft);
   // Esc's dismissal is scoped to "the trigger span currently in progress"
@@ -172,12 +202,20 @@ export function ChatPanel({
       handleDraftKeyDown(event);
       return;
     }
+    // #303: Esc stops a running turn — unless the slash menu is open, in
+    // which case Esc keeps its existing meaning (dismiss the menu) and the
+    // author presses it once more to stop.
+    if (event.key === "Escape" && working && !showMenu) {
+      event.preventDefault();
+      if (!stopping) onStop();
+      return;
+    }
     handleSlashKeyDown(event);
   }
 
   return (
     <aside className="chat-sidebar">
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
         {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
           message.role === "notice" ? (
@@ -284,14 +322,42 @@ export function ChatPanel({
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
-            ↑
-          </button>
+          {working ? (
+            <button
+              type="button"
+              className="chat-stop"
+              aria-label="Stop"
+              title="停止 (Esc)"
+              disabled={stopping}
+              onClick={onStop}
+            >
+              停止
+            </button>
+          ) : (
+            <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
+              ↑
+            </button>
+          )}
         </div>
       </form>
     </aside>
   );
 }
+
+/**
+ * Whether the chat log is scrolled close enough to the bottom to keep
+ * following new messages. Pure so the threshold is testable without a
+ * layout engine (jsdom reports every scroll metric as 0).
+ *
+ * The slack exists because "at the bottom" is never exact — a fractional
+ * device-pixel row height leaves a pixel or two behind, and a message that
+ * grows while it streams can outrun the scroll by a line.
+ */
+export function isNearBottom(scrollHeight: number, scrollTop: number, clientHeight: number): boolean {
+  return scrollHeight - scrollTop - clientHeight <= BOTTOM_SLACK_PX;
+}
+
+const BOTTOM_SLACK_PX = 48;
 
 /** ACP tool-call 狀態 → 使用者看到的字——逐字搬自 App.tsx。 */
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {

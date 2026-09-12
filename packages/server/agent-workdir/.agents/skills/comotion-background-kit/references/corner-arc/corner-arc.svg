@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="var(--background, #101418)"/>
+<circle cx="1180" cy="640" r="420" fill="none" stroke="var(--primary, #4F8DFF)" stroke-width="2" opacity="0.5"/>
+<circle cx="1180" cy="640" r="300" fill="none" stroke="var(--primary, #4F8DFF)" stroke-width="1" opacity="0.35"/>
+<circle cx="1180" cy="640" r="180" fill="var(--primary, #4F8DFF)" opacity="0.08"/>
+</svg>

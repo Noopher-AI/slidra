@@ -536,6 +536,8 @@ it("同一份投影片轉檔前後，瀏覽器畫出來的像素完全相同", a
     expect(newResult.ok).toBe(true);
     const opened = await registry.dispatch<{ id: string }>("open", { path: convertComotPath });
     const convertTestId = opened.data!.id;
+    // `new` creates no slides (ADR-0018); mint slides/001.svg so `convert` has a page to rewrite.
+    await registry.dispatch("slide add", { id: convertTestId });
     const workDir = await workDirFor(convertTestId);
     await writeFile(path.join(workDir, "slides/001.svg"), bare, "utf-8");
     const convertResult = await registry.dispatch("convert", { id: convertTestId });

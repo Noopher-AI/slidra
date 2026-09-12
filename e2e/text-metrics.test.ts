@@ -74,6 +74,8 @@ beforeAll(async () => {
   await registry.dispatch("new", { path: comotPath, name: "字型量測煙霧測試" });
   const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
   presentationId = opened.data!.id;
+  // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
+  await registry.dispatch("slide add", { id: presentationId });
 }, 60_000);
 
 afterAll(async () => {

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="140" y="280" font-size="96" fill="#DDDDDD" font-weight="700">“</text><text x="210" y="330" font-size="40" fill="#2E2E2E">The quoted line,</text><text x="210" y="400" font-size="40" fill="#2E2E2E">can run to a second line.</text><text x="210" y="510" font-size="24" fill="#555555">Interviewee · role</text>
+
+</svg>

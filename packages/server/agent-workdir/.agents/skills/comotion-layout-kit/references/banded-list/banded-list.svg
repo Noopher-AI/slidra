@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="176" width="1120" height="110" fill="#EDEDED"/><text x="120" y="246" font-size="24" fill="#777777">Item 1, alternating band</text><rect x="80" y="286" width="1120" height="110" fill="#F7F7F7"/><text x="120" y="356" font-size="24" fill="#777777">Item 2, alternating band</text><rect x="80" y="396" width="1120" height="110" fill="#EDEDED"/><text x="120" y="466" font-size="24" fill="#777777">Item 3, alternating band</text><rect x="80" y="506" width="1120" height="110" fill="#F7F7F7"/><text x="120" y="576" font-size="24" fill="#777777">Item 4, alternating band</text>
+
+</svg>

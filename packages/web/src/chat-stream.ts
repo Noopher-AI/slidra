@@ -28,7 +28,7 @@ import {
   updateCommandMessage,
   type ChatMessage,
   type CommandStatus,
-} from "./chat-messages.js";
+ appendSystemMessage } from "./chat-messages.js";
 
 export interface ChatStream {
   stop(): void;
@@ -56,6 +56,8 @@ const READY_STATE_CLOSED = 2;
 
 const RECONNECTING_NOTICE = "連線中斷，正在重新連線；這一輪後續的內容可能沒有收到";
 const CLOSED_NOTICE = "連線中斷且無法自動恢復；這一輪後續的內容沒有收到，請重新整理頁面";
+/** #303: shown when the author pressed Stop and the agent answered the turn with `cancelled`. */
+export const STOPPED_NOTICE = "已停止";
 
 export function startChatStream(options: ChatStreamOptions): ChatStream {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
@@ -153,10 +155,31 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
     );
   });
 
-  source.addEventListener("chat-done", () => {
+  source.addEventListener("chat-done", (event) => {
     activeReplyId = null;
     turnInFlight = false;
     options.setWorking(false);
+    // #303: a turn the author stopped ends with `stopReason: "cancelled"`
+    // — say so in the conversation, as a system line, so a half-finished
+    // reply is not mistaken for the agent's final word. Unfinished command
+    // cards are marked interrupted the same way a dropped stream marks
+    // them: the command may well still be running, the outcome is simply
+    // no longer reported.
+    const data = (event as MessageEvent).data;
+    const stopReason = typeof data === "string" && data !== "" ? (JSON.parse(data) as { stopReason?: string }).stopReason : undefined;
+    if (stopReason === "cancelled") {
+      options.updateMessages((previous) =>
+        appendSystemMessage(markUnfinishedCommandsInterrupted(previous), options.nextMessageId(), STOPPED_NOTICE),
+      );
+    }
+  });
+
+  // #303: a line the server itself has to say — today only "Stop also
+  // threw away N queued messages". It belongs in the conversation as a
+  // system line, not in the error banner: nothing failed.
+  source.addEventListener("chat-notice", (event) => {
+    const { text } = JSON.parse((event as MessageEvent).data) as { text: string };
+    options.updateMessages((previous) => appendSystemMessage(previous, options.nextMessageId(), text));
   });
 
   source.addEventListener("chat-error", (event) => {

@@ -516,10 +516,10 @@ it("基準截圖：控制列隱藏態", async () => {
   }
 });
 
-it("沒有背景矩形的投影片（`new` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
+it("沒有背景矩形的投影片（`slide add` 產生的空白頁），播放模式仍畫出不透明白底而非一片黑（#120）", async () => {
   // `.canvas`（play.css，data-mode="play"）的 #000 黑幕是進場前/載入前的
-  // 佔位色，本該被投影片文件蓋掉。但 `co-motion new` 的空白頁沒有背景矩形
-  // （packages/core/src/presentation.ts's buildMinimalPresentation），播放
+  // 佔位色，本該被投影片文件蓋掉。但 `slide add` 的空白頁沒有背景矩形
+  // （crates/co-motion/src/slide/ops.rs 的 build_blank_slide_svg），播放
   // 模式走的是 renderPlay() 的正常路徑（canvas.ts's wrapPlayDocument），不
   // 是票面文字點名的 wrapSlideDocument——這裡直接量播放中 iframe 自己的
   // html/body 背景，量的是實際播放路徑用到的那個 wrap 函式，不是名字對得
@@ -535,6 +535,8 @@ it("沒有背景矩形的投影片（`new` 產生的空白頁），播放模式�
     await registry.dispatch("new", { path: comotPath, name: "無背景播放測試" });
     const opened = await registry.dispatch<{ id: string }>("open", { path: comotPath });
     const presentationId = opened.data!.id;
+    // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
+    await registry.dispatch("slide add", { id: presentationId });
 
     const agent: AgentAdapterConfig = {
       kind: "claude",

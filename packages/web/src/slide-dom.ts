@@ -62,6 +62,8 @@ export interface SlideElement {
   textWidth: number | null;
   textHeight: number | null;
   textAlign: "left" | "center" | "right";
+  /** `data-comot-lock="true"` — furniture the author cannot select or move (ADR-0013); today only the page background image. */
+  locked: boolean;
   table: TableModel | null;
 }
 
@@ -292,6 +294,7 @@ function toElement(el: Element): SlideElement {
     textWidth,
     textHeight,
     textAlign: readTextAlign(el),
+    locked: el.getAttribute("data-comot-lock") === "true",
     table: isTable ? readTableModel(el) : null,
   };
 }

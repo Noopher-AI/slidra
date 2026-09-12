@@ -317,10 +317,64 @@ class FakeAgent {
       });
     }
 
+    // #303: `holdPromptOnIndex` keeps this turn open for `holdPromptMs`
+    // (default 10 s) so a test has a window to `session/cancel` it. A real
+    // agent answers the original prompt with `cancelled` once it has
+    // stopped; this fixture does the same the moment `cancel` arrives,
+    // and `end_turn` if the hold simply runs out.
+    if (config.holdPromptOnIndex === index) {
+      const stopReason = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve("end_turn"), config.holdPromptMs ?? 10_000);
+        this.releaseHold = () => {
+          clearTimeout(timer);
+          resolve("cancelled");
+        };
+      });
+      this.releaseHold = undefined;
+      log({ heldPromptEnded: stopReason });
+      if (stopReason === "cancelled" && config.lateActivityAfterCancel) {
+        // #303: mimics claude-code-acp, whose model keeps going after
+        // `session/cancel` — updates and a permission request arrive
+        // with no prompt in flight. Fired after this response is sent.
+        setTimeout(async () => {
+          for (const text of ["遲到的", "更新"]) {
+            await this.connection.sessionUpdate({
+              sessionId: params.sessionId,
+              update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+            });
+          }
+          await this.connection.sessionUpdate({
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: "late-call",
+              title: "遲到的命令",
+              kind: "execute",
+              status: "pending",
+              rawInput: { command: "co-motion ls late" },
+            },
+          });
+          const response = await this.connection.requestPermission({
+            sessionId: params.sessionId,
+            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "co-motion ls late" } },
+            options: [
+              { kind: "allow_once", name: "允許", optionId: "allow" },
+              { kind: "reject_once", name: "拒絕", optionId: "reject" },
+            ],
+          });
+          log({ latePermissionOutcome: response.outcome });
+        }, 50);
+      }
+      return { stopReason };
+    }
+
     return { stopReason: "end_turn" };
   }
 
-  async cancel(_params) {}
+  async cancel(params) {
+    log({ cancel: params.sessionId });
+    this.releaseHold?.();
+  }
 }
 
 const stream = acp.ndJsonStream(

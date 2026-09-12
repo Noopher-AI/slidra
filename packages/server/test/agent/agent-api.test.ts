@@ -415,10 +415,13 @@ describe("POST /api/agent/select", () => {
     const opened = await runCli<{ id: string }>(["open", comotPath]);
     expect(opened.ok).toBe(true);
     const lockId = opened.data!.id;
-    const slide = await runCli<Array<{ path: string; content: string }>>(["cat", lockId, "slides/001.svg"]);
-    expect(slide.ok).toBe(true);
-    const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
-    const elementId = /<text id="(el-[^"]+)"/.exec(svgText)![1];
+    // `new` creates no slides (ADR-0018): mint a page and a text box for the command to target.
+    expect((await runCli(["slide", "add", lockId])).ok).toBe(true);
+    const added = await runCli<{ elementId: string }>([
+      "textbox", "add", lockId, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "標題",
+    ]);
+    expect(added.ok).toBe(true);
+    const elementId = added.data!.elementId;
     const command = `co-motion text set ${lockId} slides/001.svg ${elementId} '改一次'`;
 
     const server = await serve({

@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920">
+<rect x="0" y="0" width="1080" height="1920" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="72" y="240" font-size="84" fill="#2E2E2E" font-weight="700">A claim,</text><text x="72" y="352" font-size="84" fill="#2E2E2E" font-weight="700">said in two lines.</text><rect x="72" y="470" width="936" height="528" fill="#D5D5D5" stroke="#BFBFBF"/><text x="540" y="740" font-size="40" fill="#777777" text-anchor="middle">Image or video</text><text x="72" y="1130" font-size="44" fill="#777777">· Point 1</text><text x="72" y="1250" font-size="44" fill="#777777">· Point 2</text><text x="72" y="1370" font-size="44" fill="#777777">· Point 3</text><line x1="72" y1="1700" x2="1008" y2="1700" stroke="#D0D0D0" stroke-width="2"/><text x="72" y="1780" font-size="36" fill="#A0A0A0">Handle or source</text>
+</svg>

@@ -1,9 +1,10 @@
-//! `co-motion slide add|delete|duplicate|move|notes set|style set|transition
-//! set|render`.
+//! `co-motion slide add|set|delete|duplicate|move|notes set|style set|
+//! transition set|render`.
 
 use crate::argv;
 use crate::errors::CoMotionError;
 use crate::result::{CommandResult, FailureKind};
+use crate::slide::ingest;
 use crate::slide::ops::{self, AddSlideInput, SetSlideTransitionOnInput};
 use crate::slide::style::PageStyleUpdate;
 use crate::slide::transition::PageTransitionEffect;
@@ -16,12 +17,14 @@ pub fn run(args: &[String], json_flag: bool) -> CommandResult {
     match sub {
         Some("render") => run_render(rest, json_flag),
         Some("add") => run_add(rest),
+        Some("set") => run_set(rest),
         Some("delete") => run_delete(rest),
         Some("duplicate") => run_duplicate(rest),
         Some("move") => run_move(rest),
         Some("notes") => run_notes(rest),
         Some("transition") => run_transition(rest),
         Some("style") => run_style(rest),
+        Some("background") => run_background(rest),
         other => CommandResult::failure(
             format!("未知的子命令：slide {}", other.unwrap_or("")),
             FailureKind::Failed,
@@ -119,10 +122,110 @@ fn run_add(args: &[String]) -> CommandResult {
         Ok(None) => None,
         Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
     };
-    match ops::add_slide(&id, AddSlideInput { template_path, at }) {
-        Ok(result) => CommandResult::success(
-            format!("已新增投影片 {}", result.slide_path),
-            Some(serde_json::json!({ "slidePath": result.slide_path })),
+    let svg = match argv::optional_flag(args, "--svg") {
+        Ok(v) => v,
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    if svg.is_some() && template_path.is_some() {
+        return CommandResult::failure(
+            "--svg 與 --template 不能同時使用".to_string(),
+            FailureKind::Failed,
+        );
+    }
+    // `--svg` (#303): the agent authors the whole page; ingest it against
+    // this presentation's canvas and fonts before anything is written.
+    let ingested = match svg {
+        Some(raw) => match ingest_for(&id, &raw) {
+            Ok(v) => Some(v),
+            Err(err) => {
+                return CommandResult::failure(err.message().to_string(), failure_kind_for(&err));
+            }
+        },
+        None => None,
+    };
+    let content = ingested.as_ref().map(|i| i.svg.clone());
+    match ops::add_slide(
+        &id,
+        AddSlideInput {
+            template_path,
+            at,
+            content,
+        },
+    ) {
+        Ok(result) => match ingested {
+            Some(ingested) => CommandResult::success(
+                format!(
+                    "已寫入 {}（{} 個元素）",
+                    result.slide_path,
+                    ingested.element_ids.len()
+                ),
+                Some(serde_json::json!({
+                    "slidePath": result.slide_path,
+                    "elementIds": ingested.element_ids,
+                })),
+            ),
+            None => CommandResult::success(
+                format!("已新增投影片 {}", result.slide_path),
+                Some(serde_json::json!({ "slidePath": result.slide_path })),
+            ),
+        },
+        Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
+    }
+}
+
+/// Ingests agent-authored page markup for this presentation (canvas from
+/// `project.json`, fonts from the container) — shared by `slide add --svg`
+/// and `slide set --svg`.
+fn ingest_for(id: &str, raw: &str) -> Result<ingest::IngestResult, CoMotionError> {
+    let work_dir = workspace::resolve_work_dir(id)?;
+    let project = read_project_json(&work_dir)?;
+    let fonts = crate::fonts::resolve_presentation_fonts(id)?;
+    ingest::ingest_slide_svg(raw, project.canvas.width, project.canvas.height, &fonts)
+}
+
+/// `slide set <id> <slide-path> --svg '<整頁 SVG>'` (#303): overwrites one
+/// existing slide (or template) with an agent-authored page. The old page's
+/// `<metadata>` survives when the new markup has none. Written through the
+/// one history-recording door, so undo restores the previous page.
+fn run_set(args: &[String]) -> CommandResult {
+    let id = match argv::require_id_positional(args, 0, "slide set", "presentation-id") {
+        Ok(v) => v,
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    let slide_path = match argv::require_positional(args, 1, "slide set", "slide-path") {
+        Ok(v) => v,
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    let raw = match argv::optional_flag(args, "--svg") {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            return CommandResult::failure(
+                "命令 slide set 缺少參數：--svg".to_string(),
+                FailureKind::Failed,
+            );
+        }
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    let result = (|| -> Result<ingest::IngestResult, CoMotionError> {
+        let existing = ws_write::require_slide(&id, &slide_path)?;
+        let ingested = ingest_for(&id, &raw)?;
+        let with_metadata = ingest::carry_metadata(&ingested.svg, &existing.content)?;
+        ws_write::write_presentation_file(&id, &slide_path, &with_metadata)?;
+        Ok(ingest::IngestResult {
+            svg: with_metadata,
+            element_ids: ingested.element_ids,
+        })
+    })();
+    match result {
+        Ok(ingested) => CommandResult::success(
+            format!(
+                "已寫入 {slide_path}（{} 個元素）",
+                ingested.element_ids.len()
+            ),
+            Some(serde_json::json!({
+                "slidePath": slide_path,
+                "elementIds": ingested.element_ids,
+            })),
         ),
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
@@ -357,6 +460,81 @@ fn run_style(args: &[String]) -> CommandResult {
             format!("已設定 {slide_path} 的頁面樣式"),
             Some(serde_json::json!({})),
         ),
+        Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
+    }
+}
+
+/// `slide background set <id> <slide-path> --asset assets/x.svg [--opacity n]`
+/// / `--none` (#303 §13): a locked full-canvas `<image>` at the back of the
+/// page, or its removal. Goes through history like `slide style set`.
+fn run_background(args: &[String]) -> CommandResult {
+    let subsub = args.first().map(String::as_str);
+    if subsub != Some("set") {
+        return CommandResult::failure(
+            format!("未知的子命令：slide background {}", subsub.unwrap_or("")),
+            FailureKind::Failed,
+        );
+    }
+    let bg_args: &[String] = args.get(1..).unwrap_or(&[]);
+    let id =
+        match argv::require_id_positional(bg_args, 0, "slide background set", "presentation-id") {
+            Ok(v) => v,
+            Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+        };
+    let slide_path =
+        match argv::require_positional(bg_args, 1, "slide background set", "slide-path") {
+            Ok(v) => v,
+            Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+        };
+    let asset = match argv::optional_flag(bg_args, "--asset") {
+        Ok(v) => v,
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    let opacity = match argv::optional_number_flag(bg_args, "--opacity") {
+        Ok(v) => v,
+        Err(msg) => return CommandResult::failure(msg, FailureKind::Failed),
+    };
+    let none = argv::has_flag(bg_args, "--none");
+    if asset.is_some() == none {
+        return CommandResult::failure(
+            "命令 slide background set 要給 --asset 或 --none 其中一個".to_string(),
+            FailureKind::Failed,
+        );
+    }
+    let result = (|| -> Result<Option<String>, CoMotionError> {
+        let existing = ws_write::require_slide(&id, &slide_path)?;
+        let updated = match asset.as_deref() {
+            Some(asset_path) => {
+                if !asset_path.starts_with("assets/") {
+                    return Err(CoMotionError::invalid(format!(
+                        "--asset 必須是 assets/ 底下的虛擬路徑：{asset_path}"
+                    )));
+                }
+                virtual_fs::resolve_virtual_file_path(&existing.work_dir, asset_path)?;
+                crate::slide::background::set_background(
+                    &existing.content,
+                    asset_path,
+                    existing.project.canvas.width,
+                    existing.project.canvas.height,
+                    opacity,
+                )?
+            }
+            None => crate::slide::background::clear_background(&existing.content)?,
+        };
+        ws_write::write_presentation_file(&id, &slide_path, &updated)?;
+        Ok(asset.map(|_| crate::slide::background::BACKGROUND_ELEMENT_ID.to_string()))
+    })();
+    match result {
+        Ok(Some(element_id)) => CommandResult::success(
+            format!("已設定 {slide_path} 的背景圖"),
+            Some(serde_json::json!({ "elementId": element_id })),
+        ),
+        Ok(None) => CommandResult {
+            ok: true,
+            data: None,
+            message: format!("已移除 {slide_path} 的背景圖"),
+            failure_kind: None,
+        },
         Err(err) => CommandResult::failure(err.message().to_string(), failure_kind_for(&err)),
     }
 }

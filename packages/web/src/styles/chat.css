@@ -335,6 +335,19 @@
   background: var(--surface-2);
   color: var(--ink-400);
 }
+/* #303: the Stop button takes the Send button's slot while a turn runs —
+   same size, neutral ink instead of brand red so it reads as "halt", not
+   "go"; wide enough for the two-character label. */
+.chat-input button.chat-stop {
+  width: auto;
+  padding: 0 var(--space-3);
+  background: var(--ink-900);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.chat-input button.chat-stop:not(:disabled):hover {
+  background: var(--ink-700);
+}
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your
    next message」提醒作者這是隨下一則訊息一起送出的 context，不是已經送

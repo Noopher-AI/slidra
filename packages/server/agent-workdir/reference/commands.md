@@ -6,9 +6,9 @@
 
 ## asset import
 
-**參數**：`<presentation-id>` `<source>`（本機絕對路徑或 `http(s)://` URL）、`--as csv`（選填，宣告這是資料資產而非媒體）。
-**用途**：把一張圖片／影片／音訊（或宣告 `--as csv` 時的一份資料表）匯入簡報的 `assets/` 目錄。只認檔頭位元組，不看副檔名。
-**範例**：`co-motion asset import <presentation-id> https://example.com/photo.png`
+**參數**：`<presentation-id>` `<source>`（本機絕對路徑或 `http(s)://` URL）、`--as csv`（選填，宣告這是資料資產而非媒體）；或改給 `--svg '<SVG 圖>'` 與 `--name <檔名.svg>`（從命令列內容建立 SVG 資產，與 `<source>` 互斥，`--name` 只允許英數、底線、連字號，同名已存在會失敗）。
+**用途**：把一張圖片／影片／音訊（或宣告 `--as csv` 時的一份資料表）匯入簡報的 `assets/` 目錄，或用 `--svg` 直接寫一張 SVG（例如背景圖配方）進去。
+**範例**：`co-motion asset import <presentation-id> --svg '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">…</svg>' --name bg-mesh.svg`
 
 ## cat
 
@@ -95,6 +95,12 @@
 **用途**：把整份簡報轉換成目前的格式規範（全有或全無，沒有單張投影片或 dry-run 的形式）。
 **範例**：`co-motion convert <presentation-id>`
 > 這個命令由使用者或 CoMotion 本身使用，agent 通常用不到。
+
+## font import
+
+**參數**：`<presentation-id>` `<來源路徑或 URL>`、`--family <家族名>`、`--license <授權>`、`--source <出處>`（三個旗標皆必填）、`--license-file <路徑或 URL>`（選填）。
+**用途**：把一個字型檔內嵌進簡報，之後 `--font-family` 就能用這個家族名。家族名在一份簡報內不得重複；檔名取自家族名。
+**範例**：`co-motion font import <presentation-id> https://fonts.example.org/NotoSerifTC-Regular.otf --family 'Noto Serif TC' --license 'SIL Open Font License 1.1' --source 'https://fonts.google.com/noto/specimen/Noto+Serif+TC'`
 
 ## effect add
 
@@ -267,6 +273,24 @@
 **範例**：`co-motion pack <presentation-id> ./deck.comot`
 > 這個命令由使用者或 CoMotion 本身使用，agent 通常用不到。
 
+## plan delete
+
+**參數**：`<presentation-id>` `[outline|design-spec]`（省略則刪整個 `plan/`）。
+**用途**：刪除計畫檔；不進 undo 歷史。
+**範例**：`co-motion plan delete <presentation-id> outline`
+
+## plan list
+
+**參數**：`<presentation-id>`。
+**用途**：列出簡報現有的計畫檔（`plan/outline.md` 帶 `status`、`plan/design-spec.md`）。
+**範例**：`co-motion plan list <presentation-id>`
+
+## plan set
+
+**參數**：`<presentation-id>` `<name>`（`outline` 或 `design-spec`）`<content>`（檔案全文，開頭是一個 ```` ```json ```` 圍欄，其後接 markdown 正文）。
+**用途**：寫入 `plan/outline.md` 或 `plan/design-spec.md`；寫入前驗證 JSON 段的欄位，不合就拒絕。讀取用 `cat <presentation-id> plan/outline.md`。不進 undo 歷史。
+**範例**：`co-motion plan set <presentation-id> outline '<全文>'`
+
 ## presentation canvas set
 
 **參數**：`<presentation-id>` `--width <數值>` `--height <數值>`。
@@ -281,9 +305,15 @@
 
 ## slide add
 
-**參數**：`<presentation-id>`、`--template <範本虛擬路徑>`（選填）、`--at <索引>`（選填，省略則加到最後）。
-**用途**：新增一張投影片。
-**範例**：`co-motion slide add <presentation-id> --at 1`
+**參數**：`<presentation-id>`、`--template <範本虛擬路徑>`（選填）、`--svg <整頁 SVG>`（選填，與 `--template` 互斥）、`--at <索引>`（選填，省略則加到最後）。
+**用途**：新增一張投影片：空白頁、範本複製，或用 `--svg` 一次寫完整頁（帶 `data-comot-text-width` 的裸 `<text>` 會被轉成真正的文字框；`<defs>`、漸層、`path` 都可以寫；`<script>` 或重複 id 會被拒絕）。`--svg` 成功時 `data.elementIds` 列出每個頂層元素的識別碼。
+**範例**：`co-motion slide add <presentation-id> --svg '<svg viewBox="0 0 1280 720" style="background-color:#101418"><text id="el-title" data-comot-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="#F4F6F8">標題</text></svg>'`
+
+## slide set
+
+**參數**：`<presentation-id>` `<slide-path>` `--svg <整頁 SVG>`。
+**用途**：用一整頁 SVG 覆寫既有的投影片（或範本），ingest 規則同 `slide add --svg`；新 SVG 沒帶 `<metadata>` 時沿用舊頁的備忘稿、留言、效果與轉場。可 undo。
+**範例**：`co-motion slide set <presentation-id> slides/003.svg --svg '<svg viewBox="0 0 1280 720"><text data-comot-text-width="1120" x="80" y="72" font-size="40">改寫後的標題</text></svg>'`
 
 ## slide delete
 
@@ -315,6 +345,12 @@
 **用途**：把投影片轉成點陣圖供匯出或預覽使用。
 **範例**：`co-motion slide render <presentation-id> slides/001.svg`
 > 這個命令由使用者或 CoMotion 本身使用，agent 通常用不到。
+
+## slide background set
+
+**參數**：`<presentation-id>` `<slide-path>`、`--asset <assets/檔名>`（既有資產）與 `--opacity <0～1>`（選填），或 `--none`。
+**用途**：在該頁最底層放一張滿版、鎖定的背景圖（`id="el-background"`，`data-comot-role="background"`），再設一次就是替換；`--none` 移除。背景圖不加動畫效果。
+**範例**：`co-motion slide background set <presentation-id> slides/002.svg --asset assets/bg-mesh.svg --opacity 0.8`
 
 ## slide style set
 
@@ -495,3 +531,9 @@
 **參數**：`<presentation-id>`。
 **用途**：復原上一個變更。
 **範例**：`co-motion undo <presentation-id>`
+
+## validate
+
+**參數**：`<presentation-id>` `[slide-path]`（省略則驗整份）。
+**用途**：用寫死的設計規則驗證投影片：文字量、一頁一個標題、溢出與重疊、字級與配色是否在 `plan/design-spec.md` 的表上、背景與備忘稿、頁數與頁型是否對得上 `plan/outline.md`、禁忌（謝謝頁、重複封面、框線）。`data.errors` 每項有 `slide`／`element`／`rule`／`actual`／`limit`／`message`；有錯誤時 exit code 是 1（非零代表有發現，不是故障）。沒有計畫檔時只驗幾何與骨架。
+**範例**：`co-motion validate <presentation-id>`

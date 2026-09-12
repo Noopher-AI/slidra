@@ -26,7 +26,7 @@ description: 為指定頁或整份簡報加上依序揭露的動畫效果與頁�
    - 使用者要「重做」：`co-motion effect remove <presentation-id> slides/00N.svg <全部 1-based index，逗號分隔>`，再依步驟 5 重新加。
    - 使用者要「補」：只對缺的元素 `effect add`，需要時用 `co-motion effect move <presentation-id> slides/00N.svg <index> up|down` 把順序調對。
    - **不得在未讀 `effect list` 的情況下直接對已有效果的頁加效果。**
-5. **依序新增效果**：對排好順序的每個元素跑一次 `co-motion effect add`。標題用 `--start on-click`，其餘用 `--start after-previous`。風格對應的 family／effect／duration 見下表：
+5. **先分段，再加效果**：把這一頁的元素按「講者會分幾段講」分組——標題一段，之後每個要點（或每組對照）一段；標題的底線、卡片的編號、數字的說明屬於它所在的那一段，不自成一段。**一段一個 `on-click`**；一頁的 `on-click` 不超過 5 個。同一段的元素已經被 `element group` 成一個群組時，直接對群組 id 下一個效果就好；沒有群組時段內其餘元素用 `--start with-previous`。裝飾幾何與背景不加效果。然後對每個元素跑一次 `co-motion effect add`，風格對應的 family／effect／duration 見下表：
 
    | 風格 | 標題 | 要點 | 圖／表／圖表 | duration |
    |---|---|---|---|---|
@@ -50,6 +50,7 @@ description: 為指定頁或整份簡報加上依序揭露的動畫效果與頁�
 - 不使用雙引號或反斜線；引號一律用單引號。
 - 不使用管線或重導向（`|`、`>` 等）驗證結果——一律用 `effect list` 或 `cat` 讀回。
 - 不寫任何檔案。
-- 不對背景 `<rect>` 或沒有 `data-comot-name` 的裝飾元素加效果。
+- 不對 `data-comot-role="garnish"`／`"background"` 的元素加效果（`validate` 的 `role.garnish-animated` 會擋），也不對沒有 `data-comot-name` 的裝飾元素加效果。**判斷依據是角色，不是元素叫什麼名字。**
+- 不讓同一段話裡的元素各佔一次 `on-click`（標題與底線、卡片與卡片裡的字要一起進場）；一頁的 `on-click` 不超過 5 個。
 - 不在未讀 `effect list` 的情況下對已有效果的頁直接疊加效果。
 - 不把毫秒數字直接當秒數使用；`--duration`／`--delay` 一律是秒。

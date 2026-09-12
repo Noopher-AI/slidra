@@ -22,6 +22,7 @@ use std::io::Read;
 use co_motion::commands;
 use co_motion::node_entry;
 use co_motion::result::{self, Renderer};
+use co_motion::workspace::lock::PresentationLock;
 
 fn main() {
     let argv: Vec<OsString> = env::args_os().skip(1).collect();
@@ -145,6 +146,10 @@ fn dispatch_family_takeover(tokens: commands::CommandTokens, rest: &[OsString]) 
         }
     }
 
+    let _lock = match hold_presentation_lock(&positional) {
+        Ok(lock) => lock,
+        Err(code) => return code,
+    };
     let command_result = commands::dispatch(tokens, &positional);
 
     // No command registered by this ticket (or `undo`/`redo`) has a
@@ -189,6 +194,11 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
         positional.pop();
     }
 
+    let _lock = match hold_presentation_lock(&positional) {
+        Ok(lock) => lock,
+        Err(code) => return code,
+    };
+
     let (command_result, renderer): (co_motion::result::CommandResult, Option<Renderer<'_>>) =
         match command {
             "undo" => (commands::undo::run(&positional), None),
@@ -199,6 +209,7 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
             }
             "table" => (commands::table::run(&positional), None),
             "asset" => (dispatch_asset(&positional), None),
+            "font" => (commands::font::run(&positional), None),
             "effect add" => (commands::effect::add(&positional), None),
             "effect list" => (commands::effect::list(&positional), None),
             "effect move" => (commands::effect::move_cmd(&positional), None),
@@ -210,6 +221,8 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
             "convert" => (commands::convert::run(&positional), None),
             "presentation" => (commands::presentation::run(&positional), None),
             "template" => (commands::template::run(&positional), None),
+            "plan" => (commands::plan::run(&positional), None),
+            "validate" => (commands::validate::run(&positional), None),
             "ls" => (
                 commands::ls::run(&positional),
                 Some(&commands::ls::render as Renderer<'_>),
@@ -235,7 +248,46 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
     // None of undo/redo/chart/table/asset has a renderer (plan 3.2/4.3, and
     // cli.md's own "Renderer 命令" list names only `cat`/`ls`/`slide
     // render`) — every match arm above reflects that.
-    result::render(&command_result, renderer, json_flag)
+    let code = result::render(&command_result, renderer, json_flag);
+    // `validate` with findings exits 1 after rendering its full report
+    // (#303): the report is the point, so it is printed like any success,
+    // and the exit code tells a script/agent "there are errors" — the same
+    // "non-zero is a result, not a fault" convention `effect list` uses.
+    if command == "validate" && code == 0 && commands::validate::has_findings(&command_result) {
+        return 1;
+    }
+    code
+}
+
+/// Serialises every invocation that names a presentation (#303): the
+/// presentation id is the first positional after the command tokens for
+/// most commands and the second/third for sub-verb families (`slide add
+/// <id>`, `presentation canvas set <id>`), so the first three positionals
+/// are tried against the registry and the first one that resolves is the
+/// presentation. Paths (`new`, `open`) never resolve, so those commands run
+/// unlocked. Reads (`cat`, `ls`, `slide render`) take the lock too — a read
+/// that overlaps a write would otherwise see a half-written file, and the
+/// lock costs nothing when there is no contention. Held until the caller's
+/// `_lock` binding drops, i.e. for the rest of the process, so the whole
+/// read-modify-write of every command is covered. `Err(code)` is the exit
+/// code to return after the timeout message has been printed.
+fn hold_presentation_lock(positional: &[String]) -> Result<Option<PresentationLock>, i32> {
+    for candidate in positional.iter().take(3) {
+        if candidate.starts_with("--") {
+            continue;
+        }
+        let Ok(work_dir) = co_motion::workspace::resolve_work_dir(candidate) else {
+            continue;
+        };
+        return match PresentationLock::acquire(&work_dir) {
+            Ok(lock) => Ok(Some(lock)),
+            Err(err) => {
+                eprintln!("{}", err.message());
+                Err(1)
+            }
+        };
+    }
+    Ok(None)
 }
 
 /// `chart data set --csv -`'s stdin substitution: `cli.md` requires this to

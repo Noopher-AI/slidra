@@ -18,12 +18,12 @@ const agentsMdPath = path.join(resolveAgentWorkdirSource(), "AGENTS.md");
 const REQUIRED_SKILL_SECTIONS = ["## 觸發語", "## 輸入格式", "## 步驟", "## 使用的命令", "## 回報格式", "## 不可做的事"];
 
 describe("[NOOP-236] shipped work directory documentation", () => {
-  it("has exactly the nine shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
+  it("has exactly the fourteen shipped skills, each well-formed, and reported by collectSlashCommands (A2/A3/A6)", async () => {
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     // The `comotion-` namespace lives in the directory name itself, so the
     // name an author types is the name the agent registered (#248).
-    expect(dirNames.sort()).toEqual(["comotion-animate", "comotion-chart", "comotion-check", "comotion-new-slide", "comotion-notes", "comotion-outline", "comotion-reshape", "comotion-style", "comotion-table"]);
+    expect(dirNames.sort()).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-check", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
 
     for (const dirName of dirNames) {
       const text = await readFile(path.join(bundledSkillDir, dirName, "SKILL.md"), "utf8");
@@ -42,7 +42,7 @@ describe("[NOOP-236] shipped work directory documentation", () => {
     const emptyUserDir = await mkdtemp(path.join(tmpdir(), "co-motion-user-skills-"));
     try {
       const commands = await collectSlashCommands([], { bundled: bundledSkillDir, user: emptyUserDir });
-      expect(commands.map((c) => c.name)).toEqual(["comotion-animate", "comotion-chart", "comotion-check", "comotion-new-slide", "comotion-notes", "comotion-outline", "comotion-reshape", "comotion-style", "comotion-table"]);
+      expect(commands.map((c) => c.name)).toEqual(["comotion-animate", "comotion-background-kit", "comotion-build", "comotion-chart", "comotion-check", "comotion-layout-kit", "comotion-new-slide", "comotion-notes", "comotion-plan", "comotion-reshape", "comotion-style", "comotion-style-kit", "comotion-table", "comotion-validate"]);
       for (const command of commands) {
         expect(command.description.length).toBeGreaterThan(0);
         expect(command.source).toBe("bundled");

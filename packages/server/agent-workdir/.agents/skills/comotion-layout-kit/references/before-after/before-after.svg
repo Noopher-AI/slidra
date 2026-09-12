@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="176" width="1120" height="180" fill="#EDEDED" stroke="#BFBFBF"/><text x="120" y="224" font-size="28" fill="#555555" font-weight="700">Before</text><text x="120" y="286" font-size="24" fill="#777777">· Item 1    · Item 2    · Item 3</text><line x1="80" y1="396" x2="1200" y2="396" stroke="#8A8A8A" stroke-width="4"/><text x="640" y="386" font-size="22" fill="#555555" text-anchor="middle">↓</text><rect x="80" y="436" width="1120" height="180" fill="#DCDCDC" stroke="#909090"/><text x="120" y="484" font-size="28" fill="#2E2E2E" font-weight="700">After</text><text x="120" y="546" font-size="24" fill="#777777">· Item 1    · Item 2    · Item 3</text>
+
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<text x="100" y="400" font-size="140" fill="#E0E0E0" font-weight="700">01</text><text x="100" y="470" font-size="28" fill="#2E2E2E" font-weight="700">Step 1</text><text x="100" y="514" font-size="24" fill="#777777">One supporting line</text><text x="480" y="400" font-size="140" fill="#E0E0E0" font-weight="700">02</text><text x="480" y="470" font-size="28" fill="#2E2E2E" font-weight="700">Step 2</text><text x="480" y="514" font-size="24" fill="#777777">One supporting line</text><text x="860" y="400" font-size="140" fill="#E0E0E0" font-weight="700">03</text><text x="860" y="470" font-size="28" fill="#2E2E2E" font-weight="700">Step 3</text><text x="860" y="514" font-size="24" fill="#777777">One supporting line</text>
+
+</svg>

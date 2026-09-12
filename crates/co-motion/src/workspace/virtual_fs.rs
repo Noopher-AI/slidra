@@ -58,6 +58,11 @@ fn populate(real_dir: &Path, node: &mut HashMap<String, VirtualNode>) -> CoMotio
             .file_type()
             .map_err(|_| CoMotionError::invalid("讀取簡報內容時發生錯誤"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
+        if name == crate::workspace::lock::LOCK_FILE_NAME {
+            // The CLI's own per-presentation lock — never part of the
+            // presentation's virtual file structure.
+            continue;
+        }
         let real_path = real_dir.join(&name);
         if file_type.is_dir() {
             let mut grandchildren = HashMap::new();

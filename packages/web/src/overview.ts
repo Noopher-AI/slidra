@@ -14,6 +14,7 @@
  */
 import type { CanvasController } from "./canvas.js";
 import { fetchSlideEffectPlan } from "./effects.js";
+import { slidePaintKey } from "./slide-paint-key.js";
 
 /**
  * [E2.T3]: the two behaviours that need a React tree to render into
@@ -169,6 +170,14 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   // once it lands, no matter which settles first. A per-index counter also
   // means a race on slide 3 never has to reason about slide 7's fetches.
   const generations: number[] = [];
+  // #303: the paint key (`slidePaintKey`) each materialised thumbnail last
+  // painted, per index. Live reload calls refresh() on every agent
+  // command, and a build issues dozens whose only change is `<metadata>`
+  // (effects, notes, comments) — reassigning every thumbnail's srcdoc for
+  // those blanked the whole rail for nothing. Same key ⇒ same picture ⇒
+  // the srcdoc is left alone. Reset together with `frames` in
+  // rebuildList(): a new list means new iframes that have painted nothing.
+  const paintedKeys: (string | undefined)[] = [];
 
   // [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B）。One badge per slide,
   // populated independently of the lazy thumbnail load above — "does this
@@ -235,9 +244,13 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     try {
       const markup = await fetchText(`/api/files/${slidePath}`);
       if (generations[index] !== thisGeneration) return;
+      const key = slidePaintKey(markup);
+      if (paintedKeys[index] === key) return; // #303: metadata-only change, same picture.
       frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
+      paintedKeys[index] = key;
     } catch {
       if (generations[index] !== thisGeneration) return;
+      paintedKeys[index] = undefined;
       frame.srcdoc = wrapSlideDocument(`<p>Thumbnail failed to load</p>`);
     }
   }
@@ -321,6 +334,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     frames.length = 0;
     requested.length = 0;
     generations.length = 0;
+    paintedKeys.length = 0;
     effectBadges.length = 0;
     effectGenerations.length = 0;
     slides = nextSlides;

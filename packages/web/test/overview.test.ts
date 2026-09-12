@@ -781,3 +781,45 @@ describe("mountOverview", () => {
   });
 });
 
+
+describe("縮圖只在畫面真的變了才重畫 (#303)", () => {
+  it("refresh() 遇到只有 <metadata> 變動的投影片不重設 srcdoc；內容變了才重設", async () => {
+    const NOTES = '<metadata><comot:notes xmlns:comot="https://co-motion.dev/ns">講稿</comot:notes></metadata>';
+    let s1 = '<svg data-testid="s1"><circle r="1"/></svg>';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url === "/api/presentation") return presentationResponse();
+        if (url.startsWith("/api/effects/")) return effectsResponse(0);
+        if (url === "/api/files/slides/001.svg") return new Response(s1, { status: 200 });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const { controller } = fakeCanvas({ slides: ["slides/001.svg"], currentIndex: 0 });
+    const overview = mountOverview(container, controller);
+    const item = container.querySelector("li.overview-item")!;
+    FakeIntersectionObserver.instances.at(-1)!.triggerIntersect(item);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const frame = item.querySelector("iframe.overview-frame") as HTMLIFrameElement;
+    const painted = frame.srcdoc;
+    expect(painted).toContain('data-testid="s1"');
+
+    // A note landing (an agent's `slide notes set`): same picture, no repaint.
+    s1 = `<svg data-testid="s1">${NOTES}<circle r="1"/></svg>`;
+    invalidateSlideEffectPlans();
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(frame.srcdoc).toBe(painted);
+    expect(frame.srcdoc).not.toContain("comot:notes");
+
+    // A real content change repaints.
+    s1 = `<svg data-testid="s1">${NOTES}<circle r="2"/></svg>`;
+    invalidateSlideEffectPlans();
+    overview.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(frame.srcdoc).not.toBe(painted);
+    expect(frame.srcdoc).toContain('r="2"');
+    overview.destroy();
+  });
+});
