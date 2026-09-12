@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   對話分頁 (New v3 skeleton). Markup now lives in shell/side/ChatPanel.tsx
+   Chat tab (New v3 skeleton). Markup now lives in shell/side/ChatPanel.tsx
    (moved verbatim out of App.tsx, class names unchanged — see that file's
    own comment for why: e2e/freeze.test.ts drives `.chat-input`
    input/button directly). Kept as its own file rather than folded into
@@ -38,7 +38,8 @@
   line-height: 1.55;
 }
 
-/* 使用者：右靠的淡色氣泡，右下角收成小圓角指向輸入框。 */
+/* User: right-aligned light-colored bubble, bottom-right corner tightened
+   to a small radius pointing toward the input box. */
 .chat-message-author {
   align-self: flex-end;
   max-width: 88%;
@@ -47,8 +48,9 @@
   border-radius: var(--radius-xl) var(--radius-xl) var(--space-1);
 }
 
-/* agent：不用氣泡，左側 🤖 頭像 + 內文（03-UI_RATIONALE.md §E）。頭像用
-   ::before 畫，ChatPanel.tsx 的 markup 不變（e2e 靠 class 名稱）。 */
+/* Agent: no bubble, a 🤖 avatar on the left plus body text
+   (03-UI_RATIONALE.md §E). The avatar is drawn with ::before;
+   ChatPanel.tsx's markup stays unchanged (e2e relies on class names). */
 .chat-message-agent {
   align-self: stretch;
   display: flex;
@@ -58,7 +60,7 @@
 .chat-message-agent::before {
   content: "🤖";
   flex: none;
-  width: calc(var(--space-4) + var(--space-5)); /* 22px：原型頭像尺寸 */
+  width: calc(var(--space-4) + var(--space-5)); /* 22px: prototype avatar size */
   height: calc(var(--space-4) + var(--space-5));
   margin-top: 1px;
   display: grid;
@@ -69,11 +71,12 @@
   line-height: 1;
 }
 
-/* 指令卡：縮排到 agent 內文的起點（頭像 22px + gap 8px），狀態以文字徽章
-   呈現（文字本身就是非色彩線索），指令碼用等寬字。 */
+/* Command card: indented to align with the start of the agent's body text
+   (avatar 22px + gap 8px); status is shown as a text badge (the text
+   itself is a non-color cue); command code uses a monospace font. */
 .chat-command {
   align-self: stretch;
-  margin-left: calc(var(--space-4) + var(--space-5) + var(--space-3)); /* 頭像 22px + gap 8px */
+  margin-left: calc(var(--space-4) + var(--space-5) + var(--space-3)); /* avatar 22px + gap 8px */
   padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
@@ -92,8 +95,9 @@
   gap: var(--space-2);
 }
 
-/* 沒有狀態標記的命令（agent 自己的 shell 工作）：留在時間軸上，但退到背景，
-   讓帶標記的 CLI 命令是眼睛先找到的東西。 */
+/* Commands with no status tag (the agent's own shell work): stay on the
+   timeline but recede into the background, so tagged CLI commands are
+   what the eye finds first. */
 .chat-command-untagged {
   background: transparent;
   color: var(--ink-500);
@@ -121,14 +125,16 @@
   background: var(--brand-red-tint2);
   color: var(--brand-red-hover);
 }
-/* 結果不明（串流中斷，ticket #19）：跟「執行中」（紅）與「失敗」（深紅）
-   都不同，維持在中性色。 */
+/* Outcome unknown (stream interrupted): distinct from both "in progress"
+   (red) and "failed" (dark red), stays neutral colored. */
 .chat-command-interrupted .chat-command-status {
   background: var(--surface-2);
   color: var(--ink-500);
 }
-/* 被白名單擋下：命令根本沒跑，也不是作者按了拒絕——用中性色跟真正的
-   「失敗」分開，別讓作者以為是 agent 執行出錯。 */
+/* Blocked by the allowlist: the command never ran at all, and the author
+   didn't click reject either — neutral color keeps it distinct from a
+   real "failed" so the author doesn't mistake it for an agent execution
+   error. */
 .chat-command-blocked .chat-command-status {
   background: var(--surface-2);
   color: var(--ink-500);
@@ -153,9 +159,10 @@
   color: var(--ink-500);
 }
 
-/* [E3.T5]: agent 切換的確認訊息——role="status"（非 assertive），與
-   .chat-notice（串流斷線、role="alert"）刻意分開，見 chat-messages.ts 的
-   SystemMessage 註解。 */
+/* Confirmation message for an agent switch — role="status" (not
+   assertive), deliberately kept separate from .chat-notice (stream
+   disconnect, role="alert") — see the SystemMessage comment in
+   chat-messages.ts. */
 .chat-system {
   align-self: stretch;
   margin: 0;
@@ -167,7 +174,8 @@
   text-align: center;
 }
 
-/* [E3.T5] Plan §4.7：沒有可用 agent 時的聊天空狀態，接在既有訊息下方。 */
+/* Empty chat state when no agent is available, shown below existing
+   messages. */
 .chat-empty-state {
   align-self: stretch;
   margin: 0;
@@ -199,7 +207,8 @@
   background: var(--brand-red-hover);
 }
 
-/* 對話裡的一則系統通知（ticket #19）：不是任何一方的發言。 */
+/* A system notice within the conversation: not a message from either
+   party. */
 .chat-notice {
   align-self: stretch;
   margin: 0;
@@ -219,9 +228,11 @@
   font-size: var(--text-xs-hint);
 }
 
-/* 一個空心圈，不是文字：「agent 正在工作中…」已經說明一切，圈只是補充的
-   進行中線索。`prefers-reduced-motion` 由 tokens.css 的 `*` 安全網自動把
-   `animation-iteration-count` 收成 1，這裡不用再寫一次媒體查詢。 */
+/* A hollow spinning ring, not text: "agent is working…" already says
+   everything the ring needs to; the ring is just a supplementary
+   in-progress cue. `prefers-reduced-motion` is handled automatically by
+   tokens.css's `*` safety net collapsing `animation-iteration-count` to
+   1, so no media query is needed here. */
 .chat-working::before {
   content: "";
   width: var(--space-5);
@@ -255,10 +266,11 @@
   font-size: var(--text-sm);
 }
 
-/* 輸入框是一張白卡：上半是輸入列，下半是提示 + 圓角送出鈕；焦點框畫在整
-   張卡上（不是 textarea 自己）。`.chat-input textarea` / `.chat-input
-   button` 選擇器是 e2e/freeze.test.ts 的既有契約，markup 只多包一層
-   footer。 */
+/* The input box is a white card: top half is the input row, bottom half
+   is hints plus the rounded submit button; the focus ring is drawn on the
+   whole card (not the textarea itself). The `.chat-input textarea` /
+   `.chat-input button` selectors are an existing contract from
+   e2e/freeze.test.ts — the markup only adds one extra footer wrapper. */
 .chat-input {
   position: relative; /* anchors .slash-menu, which floats above this card */
   flex: none;
@@ -275,7 +287,7 @@
 }
 
 .chat-input textarea {
-  /* Firefox min-width fix (NOOP-51): a bare field keeps its intrinsic
+  /* Firefox min-width fix: a bare field keeps its intrinsic
      width as its flex-item automatic minimum unless told otherwise, so it
      doesn't yield the space the submit button needs. */
   min-width: 0;
@@ -307,7 +319,8 @@
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3) var(--space-3) var(--space-4);
 }
-/* 送出／停止＋開新對話：黏成一組，中間沒有間隙。 */
+/* Submit/stop + new conversation: stuck together as one group, no gap
+   between them. */
 .chat-input-actions {
   display: flex;
   align-items: center;
@@ -344,7 +357,7 @@
   background: var(--surface-2);
   color: var(--ink-400);
 }
-/* #303: the Stop button takes the Send button's slot while a turn runs —
+/* The Stop button takes the Send button's slot while a turn runs —
    same size, neutral ink instead of brand red so it reads as "halt", not
    "go"; wide enough for the two-character label. */
 .chat-input button.chat-stop {
@@ -354,9 +367,11 @@
   background: var(--ink-700);
 }
 
-/* 送出鍵右邊的「開新對話」：次要動作，所以不吃品牌紅——留白底、細框。
-   兩顆鍵是相連的一組：中間不留縫，只有最外側兩端有圓角（下面 :has 那組
-   規則），看起來是一個控制項的兩半，不是兩顆各自獨立的按鈕。 */
+/* "New conversation" to the right of Send: a secondary action, so it
+   doesn't take the brand red — white background, thin border. The two
+   buttons form one connected group: no gap between them, rounded corners
+   only at the outermost ends (the `:has` rule group below), so they read
+   as two halves of one control rather than two independent buttons. */
 .chat-input button.chat-new-session {
   margin-left: -1px;
   background: transparent;
@@ -366,7 +381,8 @@
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }
-/* 左半（送出或停止）把右側的圓角收掉，缺口交給右半補上。 */
+/* The left half (Send or Stop) drops its right-side corner radius; the
+   right half fills the resulting gap. */
 .chat-input button:not(.chat-new-session) {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
@@ -380,10 +396,13 @@
   color: var(--ink-400);
 }
 
-/* 對話框下方的兩顆膠囊（agent、模型），各自往上彈一個小選單。膠囊淺灰底、
-   無邊框、全圓角，平時只寫「目前是誰」；`.agent-dot` 那顆燈的三態樣式仍在
-   shell.css，這裡只把它塞進膠囊。選單借 dock.css 的 `.floating-layer` 材質，
-   但貼齊膠囊左緣往上長，不像 Dock 那樣置中。 */
+/* The two pill buttons below the chat box (agent, model), each popping up
+   its own small menu. Pills have a light-gray background, no border, fully
+   rounded, and normally just show "who's active right now"; the
+   `.agent-dot` indicator's three-state styling still lives in shell.css —
+   this only tucks it into the pill. The menu borrows dock.css's
+   `.floating-layer` material, but grows upward flush with the pill's left
+   edge rather than centered like the Dock does. */
 .chat-status {
   flex: none;
   display: flex;
@@ -396,8 +415,10 @@
   align-items: center;
   gap: var(--space-2);
 }
-/* 選單以整個 .chat-status 為定位框、貼齊側欄左右內距，兩顆膠囊共用同一個
-   寬度——側欄只有 340px，掛在膠囊自己身上會從右側溢出。 */
+/* The menu positions itself against the whole `.chat-status`, flush with
+   the side panel's left/right padding — both pills share this one width.
+   The side panel is only 340px, so anchoring to the pill itself would
+   overflow off the right edge. */
 .chat-status {
   position: relative;
 }
@@ -455,15 +476,18 @@
   bottom: calc(100% - var(--space-2));
   transform: none;
   transform-origin: 0 100%;
-  /* 不沿用 .floating-layer 的進場動畫：那組 keyframes 帶 translateX(-50%)
-     （為 Dock 置中設計），動畫結束時 transform 回到 none 會讓選單先出現在
-     一個位置再跳到最後的位置。 */
+  /* Doesn't reuse .floating-layer's entrance animation: those keyframes
+     carry a translateX(-50%) (designed for Dock's centering), and when the
+     animation ends with transform reset to none, the menu would appear at
+     one position and then jump to its final position. */
   animation: chat-chip-menu-in var(--dur-fast) var(--ease-out);
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  /* Codex 一次報十幾個模型：超過側欄一半高就在選單裡捲，不把整欄撐開。 */
+  /* Codex can report a dozen-plus models at once: once the list exceeds
+     half the side panel's height, it scrolls within the menu instead of
+     stretching the whole panel. */
   max-height: 50vh;
   overflow-y: auto;
 }
@@ -494,8 +518,9 @@
 .chat-chip-menu-item:hover:not(:disabled) {
   background: var(--surface-1);
 }
-/* 打勾的那列是停用的（再按一次沒意義），但它是「現在的答案」，不能像
-   一般 disabled 那樣褪色。 */
+/* The checked row is disabled (pressing it again does nothing), but it's
+   "the current answer" — it must not fade out like a typical disabled
+   state. */
 .chat-chip-menu-item:disabled {
   cursor: default;
   color: var(--ink-900);
@@ -543,10 +568,12 @@
   color: var(--brand-red);
 }
 
-/* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your
-   next message」提醒作者這是隨下一則訊息一起送出的 context，不是已經送
-   出的歷史。位置依設計稿（New v3 / 03-UI_RATIONALE §Chat）：在訊息區之下、
-   輸入框之上，列表超過約 6.5 列時自己捲動，不把輸入框往下推。 */
+/* Pinned context: this whole area only renders when there are comments —
+   "sent with your next message" reminds the author this is context that
+   will go out with their next message, not history already sent.
+   Positioned per the design (New v3 / 03-UI_RATIONALE §Chat): below the
+   message area, above the input box; the list scrolls itself once it
+   exceeds about 6.5 rows, instead of pushing the input box down. */
 .chat-pinned {
   flex: none;
   margin: var(--space-3) var(--space-5) 0;
@@ -582,7 +609,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  /* 設計稿：30px 一列、最多 6.5 列可視，超過捲動。 */
+  /* Design spec: 30px per row, up to 6.5 rows visible, scrolls beyond that. */
   max-height: calc(var(--control-h) * 6.5);
   overflow-y: auto;
 }
@@ -666,16 +693,17 @@
   font-size: var(--text-xs-hint);
 }
 
-/* [E3.T3] #232/#236: `/` 斜線命令選單——浮在輸入框卡片正上方（`.chat-input`
-   的 position: relative 是它的錨點），不擠壓既有版面。捲動而非裁切過長清
-   單，避免清單長度改變輸入框的視覺高度。 */
+/* The `/` slash-command menu — floats directly above the input card
+   (`.chat-input`'s position: relative is its anchor), without squeezing
+   the existing layout. It scrolls rather than clipping an overlong list,
+   so the list's length never changes the input box's visual height. */
 .slash-menu {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;
   margin-bottom: var(--space-2);
-  max-height: calc(var(--control-h) * 6.5); /* 同 .chat-pinned-list：約 6.5 列後自己捲動 */
+  max-height: calc(var(--control-h) * 6.5); /* same as .chat-pinned-list: scrolls itself after about 6.5 rows */
   overflow-y: auto;
   background: var(--surface-white);
   border: 1px solid var(--surface-2);

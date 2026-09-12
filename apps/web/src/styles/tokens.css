@@ -3,7 +3,7 @@
 
    This file was rewritten to track the design package's own token
    set, not an ad-hoc naming scheme:
-     docs/design/docs/01-DESIGN_TOKENS.md  ("設計語言承襲 Holspire…")
+     docs/design/docs/01-DESIGN_TOKENS.md  ("design language inherits from Holspire…")
 
    Naming rule: a CSS custom property's name is `--` + the design
    package's token path with every `.` replaced by `-`.
@@ -12,11 +12,11 @@
 
    Categories intentionally NOT brought in here (see the PR body /
    issue for the full rationale):
-     - "字級（投影片，容器單位）" — the slide-*content* font sizes
+     - "Text size (slide, container units)" — the slide-*content* font sizes
        (cqw-relative). That's presentation content rendered onto a
        slide, not product UI chrome; it does not belong in a CSS
        custom property consumed by the shell's own stylesheets.
-     - 圖示 (icon) geometry is prose in the doc (§ 圖示: 20×20 viewBox,
+     - Icon geometry is prose in the doc (§ Icons: 20×20 viewBox,
        stroke 1.5, small sizes 1.6–1.8), not a `token.path | value`
        row — so the `--icon-*` names below are this file's own, like
        the glass-material ones. They must exist: icons/Icon.tsx consumes
@@ -36,17 +36,22 @@
    properties — each split is called out with its own comment below.
    ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* ── 舊殼相容層（暫留，非設計包 token） ───────────────────────────
-     整份 tokens.css 改採設計包 token 後，這些名字都不在任何設計包分類
-     裡，但刪掉任何一個都會讓消費它的規則解不出值（CSS `var()` 解析失敗
-     時整條屬性宣告失效，不是留空）。兩種消費者：
-       1. play.css／PlayChrome.tsx（播放模式，本票明確排除、留給後續
-          票）——`.play-bar` 的版位、底色、邊框、字級、圓角、焦點框。
-       2. style.css 的 `.player-error-notice`（同樣是播放模式 UI）——
-          `--r`／`--s-raised`／`--line`／`--ink`／`--fs-small`／`--u`。
-     值原封不動抄自 base（b0de47f）的舊 tokens.css，不是重新設計。播放
-     模式整體改版時，這整塊連同 play.css／PlayChrome.tsx／
-     .player-error-notice 的引用一併淘汰。 */
+  /* ── Legacy-shell compatibility layer (kept around for now, not design
+     package tokens) ─────────────────────────────────────────────────
+     Once tokens.css switched over to design-package tokens, these names
+     no longer fall under any design-package category — but removing any
+     one of them would leave rules that consume it unable to resolve a
+     value (a failed CSS `var()` resolution invalidates the whole property
+     declaration, it doesn't just leave it blank). Two consumers:
+       1. play.css / PlayChrome.tsx (play mode, explicitly out of scope
+          here, left for later work) — `.play-bar`'s layout, background,
+          border, font size, corner radius, focus ring.
+       2. style.css's `.player-error-notice` (also play-mode UI) —
+          `--r` / `--s-raised` / `--line` / `--ink` / `--fs-small` / `--u`.
+     Values are copied verbatim from the old tokens.css at the base
+     commit, not redesigned. Once play mode gets a full redesign, this
+     whole block along with play.css / PlayChrome.tsx /
+     .player-error-notice's references to it should be retired together. */
   --u: 4px;
   --ink: #f3f2f1;
   --ink-dim: #a19f9d;
@@ -69,7 +74,7 @@
   --s-raised: #323130;
   --line: #3b3a39;
 
-  /* ── 色彩 · 品牌／強調 ─────────────────────────────────────────── */
+  /* ── Color · Brand/accent ──────────────────────────────────────── */
   --brand-red: #c8233b;
   --brand-red-hover: #a81c31;
   --brand-red-tint: #fde8ea;
@@ -77,7 +82,7 @@
   --brand-red-ring: #f5c6cc;
   --brand-red-glow: rgba(200, 35, 59, 0.28);
 
-  /* ── 色彩 · 外殼中性色（暖） ───────────────────────────────────── */
+  /* ── Color · Shell neutrals (warm) ─────────────────────────────── */
   --surface-0: #fbf9f8;
   --surface-1: #f5f1ef;
   --surface-2: #ece5e2;
@@ -92,7 +97,7 @@
   --ink-300: #b4a9a6;
   --ink-200: #d9cfcb;
 
-  /* ── 色彩 · 舞台（深） ─────────────────────────────────────────── */
+  /* ── Color · Stage (dark) ──────────────────────────────────────── */
   --well-bg: #3a3a3d;
   --well-play: #000000;
   --slide-bg-a: #14161a;
@@ -103,22 +108,22 @@
   --slide-line: rgba(255, 255, 255, 0.1);
   --guide: #ff5c7a;
 
-  /* ── 色彩 · 語意 ───────────────────────────────────────────────
+  /* ── Color · Semantic ───────────────────────────────────────────
      The doc's `ok` and `info` rows each pack more than one colour
      into a single table cell ("`#3BA55D` / text `#2E7D4F` / bg
      `#EAF6EE`") — a single CSS custom property can only hold one
      value, so each is split by its own stated role. */
-  --ok: #3ba55d; /* Done 徽章的圖示／邊框色 */
-  --ok-text: #2e7d4f; /* Done 徽章文字 */
-  --ok-bg: #eaf6ee; /* Done 徽章底色 */
-  --info: #5b6dea; /* PDF+ 標籤、圖表第二色 */
+  --ok: #3ba55d; /* Done badge icon/border color */
+  --ok-text: #2e7d4f; /* Done badge text */
+  --ok-bg: #eaf6ee; /* Done badge background */
+  --info: #5b6dea; /* PDF+ label, chart's secondary color */
   --info-bg: #eef0fd;
 
-  /* E2.T12: `accent.palette.*` — each doc cell packs six hex colours into
+  /* `accent.palette.*` — each doc cell packs six hex colours into
      one token path, split six ways the same way `ok`/`info` split above.
-     The GUI (Chart 插入面板、資料視窗調色盤) reads these as `var(--…)`
+     The GUI (Chart insert panel, data window color picker) reads these as `var(--…)`
      (design-contract.test.ts forbids literal hex in apps/web/src);
-     `packages/core/src/chart/render.ts` is OUTSIDE that scan and must
+     `crates/slidra/src/chart/render.rs` is OUTSIDE that scan and must
      write the same six values as literal hex — the rendered SVG has to be
      self-contained, it cannot depend on this stylesheet. */
   --accent-palette-brand-1: #c8233b;
@@ -140,28 +145,28 @@
   --accent-palette-warm-5: #b45309;
   --accent-palette-warm-6: #a9b0b8;
 
-  /* ── 字體 ──────────────────────────────────────────────────────── */
+  /* ── Fonts ─────────────────────────────────────────────────────── */
   --font-ui: "Plus Jakarta Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   --font-mono: ui-monospace, Menlo, monospace;
-  --font-slide: var(--font-ui); /* 文件：「同 font.ui」 */
+  --font-slide: var(--font-ui); /* per the doc: "same as font.ui" */
 
-  /* ── 字級（UI） ────────────────────────────────────────────────
+  /* ── Text size (UI) ────────────────────────────────────────────
      Ranges resolved against docs/design/prototype/Slidra (New
-     v3).dc.html's inline font-size values. Where the doc's own 用途
+     v3).dc.html's inline font-size values. Where the doc's own usage
      column names two distinct usages and the prototype uses two
      distinct real values for them, the token is split. */
-  --text-2xs: 10px; /* BETA 徽章 */
-  --text-2xs-chart: 9.5px; /* 圖表類型標（chart type tab） */
-  --text-xs: 10.5px; /* 區塊標題（大寫 .06em） */
-  --text-xs-hint: 11px; /* 提示、快捷鍵（mi.key 等） */
-  --text-sm: 12px; /* 按鈕、chip、面板內文 */
-  --text-base: 12.5px; /* 主要 UI 文字、訊息 */
-  --text-md: 13.5px; /* 檔名（deck.name） */
-  --text-md-panel-title: 14px; /* 面板標題（ins.title） */
-  --text-lg: 18px; /* 總覽標題（Overview h2） */
-  --text-lg-dialog: 17px; /* 對話框標題（Templates 對話框 h2） */
+  --text-2xs: 10px; /* BETA badge */
+  --text-2xs-chart: 9.5px; /* chart type tab label */
+  --text-xs: 10.5px; /* section heading (uppercase .06em) */
+  --text-xs-hint: 11px; /* hints, shortcuts (mi.key etc.) */
+  --text-sm: 12px; /* buttons, chips, panel body text */
+  --text-base: 12.5px; /* primary UI text, messages */
+  --text-md: 13.5px; /* file name (deck.name) */
+  --text-md-panel-title: 14px; /* panel title (ins.title) */
+  --text-lg: 18px; /* overview title (Overview h2) */
+  --text-lg-dialog: 17px; /* dialog title (Templates dialog h2) */
 
-  /* ── 間距與尺寸 ────────────────────────────────────────────────
+  /* ── Spacing and sizing ────────────────────────────────────────
      space.1..6 is the doc's compressed shorthand for six separate
      tokens (space.1=4px … space.6=14px); expanded here one per
      line. */
@@ -171,11 +176,11 @@
   --space-4: 10px;
   --space-5: 12px;
   --space-6: 14px;
-  --space-8: 16px; /* 面板 padding */
-  --space-gutter: 28px 36px; /* 舞台留白（上下 / 左右） */
-  --space-gutter-bottom: 76px; /* 舞台留白 · 底部工具列保留區 */
+  --space-8: 16px; /* panel padding */
+  --space-gutter: 28px 36px; /* stage margin (top/bottom / left/right) */
+  --space-gutter-bottom: 76px; /* stage margin · reserved area for bottom toolbar */
   --titlebar-h: 48px;
-  --toolbar-h: 46px; /* 浮動玻璃 */
+  --toolbar-h: 46px; /* floating glass */
   --statusbar-h: 36px;
   --rail-w: 212px;
   --panel-w: 340px;
@@ -191,87 +196,89 @@
   --control-h-compact: 28px;
   --hit-min: 28px;
 
-  /* ── 圓角 ──────────────────────────────────────────────────────── */
-  --radius-xs: 5px; /* 標籤、pin 編號 */
-  --radius-sm: 8px; /* 按鈕、chip */
+  /* ── Corner radius ─────────────────────────────────────────────── */
+  --radius-xs: 5px; /* labels, pin numbers */
+  --radius-sm: 8px; /* buttons, chips */
   /* radius.md's 9–10px range is two real values for two named uses:
      input fields render at 9px, segmented controls (role="tablist")
      at 10px. */
-  --radius-md: 9px; /* 輸入框 */
+  --radius-md: 9px; /* input fields */
   --radius-md-segmented: 10px; /* segmented */
-  --radius-lg: 12px; /* 選單、卡片 */
+  --radius-lg: 12px; /* menus, cards */
   /* radius.xl's 14–16px range is two real values for two named uses:
      glass panels (backdrop-filter:blur(22px) saturate(1.5), matching
-     the 玻璃材質 recipe below) render at 14px; dialogs (box-shadow
+     the glass-material recipe below) render at 14px; dialogs (box-shadow
      matching --shadow-dialog) render at 16px. */
-  --radius-xl: 14px; /* 玻璃面板 */
-  --radius-xl-dialog: 16px; /* 對話框 */
+  --radius-xl: 14px; /* glass panels */
+  --radius-xl-dialog: 16px; /* dialogs */
   /* radius.2xl's 18–20px range is two real values for two named uses:
      the large "Templates" dialog (role="dialog", width:560px,
      max-width:90vw) renders at 18px; the "Start with an outline"
      empty-state card renders at 20px. */
-  --radius-2xl: 18px; /* 大型對話框 */
-  --radius-2xl-empty: 20px; /* 空狀態卡 */
-  --radius-pill: 999px; /* 徽章、播放控制列 */
-  --stage-radius: 6px; /* 投影片外框 */
+  --radius-2xl: 18px; /* large dialogs */
+  --radius-2xl-empty: 20px; /* empty-state card */
+  --radius-pill: 999px; /* badges, play control bar */
+  --stage-radius: 6px; /* slide border */
 
-  /* ── 陰影 ──────────────────────────────────────────────────────── */
-  --shadow-seg: 0 1px 3px rgba(40, 20, 20, 0.12), 0 1px 2px rgba(40, 20, 20, 0.06); /* segmented 選中 */
+  /* ── Shadows ──────────────────────────────────────────────────── */
+  --shadow-seg: 0 1px 3px rgba(40, 20, 20, 0.12), 0 1px 2px rgba(40, 20, 20, 0.06); /* segmented selected */
   --shadow-menu: 0 12px 32px rgba(40, 20, 20, 0.12);
   --shadow-dialog: 0 24px 64px rgba(40, 20, 20, 0.25);
-  --shadow-red: 0 4px 12px rgba(200, 35, 59, 0.22); /* 主要 CTA、pin */
+  --shadow-red: 0 4px 12px rgba(200, 35, 59, 0.22); /* primary CTA, pin */
   --shadow-stage: 0 1px 2px rgba(0, 0, 0, 0.4), 0 24px 64px -16px rgba(0, 0, 0, 0.7);
   --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 12px 32px rgba(0, 0, 0, 0.28);
 
-  /* ── 圖示（Icon） ─────────────────────────────────────────────
+  /* ── Icons ───────────────────────────────────────────────────
      Sizes measured in the prototype: 15px in the titlebar (Open/Save/
      Export/Play/undo/redo), 14px in the rail's New/Templates, 16–17px
      on the glass dock. `--icon-control` (15px) is the old-shell compat
      token above that play.css still reads; `inline`/`command` are the
      two sizes the New v3 shell actually uses (Icon.tsx's size prop). */
-  --icon-inline: 15px; /* 標題列／側欄／狀態列內嵌圖示 */
-  --icon-command: 17px; /* Dock 指令按鈕圖示 */
-  --icon-stroke: 1.5; /* 文件 § 圖示：stroke-width 1.5 */
+  --icon-inline: 15px; /* inline icons in titlebar/side panel/status bar */
+  --icon-command: 17px; /* Dock command button icon */
+  --icon-stroke: 1.5; /* per the doc's Icons section: stroke-width 1.5 */
 
-  /* ── 玻璃材質（Glass） ─────────────────────────────────────────
-     Documented as prose + a CSS code block (§ 玻璃材質), not a
-     `token.path | value` table — these names are this file's own,
-     chosen to describe each literal the section calls out by role.
-     border-radius for glass panels is covered by --radius-xl /
+  /* ── Glass material ────────────────────────────────────────────
+     Documented as prose + a CSS code block (its own "Glass material"
+     section), not a `token.path | value` table — these names are this
+     file's own, chosen to describe each literal the section calls out
+     by role. border-radius for glass panels is covered by --radius-xl /
      --radius-xl-dialog above, not repeated here. */
-  --glass-bg: rgba(255, 255, 255, 0.72); /* 工具列玻璃底 */
-  --glass-bg-soft: rgba(255, 255, 255, 0.55); /* 情境列／留言框玻璃底 */
+  --glass-bg: rgba(255, 255, 255, 0.72); /* toolbar glass background */
+  --glass-bg-soft: rgba(255, 255, 255, 0.55); /* context bar/comment composer glass background */
   --glass-blur: blur(22px) saturate(1.5);
   --glass-border: rgba(31, 26, 26, 0.1);
-  --glass-hover: rgba(31, 26, 26, 0.07); /* 玻璃內按鈕 hover */
-  --glass-divider: rgba(31, 26, 26, 0.1); /* 玻璃內分隔線 */
+  --glass-hover: rgba(31, 26, 26, 0.07); /* button hover inside glass */
+  --glass-divider: rgba(31, 26, 26, 0.1); /* divider inside glass */
   --glass-input-bg: rgba(255, 255, 255, 0.38);
   --glass-input-bg-focus: rgba(255, 255, 255, 0.55);
 
-  /* ── 動效 ──────────────────────────────────────────────────────── */
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); /* 進場、選單長出 */
-  --ease-in: cubic-bezier(0.4, 0, 0.8, 0.4); /* 頁面 exit */
+  /* ── Motion ───────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); /* entrance, menu grow */
+  --ease-in: cubic-bezier(0.4, 0, 0.8, 0.4); /* page exit */
   /* dur.fast (100–150ms) resolves to its upper bound (150ms): the
-     prototype's own "選單" example (animation:hs-fade .15s ease) is
+     prototype's own "menu" example (animation:hs-fade .15s ease) is
      both the doc's named usage for this token and the most frequent
      literal duration in the file. dur.base (180–260ms) resolves to
-     its lower bound (180ms): "面板切換" panels (animation:hs-grow /
+     its lower bound (180ms): "panel switch" panels (animation:hs-grow /
      hs-fade .18s, e.g. the Insert dialog and its sub-tab panels)
      consistently use it. */
-  --dur-fast: 150ms; /* hover、選單 */
-  --dur-base: 180ms; /* 面板切換、總覽 */
-  /* [E2.T7]: Animate 插入面板效果卡的循環預覽（animate.css）——不是一次性
-     view-switch/dialog 動畫，e2e/motion.test.ts 的 0.3s 上限本就排除
-     animation-iteration-count:infinite 的循環動畫，這個 token 因此不受它
-     約束；獨立命名而不是重用 --dur-fast/--dur-base，因為兩者的語意
-     （hover/選單、面板切換）都不是「內容預覽循環播放」。 */
+  --dur-fast: 150ms; /* hover, menus */
+  --dur-base: 180ms; /* panel switch, overview */
+  /* Looping preview for the Animate insert panel's effect cards
+     (animate.css) — not a one-shot view-switch/dialog animation.
+     e2e/motion.test.ts's 0.3s cap already excludes looping animations with
+     animation-iteration-count:infinite, so this token isn't bound by it;
+     it gets its own name rather than reusing --dur-fast/--dur-base because
+     neither of their meanings (hover/menu, panel switch) is "looping
+     content preview". */
   --dur-preview-loop: 1.6s;
 }
 
 /* Bundled font subsets, self-hosted so the UI never depends on
    network access at runtime and never falls back to system-ui
-   (which resolves to 蘋方 on macOS, 微軟正黑 on Windows, breaking
-   cross-machine screenshot comparison). Each subset is built by
+   (which resolves to PingFang on macOS, Microsoft JhengHei on Windows,
+   breaking cross-machine screenshot comparison). Each subset is built by
    scripts/build-font-subset.mjs (Noto Sans TC) and committed under
    src/assets/fonts/ — see README.md for the licence (SIL OFL 1.1)
    and source.
@@ -332,7 +339,7 @@
   font-display: block;
 }
 
-/* ── 基礎樣式層：reduced-motion ──────────────────────────────────
+/* ── Base style layer: reduced-motion ────────────────────────────
    Two layers, both required: the token override below only helps
    rules that already consume a --dur-* token; the `*` safety net
    catches everything else (literal-second transitions, inline
@@ -343,7 +350,7 @@
   :root {
     --dur-fast: 0ms;
     --dur-base: 0ms;
-    --dur-panel: 0ms; /* 舊殼相容層（見上方 :root 區塊註解），play.css 的閒置淡出用它 */
+    --dur-panel: 0ms; /* legacy-shell compat layer (see the :root block comment above), used by play.css's idle fade-out */
   }
 
   *,

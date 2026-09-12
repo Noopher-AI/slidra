@@ -16,11 +16,11 @@ export interface SlideTransitionState {
 }
 
 /**
- * [E2.T11]: `AnimatePagePanel`'s own data source, modeled directly on
+ * `AnimatePagePanel`'s own data source, modeled directly on
  * `useSlideEffects` — independent of `CanvasState` for the same reason
  * (canvas.ts's minimal-touch scope does not extend to exposing a general
  * "current slide's parsed transition" field). Reads `transition` off
- * `fetchSlideEffectPlan` (F8, NOOP-289 決定 E1) — the same
+ * `fetchSlideEffectPlan` (F8, per decision E1) — the same
  * `GET /api/effects/<slidePath>` plan `canvas.ts`'s own play-mode renderer
  * uses, so "what the panel shows" and "what will actually play" can never
  * quietly disagree. `canvas.ts`'s `reload()` already invalidates every

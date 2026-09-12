@@ -1,7 +1,7 @@
 export interface SelectionOverlayProps {
   /** The selection's union box, `.stage-overlays`-relative px; `null` when nothing is selected. */
   union: { x: number; y: number; width: number; height: number } | null;
-  /** `null` when nothing selected; single selection carries `path` (ancestor names, outermost first) for the drill-in label ("Group 2 › Group 1 › 名稱"). */
+  /** `null` when nothing selected; single selection carries `path` (ancestor names, outermost first) for the drill-in label ("Group 2 › Group 1 › name"). */
   label: { text: string; path: string[] } | null;
   /**
    * [E2.T8] §4.7/§3.9: the single selected element's own comment, or
@@ -18,9 +18,11 @@ export interface SelectionOverlayProps {
 const LABEL_OFFSET = 22;
 
 /**
- * 名稱／群組／鑽入路徑標籤（NOOP-90/T2 §4.1, §3.7）。選取框本身、四角把
- * 手、框選矩形仍然畫在 iframe 的 Shadow DOM 裡（ADR-0011 未變的那一半）——
- * 這裡只畫父文件那一半：標籤，加上 [E2.T8] 的留言 pin（標籤同一列，右側）。
+ * The name/group/drill-in-path label. The selection box itself, its
+ * four-corner handles, and the marquee rectangle are still drawn inside the
+ * iframe's Shadow DOM (the half that hasn't changed) — this component only
+ * paints the parent-document half: the label, plus the comment pin (same
+ * row as the label, on the right side).
  */
 export function SelectionOverlay({ union, label, pin }: SelectionOverlayProps) {
   if (!union || !label) return null;

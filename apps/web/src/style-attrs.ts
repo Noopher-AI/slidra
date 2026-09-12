@@ -1,5 +1,5 @@
 /**
- * 樣式面板 (NOOP-143 §4.1-4.3): the eight attributes the panel exposes, and
+ * Style panel (§4.1-4.3): the eight attributes the panel exposes, and
  * the pure functions that read their current value off a `SlideElement` and
  * summarize them across a multi-selection. No DOM, no fetch — kept testable
  * in isolation and reusable from `StylePanel.tsx`.

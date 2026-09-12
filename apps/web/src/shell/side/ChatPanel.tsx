@@ -15,7 +15,7 @@ export interface ChatPanelProps {
   onDraftChange(value: string): void;
   onSubmit(): void;
   /**
-   * #303: while `working` the Send button becomes a Stop button
+   * While `working` the Send button becomes a Stop button
    * (`.chat-stop`) that asks the server to cancel the agent's turn; Esc
    * in the textarea does the same. `stopping` disables it while the
    * cancel request is in flight.
@@ -23,16 +23,17 @@ export interface ChatPanelProps {
   onStop(): void;
   stopping: boolean;
   /**
-   * 送出鍵右邊的「開新對話」：丟掉目前的 ACP session、清空訊息列表，
-   * 下一則訊息從零開始（`POST /api/chat/new`）。簡報本身不受影響。
+   * The "New session" action next to the send button: drops the current ACP
+   * session, clears the message list, and the next message starts from
+   * scratch (`POST /api/chat/new`). The deck itself is unaffected.
    */
   onNewSession(): void;
-  /** 對話框下方的 agent／模型膠囊列（AgentPicker）的全部 props；App.tsx 擁有它們背後的 HTTP 呼叫。 */
+  /** All props for the agent/model pill row below the dialog (AgentPicker); App.tsx owns the HTTP calls behind them. */
   picker: Omit<AgentPickerProps, "agent">;
-  /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
+  /** Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "don't know yet" is not "known to be impossible"). */
   agent: AgentUiStatus;
   /**
-   * [E2.T8] §4.7: every pinned comment, deck-wide, sorted/numbered by
+   * §4.7: every pinned comment, deck-wide, sorted/numbered by
    * `sortComments`. Rendered as "Pinned context <n>" — empty means the
    * whole block doesn't render at all (not "Pinned context 0").
    */
@@ -42,7 +43,7 @@ export interface ChatPanelProps {
   /** The row's own ✕ — deletes immediately, no confirmation (prototype's own rule, `slidra-logic-v3.js:665`). */
   onPinnedRemove(commentId: string): void;
   /**
-   * [E3.T3] #232/#236: the full `/` list — agent report ∪ bundled skills ∪
+   * The full `/` list — agent report ∪ bundled skills ∪
    * user skills, kept current by App.tsx's GET + `agent-commands` SSE
    * subscription. This component owns only the menu's transient UI state
    * (selection, whether Esc dismissed it); it never fetches anything.
@@ -51,14 +52,17 @@ export interface ChatPanelProps {
 }
 
 /**
- * 對話分頁 — 逐字搬自 App.tsx（NOOP-271/#154 之後、New v3 殼重建之前的版
- * 本），class 名稱一個都沒改。這是刻意的：e2e/freeze.test.ts 用
- * `.chat-input button` / `.chat-input textarea` 驅動 agent 編輯鎖的凍結流程，
- * e2e/helpers/launch.ts 的 `openApp({ waitForAgent: true })` 輪詢
- * `.agent-dot`（在 TitleBar.tsx，不在這裡，但同一個「不改既有契約」的原
- * 則）——兩者都不能因為殼重建而跟著變。訊息／草稿等狀態仍然留在
- * App.tsx；[E3.T3] 起，這個元件另外自己持有斜線選單的兩個 UI 狀態（選取
- * 索引、是否被 Esc 關閉），因為那是輸入框互動的細節，App.tsx 不需要知道。
+ * The chat tab — its class names are kept exactly as they were before the
+ * New v3 shell rebuild. This is deliberate: e2e/freeze.test.ts drives the
+ * agent editing-lock freeze flow through `.chat-input button` /
+ * `.chat-input textarea`, and e2e/helpers/launch.ts's
+ * `openApp({ waitForAgent: true })` polls `.agent-dot` (in TitleBar.tsx, not
+ * here, but under the same "don't change the existing contract" principle)
+ * — neither can shift just because the shell was rebuilt. Message/draft
+ * state still lives in App.tsx; this component additionally holds two
+ * pieces of UI state for the slash menu on its own (selected index, whether
+ * Esc dismissed it), since that's a detail of input-box interaction that
+ * App.tsx doesn't need to know about.
  */
 export function ChatPanel({
   messages,
@@ -78,10 +82,10 @@ export function ChatPanel({
   commands,
 }: ChatPanelProps) {
   const hasComments = comments.length > 0;
-  // [E3.T5] Plan §4.7: `loading`/`error` leave the input's own disabled
+  // Plan §4.7: `loading`/`error` leave the input's own disabled
   // state untouched — it stays governed by `streamReady` alone, exactly as
-  // before this ticket ("還不知道" is not "知道不行"; this must not become
-  // "disable defensively just in case"). Only `unset`/`unauthenticated`
+  // before ("don't know yet" is not "known to be impossible"; this must not
+  // become "disable defensively just in case"). Only `unset`/`unauthenticated`
   // disable the `<textarea>` itself — the Send button additionally keeps the
   // pre-existing `!streamReady` gate, since sending is refused either way.
   const agentBlocksInput = agent.kind === "unset" || agent.kind === "unauthenticated";
@@ -95,7 +99,7 @@ export function ChatPanel({
           ? "Tell the agent how to change this deck…"
           : "Connecting to chat, please wait…";
 
-  // [E3.T3] #232/#236's slash-command menu. Two UI states only: which item
+  // The slash-command menu. Two UI states only: which item
   // is highlighted, and whether Esc has dismissed the menu for the current
   // trigger span.
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -186,9 +190,10 @@ export function ChatPanel({
   }
 
   /**
-   * ⌘↵／Ctrl+↵ 送出（06-KEYBOARD 表，同 `slidra-logic-v3.js` 的
-   * `draftKey`）——輸入框是 textarea，plain `↵` 換行不送出。
-   * `streamReady` 為 false 時 Send 鈕是 disabled，這裡的鍵盤路徑不得繞過它。
+   * ⌘↵/Ctrl+↵ sends (06-KEYBOARD table, same as `slidra-logic-v3.js`'s
+   * `draftKey`) — the input is a textarea, so plain `↵` inserts a newline
+   * instead of sending. When `streamReady` is false the Send button is
+   * disabled, and this keyboard path must not bypass that.
    */
   function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (event.key !== "Enter") return;
@@ -251,8 +256,9 @@ export function ChatPanel({
               role={message.cli && message.status === "failed" ? "alert" : undefined}
             >
               <p className="chat-command-line">
-                {/* 只有 CLI 命令帶狀態標記：agent 自己的 shell 工作照樣顯示，
-                    但它的成敗不是作者要讀的東西（見 relayCommandStart）。 */}
+                {/* Only CLI commands carry a status tag: the agent's own shell
+                    work still renders, but its success/failure isn't
+                    something the author needs to read (see relayCommandStart). */}
                 {message.cli && (
                   <span className="chat-command-status">
                     {message.interrupted
@@ -341,8 +347,9 @@ export function ChatPanel({
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          {/* 送出（或停止）與開新對話是相連的一組：footer 本身是
-              space-between，兩顆鍵若各自當直接子節點就會被推到兩端。 */}
+          {/* Send (or Stop) and New session belong together as one group:
+              the footer itself is space-between, so as direct children the
+              two buttons would get pushed to opposite ends. */}
           <span className="chat-input-actions">
             {working ? (
               <button
@@ -378,7 +385,7 @@ export function ChatPanel({
   );
 }
 
-/** 命令被 Slidra 的白名單擋下時顯示的字——不是命令自己失敗，也不是作者按了拒絕。 */
+/** The text shown when a command is blocked by the allowlist — not the command itself failing, and not the author declining it. */
 const COMMAND_BLOCKED_LABEL = "Blocked";
 
 /**
@@ -396,7 +403,7 @@ export function isNearBottom(scrollHeight: number, scrollTop: number, clientHeig
 
 const BOTTOM_SLACK_PX = 48;
 
-/** ACP tool-call 狀態 → 使用者看到的字——逐字搬自 App.tsx。 */
+/** ACP tool-call status -> the text the user sees. */
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
   pending: "Pending",
   in_progress: "Running",
@@ -404,7 +411,7 @@ const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
   failed: "Failed",
 };
 
-/** 串流中斷、結果不明時顯示的字（不是 CommandStatus 的一員：真的不知道成功與否，不編一個答案）。 */
+/** Shown when the stream was interrupted and the outcome is unknown (not a member of CommandStatus: we genuinely don't know success or failure, so we don't make one up). */
 const COMMAND_INTERRUPTED_LABEL = "Unknown";
 
 

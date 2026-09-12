@@ -7,7 +7,7 @@ export interface TextPanelProps {
   controller: CanvasController | null;
   /** The presentation's own canvas size (project.json's `canvas`) — every preset's size/width/position below is a percentage of THIS, never a hard-coded 1280×720. `null` before it has loaded, which disables Insert. */
   canvasSize: { width: number; height: number } | null;
-  /** The current slide's own page style (same shape `ShapeMenu` receives) — `pageStyle.accent`, when set, fills the inserted text. Without an accent, the fill comes from `contrastFill(pageStyle?.background ?? null)` instead (NOOP-353 拍板決定 7) — never omitted, never the SVG default black. `null` (no slide, or the slide declares no page style) reaches `contrastFill` as a `null` background. */
+  /** The current slide's own page style (same shape `ShapeMenu` receives) — `pageStyle.accent`, when set, fills the inserted text. Without an accent, the fill comes from `contrastFill(pageStyle?.background ?? null)` instead — never omitted, never the SVG default black. `null` (no slide, or the slide declares no page style) reaches `contrastFill` as a `null` background. */
   pageStyle: { background: string | null; accent: string | null } | null;
 }
 
@@ -15,20 +15,20 @@ export type Align = "left" | "center" | "right";
 export type Preset = "title" | "subtitle" | "body" | "caption";
 
 interface PresetSpec {
-  /** Percentage of the canvas WIDTH (原型的 cqw 單位). */
+  /** Percentage of the canvas WIDTH (the prototype's cqw unit). */
   size: number;
   weight: number;
   /** Percentage of the canvas width. */
   width: number;
   label: string;
-  /** Used when the textarea is left empty (原型：文字留空時用預設字串）。 */
+  /** Used when the textarea is left empty (the prototype falls back to a default string in that case). */
   placeholderText: string;
 }
 
-// Verbatim from docs/design/prototype/slidra-logic-v3.js:203 (NOOP-65 計畫 §3.8) —
+// Matches docs/design/prototype/slidra-logic-v3.js:203's layout math —
 // size/weight/width are percentages of the canvas's own width; positions
-// below (§7 決定 t/l) are computed against the ACTUAL open presentation's
-// canvas size, never a hard-coded 1280×720.
+// below (t/l) are computed against the ACTUAL open presentation's canvas
+// size, never a hard-coded 1280×720.
 const PRESETS: Record<Preset, PresetSpec> = {
   title: { size: 5.2, weight: 700, width: 60, label: "Title", placeholderText: "Title" },
   subtitle: { size: 2.8, weight: 500, width: 56, label: "Subtitle", placeholderText: "Subtitle" },
@@ -43,7 +43,7 @@ const ALIGN_ORDER: { align: Align; label: string }[] = [
   { align: "right", label: "Right" },
 ];
 
-/** Top offset is fixed at 42% of the canvas height; left depends on alignment (原型 slidra-logic-v3.js:203 一致 — 見計畫 §3.8). */
+/** Top offset is fixed at 42% of the canvas height; left depends on alignment (matches the prototype's slidra-logic-v3.js:203 layout math). */
 function positionPercent(align: Align, widthPercent: number): { tPercent: number; lPercent: number } {
   const lPercent = align === "center" ? 50 - widthPercent / 2 : align === "right" ? 92 - widthPercent : 8.4;
   return { tPercent: 42, lPercent };
@@ -62,18 +62,17 @@ export interface InsertTextBoxInput {
 }
 
 /**
- * NOOP-65r3 §Step 3 — the preset/align → `insertTextBox` input conversion,
- * extracted out of `insert()` below as a pure function so it has a unit
- * test independent of React/DOM (this codebase's React component tests
- * are all `renderToStaticMarkup`, with no testing-library — see
+ * The preset/align → `insertTextBox` input conversion, extracted out of
+ * `insert()` below as a pure function so it has a unit test independent of
+ * React/DOM (this codebase's React component tests are all
+ * `renderToStaticMarkup`, with no testing-library — see
  * `export-panel.test.ts`/`stage-overlays.test.ts` — so an interactive
  * behaviour like this one can only be tested by pulling the computation
  * itself out from under the JSX). Behaviour is unchanged: this is exactly
- * what `insert()` used to compute inline. Extended by NOOP-353 拍板決定 7 to
- * also compute `fill`: `pageStyle.accent` when set, otherwise
- * `contrastFill(pageStyle.background)` — the same accent-first, contrast-
- * otherwise rule `ShapeMenu.tsx` applies to rect/ellipse `fill` and line
- * `stroke`.
+ * what `insert()` used to compute inline. Extended to also compute `fill`:
+ * `pageStyle.accent` when set, otherwise `contrastFill(pageStyle.background)`
+ * — the same accent-first, contrast-otherwise rule `ShapeMenu.tsx` applies
+ * to rect/ellipse `fill` and line `stroke`.
  */
 export function textPanelInsertInput(
   preset: Preset,
@@ -97,9 +96,10 @@ export function textPanelInsertInput(
 }
 
 /**
- * Text 插入面板（NOOP-65 §3.8/A9/A11）：一個 `rows=2` 的 textarea＋四個樣式
- * 預設＋三個對齊按鈕，`Enter`（無 Shift）直接插入，`Shift+Enter` 換行。每個
- * 編輯動作都對應一條 CLI 命令（A11）：這裡對應的是 `textbox add`。
+ * Text insert panel: a `rows=2` textarea plus four style presets and three
+ * alignment buttons. `Enter` (without Shift) inserts directly, `Shift+Enter`
+ * adds a newline. Every editing action maps to one CLI command (A11): here
+ * that's `textbox add`.
  */
 export function TextPanel({ onClose, controller, canvasSize, pageStyle }: TextPanelProps) {
   const [text, setText] = useState("");
@@ -115,8 +115,9 @@ export function TextPanel({ onClose, controller, canvasSize, pageStyle }: TextPa
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    // 原型 textKey：Enter 且非 shiftKey 直接插入；Shift+Enter 是換行
-    // （原型的插入面板本身沒有多行內容，這裡沿用同一鍵盤約定）。
+    // Matches the prototype's textKey: Enter without shiftKey inserts
+    // directly; Shift+Enter is a newline (the prototype's own insert panel
+    // never has multi-line content, so this keeps the same keyboard convention).
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void insert();

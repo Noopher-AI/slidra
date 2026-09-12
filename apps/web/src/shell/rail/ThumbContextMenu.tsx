@@ -18,9 +18,10 @@ export interface ThumbContextMenuProps {
 }
 
 /**
- * 縮圖右鍵選單（T3 plan §3.9 的原型項目順序）。留言鈕與「Comment to
- * agent」一律 `disabled`＋`aria-disabled`——入口已備好，執行在 F13（§2 邊
- * 界 2），不接受送聊天訊息或假裝成功的替代方案。
+ * The thumbnail context menu (item order follows the template). The
+ * "Comment to agent" button is always `disabled`+`aria-disabled` — the
+ * entry point is ready, but its implementation is deferred; it doesn't
+ * accept sending a chat message or any pretend-success fallback.
  */
 export function ThumbContextMenu({
   menuRef,

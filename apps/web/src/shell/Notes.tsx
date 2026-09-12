@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { fetchSlideNotes } from "../notes.js";
 
 export interface NotesProps {
-  /** 目前頁碼（1-based）；沒有投影片時為 null，標題列就不顯示「Slide n」。 */
+  /** Current slide number (1-based); null when there are no slides, in which case the header omits "Slide n". */
   slideNumber: number | null;
-  /** 目前頁的虛擬路徑；沒有投影片時為 null。 */
+  /** Current slide's virtual path; null when there are no slides. */
   slidePath: string | null;
-  /** `CanvasController.runCommand` 的轉發——blur 時送 `slide notes set`。 */
+  /** Forwards to `CanvasController.runCommand` — sends `slide notes set` on blur. */
   onCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string; data?: unknown } | undefined>;
 }
 
@@ -15,14 +15,16 @@ type LoadState = { status: "empty" } | { status: "loading" } | { status: "ready"
 const PLACEHOLDER = "No notes for this slide yet. Add talking points — they show on your screen while presenting.";
 
 /**
- * 備忘稿：`Notes.tsx` 的 textarea，blur 時把改動送 `slide notes set`
- * （T3 plan §4.1）。讀取走 `readSlideNotes`——不用 `DOMParser`，舊檔（沒有
- * `xmlns:slidra`）也讀得回來，見 `notes.ts` 的檔頭說明。
+ * Speaker notes: the `Notes.tsx` textarea sends its edits via `slide notes
+ * set` on blur. Reading goes through `readSlideNotes` — it doesn't use
+ * `DOMParser`, so older files (missing `xmlns:slidra`) still load correctly;
+ * see `notes.ts`'s file header for details.
  *
- * 「不存在」與「存在但為空」在 UI 上刻意不分（都顯示 placeholder）；
- * 讀取失敗（markup 壞掉／HTTP 非 200）則明確報錯並把欄位設成
- * `readOnly`——絕不能讓一個看起來可編輯的空欄位在 blur 時把磁碟上真正的
- * 備忘稿覆寫成空字串。
+ * "No notes exist" and "notes exist but are empty" are deliberately not
+ * distinguished in the UI (both show the placeholder); a read failure
+ * (malformed markup, or a non-200 HTTP response) is reported explicitly and
+ * sets the field to `readOnly` — an editable-looking empty field must never
+ * overwrite real on-disk notes with an empty string on blur.
  */
 export function Notes({ slideNumber, slidePath, onCommand }: NotesProps) {
   const [state, setState] = useState<LoadState>(slidePath ? { status: "loading" } : { status: "empty" });

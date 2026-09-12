@@ -11,9 +11,11 @@ export interface TemplatesMenuProps {
 }
 
 /**
- * Templates 按鈕：只套用的範本清單，不是原型的管理對話框（Rename/Delete
- * 不接，T3 plan §7 決定 4）。點某個範本走跟 New 面板 Layouts 群組裡同名項
- * 目完全一樣的 `onSelectTemplate`——呼叫端（Rail.tsx）用同一個函式。
+ * The Templates button: an apply-only template list, not the template's
+ * management dialog (Rename/Delete are not wired up). Clicking a template
+ * calls the exact same `onSelectTemplate` as the identically named item in
+ * the New panel's Layouts group — the caller (Rail.tsx) uses the same
+ * function.
  */
 export function TemplatesMenu({ menuRef, runCommand, onSelectTemplate }: TemplatesMenuProps) {
   const templateList = useTemplateList(runCommand);

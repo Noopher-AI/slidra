@@ -1,10 +1,10 @@
 /**
  * The canvas: a vanilla DOM module. React hands it a container element and
- * never touches what ends up inside it (ADR-0001) — the 投影片 is the
+ * never touches what ends up inside it (ADR-0001) — the slide is the
  * artifact loaded from the presentation file, not something React computes
  * from state.
  *
- * `reload()` is the seam future tickets hook into: #5's change-push handler
+ * `reload()` is the seam for future work to hook into: the change-push handler
  * calls it directly when the watched file changes on disk, redrawing the
  * slide without React re-rendering anything.
  *
@@ -19,14 +19,14 @@
  * that has nowhere to reach the app from. See the comment on the iframe's
  * `sandbox` attribute below before changing it.
  *
- * 播放模式 (ticket #28) reuses the same posture with one deliberate
+ * Play mode reuses the same posture with one deliberate
  * loosening: the play iframe gets `allow-scripts` so the player runtime can
  * run, but never `allow-same-origin` (ADR-0010) — the pair together would
  * let the iframe script itself free of its own sandbox. Because the
  * `sandbox` attribute cannot be changed on a live iframe, entering or
  * leaving play mode destroys the current iframe and builds a fresh one.
  *
- * 元素選取 (ticket #56, ADR-0011) extends the same loosening to view mode:
+ * Element selection (ADR-0011) extends the same loosening to view mode:
  * a zero-token sandbox delivers no clicks to the parent at all (no script,
  * no `allow-same-origin`, nothing bubbles out), so the view-mode iframe now
  * also carries `allow-scripts` — with the same `allow-same-origin` ban —
@@ -36,21 +36,21 @@
  * (overview.ts): this loosening is cut in exactly one place, the main
  * canvas.
  *
- * Since #72 that runtime resolves a click to the OUTERMOST id-carrying
+ * That runtime resolves a click to the OUTERMOST id-carrying
  * ancestor — an element's `<g>` container, or the whole group when the
  * element sits inside one (ADR-0012). Nothing changes on this side of the
  * seam: the `{ id, name }` arriving over postMessage has always been the
  * resolved node's own `id` and `data-slidra-name`, and after conversion
  * that node is the container.
  *
- * NOOP-91 (direct manipulation) extends the same runtime with drag-to-move
+ * Direct manipulation extends the same runtime with drag-to-move
  * and marquee select. The runtime (selection-runtime.js) only ever reports
  * raw client-px coordinates and paints whatever transform/guide/marquee
  * string this module hands it — matrix decompose and snapping happen here,
- * using this package's own `geometry.ts` (F8, NOOP-289 — the web bundle no
+ * using this package's own `geometry.ts` (the web bundle no
  * longer depends on core at all), because the runtime is an unbundled
  * `?raw` script that cannot import anything. Bounding-box geometry is the
- * one exception (決定 G1): the runtime measures real rendered geometry
+ * one exception (decision G1): the runtime measures real rendered geometry
  * (`getBBox()`/`getCTM()`) itself and reports it up, since there is no
  * bundled font-metrics engine here any more to compute one from the parsed
  * model. See docs on the postMessage protocol below (`SelectionMessage`).
@@ -95,13 +95,13 @@ export type CanvasMode = "view" | "play" | "preview";
  * and — for every variant that carries a `point` — converted from the
  * iframe's own client coordinates into this parent document's client
  * coordinates (`toParentClientPoint` below). This is a pure relay: canvas.ts
- * does zero zoom/pan geometry itself (Dev-Leader 裁決 NOOP-83 §2 決定 2) —
+ * does zero zoom/pan geometry itself (§2 decision 2) —
  * `point`/`deltaX`/`deltaY` are handed to `subscribeStageInput`'s listener
  * (Stage.tsx) in exactly the shape its existing local `handleWheel`/
  * `handleMouseDown` math already expects from a real DOM `WheelEvent`/
  * `MouseEvent` — Stage.tsx runs that same math unmodified against this
  * event's `point`/`deltaX`/`deltaY`. Only emitted for on-slide input; the
- * gutter (留白) area's own DOM listeners keep calling that math directly.
+ * gutter (the empty margin) area's own DOM listeners keep calling that math directly.
  */
 export type StageInputEvent =
   | { type: "wheel-zoom"; point: { x: number; y: number }; deltaY: number }
@@ -141,7 +141,7 @@ export interface CanvasSelection {
 }
 
 /**
- * High-frequency overlay geometry (NOOP-90/T2 §4.6/§8 決定 1): name/group
+ * High-frequency overlay geometry (§4.6/§8 decision 1): name/group
  * labels, snap guides, and the element context menu are painted by the
  * PARENT document now (`shell/stage-overlays/`), not inside the sandboxed
  * iframe — everything here is already converted into THIS document's
@@ -158,7 +158,7 @@ export interface OverlayState {
   boxes: Rect[];
   /** The union of every `boxes[]` entry; `null` when nothing is selected. */
   union: Rect | null;
-  /** `null` when nothing is selected; `"N elements"` for a multi-selection (no path); the single selected element's own name/id and ancestor-chain names (outermost first) otherwise — F9 (群組) reads `path` for its "Group 2 › Group 1" drill-in label. */
+  /** `null` when nothing is selected; `"N elements"` for a multi-selection (no path); the single selected element's own name/id and ancestor-chain names (outermost first) otherwise — grouping reads `path` for its "Group 2 › Group 1" drill-in label. */
   label: { text: string; path: string[] } | null;
   /** Snap guide lines from the in-progress move gesture, parent-document client px; empty between drags. */
   guides: { orientation: "v" | "h"; position: number }[];
@@ -233,7 +233,7 @@ export interface CanvasState {
    */
   pageStyle: PageStyle | null;
   /**
-   * #303 手動控制面板：the current slide's background image, straight off
+   * The style panel's manual controls: the current slide's background image, straight off
    * `currentSlideModel.backgroundImage` — `null` both when there is no
    * current slide and when the current slide has no background image;
    * callers distinguish the two the same way they already do for
@@ -260,7 +260,7 @@ export interface CanvasController {
   reload: () => Promise<void>;
   /**
    * Throws when the index is out of range — that is a programming error,
-   * not user input. `selectAfter` ([E2.T8]): re-selects these element ids
+   * not user input. `selectAfter` re-selects these element ids
    * once the newly navigated page has actually loaded — Pinned context's
    * own row click needs this (jump to a different slide, then select the
    * comment's target); calling the separate `selectElement` right after
@@ -280,7 +280,7 @@ export interface CanvasController {
   /** Rebuilds the iframe back to view mode's `allow-scripts` sandbox (ADR-0011). */
   exitPlay: () => Promise<void>;
   /**
-   * [E2.T7]/D8: plays `effectIndices` (a specific card's own effect-list
+   * Plays `effectIndices` (a specific card's own effect-list
    * positions) or, when `null`, the whole slide's steps in sequence (the
    * panel's Preview button) — via the play runtime, not a second animation
    * engine. Returns to view mode on its own once the runtime reports
@@ -295,13 +295,13 @@ export interface CanvasController {
   /**
    * Asks the player runtime to advance/retreat one step, for when the
    * arrow key was pressed while focus sat outside the player iframe and
-   * the runtime's own keydown listener never saw it (#68). Safe to call
+   * the runtime's own keydown listener never saw it. Safe to call
    * outside play mode (no-op). See the runtime's `message` handler for
    * the transient-activation limit this path carries.
    */
   stepPlayer: (direction: "advance" | "retreat") => void;
   /**
-   * Opens `elementId` for in-place text editing (NOOP-91/#70 US1, T5) — the
+   * Opens `elementId` for in-place text editing — the
    * same entry point double-clicking an existing text box on the canvas
    * uses. No-op (no throw) when `elementId` does not name an existing,
    * unlocked text box, the canvas is not in view mode, or the box's font
@@ -311,7 +311,7 @@ export interface CanvasController {
    */
   beginTextEdit: (elementId: string) => Promise<void>;
   /**
-   * Sends a whitelisted command (NOOP-141's Ribbon 常用 buttons). The only
+   * Sends a whitelisted command (the Ribbon's common-action buttons). The only
    * general-purpose write entry point this controller exposes — it forwards
    * to the module's own `postCommand`, the front end's one write path
    * (§4.9), so callers never open a second `fetch("/api/command")`. Failure
@@ -322,8 +322,8 @@ export interface CanvasController {
    */
   runCommand: (name: string, input: Record<string, unknown>) => Promise<{ ok: boolean; message: string; data?: unknown }>;
   /**
-   * Uploads one file's raw bytes to `POST /api/asset` (T3/NOOP-142 — the
-   * human asset-import path: file picker, drag/drop, clipboard paste).
+   * Uploads one file's raw bytes to `POST /api/asset` — the
+   * human asset-import path: file picker, drag/drop, clipboard paste.
    * Separate from `runCommand` because the transport is different (raw
    * bytes, not JSON `{name, input}`) — the whitelist and command-dispatch
    * machinery `runCommand` wraps do not apply here at all, `asset import`
@@ -333,7 +333,7 @@ export interface CanvasController {
    */
   importAsset: (file: File) => Promise<ImportAssetResult>;
   /**
-   * [E2.T17] plan §4.3/D5 — the URL-source counterpart of `importAsset`,
+   * §4.3/D5 — the URL-source counterpart of `importAsset`,
    * for the Image/Video/Audio panels' URL text field. Same transport family
    * as `importAsset` (`POST /api/asset`, same 409-freeze gate, same
    * `CanvasState.error` failure posture), just a different header instead
@@ -342,7 +342,7 @@ export interface CanvasController {
   importAssetFromUrl: (url: string) => Promise<ImportAssetResult>;
   /**
    * Surfaces `message` through the same `CanvasState.error` → `[role=alert]`
-   * channel `runCommand`/`importAsset` already use (決定 7), for a front-end
+   * channel `runCommand`/`importAsset` already use (decision 7), for a front-end
    * validation failure that never reaches the network — e.g. App.tsx
    * rejecting a multi-file drop before calling `importAsset` at all. Never
    * used for a real command/import failure; those already report through
@@ -350,7 +350,7 @@ export interface CanvasController {
    */
   reportError: (message: string) => void;
   /**
-   * 樣式面板 (NOOP-143 §1 decision 4): sends `element style set` for the
+   * Style panel (§1 decision 4): sends `element style set` for the
    * current selection's every id in one call, with the given attr/value.
    * Returns `false` when the command failed — the message is already in
    * `CanvasState.error` by the time this resolves, matching `postCommand`'s
@@ -358,7 +358,7 @@ export interface CanvasController {
    */
   setStyle: (attr: string, value: string) => Promise<boolean>;
   /**
-   * 樣式面板 (#200 §4.1): the Text section's Align field. Sends `textbox
+   * Style panel (§4.1): the Text section's Align field. Sends `textbox
    * align` once per currently-selected text box, sequentially (that command
    * names a single element, unlike `element style set`'s list form) — for
    * the common single-selection case this is one command, one undo step;
@@ -367,21 +367,22 @@ export interface CanvasController {
    */
   setTextAlign: (align: "left" | "center" | "right") => Promise<boolean>;
   /**
-   * 樣式面板 (#200 §4.3/§4.4): Style › Page's Background/Accent fields.
+   * Style panel (§4.3/§4.4): Style › Page's Background/Accent fields.
    * Sends `slide style set` for the current slide. Same failure contract as
    * `setStyle`. No-op (returns `false`) when there is no current slide.
    */
   setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
   /**
-   * 樣式面板 (#303)：Style › Page 的背景圖片區塊。送出 `slide background
-   * set`：給 `asset` 設定/替換背景圖，給 `none: true` 清除，`opacity` 調整
-   * 透明度（CLI 要求 `--asset`／`--none` 二選一，所以單獨調透明度時呼叫端
-   * 要一併帶上目前的 asset）。失敗時的行為與 `setStyle` 相同；沒有目前的
-   * slide 時回傳 `false`，不送出命令。
+   * Style panel: Style › Page's background image block. Sends `slide
+   * background set`: `asset` sets/replaces the background image, `none:
+   * true` clears it, `opacity` adjusts transparency (the CLI requires
+   * exactly one of `--asset`/`--none`, so adjusting opacity alone must also
+   * pass the current asset along). Same failure behavior as `setStyle`;
+   * returns `false` and sends no command when there is no current slide.
    */
   setBackgroundImage: (update: { asset?: string; none?: boolean; opacity?: number }) => Promise<boolean>;
   /**
-   * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
+   * Style panel (§4.3): Style › Page's Width/Height/preset/swap controls.
    * Sends `presentation canvas set` — never occupies an undo step (the
    * command's own contract), unlike every other style-panel write. Same
    * failure contract as `setStyle` otherwise.
@@ -402,7 +403,7 @@ export interface CanvasController {
    */
   readonly frameElement: HTMLIFrameElement;
   /**
-   * Stage.tsx's on-slide wheel/pointer/Space relay (NOOP-83 §2 決定 2/§4).
+   * Stage.tsx's on-slide wheel/pointer/Space relay (§2 decision 2/§4).
    * Fires only for `StageInputEvent`s the runtime reported that already
    * passed validation and (where relevant) coordinate conversion — see
    * that type's own doc comment. Returns an unsubscribe function, same
@@ -410,7 +411,7 @@ export interface CanvasController {
    */
   subscribeStageInput: (listener: (event: StageInputEvent) => void) => () => void;
   /**
-   * [E5.T7]/F-17: the runtime's on-slide pointer position, reported only
+   * The runtime's on-slide pointer position, reported only
    * while nothing else is consuming the pointer and something is selected
    * (see `SelectionMessage`'s "stage-hover" doc comment) — already
    * converted to this parent document's client px. `OverlayLayer` combines
@@ -421,7 +422,7 @@ export interface CanvasController {
    */
   subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => () => void;
   /**
-   * Tells `selection-runtime.js` whether 抓取模式 (the ✋ toggle or a
+   * Tells `selection-runtime.js` whether hand/grab mode (the ✋ toggle or a
    * temporary Space-hold) is active — while true, the runtime hands every
    * pointer to the pan relay above instead of starting a selection/drag
    * gesture (§4.2). Re-sent automatically on the runtime's own
@@ -430,11 +431,11 @@ export interface CanvasController {
    */
   setStageHandMode: (hand: boolean) => void;
   /**
-   * 05-INTERACTIONS.feature「抓取模式」's first "那麼": clears the current
+   * 05-INTERACTIONS.feature's "hand/grab mode" scenario: clears the current
    * selection the same way `handleSelectionMessage`'s own "clear" case
    * does (id/name/groupPath reset, notify, push the empty selection back
    * to the runtime) — extracted here so Stage.tsx's `handleToggleHand` can
-   * call it directly instead of leaving the no-op gap NOOP-81 left behind.
+   * call it directly instead of leaving a no-op gap.
    * No-op while `mode !== "view"`.
    */
   clearSelection: () => void;
@@ -475,10 +476,10 @@ export interface CanvasController {
   subscribeTable: (listener: (event: TableRuntimeEvent) => void) => () => void;
   /** Asks the runtime for `id`'s current per-cell rects + its own box (`table-cells` command) — the reply arrives on `subscribeTable` as a `{type: "cells"}` event. No-op (silently) outside view mode. */
   requestTableCells: (id: string) => void;
-  /** A column-width drag's live preview (`preview-table-cols` command, 決定 13: never re-wraps text) — `cols` is the FULL column-width array with the dragged column's candidate width substituted in. No-op outside view mode. */
+  /** A column-width drag's live preview (`preview-table-cols` command, decision 13: never re-wraps text) — `cols` is the FULL column-width array with the dragged column's candidate width substituted in. No-op outside view mode. */
   previewTableCols: (id: string, cols: readonly number[]) => void;
   /**
-   * The cell range currently active inside a selected table (E2.T14r2, plan
+   * The cell range currently active inside a selected table (plan
    * §4.1) — `null` when no range is active. Owned here (not `App.tsx`'s
    * React state, not `TableOverlay`'s local state) because the three
    * consumers (`TableOverlay`, `TableSection`, and the keyboard decision
@@ -514,7 +515,7 @@ export interface CanvasController {
   refreshOverlay: () => void;
   /** ⌘A (§4.1): selects every top-level element on the current slide, clearing `groupPath`. No-op on an empty slide. No-op outside view mode. */
   selectAll: () => void;
-  /** [E2.T7]: selects exactly `ids` (a stage animation badge click) — ids that no longer resolve are dropped; a no-op if none resolve. No-op outside view mode. */
+  /** Selects exactly `ids` (a stage animation badge click) — ids that no longer resolve are dropped; a no-op if none resolve. No-op outside view mode. */
   selectElements: (ids: readonly string[]) => void;
   /** Delete/Backspace, or the context bar's Delete (§4.4): sends `element delete` for the current selection, then clears it. No-op (not an error) with no selection. */
   deleteSelection: () => Promise<void>;
@@ -526,14 +527,14 @@ export interface CanvasController {
   alignSelection: (direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom") => Promise<void>;
   /** Arrange menu's Distribute column (§3.9): sends `element distribute`. No-op below the command's own ≥3-target minimum. */
   distributeSelection: (axis: "horizontal" | "vertical") => Promise<void>;
-  /** ⌘C, or the ContextBar Copy button (F8, NOOP-289 決定 (d)): sends `element copy`, resets the paste-offset run (`paste-offset.ts`'s `clipboardWritten`) on success. Never mutates the presentation. Returns the `svg` the caller should write via `navigator.clipboard.writeText`, or `null` with no selection or on command failure. */
+  /** ⌘C, or the ContextBar Copy button (decision (d)): sends `element copy`, resets the paste-offset run (`paste-offset.ts`'s `clipboardWritten`) on success. Never mutates the presentation. Returns the `svg` the caller should write via `navigator.clipboard.writeText`, or `null` with no selection or on command failure. */
   copySelection: () => Promise<string | null>;
-  /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
+  /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (plan §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
   cutSelection: () => Promise<string | null>;
-  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a slidra elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
+  /** ⌘V, or the ContextBar Paste button: routes `text` — a slidra elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
   pasteFromText: (text: string) => Promise<void>;
   /**
-   * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
+   * The Text insert panel's Insert action (§3.8/A11): sends
    * `textbox add` for the current slide, selecting the new box on success
    * (already whitelisted in `SELECT_AFTER_COMMAND`, same as `element
    * insert`). No-op outside view mode.
@@ -694,7 +695,7 @@ interface SelectionMessage {
     | "text-edit-input"
     | "text-edit-commit"
     | "text-edit-denied"
-    // NOOP-83 §4: stage navigation relay (Dev-Leader 裁決核准的擴大範圍).
+    // §4: stage navigation relay (an approved expansion of scope).
     // `point` on these four is always in the RUNTIME's own iframe-local
     // client coordinates, converted to this parent document's client
     // coordinates by `toParentClientPoint` before ever reaching
@@ -705,7 +706,7 @@ interface SelectionMessage {
     | "stage-pan-move"
     | "stage-pan-end"
     | "stage-space"
-    // [E5.T7]/F-17: the runtime's own pointermove, reported whenever nothing
+    // The runtime's own pointermove, reported whenever nothing
     // else (a gesture, a stage-pan, a text-select drag) is already consuming
     // the pointer and at least one element is selected — the parent uses
     // this (plus its own `window.mousemove` for the area outside the
@@ -713,24 +714,24 @@ interface SelectionMessage {
     // should switch. `point` is iframe-local client px, converted the same
     // way as the stage-pan/-wheel points above.
     | "stage-hover"
-    // NOOP-90/T2 §4.6: precise per-selected-element bounding boxes plus
+    // §4.6: precise per-selected-element bounding boxes plus
     // each one's ancestor chain, replacing the old host-computed "guides"
     // approach (ADR-0011 amend) — the runtime measures with
     // `getBoundingClientRect()`, this side only converts coordinate spaces.
     | "bounds"
-    // NOOP-90/T2 §4.5: right-click on an element (never on blank canvas —
-    // out of scope this ticket).
-    // NOOP-90/T2 §4.4: the keyboard relay for shortcuts that must work even
+    // §4.5: right-click on an element (never on blank canvas —
+    // out of scope).
+    // §4.4: the keyboard relay for shortcuts that must work even
     // when focus is inside the iframe.
     | "stage-key"
     // Sent once, after the runtime's listeners are attached (§2.1(c)) —
     // carries no payload of its own.
     | "runtime-ready"
-    // [E2.T7]/D9: the reply to a host-issued `measure` command — bounds for
+    // The reply to a host-issued `measure` command — bounds for
     // an arbitrary id list (the current slide's animation badge targets),
     // independent of `selectedIds`.
     | "measured"
-    // F8 (NOOP-289 決定 G1): every id-carrying element's bounding box,
+    // Every id-carrying element's bounding box,
     // self-reported at startup (and once web fonts settle) rather than in
     // reply to a host command — the browser has no bundled font-metrics
     // engine any more to compute this from the parsed model, so the
@@ -851,7 +852,7 @@ function isMeasuredItem(value: unknown): value is MeasuredItem {
   return typeof item.id === "string" && isNonNegativeRect(item.rect);
 }
 
-/** One `element-bounds` event item (F8, NOOP-289 決定 G1) — `rect`: full container-chain box in the slide's own coordinate system (`elementBounds`'s old output space); `local`: the element's own bbox before its own transform. */
+/** One `element-bounds` event item (decision G1) — `rect`: full container-chain box in the slide's own coordinate system (`elementBounds`'s old output space); `local`: the element's own bbox before its own transform. */
 interface ElementBoundsItem {
   id: string;
   rect: Rect;
@@ -1043,11 +1044,11 @@ interface RotateGesture {
  * never moves; only the declared width changes, and the box's local
  * origin (its top-left corner, per `textBounds`'s own contract) stays
  * exactly where it started regardless of which handle is dragged. See the
- * PR body's 風險與未處理項 for what this means for the LEFT handle's own
+ * known risks and unhandled cases for what this means for the LEFT handle's own
  * on-screen position during the drag.
  */
 /**
- * Textbox mid-edge width drag (F8, NOOP-289 決定 (b)): no font is fetched
+ * Textbox mid-edge width drag: no font is fetched
  * any more — the drag only ever touches `data-slidra-text-width`, never the
  * `<text>` content (the runtime's `selectionClientRect` computes the
  * live-previewed box from the element's own unchanged bbox + this width,
@@ -1146,11 +1147,14 @@ function cornerPoint(corner: "nw" | "ne" | "sw" | "se", box: Rect): { x: number;
 }
 
 /**
- * #303 背景圖片面板："選現有檔案" 下拉選單的資料來源 — `GET /api/assets`
- * 回傳 `assets/` 底下目前有的檔案，供直接選用（不需要重新上傳）。與
- * `CanvasController` 無關，不隨某個 slide 的載入/reload 生命週期走，所以
- * 是獨立的頂層函式而非控制器方法。失敗時回傳空陣列而非拋出——下拉選單
- * 空著仍可用（比如上傳新檔），不值得讓整個面板因此壞掉。
+ * Background image panel: the data source for the "Choose existing file"
+ * dropdown — `GET /api/assets` returns the files currently under `assets/`,
+ * ready to pick directly (no re-upload needed). Unrelated to
+ * `CanvasController`, and doesn't follow any particular slide's
+ * load/reload lifecycle, so it's a standalone top-level function rather
+ * than a controller method. Returns an empty array rather than throwing on
+ * failure — the dropdown still works empty (e.g. by uploading a new file),
+ * and it's not worth breaking the whole panel over this.
  */
 export async function fetchAssetList(): Promise<string[]> {
   try {
@@ -1167,11 +1171,11 @@ export async function fetchAssetList(): Promise<string[]> {
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
   // The selected slide lives here, not in React (ADR-0001/ADR-0002): the
-  // 投影片 on screen is the artifact, not something React computes from
+  // slide on screen is the artifact, not something React computes from
   // state. React subscribes to read it and issues commands to change it.
   let slides: string[] = [];
   let currentIndex = -1;
-  // [E2.T11]: the page currently on screen's own enter/exit transition,
+  // The page currently on screen's own enter/exit transition,
   // read fresh from its markup by renderPlay() (or migrateLegacyTransition
   // vintage — every slide has a resolved value even when it never set one
   // explicitly). playExitTransition() reads this rather than re-fetching —
@@ -1183,17 +1187,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   };
   // True for the duration of one playExitTransition() call. A second
   // forward-navigation request arriving mid-exit is dropped outright, not
-  // queued (§4.6 决定: "不得排隊、不得疊播") — see that function's own
+  // queued (§4.6 decision: "no queueing, no stacking") — see that function's own
   // comment.
   let exiting = false;
   let mode: CanvasMode = "view";
-  // #303: the paint key (`slidePaintKey`) of the slide the view-mode iframe
+  // The paint key (`slidePaintKey`) of the slide the view-mode iframe
   // currently shows, or null whenever `srcdoc` was last set by something
   // other than `render()` (empty deck, play/preview, a rebuilt frame) —
   // those never count as "already painted". `render()` compares against
   // it to skip a repaint that would show the exact same picture.
   let paintedView: { slidePath: string; key: string } | null = null;
-  // #303: the play-mode twin of `paintedView`. A live reload while playing
+  // The play-mode twin of `paintedView`. A live reload while playing
   // (`reload()` → `renderPlay(…, playEnter=false)`) used to reassign
   // `srcdoc` unconditionally, which restarts the play runtime — the step
   // position jumps back to the start and the page blinks — even when the
@@ -1203,13 +1207,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let paintedPlay: { slidePath: string; key: string } | null = null;
   let playerHasFocus = false;
   let error: string | null = null;
-  // [E2.T7]/D8: the selection Preview entered from, restored (top-level ids
+  // The selection Preview entered from, restored (top-level ids
   // only — drill-in group scope is not preserved, a deliberate
   // simplification) once the runtime posts "preview-done" and this module
   // returns to view mode. `null` between previews.
   let previewReturnSelectionIds: string[] | null = null;
-  // The elements the author has selected in view mode (ADR-0011/#56,
-  // extended by NOOP-91 to a list). Cleared (with notify()) whenever the
+  // The elements the author has selected in view mode (ADR-0011,
+  // extended to a list). Cleared (with notify()) whenever the
   // slide changes, reload() runs, play() is entered, or exitPlay()
   // returns — a selection surviving a page change would point at a
   // different slide's DOM entirely.
@@ -1218,22 +1222,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
   // selectionIds/Names everywhere they are cleared (see that comment).
   let selectionGroupPath: string[] = [];
-  // [E2.T18]: `paste-offset.ts`'s own state, one instance per editor session
+  // `paste-offset.ts`'s own state, one instance per editor session
   // (that module's own doc comment) — advanced by a successful `copySelection`/
   // `cutSelection`/`pasteFromText`, never by a `table cell paste` (offsets
   // are an element-clipboard-only concept).
   let pasteOffsetState: PasteOffsetState = INITIAL_PASTE_OFFSET_STATE;
-  // [E2.T18] 計畫「補充 (b)」：儲存格範圍選取的路由縫，恆回 null 直到
-  // [E2.T14] 合併並換上真正的實作——見 `clipboard/dispatch.ts`'s
-  // `CellRangeProvider` doc comment.
+  // Cell-range-selection routing seam (plan "supplement (b)"): always
+  // returns null until a real implementation replaces it — see
+  // `clipboard/dispatch.ts`'s `CellRangeProvider` doc comment.
   const cellRangeProvider: CellRangeProvider = () => null;
-  // NOOP-227: the element(s) a just-finished insert/paste command created,
+  // The element(s) a just-finished insert/paste command created,
   // still waiting for the reload()/render() its own write triggers over
   // /api/events. reload() would otherwise clear the selection like every
   // other reload — this is the one case where the id(s) ARE trustworthy,
   // because this module made them moments ago. Consumed (set back to null)
   // by the render() that follows, whether or not any id still resolves.
-  // Extended by NOOP-275/#156 from a single id to a list, so a multi-element
+  // Extended from a single id to a list, so a multi-element
   // paste selects everything it created rather than just the first one.
   let pendingSelectionIds: string[] | null = null;
   // True from a committed gesture until render() has re-selected
@@ -1244,14 +1248,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
   let dragSignal = 0;
-  // NOOP-83 §4/§2.1(c): Stage.tsx's subscribers to the on-slide wheel/
-  // pointer/Space relay, and the last 抓取模式 value `setStageHandMode` was
+  // §4/§2.1(c): Stage.tsx's subscribers to the on-slide wheel/
+  // pointer/Space relay, and the last hand/grab-mode value `setStageHandMode` was
   // told to apply — resent to the runtime whenever it reports
   // "runtime-ready" (a slide change rebuilds the srcdoc and loses whatever
   // the previous document's `stageHandMode` variable held).
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let stageHandMode = false;
-  /** [E5.T7]/F-17: `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `stageInputListeners`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
+  /** `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `stageInputListeners`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
   const stageHoverListeners = new Set<(point: { x: number; y: number }) => void>();
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
   // bounds/ancestors, kept in the runtime's OWN
@@ -1343,13 +1347,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // gestures can compute bounding boxes/candidates without re-fetching —
   // reset on every render() alongside the selection.
   let currentSlideModel: SlideModel | null = null;
-  // E2.T12: the current slide's raw SVG text, kept so `notifyChartWindow`
+  // The current slide's raw SVG text, kept so `notifyChartWindow`
   // can re-derive the open chart's `ChartModel` (`readChartModel`) after
   // every render() without a second fetch — the chart data window is the
   // one caller that needs the actual bytes, not just the parsed
   // `SlideElement` shape `currentSlideModel` carries.
   let currentSlideMarkup: string | null = null;
-  // F8 (NOOP-289 決定 G1): every id-carrying element's bounding box, as the
+  // Decision G1: every id-carrying element's bounding box, as the
   // runtime last reported it (`element-bounds`, selection-runtime.js's
   // `reportElementBounds`) — the browser has no bundled font-metrics engine
   // any more to compute one from the parsed model, so this replaces core's
@@ -1605,10 +1609,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // already checks).
       else if (message.key === "ArrowLeft") void previous();
       else if (message.key === "ArrowRight") void next();
-      // [E2.T18] 計畫 §3.8/A0：與 App.tsx 的 keydown handler 同一套非同步
-      // `navigator.clipboard` 邏輯，只是觸發源是「焦點在 iframe 內時的 stage-key
-      // 轉送」而不是父文件自己的 keydown——兩條路徑呼叫同一組 controller
-      // 方法，不會漂移。
+      // Plan §3.8/A0: the same async `navigator.clipboard` logic as
+      // App.tsx's keydown handler, just triggered by the relayed
+      // "stage-key" from focus inside the iframe rather than the parent
+      // document's own keydown — the two paths call the same set of
+      // controller methods, so they never drift apart.
       else if (message.key === "c" && (modifiers.meta || modifiers.ctrl)) {
         void copySelection().then((svg) => {
           if (svg) void navigator.clipboard.writeText(svg);
@@ -1704,7 +1709,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "text-edit-input") {
       if (!editingState || message.id !== editingState.id) return;
-      // 決定 T1: no repaint round trip any more — the runtime already
+      // Decision T1: no repaint round trip any more — the runtime already
       // repainted itself before sending this report (its own `input`
       // handler). This side only mirrors the string for commitTextEdit.
       editingState.currentText = typeof message.text === "string" ? message.text : "";
@@ -1720,7 +1725,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // begin-text-edit (defense in depth — the dblclick path never even
       // reaches here, since findSelectable already refuses to resolve a
       // locked element to a click target). No error: this mirrors the
-      // silent "不進入編輯" the dblclick path gives a locked box.
+      // silent "don't enter edit mode" the dblclick path gives a locked box.
       if (editingState && editingState.id === message.id) {
         endEditingLease();
         editingState = null;
@@ -1760,7 +1765,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "runtime-ready") {
       // A fresh srcdoc (slide change) starts its own copy of
       // selection-runtime.js with `stageHandMode = false` — re-push this
-      // side's last-known value so 抓取模式 does not silently drop on
+      // side's last-known value so hand/grab mode does not silently drop on
       // every slide change (§2.1(c)).
       postToFrame({ command: "stage-mode", hand: stageHandMode });
       // [E2.T7]/D9: a fresh document has never been asked to measure
@@ -1873,7 +1878,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     for (const listener of tableRangeListeners) listener(tableRange);
   }
 
-  /** `CanvasController.setTableRange` (E2.T14r2 §4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
+  /** `CanvasController.setTableRange` (§4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
   function setTableRange(value: { tableId: string; range: CellRange } | null): void {
     tableRange = value;
     notifyTableRange();
@@ -1881,8 +1886,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * `CanvasController.handleTableRangeKey` (E2.T14r2 §4.1, "本輪唯一的新設
-   * 計") — the single decision function for every cell-range keyboard
+   * `CanvasController.handleTableRangeKey` (§4.1) — the single decision function for every cell-range keyboard
    * shortcut. Both `handleSelectionMessage`'s "table-key" branch above (the
    * iframe relay) and App.tsx's capture-phase keydown listener call this
    * exact function, never a copy of its logic, so the two input paths
@@ -2209,9 +2213,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * Whitelisted commands whose result (NOOP-227, extended by NOOP-275/#156)
-   * should become the selection once this write's own reload lands — the
-   * Ribbon's insert actions (`textbox add`, `element insert`: 矩形/橢圓/線)
+   * Whitelisted commands whose result should become the selection once
+   * this write's own reload lands — the Ribbon's insert actions
+   * (`textbox add`, `element insert`: rectangle/ellipse/line)
    * and paste (`element paste`). The value says which shape that command's
    * `data` uses: `"elementId"` for the single-element commands' existing
    * string field, `"elementIds"` for paste's array field. This is purely a
@@ -2378,7 +2382,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     pushSelectionToRuntime(selectionIds);
   }
 
-  /** ⌘A: every TOP-LEVEL element on the current slide — never a group's own children, matching `05-INTERACTIONS.feature`'s "本頁頂層所有元素" wording. `groupPath` resets to top level, same as any other host-driven selection change. */
+  /** ⌘A: every TOP-LEVEL element on the current slide — never a group's own children, matching `05-INTERACTIONS.feature`'s "every top-level element on this page" wording. `groupPath` resets to top level, same as any other host-driven selection change. */
   function selectAll(): void {
     if (mode !== "view" || !currentSlideModel) return;
     if (currentSlideModel.elements.length === 0) return;
@@ -2390,10 +2394,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * [E2.T7]: selects exactly `ids` (only the ones that still resolve in
+   * Selects exactly `ids` (only the ones that still resolve in
    * `currentSlideModel`, same tolerance `selectOnceLoaded` already gives a
-   * stale id) — the stage badge layer's click-to-select (D9's GUI table:
-   * "點徽章 → 選取該元素"), the one host-driven selection entry point that
+   * stale id) — the stage badge layer's click-to-select ("click badge →
+   * select that element"), the one host-driven selection entry point that
    * did not already exist (`selectAll` picks every top-level element,
    * nothing picks one arbitrary id by name). Same shape as `selectAll`
    * immediately above. `groupPath` resets to top level — a badge is drawn
@@ -2438,7 +2442,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * ⌘C, or the ContextBar Copy button (F8, NOOP-289 決定 (d)): sends
+   * ⌘C, or the ContextBar Copy button (decision (d)): sends
    * `element copy` and returns the `svg` it replies with — the exact bytes
    * `navigator.clipboard.writeText` should receive (the caller does the
    * actual write, mirroring `cutSelection`). Never mutates the
@@ -2457,12 +2461,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /**
    * ⌘X, or the ContextBar Cut button: `element cut` replaces the former
-   * "local serialize + `element delete`" pair (決定 (d)/C2) — the CLI does
+   * "local serialize + `element delete`" pair (decision (d)/C2) — the CLI does
    * both in one write, returning the same `svg` shape `element copy` does.
    * Awaited before the caller writes `navigator.clipboard`, since there is
-   * no synchronous ClipboardEvent to race against (計畫 §3.8/A0 記錄:
-   * headless Chromium 底下 keyboard-only ⌘X 不會觸發原生 `cut` 事件，改走
-   * 非同步 `navigator.clipboard` API，見 App.tsx 的 keydown handler)。
+   * no synchronous ClipboardEvent to race against (per plan §3.8/A0: under
+   * headless Chromium, keyboard-only ⌘X does not trigger a native `cut`
+   * event, so this falls back to the async `navigator.clipboard` API — see
+   * App.tsx's keydown handler).
    */
   async function cutSelection(): Promise<string | null> {
     if (mode !== "view" || selectionIds.length === 0 || currentIndex === -1) return null;
@@ -2788,7 +2793,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // "ne"/"se" like the right edge (`computeTextboxWidth` only ever reads
     // the horizontal component of the drag). Core's `element scale`
     // command itself is untouched — this is purely a front-end handle
-    // remapping (§2 第 8 條).
+    // remapping (§2 item 8).
     if (entry.element.textWidth !== null) {
       beginTextboxWidthGesture(point, corner === "nw" || corner === "sw" ? "left" : "right");
       return;
@@ -2816,7 +2821,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (!forceUniform) {
       // `elementBoundsById`'s `local` entry is exactly the box `elementBounds({
       // ancestors: [invertMatrix(own matrix)] })` used to fake by cancelling
-      // the chain out (F8, NOOP-289 決定 G1) — the runtime reports it
+      // the chain out (decision G1) — the runtime reports it
       // directly (`getBBox()`) instead. Absent (unmeasurable — jsdom, or a
       // genuinely gone element) or a degenerate own-matrix both fall back to
       // uniform-only rather than refusing the gesture outright.
@@ -2869,17 +2874,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     postToFrame({ command: "preview", items: [{ id: gesture.id, transform: gesture.original.transform ?? "" }] });
   }
 
-  /** Minimum size a live resize preview/commit is clamped to — 3% of the slide's own width, 0.6% of its height (05-INTERACTIONS.feature「縮放」). The command layer does not enforce this (決定 7: purely a GUI usability floor). */
+  /** Minimum size a live resize preview/commit is clamped to — 3% of the slide's own width, 0.6% of its height (05-INTERACTIONS.feature's "resize" scenario). The command layer does not enforce this (decision 7: purely a GUI usability floor). */
   function minResizeSize(): { width: number; height: number } {
     return { width: 0.03 * viewport!.viewBox.width, height: 0.006 * viewport!.viewBox.height };
   }
 
   /**
    * Clamps a slide-frame (viewBox-space) point to the slide's own boundary —
-   * 05-INTERACTIONS.feature「縮放」's "不超出投影片": dragging a resize
-   * handle past the visible edge of the slide must not push the dragged
-   * corner any further than that edge, no matter how the target itself is
-   * rotated or nested. Same GUI-only floor as `minResizeSize` (決定 7).
+   * 05-INTERACTIONS.feature's "resize" scenario, "never exceeds the slide":
+   * dragging a resize handle past the visible edge of the slide must not
+   * push the dragged corner any further than that edge, no matter how the
+   * target itself is rotated or nested. Same GUI-only floor as
+   * `minResizeSize` (decision 7).
    */
   function clampToViewBox(point: { x: number; y: number }): { x: number; y: number } {
     const box = viewport!.viewBox;
@@ -3120,11 +3126,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
-  // --- Textbox-width handles (F8, NOOP-289 決定 (b): 拖曳中只更新框，<text> 不動) ---
+  // --- Textbox-width handles (decision (b): only the box updates during the drag, the <text> stays put) ---
 
   function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
+    // silently returns {x:0,y:0} when viewport hasn't arrived yet.
     if (!viewport) return;
     if (selectionIds.length !== 1) return;
     const id = selectionIds[0];
@@ -3204,7 +3210,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     keepSelectionAcrossReload();
   }
 
-  // --- Chart data window (F8, NOOP-289 決定 (c): no local preview any more) ---
+  // --- Chart data window (decision (c): no local preview any more) ---
 
   /** `CanvasController.closeChartWindow` (Esc): just closes the window — every control already commits straight to a `chart *` command, so there is nothing local left to revert. */
   function closeChartWindow(): void {
@@ -3212,7 +3218,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notifyChartWindow();
   }
 
-  // --- In-place text editing (NOOP-91/#70 US1, T5; F8/NOOP-289 決定 T1) ---
+  // --- In-place text editing (decision T1) ---
 
   /**
    * Opens `id` for editing — the shared entry point for `beginTextEdit`
@@ -3224,7 +3230,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * "begin-text-edit"/"text-edit-denied" round trip below and
    * selection-runtime.js's `enterRuntimeTextEdit`.
    *
-   * 決定 T1: no font is fetched and no layout is computed here any more —
+   * Decision T1: no font is fetched and no layout is computed here any more —
    * `begin-text-edit` carries only `{ id, text }`. The runtime repaints the
    * edited `<text>` itself, entirely locally, on every keystroke (one hard
    * break per line, zero measurement); this side only ever mirrors the
@@ -3288,7 +3294,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // path relies on.
   }
 
-  // --- Marquee select (§4.8's "框選" row) ---
+  // --- Marquee select (§4.8's "marquee select" row) ---
 
   function beginMarqueeGesture(point: { x: number; y: number }): void {
     activeGesture = { kind: "marquee", startClient: point };
@@ -3373,7 +3379,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     await renderPlay(thisGeneration, "first", true);
   }
 
-  /** Mirrors advancePastEnd() exactly, in reverse (#46, decision 六) — except retreat never plays an exit (§4.6 决定 7: `prev()` in the prototype is a plain `go()`, no `goWithExit`). */
+  /** Mirrors advancePastEnd() exactly, in reverse (decision 6) — except retreat never plays an exit (§4.6 decision 7: `prev()` in the prototype is a plain `go()`, no `goWithExit`). */
   async function retreatPastStart(): Promise<void> {
     // At the very start of the presentation, retreating does nothing —
     // there is nowhere further back to go, and this must not throw.
@@ -3413,7 +3419,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     // A gesture in progress when an external change lands must be
     // abandoned, not applied on top of a slide that has already moved out
-    // from under it (§4.2's "拖曳中投影片被 /api/events 通知變更" row).
+    // from under it (§4.2's "slide changed via /api/events notification
+    // mid-drag" row).
     // Clearing it here — before the fetch below — is enough: render()
     // replaces the whole srcdoc, which discards any DOM preview the old
     // gesture painted, and any gesture-move/-end message that still
@@ -3654,10 +3661,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * both the plan and the runtime into the srcdoc. An effect list the
    * parser rejects surfaces through `error` instead of being applied.
    *
-   * `startAt` (#46, decision 五): "first" is every existing caller's
+   * `startAt` (decision 5): "first" is every existing caller's
    * behaviour, unchanged. "last" is a parent-side intent used only by
    * retreatPastStart() — the wire integer (`plan.steps.length - 1`, or
-   * `-1` for a slide with no effects at all, decision 三) is computed here,
+   * `-1` for a slide with no effects at all, decision 3) is computed here,
    * after computePlayerPlan() has run, because only the parent knows the
    * slide's step count. The sentinel itself never travels over the wire.
    *
@@ -3717,13 +3724,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
       hideStyle = renderHideStyle(plan.hidden);
-      // [E2.T11]: a slide whose <slidra:transition> is present but malformed
+      // A slide whose <slidra:transition> is present but malformed
       // (§4.2: an unknown effect value, an illegal duration, more than one
       // node) surfaces through the exact same `error` banner + static-
       // fallback path a broken effect list already does, rather than a
       // second, differently shaped failure mode — `plan.transition` comes
       // from the SAME `computePlayerPlan` call above, so a malformed
-      // transition fails this same `try` (F8, NOOP-289 決定 E1: riding
+      // transition fails this same `try` (decision E1: riding
       // along on `computePlayerPlan`'s own `fetchSlideEffectPlan` call
       // rather than a second one, since even a cache-hit await is one more
       // microtask on a path PlayChrome.tsx's 2.5s auto-hide timer races
@@ -3833,7 +3840,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    *
    * Returns `false` when the caller must NOT proceed to the page change at
    * all: either a forward request arrived while an earlier one is still
-   * exiting (§4.6 决定: ignored outright, never queued or stacked), or
+   * exiting (§4.6 decision: ignored outright, never queued or stacked), or
    * `generation` moved on mid-exit — some other navigation (reload(),
    * exitPlay(), a second showSlide()) superseded this one, and the caller
    * must abandon its own page change rather than apply it on top.
@@ -3878,7 +3885,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (!(await playExitTransition(thisGeneration))) return;
     }
     currentIndex = index;
-    // E2.T12 plan §4.5: "切換投影片時關閉" — a chart window's edits target
+    // Plan §4.5: "close on slide change" — a chart window's edits target
     // a specific element id on the slide being left; render()'s own
     // notifyChartWindow() below would eventually close it anyway (the id
     // resolves on the wrong slide), but that happens after the slide fetch
@@ -4075,7 +4082,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * 樣式面板 (NOOP-143 §1 decision 4, §4.6): one `element style set` call
+   * Style panel (§1 decision 4, §4.6): one `element style set` call
    * carrying every currently-selected id, so one undo reverts the whole
    * multi-selection edit at once — the same "one call, not one per id"
    * shape `endMoveGesture` above uses for `element move`. No optimistic
@@ -4492,13 +4499,17 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
  * blank page.
  */
 /**
- * 沒有任何投影片時塞進 iframe 的文件：完全空白、**背景透明**。
+ * The document put into the iframe when there are no slides at all:
+ * entirely empty, with a **transparent background**.
  *
- * 舊版走 `wrapSlideDocument`，於是一份還沒有投影片的簡報在舞台上是一張
- * 16:9 的白紙（那個包裝函式的 body 寫死 `background:#fff`），看起來像「有
- * 一頁空白投影片」——但實際上一頁都沒有。透明之後井底的深色直接透出來，
- * 「現在沒有投影片」這句話改由父文件的 `.stage-empty` 用白字說（Stage.tsx），
- * 字級與顏色才吃得到殼的 design token。
+ * The previous version went through `wrapSlideDocument`, so a presentation
+ * with no slides yet showed a blank 16:9 white sheet on the stage (that
+ * wrapper function's body hardcodes `background:#fff`), which looked like
+ * "there's one blank slide" — when actually there are none at all. With
+ * transparency, the dark well underneath shows through directly, and "no
+ * slides right now" is instead said by the parent document's
+ * `.stage-empty` in white text (Stage.tsx), so the font size and color can
+ * pick up the shell's design tokens.
  */
 const EMPTY_DECK_DOCUMENT =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:transparent"></body></html>';

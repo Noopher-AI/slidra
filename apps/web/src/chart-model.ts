@@ -24,7 +24,7 @@ export const CHART_MIN_CATEGORIES = 2;
 export const CHART_MAX_CATEGORIES = 60;
 export const CHART_MIN_SERIES = 1;
 export const CHART_MAX_SERIES = 12;
-/** `chart create`'s own, tighter caps (原型插入面板的邊界). */
+/** `chart create`'s own, tighter caps (the insert panel's boundary). */
 export const CHART_CREATE_MAX_SERIES = 4;
 export const CHART_CREATE_MAX_CATEGORIES = 12;
 

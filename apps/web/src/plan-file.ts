@@ -1,5 +1,5 @@
 /**
- * #303: reads the machine-readable head of `plan/outline.md` — the plan
+ * Reads the machine-readable head of `plan/outline.md` — the plan
  * file `slidra-plan` writes through `slidra plan set` (contract §1: a
  * leading ```json fence, then free markdown). Only the fence is parsed;
  * the markdown body is for people and the agent.
@@ -14,7 +14,7 @@
 
 export type PlanPageType = "cover" | "section" | "bullets" | "compare" | "number" | "closing";
 export type PlanRhythm = "anchor" | "dense" | "breathing";
-/** #303 §A': what the page's content IS. Required — the geometry has to carry it. */
+/** What the page's content IS. Required — the geometry has to carry it. */
 export type PlanRelationship =
   | "order"
   | "link"
@@ -214,7 +214,7 @@ export interface PlanAnswers {
   choices: Record<string, string>;
   /** question id → the author's own line, only for questions with `free_text` and a non-empty entry */
   notes: Record<string, string>;
-  /** the bottom 整體補充 textarea, may be empty */
+  /** the bottom "overall" textarea, may be empty */
   overall: string;
 }
 

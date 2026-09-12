@@ -10,7 +10,7 @@ import { ChartWindow } from "./ChartWindow.js";
 import { EmbedLayer } from "./EmbedLayer.js";
 
 /**
- * [E2.T8]: the comment overlay's own state, resolved by `App.tsx` (it owns
+ * The comment overlay's own state, resolved by `App.tsx` (it owns
  * the deck-wide comment list and the current selection) and threaded down
  * here so `OverlayLayer` only has to turn it into props for `ContextBar` /
  * `SelectionOverlay` / `CommentLayer` — none of which know about comments
@@ -36,14 +36,14 @@ export interface OverlayLayerProps {
   controller: CanvasController | null;
   /** `.canvas-area`'s own ref (Stage.tsx) — `.stage-overlays` is positioned relative to it, so every value `controller.subscribeOverlay` reports (parent-document client px) needs this element's own `getBoundingClientRect()` subtracted before it means anything as a `left`/`top` CSS value here. */
   wellRef: RefObject<HTMLDivElement | null>;
-  /** [E2.T7]：情境列的 Edit animation 按鈕。 */
+  /** The context bar's Edit animation button. */
   onEditAnimation(): void;
-  /** #200 §4.5：情境列的 Edit style 按鈕。 */
+  /** The context bar's Edit style button. */
   onEditStyle(): void;
-  /** [E2.T7]/D9：右欄停在 Animate 分頁且非播放／預覽模式時才顯示舞台編號徽章——這兩個條件都不屬於 `OverlayState`，由呼叫方（Stage.tsx）判斷後傳下來。 */
+  /** The stage's numbered animation badges only show while the right rail sits on the Animate tab and the app is not in play/preview mode — neither condition belongs to `OverlayState`, so the caller (Stage.tsx) resolves them and passes the result down. */
   showBadges: boolean;
   comment: CommentOverlayProps;
-  /** [E5.T3]：`state.mode !== "play"`（Stage.tsx）。`OverlayLayer` 本身無條件掛載——`.stage-widgets` 必須在播放模式也留著給 `EmbedLayer`——所以由這個 prop 而非外部的掛載/卸載，決定幾何層與其餘所有可互動子層要不要存在。 */
+  /** `state.mode !== "play"` (Stage.tsx). `OverlayLayer` itself is unconditionally mounted — `.stage-widgets` has to stay around in play mode for `EmbedLayer` — so this prop, rather than an external mount/unmount, decides whether the geometry layer and every other interactive child layer exist. */
   shellVisible: boolean;
   children?: ReactNode;
 }
@@ -59,7 +59,7 @@ const EMPTY_OVERLAY: OverlayState = {
 };
 
 /**
- * [E5.T7]/F-17 決定 8: how long the pointer must stay over/away from the
+ * How long the pointer must stay over/away from the
  * context bar before it flips ghost<->solid — see `createHoverSolidifier`'s
  * own doc comment for the flicker-prevention contract these gate. Exported
  * for the unit tests that pin these exact values (and for `03-UI_RATIONALE.md`
@@ -68,7 +68,7 @@ const EMPTY_OVERLAY: OverlayState = {
 export const HOVER_SOLIDIFY_MS = 120;
 export const HOVER_GHOST_MS = 250;
 
-/** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer (NOOP-91 round-2 FAIL #4). */
+/** `controller.subscribeOverlay`'s parent-document client px -> `.stage-overlays`-relative px, given the well's own `getBoundingClientRect()` offset. Exported so the coordinate math itself is directly unit-testable without mounting the whole layer. */
 export function toLocalPoint(
   point: { x: number; y: number },
   offset: { x: number; y: number },
@@ -85,7 +85,7 @@ export function toLocalRect(
 }
 
 /**
- * [E5.T7]/F-17: the context bar's own hover-solidify state (`.is-solid`
+ * The context bar's own hover-solidify state (`.is-solid`
  * ghost/solid toggle, `stage-overlays.css`) needs "is this point on top of
  * the bar right now", against `rect` (`barRef.current.getBoundingClientRect()`)
  * — both `point` and `rect` are parent-document client px, same space
@@ -102,11 +102,15 @@ export function pointInsideRect(
 }
 
 /**
- * [E5.T7]/F-17 決定 8: ghost（半透明＋`pointer-events:none`）/solid（不透明＋
- * `pointer-events:auto`）之間的雙延遲防閃爍——進入 rect 停留 `solidifyMs` 才轉
- * solid，離開 rect 停留 `ghostMs` 才轉回 ghost；未滿延遲就反向的中途動作（快速
- * 掃過、邊界抖動）取消還在等待的計時器，兩態都不因此提早或誤判切換。
- * `onChange` 只在狀態真的改變時呼叫一次，不是每次 `update()` 都呼叫。
+ * Anti-flicker double-delay between ghost (translucent + `pointer-events:none`)
+ * and solid (opaque + `pointer-events:auto`): entering the rect requires
+ * staying inside for `solidifyMs` before switching to solid, leaving it
+ * requires staying outside for `ghostMs` before switching back to ghost; a
+ * mid-transition reversal before either delay elapses (a quick pass-through,
+ * edge jitter) cancels the pending timer, so neither state ever switches
+ * early or by mistake.
+ * `onChange` is called exactly once when the state actually changes, not on
+ * every `update()` call.
  */
 export function createHoverSolidifier(
   onChange: (solid: boolean) => void,
@@ -133,8 +137,8 @@ export function createHoverSolidifier(
     update(inside: boolean) {
       if (inside === solid) {
         // Already in the target state — cancel whatever transition (the
-        // other direction) might still be pending, same "边界抖动不来回
-        // 闪" contract as a same-direction repeat.
+        // other direction) might still be pending, same "edge jitter never
+        // flickers back and forth" contract as a same-direction repeat.
         clearTimer();
         return;
       }
@@ -153,23 +157,27 @@ export function createHoverSolidifier(
 }
 
 /**
- * 舞台疊層：[E5.T3] 兩層化之後回傳兩個容器的 fragment，坐在 `.canvas` 上
- * 方，且**不**隨 `.stage` 的縮放/平移 transform 一起變形（`getBoundingClientRect()`
- * 換算全部由這裡的 `toLocal*` 做，讀 `wellRef` 當下的框）：
- * - `.stage-geometry`：GuideLayer（吸附輔助線）＋ BadgeLayer（動畫編號徽
- *   章），整層 `pointer-events: none !important`（stage-overlays.css），
- *   只在 `shellVisible` 時掛載。
- * - `.stage-widgets`：EmbedLayer 固定第一個子節點（播放模式也要留著，見
- *   `shellVisible` 之外那段），其餘（SelectionOverlay／ContextBar：Order／
- *   Duplicate／Delete 已接功能，其餘為佈局佔位；CommentLayer／TableOverlay／
- *   ChartWindow／children）跟幾何層一樣只在 `shellVisible` 時掛載。無條件
- *   掛載本身（見 render）。
+ * The stage overlay: after splitting into two layers, this returns a
+ * fragment of two containers that sit above `.canvas` and do **not** deform
+ * along with `.stage`'s own zoom/pan transform (all `getBoundingClientRect()`
+ * conversion happens here via `toLocal*`, reading `wellRef`'s current box):
+ * - `.stage-geometry`: GuideLayer (snap alignment guides) + BadgeLayer
+ *   (animation number badges), the whole layer `pointer-events: none !important`
+ *   (stage-overlays.css), mounted only while `shellVisible`.
+ * - `.stage-widgets`: EmbedLayer is fixed as the first child (kept in play
+ *   mode too — see the note outside the `shellVisible` gate below); the rest
+ *   (SelectionOverlay/ContextBar — Order/Duplicate/Delete are wired up,
+ *   the rest are layout placeholders; CommentLayer/TableOverlay/
+ *   ChartWindow/children) mount only while `shellVisible`, same as the
+ *   geometry layer. The container itself is always mounted (see render).
  *
- * 座標只在 `controller.subscribeOverlay` 推送新狀態時重新讀 `wellRef` 的框。
- * 單純縮放/平移舞台（Stage.tsx 的 zoomPan state）不會讓 runtime 重發
- * bounds，所以 Stage.tsx 在 zoomPan 變化後呼叫 `controller.refreshOverlay()`
- * 讓 canvas.ts 用新的 frame 位置重算並再推一次——標籤/情境列/右鍵選單因此
- * 跟著投影片走，不用等下一次選取變化。
+ * Coordinates are only re-read from `wellRef`'s box when
+ * `controller.subscribeOverlay` pushes a new state. A pure zoom/pan of the
+ * stage (Stage.tsx's zoomPan state) does not make the runtime re-send
+ * bounds, so Stage.tsx calls `controller.refreshOverlay()` after a zoomPan
+ * change so canvas.ts recalculates from the new frame position and pushes
+ * again — labels/context bar/right-click menu therefore track the slide
+ * without waiting for the next selection change.
  */
 export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle, showBadges, comment, shellVisible, children }: OverlayLayerProps) {
   const [overlay, setOverlay] = useState<OverlayState>(EMPTY_OVERLAY);
@@ -183,10 +191,11 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
     hoverSolidifierRef.current = createHoverSolidifier(setContextBarSolid, HOVER_SOLIDIFY_MS, HOVER_GHOST_MS);
   }
 
-  // [E5.T3]：`OverlayLayer` 現在無條件掛載（見下方 render），所以這三個訂閱
-  // 各自加上 `shellVisible` 閘門，讓「播放模式不訂閱、狀態重設為空」與兩層
-  // 化之前逐字相同——`EmbedLayer` 不受影響，它訂閱的是自己的
-  // `subscribeEmbeds`，不經過這裡。
+  // `OverlayLayer` is now unconditionally mounted (see render below), so
+  // each of these three subscriptions gets its own `shellVisible` gate,
+  // keeping "no subscription in play mode, state reset to empty" identical
+  // to before the two-layer split — `EmbedLayer` is unaffected, since it
+  // subscribes to its own `subscribeEmbeds` and doesn't go through here.
   useEffect(() => {
     if (!controller || !shellVisible) {
       setOverlay(EMPTY_OVERLAY);
@@ -195,7 +204,7 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
     return controller.subscribeOverlay(setOverlay);
   }, [controller, shellVisible]);
 
-  // [E5.T7]/F-17: the context bar's own hover tracking — two sources feed
+  // The context bar's own hover tracking — two sources feed
   // the same `pointInsideRect` check because the pointer crosses in and out
   // of the sandboxed iframe freely: `subscribeStageHover` while it is over
   // the slide, this component's own `window.mousemove` for everywhere else
@@ -220,15 +229,16 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
     };
   }, [controller, shellVisible]);
 
-  // [E5.T7]/F-17 契約表：rect 為 null（沒有選取，或正在拖曳）立即重設 ghost、
-  // 清掉待處理的計時器——不用等下一次 hover 事件才發現「已經沒有列可以停留」。
+  // When rect is null (no selection, or a drag in progress), reset to ghost
+  // immediately and clear any pending timer — no need to wait for the next
+  // hover event to discover "there's no bar left to hover over".
   useEffect(() => {
     if (overlay.union === null || overlay.dragging) {
       hoverSolidifierRef.current?.reset();
     }
   }, [overlay.union, overlay.dragging]);
 
-  // E2.T14 §0(b): a single selected table renders `TableOverlay` — this is
+  // A single selected table renders `TableOverlay` — this is
   // the one place `OverlayLayer` looks at the raw selection/slide state
   // (`OverlayState` itself has no element-kind info), self-contained so no
   // new prop needs threading through `Stage.tsx`/`App.tsx`.
@@ -244,7 +254,7 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
     });
   }, [controller, shellVisible]);
 
-  // E2.T12 plan §3.6/§4.5: the chart data window's own state, self-
+  // The chart data window's own state, self-
   // subscribed here rather than threaded through Stage.tsx/App.tsx —
   // `controller` (which is all `subscribeChartWindow`/`closeChartWindow`/
   // `previewChart` need) already reaches this component, the same way
@@ -283,7 +293,7 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
         </div>
       )}
       <div className="stage-widgets">
-        {/* [E2.T17]：deliberately the first child so its React position index
+        {/* Deliberately the first child so its React position index
             stays 0 across the `shellVisible` toggle below — a remount here
             would reload the iframe (video restarts from the top). Kept
             playing in play mode too, unlike everything after it. */}
@@ -303,9 +313,10 @@ export function OverlayLayer({ controller, wellRef, onEditAnimation, onEditStyle
               onComment={comment.onOpenForSelection}
               onOrder={(direction) => void controller?.orderSelection(direction)}
               onCopy={() => {
-                // [E2.T18] 計畫 §3.8/A0：headless Chromium 實測，鍵盤與按鈕都一律
-                // 走非同步 `navigator.clipboard` API（見 canvas.ts controller 與
-                // App.tsx keydown handler 的說明）——這裡與 ⌘C 是同一組邏輯。
+                // Verified against headless Chromium: both the keyboard shortcut
+                // and this button always go through the async `navigator.clipboard`
+                // API (see canvas.ts controller and App.tsx's keydown handler) —
+                // this is the same logic as ⌘C.
                 void controller?.copySelection().then((svg) => {
                   if (svg) void navigator.clipboard.writeText(svg);
                 });

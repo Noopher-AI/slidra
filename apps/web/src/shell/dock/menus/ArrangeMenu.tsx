@@ -28,10 +28,12 @@ const ORDER_ITEMS: { direction: "front" | "up" | "down" | "back"; label: string;
 ];
 
 /**
- * Arrange 選單 — Align／Distribute／Order 三欄（NOOP-90/T2 §3.9）。停用門檻
- * 比原型精確、且與命令層一致（§3.9 決定）：Align 需要 ≥2 個選取元素
- * （`element align` 本身的要求），Distribute 需要 ≥3（`element distribute`
- * 本身的要求），Order 只要求 ≥1（`element order` 對單一目標一樣合法）。
+ * Arrange menu — three columns: Align / Distribute / Order (§3.9). Its
+ * disabled thresholds are more precise than the prototype's and match the
+ * command layer (per the §3.9 decision): Align needs ≥2 selected elements
+ * (a requirement of `element align` itself), Distribute needs ≥3 (a
+ * requirement of `element distribute` itself), Order only needs ≥1
+ * (`element order` is equally valid against a single target).
  */
 export function ArrangeMenu({ selection, controller, onClose }: ArrangeMenuProps) {
   const count = selection.ids.length;

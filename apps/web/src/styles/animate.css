@@ -1,17 +1,20 @@
 /* ═══════════════════════════════════════════════════════════════
-   [E2.T7]/NOOP-66/#206：物件動畫與時間軸。
-   - Animate 插入面板（Dock 的 Add animation 入口）：`.animate-panel`，套用
-     既有的 `.floating-layer .dock-panel` 材質（dock.css），不重寫一份。
-   - Animate › Object（側欄）：清單視圖 `.animate-object-list`，放在
-     `.animate-object-panel` 容器裡（side-panel.css 已把它排進 flex:1 規則，
-     這裡不重複）。
-   - 舞台編號徽章：`.badge-layer`／`.animation-badge`（stage-overlays 的
-     pointer-events:none 根容器下，個別可互動元件自己開回 auto，同一慣例
-     見 ContextBar/GuideLayer）。
-   全部只透過 var() 消費 tokens.css 的 token（design-contract.test.ts 的規則）。
+   Object animation and timeline.
+   - Animate insert panel (Dock's Add animation entry): `.animate-panel`,
+     applying the existing `.floating-layer .dock-panel` material
+     (dock.css) rather than duplicating it.
+   - Animate › Object (side panel): list view `.animate-object-list`,
+     placed inside the `.animate-object-panel` container (side-panel.css
+     already wires it into the flex:1 rule, not repeated here).
+   - Stage number badges: `.badge-layer` / `.animation-badge` (under
+     stage-overlays' pointer-events:none root container, individual
+     interactive elements re-enable auto themselves — the same convention
+     as ContextBar/GuideLayer).
+   Everything consumes tokens.css tokens only through var() (per
+   design-contract.test.ts's rule).
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Animate 插入面板 ────────────────────────────────────────────── */
+/* ── Animate insert panel ──────────────────────────────────────────── */
 
 .animate-panel {
   display: flex;
@@ -204,7 +207,7 @@
   cursor: default;
 }
 
-/* ── Animate › Object：清單視圖 ──────────────────────────────────── */
+/* ── Animate › Object: list view ───────────────────────────────────── */
 
 .animate-object-empty {
   margin: var(--space-8) auto;
@@ -317,13 +320,12 @@
   gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--ink-500);
-  /* F-14 (NOOP-355 #287): a grid item's default min-width is `auto`, not
-     `0` — it never shrinks below its content's min-content size. A
-     <select>/<input>'s min-content is its own intrinsic width (well past
-     this track's share of the panel), so the two-column grid was forced
-     wider than the panel and scrolled. `1fr 1fr`/gap stay untouched (#279
-     決定 9 already settled the 2×2 shape); this only lets the column
-     shrink to fit it. */
+  /* A grid item's default min-width is `auto`, not `0` — it never shrinks
+     below its content's min-content size. A <select>/<input>'s min-content
+     is its own intrinsic width (well past this track's share of the
+     panel), so the two-column grid was forced wider than the panel and
+     scrolled. `1fr 1fr`/gap stay untouched (the 2×2 shape was already
+     settled); this only lets the column shrink to fit it. */
   min-width: 0;
 }
 .animate-card-field select,
@@ -343,9 +345,10 @@
   min-width: 0;
 }
 
-/* ── Animate › Page（[E2.T11]/#207 §4.7）────────────────────────────
-   PageTransitionView.tsx 的版面：Enter/Exit 各一節效果卡＋時長滑桿，最後
-   Apply to all slides。沿用上方 Object 面板同一組 token，不另起爐灶。 */
+/* ── Animate › Page ──────────────────────────────────────────────────
+   PageTransitionView.tsx's layout: one effect-card section each for
+   Enter/Exit plus a duration slider, then Apply to all slides. Reuses the
+   same token set as the Object panel above rather than starting over. */
 .animate-page-panel {
   display: flex;
   flex-direction: column;

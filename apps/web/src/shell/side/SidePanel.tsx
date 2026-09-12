@@ -12,19 +12,22 @@ export interface SidePanelProps {
   state: CanvasState;
   controller: CanvasController | null;
   /**
-   * #200: Style › Page 的 Width/Height 欄位需要目前的畫布尺寸——這來自
-   * `project.json`（App.tsx 的 `presentationInfo`），不在 `CanvasState`
-   * 裡（`Stage.tsx` 的 `canvasSize` prop走同一份資料，同一個理由）。
+   * Style › Page's Width/Height fields need the current canvas size — this
+   * comes from `project.json` (App.tsx's `presentationInfo`), not from
+   * `CanvasState` (`Stage.tsx`'s `canvasSize` prop draws on the same data,
+   * for the same reason).
    */
   canvasSize: { width: number; height: number } | null;
-  /** 對話 UI（ChatPanel.tsx），原樣搬進來——App.tsx 仍然擁有它的 messages/draft 狀態，切分頁不會弄丟它。 */
+  /** The chat UI (ChatPanel.tsx), passed through as-is — App.tsx still owns its messages/draft state, so switching tabs never loses it. */
   chat: ReactNode;
   /**
-   * [E2.T7]/D10: 受控——App.tsx 是唯一的事實來源。Dock 的 Add animation
-   * 與情境列的 Edit animation 都要能把右欄切到 Animate › Object，兩者都在
-   * `Stage` 裡、`SidePanel` 在 `Stage` 外，狀態非得在共同的祖先（App.tsx）
-   * 不可。有無選取的自動切換 effect 也搬到 App.tsx，這裡只負責畫面與使用
-   * 者點擊/鍵盤操作。
+   * D10: controlled — App.tsx is the single source of truth. Both the
+   * Dock's Add animation and the context bar's Edit animation need to be
+   * able to switch the right column to Animate › Object; both live inside
+   * `Stage`, while `SidePanel` sits outside `Stage`, so the state has to
+   * live in their common ancestor (App.tsx). The auto-switch effect keyed
+   * on whether there's a selection also lives in App.tsx — this component
+   * only handles rendering and the user's click/keyboard interaction.
    */
   side: SideId;
   sub: SubId;
@@ -39,17 +42,23 @@ const SIDE_TABS: ReadonlyArray<{ id: SideId; label: string }> = [
 ];
 
 /**
- * 右欄 (New v3 skeleton)：3 個主分頁（對話／樣式／動畫）+ 樣式/動畫底下的
- * Page/Object 子分頁狀態機（02-DESIGN_DOC.md §4.4）。
+ * The right column (New v3 skeleton): 3 main tabs (Chat/Style/Animate) plus
+ * the Page/Object sub-tab state machine underneath Style/Animate
+ * (02-DESIGN_DOC.md §4.4).
  *
- * 子分頁的自動切換只鎖在「有無選取」這個布林值上（`hasSelection` 的
- * effect），不是鎖在「目前是不是 style/animate」——這樣不管使用者當下停
- * 在哪個主分頁，選取變化都會先把子分頁狀態準備好；使用者切到 style/
- * animate 時看到的已經是正確的子分頁，不需要額外一次判斷「切分頁當下有沒
- * 有選取」。這正是規格「有選取時自動切 object；無選取時 disabled 並自動回
- * page」的字面意思——沒有限定「僅在已經停在 style/animate 時才生效」。
- * 主分頁（`side`）永遠不會被這個 effect 動到：規格明講「changing selection
- * while side=chat 不自動切 side」，這裡索性讓 side 完全只受使用者點擊控制。
+ * The sub-tab's auto-switch is keyed purely on the boolean "is there a
+ * selection" (the `hasSelection` effect), not on "is the current tab
+ * style/animate" — this way, no matter which main tab the user happens to
+ * be on, a selection change always prepares the sub-tab state ahead of
+ * time; by the time the user switches to style/animate, the correct
+ * sub-tab is already showing, with no extra check needed for "was there a
+ * selection at the moment of switching tabs." This is exactly the literal
+ * meaning of the spec's "auto-switch to object when there's a selection;
+ * disable and auto-return to page when there isn't" — it doesn't restrict
+ * that to "only takes effect while already on style/animate." The main tab
+ * (`side`) is never touched by this effect: the spec explicitly states
+ * "changing selection while side=chat does not auto-switch side," so side
+ * is left entirely under the user's own click control.
  */
 export function SidePanel({ state, controller, canvasSize, chat, side, sub, onSideChange, onSubChange }: SidePanelProps) {
   const hasSelection = state.selection.ids.length > 0;

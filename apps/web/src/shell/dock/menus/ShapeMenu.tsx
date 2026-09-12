@@ -8,7 +8,7 @@ export interface ShapeMenuProps {
   canvasSize: { width: number; height: number } | null;
   /** `null` before a slide has loaded, which disables every item. */
   slidePath: string | null;
-  /** The current slide's own page style — `pageStyle.accent`, when set, fills rect/ellipse and strokes the line (unchanged). Without an accent, rect/ellipse `fill` and line `stroke` both come from `contrastFill(pageStyle?.background ?? null)` instead (NOOP-353 拍板決定 7) — never omitted, never a design-token fallback. `null` pageStyle (no slide, or the slide declares no page style) reaches `contrastFill` as a `null` background, which reads as white. */
+  /** The current slide's own page style — `pageStyle.accent`, when set, fills rect/ellipse and strokes the line (unchanged). Without an accent, rect/ellipse `fill` and line `stroke` both come from `contrastFill(pageStyle?.background ?? null)` instead — never omitted, never a design-token fallback. `null` pageStyle (no slide, or the slide declares no page style) reaches `contrastFill` as a `null` background, which reads as white. */
   pageStyle: { background: string | null; accent: string | null } | null;
 }
 
@@ -20,14 +20,15 @@ const SHAPE_ITEMS: { kind: ShapeKind; label: string }[] = [
   { kind: "line", label: "Line" },
 ];
 
-/** 原型 `newShape()`（docs/design/prototype/slidra-logic-v3.js:186）的百分比幾何, converted against the presentation's own real canvas size. */
+/** Percentage geometry from the prototype's `newShape()` (docs/design/prototype/slidra-logic-v3.js:186), converted against the presentation's own real canvas size. */
 const RECT_BOX = { l: 36, t: 32, w: 28, h: 36 };
 
 /**
- * Shape 選單（[E2.T17] plan §4.1）：Rectangle／Ellipse／Line 三個項目，點下去
- * 直接送 `element insert`，不開第二層面板（05-INTERACTIONS.feature:97-99）。
- * 命令送出後一律關閉選單——與 `TablePanel`/`TextPanel` 同一個姿態，不論
- * `runCommand` 的結果，失敗已經由既有的 `CanvasState.error` 通道處理。
+ * Shape menu: Rectangle / Ellipse / Line, each item sends `element insert`
+ * directly on click without opening a second-level panel. The menu always
+ * closes after the command is sent — the same stance as `TablePanel`/
+ * `TextPanel` — regardless of `runCommand`'s result; failures are already
+ * handled through the existing `CanvasState.error` channel.
  */
 export function ShapeMenu({ onClose, controller, canvasSize, slidePath, pageStyle }: ShapeMenuProps) {
   const canInsert = controller !== null && canvasSize !== null && slidePath !== null;

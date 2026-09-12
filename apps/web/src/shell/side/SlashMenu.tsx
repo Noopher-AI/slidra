@@ -14,7 +14,7 @@ export interface SlashMenuProps {
   onSelect(command: SlashCommandOption): void;
 }
 
-/**逐字文案（父票驗收條件）：agent 完全沒回報、且兩個 skill 目錄都不存在時顯示的提示。 */
+/** Exact copy required: shown when the agent reports nothing at all and neither skill directory exists. */
 const NO_COMMANDS_HINT = "這個 agent 沒有回報可用的斜線命令";
 
 /**

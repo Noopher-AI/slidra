@@ -37,7 +37,7 @@ function exitFullscreenIfActive(): Promise<void> {
 /**
  * Reads the browser's own fullscreen state directly — never the React
  * `isFullscreen` state, which can be stale while a requestFullscreen() call
- * is still pending (review gate round 2, P2: 離開播放 clicked while a
+ * is still pending ("Exit play" clicked while a
  * request was in flight used to trust the not-yet-updated React state,
  * skip exiting fullscreen, and leave the document genuinely stuck
  * fullscreen once the pending request settled after play mode's chrome was
@@ -50,7 +50,7 @@ function isCanvasAreaFullscreen(container: Element | null): boolean {
   return fullscreenElement !== null && fullscreenElement === container;
 }
 
-/** Maps one `export` SSE event onto the dropdown's own UI state (NOOP-93 §4.7). `queued` has no frame counts yet — ExportPanel already treats `totalFrames === 0` as "still starting" and shows a bare "匯出中…". Exported so tests can cover this event→props conversion directly (NOOP-110r4) — component tests alone only exercise ExportPanel(props) → markup, which stays green even if this function's wiring is broken. */
+/** Maps one `export` SSE event onto the dropdown's own UI state (§4.7). `queued` has no frame counts yet — ExportPanel already treats `totalFrames === 0` as "still starting" and shows a bare "Exporting…". Exported so tests can cover this event→props conversion directly — component tests alone only exercise ExportPanel(props) → markup, which stays green even if this function's wiring is broken. */
 export function toExportUiState(event: ExportSseEvent): ExportUiState {
   switch (event.state) {
     case "queued":
@@ -66,7 +66,7 @@ export function toExportUiState(event: ExportSseEvent): ExportUiState {
 }
 
 /**
- * React owns the shell only (`shell/*.tsx`, ticket #48/#51/#52/#53) — the
+ * React owns the shell only (`shell/*.tsx`) — the
  * canvas/overview containers below are handed to the vanilla `mountCanvas`/
  * `mountOverview` modules exactly once; React never re-renders into them
  * again (ADR-0001, ADR-0002). `<Stage>`'s position in the tree is fixed:
@@ -76,15 +76,14 @@ export function toExportUiState(event: ExportSseEvent): ExportUiState {
  */
 export function App() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  // 全螢幕開關 (ticket #29 第二輪, revised for #48/#51's ruling on §0.2 item 2):
+  // Fullscreen toggle (per §0.2 item 2's ruling):
   // the fullscreen target is `.canvas-area` — the stage floor — reused in
-  // BOTH 檢視模式 (the ribbon's 全螢幕 button) and 播放模式 (PlayChrome's own
+  // BOTH view mode (the ribbon's fullscreen button) and play mode (PlayChrome's own
   // button). It already contains the iframe (via canvasRef) and every
   // play-mode notice/PlayChrome (rendered as Stage's children), and it
   // already excludes the rail/notes/chat siblings. A real click cannot
   // reach anything outside the fullscreen element once the browser puts it
-  // in the top layer (measured while building ticket #29 — see its final
-  // report), so PlayChrome must render inside this same element.
+  // in the top layer, so PlayChrome must render inside this same element.
   const wellRef = useRef<HTMLDivElement | null>(null);
   const overviewRef = useRef<HTMLElement | null>(null);
   const overviewControllerRef = useRef<OverviewController | null>(null);
@@ -93,12 +92,12 @@ export function App() {
   // index + cursor position up through this state instead; `<Rail>` renders
   // the actual `<ThumbContextMenu>`.
   const [contextMenuRequest, setContextMenuRequest] = useState<ThumbContextMenuRequest | null>(null);
-  // [E2.T8]: the deck-wide comment list, sorted/numbered (comments.ts's
+  // The deck-wide comment list, sorted/numbered (comments.ts's
   // sortComments) — reloaded on mount and on every presentation-changed
   // event (an agent's own `comment add`/`edit`/`delete` reaches here the
   // same way a GUI-originated write does, both go through the same file).
   const [comments, setComments] = useState<NumberedComment[]>([]);
-  // #303: the plan-confirmation gate's input — `plan/outline.md`'s parsed
+  // The plan-confirmation gate's input — `plan/outline.md`'s parsed
   // head, reloaded on mount and on every presentation-changed event the
   // same way `comments` is (the agent's `plan set` is just another file
   // write under the work dir, which changes.ts's recursive watcher
@@ -106,7 +105,7 @@ export function App() {
   const [planOutline, setPlanOutline] = useState<PlanOutline | null>(null);
   // The fence text of the draft the author last answered. The agent only
   // rewrites the file (as `confirmed`, or as a new draft) some time after
-  // 確認/重做 is sent, so the very same draft would re-open the gate on the
+  // "Confirm"/"Redo" is sent, so the very same draft would re-open the gate on the
   // next unrelated presentation-changed event without this. A *different*
   // draft (new fence text) is a new question and does re-open it.
   const [answeredPlanFence, setAnsweredPlanFence] = useState<string | null>(null);
@@ -221,14 +220,14 @@ export function App() {
   // True while a GET /api/agent or POST /api/agent/probe is in flight
   // (Plan §4.4 row 1 — deliberately covers both, not just the probe POST).
   const [agentProbing, setAgentProbing] = useState(false);
-  // The card mid-POST /api/agent/select ("切換中…", Plan §4.5), and that
+  // The card mid-POST /api/agent/select ("Switching…", Plan §4.5), and that
   // request's own error strip (409 editing / 400 / 500 / network).
   const [agentSwitchingKind, setAgentSwitchingKind] = useState<AgentKind | null>(null);
   const [agentActionError, setAgentActionError] = useState<string | null>(null);
-  // 可切換的模型清單與目前的 id，同樣來自 `GET /api/agent`；空清單＝沒得選。
+  // The list of models that can be switched to, plus the current id, also from `GET /api/agent`; an empty list means nothing to pick.
   const [agentModelOptions, setAgentModelOptions] = useState<readonly AgentModelOption[]>([]);
   const [agentModelId, setAgentModelId] = useState<string | null>(null);
-  // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
+  // Fullscreen toggle: mirrors document.fullscreenElement, never
   // assumed from "the promise resolved". Synced only from fullscreenchange
   // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
   // button all funnel through one place.
@@ -237,14 +236,14 @@ export function App() {
   // Tracks an in-flight requestFullscreen()/exitFullscreen() call so
   // handleExitPlay() can wait for it to settle before asking the browser's
   // real fullscreenElement — see isCanvasAreaFullscreen()'s comment above
-  // for the race this closes (review gate round 2, P2).
+  // for the race this closes.
   const fullscreenRequestRef = useRef<Promise<void> | null>(null);
 
-  // [E2.T7]/D10: side/sub lifted out of SidePanel.tsx (受控元件化) — the
+  // side/sub lifted out of SidePanel.tsx as controlled state — the
   // Dock's Add animation and the stage context bar's Edit animation both
   // need to switch the right rail to Animate › Object, and both live
   // outside SidePanel in the tree (inside Stage). The auto-switch effect
-  // (有選取 -> object；無選取 -> page) moves up here unchanged from
+  // (selection present -> object; no selection -> page) moves up here unchanged from
   // SidePanel.tsx's own — same trigger (`hasSelection`), same reasoning in
   // that file's header comment.
   const [side, setSide] = useState<SideId>("chat");
@@ -257,21 +256,23 @@ export function App() {
     setSide("animate");
     setSub("object");
   }
-  /** #200 §4.5: ContextBar's `Edit style` button — only switches the right rail, exactly like `editSelectionAnimation` above. No command is sent, no selection changes. */
+  /** §4.5: ContextBar's `Edit style` button — only switches the right rail, exactly like `editSelectionAnimation` above. No command is sent, no selection changes. */
   function editSelectionStyle(): void {
     setSide("style");
     setSub("object");
   }
 
-  // T3/NOOP-142: 拖放／貼上匯入媒體。這個路徑跟舊殼的 Ribbon 插入按鈕無
-  // 關（那三顆按鈕連同 openMediaPicker/隱藏的 <input type="file"> 已隨
-  // Ribbon.tsx 一起刪除——Insert 面板本身的內容是這張骨架票明確排除的範圍，
-  // 沒有 UI 入口會再呼叫檔案選擇器），但拖曳/貼上圖片到舞台是既有、獨立於
-  // Ribbon 的功能，維持原樣。
+  // Drag-and-drop/paste media import. This path is unrelated to the old
+  // shell's Ribbon insert buttons (those three buttons, plus
+  // openMediaPicker/the hidden <input type="file">, were removed along with
+  // Ribbon.tsx — the Insert panel's own content is explicitly out of scope
+  // here, and no UI entry point calls a file picker anymore), but
+  // dragging/pasting an image onto the stage is an existing feature
+  // independent of the Ribbon, kept unchanged.
   // Whether the drop overlay (Stage.tsx) is currently showing. Two
   // independent triggers turn it on (the iframe's forwarded "drag-enter"
   // signal below, and a native dragenter over this parent document);
-  // only the overlay's own onDrop/onDragLeave turn it off (決定 3).
+  // only the overlay's own onDrop/onDragLeave turn it off.
   const [dropActive, setDropActive] = useState(false);
   const lastDragSignalRef = useRef(0);
 
@@ -289,7 +290,7 @@ export function App() {
   // A drag entering the parent document's own chrome (ribbon, rail, chat
   // sidebar, ...) never crosses into the sandboxed iframe, so it needs no
   // relay through canvas.ts/selection-runtime.js — a plain listener here
-  // sees it directly (決定 3 point 5).
+  // sees it directly.
   // Only a file drag may raise the overlay: the rail's thumbnail reorder
   // (overview.ts) is also a native drag, carries "text/plain" only, and
   // never crosses the overlay — so the overlay's own onDrop/onDragLeave
@@ -379,7 +380,7 @@ export function App() {
     setDropActive(false);
     const files = event.dataTransfer.files;
     // Not a file drop at all (dragged text/a link) — legitimate and
-    // unrelated, not an error (決定 3 / §4.2 table).
+    // unrelated, not an error (§4.2 table).
     if (files.length === 0) return;
     if (files.length > 1) {
       controllerRef.current?.reportError("一次只能匯入一個檔案");
@@ -402,13 +403,13 @@ export function App() {
     const controller = mountCanvas(container);
     controllerRef.current = controller;
     // ⌘Z pressed while focus sits inside the stage iframe arrives as a
-    // relayed "stage-key" instead of a document keydown (#198) — hand the
+    // relayed "stage-key" instead of a document keydown — hand the
     // controller the same `runUndoRedo` so both routes share one fetch path
     // and one editingFrozen gate. Registering the first render's closure is
     // fine: it only reads `editingFrozenRef`, never state directly.
     controller.setUndoRedoHandler(runUndoRedo);
     const unsubscribe = controller.subscribe(setCanvasState);
-    // Live reload (ticket #5): the server pushes a `presentation-changed`
+    // Live reload: the server pushes a `presentation-changed`
     // event over /api/events whenever a slide is modified externally;
     // reload() re-fetches and redraws without React re-rendering anything.
     // Stopped on cleanup — a live EventSource surviving unmount would leak
@@ -416,7 +417,7 @@ export function App() {
     const liveReload = startLiveReload({
       onChange: () => {
         void controller.reload();
-        // 總覽 (ticket #27, P1 fix): an external edit can change a slide's
+        // Overview: an external edit can change a slide's
         // markup without project.json's `slides` list moving at all —
         // canvas.subscribe() can't tell that apart from a plain index
         // change, so the overview needs telling explicitly here.
@@ -436,7 +437,7 @@ export function App() {
         // here the same way any other file write does — this is what
         // makes Pinned context update itself without a page refresh.
         void refreshComments();
-        // #303: `slidra-plan`'s `plan set` lands here too — this is what
+        // `slidra-plan`'s `plan set` lands here too — this is what
         // opens the plan-confirmation gate without a page refresh.
         void refreshPlan();
       },
@@ -446,13 +447,15 @@ export function App() {
       onExportEvent: (event) => setExportState(toExportUiState(event)),
       onCommandsChange: (next) => {
         setCommands(next);
-        // `agent-commands` 只會在一個 ACP session 剛建立、agent 報出它的命令
-        // 清單時送來——那也正是模型名稱第一次可讀的時刻（session/new 的回
-        // 應）。借同一個訊號回頭補一次 GET /api/agent，對話框下面的模型才
-        // 不用等到下一次重新整理才出現。
+        // `agent-commands` is only sent right after an ACP session is
+        // created, when the agent reports its command list — which is also
+        // the first moment the model name becomes readable (session/new's
+        // response). Piggyback on that same signal to refetch `GET
+        // /api/agent`, so the model shown below the chat panel doesn't have
+        // to wait for the next reload to appear.
         void refreshAgentStatus();
       },
-      // [E3.T5] NOOP-230 §4.4/Plan §4.6: the only place a system message is
+      // §4.4/Plan §4.6: the only place a system message is
       // ever inserted for a switch — POST /api/agent/select's own 200
       // response never inserts one (Plan §4.5 step 6), including when this
       // same tab is the one that issued the switch: this SSE event is how
@@ -462,8 +465,9 @@ export function App() {
         setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
         void refreshAgentStatus();
       },
-      // 換模型不值得一則系統訊息：膠囊本身就顯示現在是哪個。這裡只是讓
-      // 別的分頁（或發起切換的這一頁）把膠囊更新過來。
+      // Switching models doesn't warrant a system message: the pill itself
+      // already shows which one is current. This just gets other tabs (or
+      // the tab that initiated the switch) to refresh their pill.
       onAgentModelChanged: () => {
         void refreshAgentStatus();
       },
@@ -481,12 +485,12 @@ export function App() {
         // "not frozen" on a genuine failure; better to say nothing and let
         // the next presentation-changed/editing-frozen event correct it.
       });
-    // [E3.T3]: same "GET seeds the initial value, SSE carries updates, no
+    // Same "GET seeds the initial value, SSE carries updates, no
     // fallback on failure" shape as /api/editing above — a fetch failure
     // leaves `commands` at its initial `[]` rather than fabricating a list.
-    // [E3.T5] NOOP-230 §4.4: agent 狀態走同一個形狀，但這裡確實有對應的 SSE
-    // 事件可訂閱（agent-changed，見下方 onAgentChanged）——`App.tsx:432-433`
-    // 舊註解說的「沒有對應事件」在 NOOP-230 落地後已經不成立。
+    // §4.4: agent state follows the same shape, but there is now a
+    // corresponding SSE event to subscribe to (agent-changed, see
+    // onAgentChanged below).
     void refreshAgentStatus();
     void fetch("/api/agent/commands")
       .then((response) => response.json())
@@ -504,13 +508,13 @@ export function App() {
     };
   }, []);
 
-  // 總覽 (ticket #27): mounted once against the canvas controller — it
+  // Overview: mounted once against the canvas controller — it
   // subscribes on its own and needs no React state mirrored back here.
   //
-  // #54 (wave 4) now unmounts `<Rail>` entirely in 播放模式 (see the
+  // `<Rail>` is now unmounted entirely in play mode (see the
   // shellVisible-gated render below), which destroys `overviewRef`'s DOM
   // node. A `[]` dependency array here would only ever run this effect
-  // once at the component's very first mount: on returning to 檢視模式,
+  // once at the component's very first mount: on returning to view mode,
   // `<Rail>` remounts with a *fresh* container, `overviewRef.current`
   // points at it, but this effect never fires again to mount anything
   // into it — the overview module never comes back, with nothing thrown
@@ -559,11 +563,11 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasState.slides]);
 
-  // Arrow keys in 檢視模式 page the deck (ticket #28). Legitimate on the
+  // Arrow keys in view mode page the deck. Legitimate on the
   // parent document: the view-mode iframe is sandboxed with no scripts, so
   // the author's keystrokes never reach it.
   //
-  // In 播放模式 the keyboard belongs to the runtime inside the play iframe,
+  // In play mode the keyboard belongs to the runtime inside the play iframe,
   // and this handler must not fight it — if both reacted to the same
   // ArrowRight, one key press would advance two steps. What keeps them
   // apart is not a state check but the event model itself: a key press is
@@ -587,7 +591,7 @@ export function App() {
   // sat outside the iframe, so no keydown reached the runtime at all and
   // the deck would otherwise be stuck until the author fixed the focus by
   // hand — with the mouse, since the keyboard was exactly what stopped
-  // working. One press of Tab is enough to get there (measured, #68);
+  // working. One press of Tab is enough to get there (measured);
   // clicking the control bar is not, because every one of those paths
   // already hands focus back (the ready handshake after a slide change,
   // settled decision #5's focusPlayer() on the fullscreen paths, and
@@ -603,7 +607,7 @@ export function App() {
   // A slide whose effect list failed to parse has no runtime at all to
   // forward to (canvas.ts's renderPlay catch swaps in a static document),
   // so the arrow keys stay inert there — unchanged by this, and already
-  // answered by #54's 上一步/下一步 buttons, which page the deck without
+  // answered by the "Previous"/"Next" buttons, which page the deck without
   // needing a runtime.
   //
   // `canvasStateRef` (not `canvasState` itself) is read inside the
@@ -613,8 +617,8 @@ export function App() {
   canvasStateRef.current = canvasState;
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      // [E2.T11]: Space is play-mode-only (§4.5's own scope — "→／Space／
-      // 點畫面前進" only ever lists it for 播放模式). In 檢視模式 it falls
+      // Space is play-mode-only (§4.5's own scope — "→ / Space /
+      // click to advance" only ever lists it for play mode). In view mode it falls
       // through to the same early return every other unhandled key does,
       // leaving the browser's default Space behaviour untouched there.
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== " ") return;
@@ -641,13 +645,15 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z (T5, NOOP-93/#110) 與 TitleBar 的 ↶/↷
-  // 按鈕 (this ticket) 共用同一條路徑：`runUndoRedo` 是唯一真的送出
-  // /api/undo、/api/redo 的地方，避免兩份重複的 fetch 邏輯各自漂移。Frozen
-  // 期間兩條路徑都不送請求，連 409 都不用被告知——比照既有行為契約「不發
-  // 請求，顯示凍結狀態；不得拋出未捕捉錯誤」。`editingFrozenRef`（不是
-  // `editingFrozen` 本身）在監聽器裡讀，原因與上面的 `canvasStateRef` 相同
-  // ——這個 effect 不需要每次 frozen 翻轉就重新訂閱一次。
+  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z and TitleBar's undo/redo buttons share the
+  // same path: `runUndoRedo` is the only place that actually issues
+  // /api/undo, /api/redo, so the two fetch flows never drift apart. While
+  // frozen, neither path sends a request — not even to be told 409 —
+  // matching the existing behavior contract "no request, show the frozen
+  // state; must not throw an uncaught error." `editingFrozenRef` (not
+  // `editingFrozen` itself) is read inside the listener for the same reason
+  // as `canvasStateRef` above — this effect doesn't need to re-subscribe
+  // every time frozen flips.
   const editingFrozenRef = useRef(editingFrozen);
   editingFrozenRef.current = editingFrozen;
 
@@ -732,15 +738,20 @@ export function App() {
         void controller.orderSelection(event.shiftKey ? "back" : "down");
         return;
       }
-      // [E2.T18] 計畫 §3.8/A0：headless Chromium 底下實測，Ctrl/Cmd+C 這種
-      // 純鍵盤觸發並不會讓瀏覽器發出原生 `copy`/`cut` ClipboardEvent —
-      // Chromium 只在真的有一段可複製的內容（原生文字選取，或聚焦在可編輯
-      // 欄位）時才發這個事件，我們的畫布選取是 Shadow DOM 疊加層，從瀏覽器
-      // 角度看「沒有東西被選取」。改走計畫本身就寫明的備援路徑：⌘C/⌘X/⌘V
-      // 當一般按鍵處理，用非同步的 `navigator.clipboard` API 讀寫，不依賴
-      // ClipboardEvent。⌘V 與既有的原生 `paste` 監聽器（上面，只認圖片）
-      // 並存不衝突：剪貼簿內容是圖片時 `readText()` 拿到空字串，
-      // `pasteFromText` 視為空剪貼簿靜默略過。
+      // §3.8/A0: measured under headless Chromium, a pure keyboard trigger
+      // like Ctrl/Cmd+C does not make the browser fire a native
+      // `copy`/`cut` ClipboardEvent — Chromium only fires that event when
+      // there is genuinely selectable content (a native text selection, or
+      // focus on an editable field), and our canvas selection is a Shadow
+      // DOM overlay, which from the browser's point of view means "nothing
+      // is selected." Fall back to the documented alternate path instead:
+      // treat ⌘C/⌘X/⌘V as plain keystrokes, reading/writing through the
+      // async `navigator.clipboard` API rather than relying on
+      // ClipboardEvent. ⌘V coexists without conflict with the existing
+      // native `paste` listener above (which only recognizes images):
+      // when the clipboard holds an image, `readText()` returns an empty
+      // string, and `pasteFromText` treats that as an empty clipboard and
+      // silently no-ops.
       if (withModifier && event.key === "c") {
         event.preventDefault();
         void controller.copySelection().then((svg) => {
@@ -765,9 +776,9 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // [E2.T3] ⌘D／Delete／PageUp／PageDown (T3 plan §4.3). Appended after the
+  // ⌘D / Delete / PageUp / PageDown (§4.3). Appended after the
   // two keydown effects above, not merged into either — same
-  // text-field/contentEditable guard as both, copied verbatim (§3.7).
+  // text-field/contentEditable guard as both (§3.7).
   // `canvasStateRef` (declared above, next to the ArrowLeft/Right effect)
   // is read here for the same reason that effect reads it: this listener
   // must not re-subscribe on every canvasState change.
@@ -791,7 +802,7 @@ export function App() {
         return;
       }
 
-      // ⌘D／Delete belong to 檢視模式 only — 播放模式 already returns above
+      // ⌘D / Delete belong to view mode only — play mode already returns above
       // for the two keys this effect otherwise cares about.
       if (state.mode === "play") return;
 
@@ -800,14 +811,16 @@ export function App() {
         (event.key === "d" || event.key === "D") && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey;
       if (!isDelete && !isDuplicate) return;
 
-      // 有選取時兩鍵都留給 [E2.T2]／未來票 — 不 preventDefault，什麼都不做
-      // (T3 plan §2 邊界 5)。
+      // When there's a selection, both keys are left for a separate
+      // handler — no preventDefault, no-op here (§2 boundary 5).
       if (state.selection.ids.length > 0) return;
-      // [E2.T5r2] 無選取時，「對目前頁」的意圖只在焦點確實落在 rail／縮圖區
-      // 才成立——頁面剛載入、或焦點還在畫布/iframe 上時維持 no-op，留給
-      // [E2.T2] 的 handler（什麼都不做）。修正 #214×#215 整合後的回歸：曾經
-      // 無條件送出 slide delete，導致沒有任何選取時按 Delete 會刪掉整張
-      // 投影片。
+      // With no selection, the "act on the current page" intent only holds
+      // when focus is actually on the rail/thumbnail area — right after
+      // page load, or while focus is still on the canvas/iframe, this stays
+      // a no-op, left to the other handler (which also does nothing). Fixes
+      // a regression where this used to unconditionally send a slide
+      // delete, so pressing Delete with nothing selected would delete the
+      // entire current slide.
       const activeElement = document.activeElement;
       if (!(activeElement instanceof HTMLElement) || !activeElement.closest(".rail")) return;
       if (state.slides.length === 0) return;
@@ -866,7 +879,7 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDownCapture, true);
   }, []);
 
-  // [E2.T11] §4.5: Esc leaves 播放模式 — but only when the document is not
+  // §4.5: Esc leaves play mode — but only when the document is not
   // ALSO fullscreen right now. Fullscreen owns Esc first: the browser is
   // already exiting fullscreen on its own by the time this fires, and
   // `isCanvasAreaFullscreen` here (checked before calling handleExitPlay(),
@@ -921,7 +934,7 @@ export function App() {
     }
   }
 
-  /** `POST /api/agent/model`：對話框下方的模型選單。失敗（回合進行中、模型不存在、連線斷了）走聊天的錯誤列，狀態維持舊值。 */
+  /** `POST /api/agent/model`: the model menu below the chat panel. On failure (turn in progress, model doesn't exist, connection lost) it goes through the chat's error strip, and state stays at its previous value. */
   async function selectAgentModel(modelId: string): Promise<void> {
     if (modelId === "" || modelId === agentModelId) return;
     try {
@@ -941,7 +954,7 @@ export function App() {
     }
   }
 
-  /** `POST /api/agent/session`：「選擇模型…」——先建 session，清單才會有東西。 */
+  /** `POST /api/agent/session`: "Choose model…" — must create a session first, or the list stays empty. */
   async function loadAgentModels(): Promise<void> {
     try {
       const response = await fetch("/api/agent/session", { method: "POST" });
@@ -956,7 +969,7 @@ export function App() {
     }
   }
 
-  /** `POST /api/agent/probe` (Plan §4.4 "重新偵測") — always reruns both login probes (§7.7), unlike the cached `GET /api/agent` above. Failure leaves `agentStatus` at its last known value (Plan: "失敗 → 顯示錯誤列，狀態維持舊值"). */
+  /** `POST /api/agent/probe` (Plan §4.4 "Re-detect") — always reruns both login probes (§7.7), unlike the cached `GET /api/agent` above. Failure leaves `agentStatus` at its last known value (Plan: "failure → show error strip, state stays at its previous value"). */
   async function handleProbeAgent(): Promise<void> {
     setAgentProbing(true);
     setAgentActionError(null);
@@ -1003,7 +1016,7 @@ export function App() {
     setAgentSwitchingKind(null);
   }
 
-  /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
+  /** `GET /api/save-state` (§4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("keep the existing deckName behavior, show no status text" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
   async function refreshSaveState(): Promise<void> {
     try {
       const response = await fetch("/api/save-state");
@@ -1057,9 +1070,11 @@ export function App() {
   }
 
   /**
-   * `POST /api/new` — New 按鈕。跟 Open 走同一條路：同樣的 409 未存檔確認、
-   * 同樣不在成功後自己 refetch（伺服器已經廣播 presentation-changed 與
-   * save-state，這個分頁的 live-reload 會收到）。
+   * `POST /api/new` — the New button. Follows the same path as Open: the
+   * same 409 unsaved-changes confirmation, and likewise doesn't refetch on
+   * its own after success (the server already broadcasts
+   * presentation-changed and save-state, which this tab's live-reload
+   * picks up).
    */
   async function handleNew(discardUnsaved = false): Promise<void> {
     setOpenError(null);
@@ -1105,8 +1120,8 @@ export function App() {
   }
 
   /**
-   * `POST /api/export` (NOOP-93 §4.7). The panel closes and switches to
-   * "匯出中…" immediately, optimistically — every subsequent state
+   * `POST /api/export` (§4.7). The panel closes and switches to
+   * "Exporting…" immediately, optimistically — every subsequent state
    * transition (running/progress/done/error for a job that actually
    * started) arrives over the `export` SSE event instead. A 409 (already
    * one running) or a network failure overwrites that optimistic state with
@@ -1146,24 +1161,24 @@ export function App() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // 全螢幕開關 (ticket #29): fullscreenchange only syncs UI state here — it
+  // Fullscreen toggle: fullscreenchange only syncs UI state here — it
   // must never call exitPlay(). Leaving fullscreen (including Esc) returns
-  // to 內嵌播放, not out of 播放模式 (design doc's 全螢幕 section: 全螢幕不是
-  // 另一種模式). Registers both the unprefixed and WebKit-prefixed event
-  // names.
+  // to inline play, not out of play mode (design doc's fullscreen section:
+  // fullscreen is not a separate mode). Registers both the unprefixed and
+  // WebKit-prefixed event names.
   useEffect(() => {
     function onFullscreenChange(): void {
       setIsFullscreen(isCanvasAreaFullscreen(wellRef.current));
       // This event firing at all means the browser's real fullscreen state
       // just genuinely changed — by Esc, by browser chrome, or by our own
       // button — which makes any earlier "a fullscreen request failed"
-      // message stale no matter how it got there (review gate round 1, P2:
-      // a stale fullscreenError used to sit on screen after a later,
-      // successful exit/enter until the next click cleared it by hand).
+      // message stale no matter how it got there (a stale fullscreenError
+      // used to sit on screen after a later, successful exit/enter until
+      // the next click cleared it by hand).
       setFullscreenError(null);
       // Every fullscreen transition must hand focus back to the player, or
-      // arrow-key advance silently dies (settled decision #5). A no-op
-      // outside 播放模式 (focusPlayer() itself gates on mode === "play").
+      // arrow-key advance silently dies. A no-op
+      // outside play mode (focusPlayer() itself gates on mode === "play").
       controllerRef.current?.focusPlayer();
     }
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -1174,7 +1189,7 @@ export function App() {
     };
   }, []);
 
-  // Leaving 播放模式 by any route (離開播放 button, live reload emptying the
+  // Leaving play mode by any route ("Exit play" button, live reload emptying the
   // deck, ...) must not leave stale fullscreen UI state behind even though
   // handleExitPlay() below already asks the document to exit fullscreen.
   useEffect(() => {
@@ -1238,22 +1253,22 @@ export function App() {
       // an unconditional clear here would let an earlier call's `finally`
       // wipe out a later, still in-flight call's promise the moment the
       // earlier one settles — handleExitPlay() would then have nothing to
-      // await for the request that is actually still pending (review gate
-      // round 3, P2).
+      // await for the request that is actually still pending.
       if (fullscreenRequestRef.current === requestPromise) fullscreenRequestRef.current = null;
     }
     controllerRef.current?.focusPlayer();
   }
 
   async function handleExitPlay(): Promise<void> {
-    // 離開播放時若還在全螢幕，必須先退出全螢幕，否則文件會卡在全螢幕狀態
-    // 但畫面底下已經沒有播放器了（behaviour contract 表格第四列）。A
+    // If still fullscreen when leaving play mode, fullscreen must be exited
+    // first, or the document will get stuck fullscreen with no player left
+    // underneath it (behaviour contract table, row 4). A
     // requestFullscreen() call started just before this click can still be
     // pending here — isFullscreen (React state) has not been updated yet,
     // so trusting it would skip exiting, and the pending request would
-    // still land after play mode's chrome (including 退出全螢幕) is already
-    // gone, leaving the document genuinely stuck fullscreen (review gate
-    // round 2, P2). Wait for any in-flight request to settle first, then
+    // still land after play mode's chrome (including the exit-fullscreen
+    // button) is already gone, leaving the document genuinely stuck
+    // fullscreen. Wait for any in-flight request to settle first, then
     // ask the browser's own fullscreenElement — not the stale React state
     // — right before deciding.
     if (fullscreenRequestRef.current) {
@@ -1280,7 +1295,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [working, setWorking] = useState(false);
-  /** 錯誤進時間軸：發生在哪一則之後就留在那裡，不是一條掛在最下面、事過境遷還在的橫條。 */
+  /** Errors go into the message timeline: they stay attached to whichever message they followed, rather than as a bar pinned to the bottom that outlives its relevance. */
   function pushChatError(text: string): void {
     setMessages((prev) => appendErrorMessage(prev, nextMessageIdRef.current++, text));
   }
@@ -1392,14 +1407,14 @@ export function App() {
   }
 
   /**
-   * [E2.T8] §4.8 / #303: `OutlineModal`'s `Draft with agent` — a plain chat
+   * `OutlineModal`'s `Draft with agent` — a plain chat
    * message invoking the shipped `/slidra-plan` skill (the same text an
-   * author would type by hand, so the skill really triggers — #248), with
+   * author would type by hand, so the skill really triggers), with
    * a fixed position line (contract §4), sent through the exact same path
-   * a hand-typed message takes (architecture 拍板: no separate API, no
+   * a hand-typed message takes (architecture decision: no separate API, no
    * client-side outline parsing). The skill writes `plan/outline.md`,
    * which opens `<PlanGateModal>` below; building only starts from that
-   * gate's 確認並建置. A presentation with no slides yet (ADR-0018: `new`
+   * gate's "Confirm and build". A presentation with no slides yet (ADR-0018: `new`
    * creates none) is a real request too — not a no-op.
    */
   async function draftWithAgent(outline: string): Promise<void> {
@@ -1412,9 +1427,9 @@ export function App() {
   }
 
   /**
-   * #303: the chat panel's Stop button — `POST /api/chat/cancel`. The
+   * The chat panel's Stop button — `POST /api/chat/cancel`. The
    * turn's actual end still arrives over the stream (`chat-done` with
-   * `stopReason: "cancelled"`, which chat-stream.ts turns into the 「已停止」
+   * `stopReason: "cancelled"`, which chat-stream.ts turns into the "Stopped"
    * line); this only asks. A 409 means the turn had already ended by the
    * time the author pressed Stop — nothing to show beyond clearing the
    * in-flight state, since the stream's own ending already did the rest.
@@ -1437,10 +1452,12 @@ export function App() {
   }
 
   /**
-   * 送出鍵右邊的「開新對話」——`POST /api/chat/new`。伺服器把目前的 ACP
-   * session 丟掉、用同一個 agent 重開一個；這裡同時把訊息列表清空，因為那
-   * 段對話已經不存在於 agent 那一側了，留在畫面上只會讓人以為它還記得。
-   * 簡報本身完全不動。
+   * The "New chat" button next to Send — `POST /api/chat/new`. The server
+   * drops the current ACP session and opens a fresh one with the same
+   * agent; this also clears the message list here, since that conversation
+   * no longer exists on the agent's side — leaving it on screen would just
+   * make it look like the agent still remembers it. The presentation
+   * itself is entirely untouched.
    */
   async function startNewChatSession(): Promise<void> {
     try {
@@ -1470,10 +1487,10 @@ export function App() {
   }
 
   /**
-   * [E2.T3]: `slide add`/`duplicate`/`move`/`delete` all change which page
+   * `slide add`/`duplicate`/`move`/`delete` all change which page
    * is "current" — plain `reload()` only clamps `currentIndex` into range
-   * on an external edit, it never jumps to a *specific* new page (T3 plan
-   * §7 決定 6). Waiting for the write's own `/api/events`-triggered reload
+   * on an external edit, it never jumps to a *specific* new page (§7
+   * decision 6). Waiting for the write's own `/api/events`-triggered reload
    * instead of doing this explicitly would race: which one lands first is
    * not guaranteed. `targetIndex === null` means "no page to land on"
    * (deleting the deck down to zero slides).
@@ -1541,7 +1558,7 @@ export function App() {
     void sendChatText(text);
   }
 
-  /** 放棄: the one exit that needs no agent — deletes the whole `plan/`; the gate closes when the refetch finds nothing. */
+  /** Discard: the one exit that needs no agent — deletes the whole `plan/`; the gate closes when the refetch finds nothing. */
   async function discardPlan(): Promise<void> {
     const result = await runCanvasCommand("plan delete", {});
     if (result && !result.ok) {

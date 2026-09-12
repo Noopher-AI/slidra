@@ -60,7 +60,7 @@ export interface PlayerPlan {
    */
   embedIds: string[];
   /**
-   * F8 (NOOP-289 決定 E1): the slide's `<slidra:transition>`, off the same
+   * The slide's `<slidra:transition>`, off the same
    * `fetchSlideEffectPlan` call `steps`/`hidden` above already came from —
    * `renderPlay()` used to re-derive this itself by parsing `svgMarkup`
    * directly (`readSlideTransition`, core), which the web bundle no longer

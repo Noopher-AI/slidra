@@ -33,10 +33,12 @@ button {
   border: 0;
 }
 
-/* 播放模式的浮動通知堆疊區 (review gate round 1, P2 修正)：焦點提示、播放
-   錯誤、全螢幕錯誤可能同時成立，過去三者各自 position:absolute 在同一個
-   位置，後渲染的會蓋住先渲染的。定位與堆疊間距收斂到這一層，個別通知只
-   剩外觀樣式，彼此用 flex column + gap 並排，不再互相覆蓋. */
+/* Floating notice stack for play mode: focus hints, playback errors, and
+   fullscreen errors can all be active at once. They used to each be
+   position:absolute at the same spot, so the later-rendered one covered the
+   earlier one. Positioning and stacking gap are now centralized here — each
+   notice only keeps its own appearance styling, laid out side by side with
+   flex column + gap, so they no longer overlap. */
 .player-notices {
   position: absolute;
   top: calc(var(--u) * 3);

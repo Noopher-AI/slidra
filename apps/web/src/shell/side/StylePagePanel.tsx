@@ -7,14 +7,14 @@ import { StyleField } from "./style/StyleField.js";
 export interface StylePagePanelProps {
   /** `null` when there is no current slide (`CanvasState.pageStyle`'s own contract) — the whole tab renders disabled then (§4.6). */
   pageStyle: PageStyle | null;
-  /** #303：目前 slide 的背景圖片，`null` 表示沒有 slide 或這一頁沒有背景圖片。 */
+  /** The current slide's background image; `null` means there's no slide, or this page has no background image. */
   backgroundImage: BackgroundImage | null;
   /** `project.json`'s `canvas`; `null` before the titlebar's own `/api/presentation` load has resolved. */
   canvasSize: { width: number; height: number } | null;
   controller: CanvasController | null;
 }
 
-/** #200 §4.3, values from `docs/design/prototype/slidra-logic-v3.js:571-573`. */
+/** Values from `docs/design/prototype/slidra-logic-v3.js:571-573`. */
 const SIZE_PRESETS: readonly { label: string; width: number; height: number }[] = [
   { label: "16:9", width: 1280, height: 720 },
   { label: "4:3", width: 1024, height: 768 },
@@ -27,9 +27,9 @@ function valueOrUnset(value: string | null): StyleReadResult {
 }
 
 /**
- * Style › Page (#200 §4.3/§4.4): Background/Accent go through `slide style
+ * Style › Page (§4.3/§4.4): Background/Accent go through `slide style
  * set` and land in history; the size controls go through `presentation
- * canvas set` and never do (#200 決定 4) — same `StyleField` component
+ * canvas set` and never do (decision 4) — same `StyleField` component
  * either way, the difference is only which command `onCommit` calls.
  */
 export function StylePagePanel({ pageStyle, backgroundImage, canvasSize, controller }: StylePagePanelProps) {
@@ -43,8 +43,9 @@ export function StylePagePanel({ pageStyle, backgroundImage, canvasSize, control
     return () => {
       cancelled = true;
     };
-    // 每次掛載抓一次即可——上傳新檔後的清單更新走 setBackgroundImage 之後
-    // 的手動 append（見下方 handleFileInput），不需要重新 fetch。
+    // Fetching once per mount is enough — the list update after uploading a
+    // new file goes through the manual append after setBackgroundImage
+    // (see handleFileInput below), so no re-fetch is needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

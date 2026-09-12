@@ -717,8 +717,8 @@
   }
 
   document.addEventListener("keydown", function (event) {
-    // [E2.T11]: Space/PageDown mirror ArrowRight (「前進一步」), PageUp
-    // mirrors ArrowLeft (「後退一步」) — App.tsx's own keydown listeners
+    // Space/PageDown mirror ArrowRight ("advance one step"), PageUp
+    // mirrors ArrowLeft ("go back one step") — App.tsx's own keydown listeners
     // already forward these same keys when focus sits in the PARENT
     // document; this is the other half, for when focus is inside this
     // iframe (the common case right after entering play mode).

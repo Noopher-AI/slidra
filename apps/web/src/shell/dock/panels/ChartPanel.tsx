@@ -14,7 +14,7 @@ import {
 export interface ChartPanelProps {
   onClose(): void;
   controller: CanvasController | null;
-  /** [E2.T7] 既有的 slidePath 傳遞方式（Dock.tsx 已經給 AnimatePanel 用同一個 prop）——`chart create` 需要知道要插進哪張投影片。 */
+  /** The existing slidePath passing convention (Dock.tsx already uses this same prop for AnimatePanel) — `chart create` needs to know which slide to insert into. */
   slidePath: string | null;
 }
 
@@ -33,9 +33,10 @@ const DEFAULT_CATEGORIES = 6;
 const DEFAULT_PALETTE: ChartPalette = "brand";
 
 /**
- * Chart 插入面板 (E2.T12 plan §4.2/AC-1)：類型（6 種）、系列數（1–4）、類別數
- * （2–12）、調色盤（3 組），按 Insert 送出 `chart create`——樣本資料由 core
- * 端的確定性公式填入（`createChartElement`），這裡只送使用者選的四個值。
+ * Chart insert panel: type (6 kinds), series count (1-4), category count
+ * (2-12), palette (3 sets); Insert sends `chart create` — sample data is
+ * filled in by the core side's deterministic formula (`createChartElement`),
+ * this panel only sends the four values the user chose.
  */
 export function ChartPanel({ onClose, controller, slidePath }: ChartPanelProps) {
   const [type, setType] = useState<ChartType>(DEFAULT_TYPE);

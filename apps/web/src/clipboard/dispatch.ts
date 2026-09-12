@@ -1,8 +1,8 @@
 import type { ClipboardTextKind } from "./payload.js";
 
 /**
- * [E2.T18] 計畫「補充：與 [E2.T14] 的軟依賴介面」(b). A cell-range selection
- * on a table, addressed the same way core's `parseCellRange` addresses one
+ * Plan "supplement: soft-dependency interface" (b). A cell-range selection
+ * on a table, addressed the same way `parseCellRange` addresses one
  * (0-based, inclusive).
  */
 export interface CellRange {
@@ -20,11 +20,11 @@ export type ClipboardTarget =
   | null;
 
 /**
- * Reads the current cell-range selection, if any. Always returns `null` in
- * this ticket — cell-range hit-testing/selection lives in [E2.T14]'s
- * `selection-runtime.js` changes. The one thing [E2.T14] needs to change
- * after merging is this function's implementation; nothing in `dispatch.ts`
- * itself (决定 §6 補充 (b)).
+ * Reads the current cell-range selection, if any. Always returns `null`
+ * for now — cell-range hit-testing/selection lives in
+ * `selection-runtime.js`'s own changes. The one thing that needs to change
+ * once that lands is this function's implementation; nothing in
+ * `dispatch.ts` itself (decision §6 supplement (b)).
  */
 export type CellRangeProvider = () => CellRange | null;
 
@@ -66,7 +66,7 @@ export function cutCommandFor(target: ClipboardTarget): ClipboardCommand | null 
 
 /**
  * ⌘V / the ContextBar Paste button / the window `paste` event. Routes on
- * the pasted *content*, not the current selection (計畫 §4.3): a slidra
+ * the pasted *content*, not the current selection: a slidra
  * elements payload always goes to `element paste`, regardless of what (if
  * anything) is selected; plain text only goes anywhere when a cell range is
  * selected. `slidePath` is the slide to paste onto — it cannot be read off

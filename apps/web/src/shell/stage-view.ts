@@ -1,5 +1,5 @@
 /**
- * Pure zoom/pan/hand-mode state for the New v3 stage (舞台). No DOM access,
+ * Pure zoom/pan/hand-mode state for the New v3 stage. No DOM access,
  * no React — every function here is `(state, ...) => state`, testable with
  * plain function calls (apps/web/test/stage-view.test.ts). Stage.tsx and
  * the Dock components wire these onto React state/event handlers; they must
@@ -9,7 +9,7 @@
  * docs/design/prototype/slidra-logic-v3.js's `setZoom`/`wellWheel`
  * (`Math.max(.25, Math.min(4, z))`, the `nz/zoom` anchor-preserving pan
  * formula, `Math.exp(-deltaY * .0025)` for wheel-to-zoom-factor) — see
- * 05-INTERACTIONS.feature's "舞台導航" scenarios for the behaviour rules.
+ * 05-INTERACTIONS.feature's "stage navigation" scenarios for the behaviour rules.
  */
 
 export interface Point {
@@ -22,7 +22,7 @@ export interface ZoomPanState {
   pan: Point;
 }
 
-/** Figma-style range, matching the prototype and 05-INTERACTIONS.feature ("範圍 25%–400%"). */
+/** Figma-style range, matching the prototype and 05-INTERACTIONS.feature ("range 25%-400%"). */
 export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 4.0;
 
@@ -84,8 +84,8 @@ export function zoomAtPoint(state: ZoomPanState, z: number, anchor: Point): Zoom
 }
 
 /**
- * ⌘/Ctrl+wheel → zoom, centered on the pointer (05-INTERACTIONS.feature「以
- * 滾輪縮放」). `deltaY` is the wheel event's own value; the exponential
+ * ⌘/Ctrl+wheel → zoom, centered on the pointer (05-INTERACTIONS.feature's
+ * "zoom with the scroll wheel"). `deltaY` is the wheel event's own value; the exponential
  * factor matches the prototype's `wellWheel` so scroll "feel" is identical.
  */
 export function zoomByWheel(state: ZoomPanState, deltaY: number, anchor: Point): ZoomPanState {
@@ -103,7 +103,7 @@ export function formatZoomPercent(zoom: number): string {
   return `${Math.round(zoom * 100)}%`;
 }
 
-// ── 抓取模式（Hand mode）／暫時抓取（Space） ─────────────────────────
+// ── Hand mode / temporary grab (Space) ─────────────────────────
 
 export interface HandState {
   /** The ✋ button's own toggle state — sticky until pressed again. */
@@ -125,7 +125,7 @@ export interface ToggleHandResult {
   state: HandState;
   /**
    * True only when this call turned hand mode ON — 05-INTERACTIONS.feature's
-   * 「抓取模式」場景 ("那麼目前選取被清除"). Turning it back off does not
+   * "Hand mode" scenario ("then the current selection is cleared"). Turning it back off does not
    * clear anything. Selection itself lives in canvas.ts's CanvasState (out
    * of this pure module's reach and out of this ticket's scope — selection/
    * drag/resize are a future ticket) — the caller (Stage.tsx) reacts to this

@@ -1,16 +1,17 @@
 import type { AgentKind } from "./live-reload.js";
 
 /**
- * [E3.T5] NOOP-230 §4.4's `GET /api/agent` / `POST /api/agent/probe`
+ * §4.4's `GET /api/agent` / `POST /api/agent/probe`
  * response, restated here as the exact shape this module parses (never
  * imported from `@slidra/server` — the browser bundle must never depend
  * on a Node-only package, same rule `ExportFormat`/`AgentKind` in
  * live-reload.ts already follow).
  */
 /**
- * 對話框下方那顆狀態燈的三態，從 `/api/chat/stream` 的 `streamReady` 推導
- * （App.tsx）。以前住在 TitleBar，`.agent-dot` 搬到對話框下面之後，型別跟
- * 著搬到這裡——它描述的是 agent 狀態，不是標題列。
+ * The three states of the status dot below the chat panel, derived from
+ * `/api/chat/stream`'s `streamReady` (App.tsx). It used to live in TitleBar;
+ * once `.agent-dot` moved below the chat panel, the type moved here with
+ * it — it describes agent state, not the title bar.
  */
 export type AgentConnection = "connecting" | "connected" | "disconnected";
 
@@ -60,7 +61,7 @@ export type AgentUiStatus =
       current: AgentKind;
       label: string;
       loginCommand: string;
-      /** [E3.T5] §4.4's "本次由命令列指定" badge reads this — `true` only while `source === "cli"` and this agent is the current one. */
+      /** §4.4's "specified via the command line this session" badge reads this — `true` only while `source === "cli"` and this agent is the current one. */
       source: AgentSource;
       agents: AgentCardView[];
     }
@@ -102,12 +103,12 @@ function isValidCard(value: unknown): value is AgentResponseCard {
  * (errors over fallbacks, same rule `live-reload.ts`'s own parsers follow).
  */
 /**
- * #303: `GET /api/agent`'s `turnRunning` — whether the agent is inside an
+ * `GET /api/agent`'s `turnRunning` — whether the agent is inside an
  * author turn right now. A tab opened or reloaded mid-turn sets `working`
  * from this so Stop shows immediately, instead of waiting for the next
  * `chat-chunk`. A missing or non-boolean field reads as "not running".
  */
-/** 對話框下方顯示的模型；`detail` 是 adapter 自己的說明，掛在 tooltip 上。 */
+/** The model shown below the chat panel; `detail` is the adapter's own description, shown in a tooltip. */
 export interface AgentModelView {
   name: string;
   detail?: string;
@@ -128,7 +129,7 @@ export function modelFrom(data: unknown): AgentModelView | null {
   return typeof detail === "string" && detail !== "" ? { name, detail } : { name };
 }
 
-/** 對話框下方模型選單的一列：`GET /api/agent` 的 `models[]`。 */
+/** One row of the model menu below the chat panel: `GET /api/agent`'s `models[]`. */
 export interface AgentModelOption {
   id: string;
   name: string;

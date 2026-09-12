@@ -44,7 +44,7 @@ export interface EditableSeries {
 }
 
 /**
- * "資料格 state → chart data set input" (plan §6.2, 比照 `TextPanel.tsx`'s
+ * Converts "data-cell state → chart data set input" (mirrors `TextPanel.tsx`'s
  * own `textPanelInsertInput`): a pure function so this conversion has a
  * unit test independent of React (this codebase's component tests are all
  * `renderToStaticMarkup`, see that file's own doc comment). `null` means
@@ -81,12 +81,14 @@ function uniqueSeriesName(existing: readonly { name: string }[]): string {
 }
 
 /**
- * Chart 資料視窗 (E2.T12 plan §3.6/§4.5, AC-2/AC-3/AC-4/AC-5/AC-6): 雙擊圖表
- * 開啟（由 canvas.ts 的 `subscribeChartWindow` 驅動，本元件只在有 state 時被
- * 掛載）；拖曳標題列移動、位置夾制在 `.canvas-area` 之內；Esc 關閉，點視窗外
- * 不關（原型 `closeMenu` 的 Escape 分支特意把 `chartWin` 排除在外——編輯時
- * 要能一邊看著舞台）。每個控制都遵守同一條分界：資料格/軸標題用「本地預覽
- * ＋ blur 提交」，其餘一律「點擊當下提交」——分界表見 plan §4.5。
+ * The chart data window: opened by double-clicking a chart (driven by
+ * canvas.ts's `subscribeChartWindow` — this component is only ever mounted
+ * while a state exists); dragging the title bar moves it, clamped inside
+ * `.canvas-area`; Esc closes it, but clicking outside the window does not
+ * (the prototype's `closeMenu` Escape branch deliberately excludes
+ * `chartWin` — editing needs to keep the stage visible at the same time).
+ * Every control follows the same split: data cells/axis titles use "local
+ * preview + commit on blur", everything else commits immediately on click.
  */
 export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
   const { model } = state;
@@ -107,16 +109,16 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
     model.series.map((s) => ({ name: s.name, values: s.values.map(String) })),
   );
 
-  // Default position: top-right of the well, minus a margin (prototype's
-  // own `chartWinPos` default, slidra-logic-v3.js's `startWinDrag`) — one
+  // Default position: top-right of the well, minus a margin (matches the
+  // prototype's own `chartWinPos` default and its `startWinDrag`) — one
   // `useState` initializer per mount, so a NEW chart window (a different
   // `state.id`, remounted via OverlayLayer's `key={state.id}`) always opens
   // at this corner rather than wherever the previous one was dragged to.
   const [pos, setPos] = useState(() => ({ left: Math.max(0, bounds.width - 436 - 16), top: 16 }));
   const dragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
-  /** 命令序列化佇列：後送出的命令一定在前一條 resolve 之後才送出，因此一定後落地。
-   *  失敗也接上（then(send, send)），一條命令失敗不會讓整條鏈卡死。 */
+  /** Command serialization queue: a later command is only sent after the previous one resolves, so it always lands after it.
+   *  Failure is also chained (`then(send, send)`) so one failed command never stalls the rest of the chain. */
   function enqueue(send: () => Promise<unknown>): Promise<unknown> {
     const next = queueRef.current.then(send, send);
     queueRef.current = next;
@@ -131,7 +133,7 @@ export function ChartWindow({ state, controller, bounds }: ChartWindowProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [controller]);
 
-  /** Sends `name`, reverting the given local field(s) back to the last-known-committed value on failure (plan §4.5: "把本地預覽還原成伺服器上的狀態") — a failed write never touches the file, so `model` (this render's closed-over `state.model`) IS that last-known-committed value. */
+  /** Sends `name`, reverting the given local field(s) back to the last-known-committed value on failure (reverting the local preview back to the server's actual state) — a failed write never touches the file, so `model` (this render's closed-over `state.model`) IS that last-known-committed value. */
   async function commit(name: string, input: Record<string, unknown>, revert: () => void): Promise<void> {
     if (!controller) return;
     const result = await controller.runCommand(name, { slidePath: state.slidePath, elementId: state.id, ...input });

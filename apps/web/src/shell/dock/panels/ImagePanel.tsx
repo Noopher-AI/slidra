@@ -15,11 +15,13 @@ export interface ImagePanelProps {
 const PANEL_KIND: MediaAssetKind = "image";
 
 /**
- * Image 插入面板（[E2.T17] plan §4.2）：檔案選擇（同時是拖放區）、URL 文字框、
- * caption 文字框、Insert 按鈕。檔案與 URL 互斥（選檔清空 URL、輸入 URL 清空
- * 檔案）；三者都留空時插入一個空占位框。真正的格式判定一律以 `asset.kind`
- * （位元組偵測）為準，不看是哪個面板——D9/ADR-0015：面板身分從不是格式的
- * 來源，在 Video 面板選一張 PNG 就會合法地插入一張圖片。
+ * Image insert panel: file picker (which is also the drop zone), URL text
+ * field, caption text field, Insert button. File and URL are mutually
+ * exclusive (picking a file clears the URL, typing a URL clears the file);
+ * leaving all three empty inserts an empty placeholder box. The actual
+ * format is always decided by `asset.kind` (byte-sniffed), never by which
+ * panel was used — D9/ADR-0015: panel identity is never the source of
+ * format, so picking a PNG in the Video panel legitimately inserts an image.
  */
 export function ImagePanel({ onClose, controller, canvasSize, slidePath }: ImagePanelProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -82,8 +84,9 @@ export function ImagePanel({ onClose, controller, canvasSize, slidePath }: Image
       const data = inserted.data as { elementId?: unknown } | undefined;
       const elementId = typeof data?.elementId === "string" ? data.elementId : undefined;
       if (elementId) {
-        // 決定 D4：這一次失敗不回滾插入，只把訊息交給既有的 CanvasState.error
-        // 通道——runCommand 本身已經這樣做，這裡不用額外處理。
+        // D4: a failure here does not roll back the insert; the message is
+        // just handed to the existing CanvasState.error channel — runCommand
+        // already does this itself, no extra handling needed here.
         await controller.runCommand("element name set", { slidePath, elementIds: [elementId], name: trimmedCaption });
       }
     }

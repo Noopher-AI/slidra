@@ -77,7 +77,7 @@ function EdgeSection({ title, labels, effect, duration, onChangeEffect, onChange
 }
 
 /**
- * Animate › Page's presentational half ([E2.T11]/#207 §4.7): pure props,
+ * Animate › Page's presentational half (§4.7): pure props,
  * renderable with `renderToStaticMarkup` — data-fetching and command
  * dispatch live in the container (`AnimatePagePanel.tsx`), same split as
  * `AnimateObjectPanel.tsx`/`ObjectList.tsx`.

@@ -14,39 +14,41 @@ export interface TitleBarProps {
   deckName: string | null;
   /** "Saved" / "Unsaved changes" (NOOP-93 §4.2) — `null` when save-state is `known:false` or its request failed; no status text is shown then. */
   savedStatusText: string | null;
-  /** T5/NOOP-93/#110：agent 持有編輯鎖時，undo/redo 一律停用（不送請求）。 */
+  /** While the agent holds the editing lock, undo/redo are always disabled (no request is sent). */
   editingFrozen: boolean;
   onUndo(): void;
   onRedo(): void;
-  /** `POST /api/new`：把目前的簡報換成一份全新的、完全沒有投影片的簡報。 */
+  /** `POST /api/new`: replaces the current presentation with a brand-new one that has no slides at all. */
   onNew(): void;
   /** NOOP-93 §4.1: the browser only ever hands over bytes, never a path — App.tsx reads `file` and POSTs it. */
   onOpenFile(file: File): void;
   /** NOOP-93 §4.2: `POST /api/save`, always actually writes (see §4.2's table). */
   onSave(): void;
-  /** NOOP-93 §4.7: Export 下拉面板目前開／關。 */
+  /** Whether the Export dropdown panel is currently open. */
   exportOpen: boolean;
   onExportToggle(): void;
   onExportClose(): void;
   onExportPick(format: ExportFormat): void;
   exportState: ExportUiState;
   onExportDismiss(): void;
-  /** 從目前頁播放（標題列主要的 ▶Play 按鈕）。 */
+  /** Plays from the current page (the title bar's main ▶Play button). */
   onPlay(): void;
-  /** 從第一頁播放（▶Play 旁的小按鈕）。 */
+  /** Plays from the first page (the small button next to ▶Play). */
   onPlayFromStart(): void;
   canPlay: boolean;
 }
 
 /**
- * 標題列 (New v3)。版面依 02-DESIGN_DOC.md §3：品牌／undo-redo／檔名／
- * Open-Save-Export／Play。
+ * The title bar (New v3). Layout: brand mark / undo-redo / filename /
+ * Open-Save-Export / Play.
  *
- * Open／Save 現在接上真實動作（NOOP-93）：Open 觸發隱藏的
- * `<input type="file" accept=".slidra">`，選檔後把 `File` 交給
- * `onOpenFile`（是否已有未儲存變更、要不要跳確認，都是 App.tsx 的事——
- * 這裡只負責把使用者選的檔案交出去）；Save 直接呼叫 `onSave`。Export
- * 面板另有專門元件（見 ExportPanel.tsx），不在這裡實作。
+ * Open/Save are wired to real actions: Open triggers a hidden
+ * `<input type="file" accept=".slidra">`, and once a file is picked, hands
+ * the `File` to `onOpenFile` (whether there are unsaved changes and
+ * whether to prompt for confirmation is App.tsx's concern — this component
+ * only hands over the file the user picked); Save calls `onSave` directly.
+ * The Export panel is its own dedicated component (see ExportPanel.tsx),
+ * not implemented here.
  */
 export function TitleBar({
   deckName,

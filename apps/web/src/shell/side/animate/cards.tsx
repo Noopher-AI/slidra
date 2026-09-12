@@ -43,11 +43,12 @@ export interface EffectCardProps {
 }
 
 /**
- * Animate › Object 清單的單張卡片（NOOP-66/#206 §4.5）：改 Effect／Start／
- * Duration／Delay 立即送出對應的 `effect set`（呼叫方接住 onChange* 決定何
- * 時真的 dispatch——這裡不做 debounce／樂觀更新，維持「一次操作＝一次 undo」
- * 的單純性，交給呼叫方）。`family` 不在卡片上顯示可改欄位（D3：family 只能
- * remove+add，不能 set）。
+ * A single card in the Animate > Object list: changing Effect/Start/Duration/
+ * Delay immediately fires the corresponding `effect set` (the caller receives
+ * onChange* and decides when to actually dispatch — no debounce or optimistic
+ * update happens here, keeping the "one action = one undo" simplicity in the
+ * caller's hands). `family` has no editable field on the card (D3: family can
+ * only be removed+added, never set).
  */
 export function EffectCard({
   card,

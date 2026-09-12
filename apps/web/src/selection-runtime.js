@@ -4,12 +4,12 @@
 // (ADR-0011), so it has no way to reach anything outside itself except
 // `postMessage`.
 //
-// Its job (NOOP-91 extends #56's original click-only version): report which
+// Its job: report which
 // element was clicked (hit resolution), draw a selection box over it, and
 // report raw pointer coordinates for direct-manipulation gestures (drag,
 // marquee). Preview transforms and snapping stay entirely in the parent
 // (canvas.ts) — this runtime paints whatever transform/guide string it is
-// handed. Bounding-box geometry (F8, NOOP-289 決定 G1) is the one exception:
+// handed. Bounding-box geometry is the one exception:
 // since the browser has no bundled font-metrics engine any more, THIS
 // runtime is the one place that can measure real rendered geometry
 // (`getBBox()`/`getCTM()`) and reports it up rather than computing it in
@@ -112,8 +112,8 @@
     ".sel::after{right:-4px;top:-4px;}" +
     ".sel i::before{left:-4px;bottom:-4px;}" +
     ".sel i::after{right:-4px;bottom:-4px;}" +
-    // 多選是單一虛線聯集框（05-INTERACTIONS.feature「多選」，取代舊版「每個
-    // 元素各畫一個框」），與單選的實線框（`.sel`）區分開來。
+    // A multi-selection is a single dashed union box (replacing the old
+    // per-element box), distinct from the single-selection solid box (`.sel`).
     ".sel-multi{position:fixed;box-sizing:border-box;outline:2px dashed " +
     colors.accent +
     ";background:color-mix(in srgb, " +
@@ -290,10 +290,10 @@
   var groupFrameEls = [];
 
   // Single dashed box for a multi-selection (>1 ids) — the union of every
-  // selected element's own rect (05-INTERACTIONS.feature「多選」: one
-  // dashed frame, not one box per element, replacing the old per-element
-  // pool). No corner decorations, so acceptance criterion 9 ("多選看不到
-  // 把手") holds simply because this element never carries any.
+  // selected element's own rect: one dashed frame, not one box per element,
+  // replacing the old per-element pool. No corner decorations, so the
+  // "multi-select shows no resize handles" acceptance criterion
+  // holds simply because this element never carries any.
   var multiBoxEl = document.createElement("div");
   multiBoxEl.className = "sel-multi";
   multiBoxEl.style.display = "none";
@@ -319,7 +319,7 @@
   // The id of the text box currently being edited, or null between edits.
   // This is checked at the very top of every click/dblclick/pointerdown
   // handler below — editing suspends normal selection/gesture handling
-  // entirely (§4.2's "編輯期間不觸發選取／拖曳邏輯" row) — rather than
+  // entirely ("no select/drag logic fires during editing") — rather than
   // layering an edit-mode branch into each one.
   var editingId = null;
   var textarea = null;
@@ -385,8 +385,8 @@
       scheduleDecorationSync();
     });
     el.addEventListener("keydown", function (event) {
-      // NOOP-65 決定 A / §4.4: Enter now inserts a hard break (core's
-      // wrapText has newline semantics as of this ticket) — the browser's
+      // Enter now inserts a hard break (wrapText has newline semantics) —
+      // the browser's
       // own default textarea action does that for free, so a plain Enter
       // is NOT prevented here any more. ⌘Enter/Ctrl+Enter is the one
       // exception: no insert, no commit, no leaving edit mode, and it must
@@ -410,7 +410,7 @@
     el.addEventListener("focus", scheduleDecorationSync);
     el.addEventListener("input", function () {
       if (!isComposing) sanitizeTextareaValue();
-      // F8 (NOOP-289 決定 T1): repainted entirely locally, on every
+      // Repainted entirely locally, on every
       // keystroke (including mid-IME-composition — this only ever reads
       // `textarea.value` and writes the SEPARATE `<text>` element, so
       // unlike `sanitizeTextareaValue()` it cannot disturb an in-progress
@@ -776,7 +776,7 @@
    * `el`'s on-screen rect for the selection box/handles: the actual
    * rendered `getBoundingClientRect()`, UNLESS a textbox-width drag is
    * live-previewing a different width for this EXACT element
-   * (`previewTextWidth`, F8/NOOP-289 決定 (b)) — then the width component
+   * (`previewTextWidth`) — then the width component
    * is recomputed from the element's own (unchanged) local bbox plus the
    * previewed width, transformed through its own `getScreenCTM()`, so the
    * box/handles track the drag even though the `<text>` itself was never
@@ -819,7 +819,7 @@
    * this repo's own non-geometry unit tests, implements neither this nor
    * `getNumberOfChars`) or returns nothing usable — the single guard point
    * that keeps every geometry helper below from ever throwing, per
-   * ADR-0017 §4.2's "格式錯誤／型別錯誤" row.
+   * ADR-0017 §4.2's "format error / type error" row.
    */
   function getTextCTM(textEl) {
     return typeof textEl.getScreenCTM === "function" ? textEl.getScreenCTM() : null;
@@ -827,7 +827,7 @@
 
   /**
    * `el`'s content `<text>` — excludes a list-marker `<text>` sibling
-   * (NOOP-65 決定 E: the bullet/number glyphs are a second `<text>` in the
+   * (the bullet/number glyphs are a second `<text>` in the
    * same `<g>`, never part of the edited content). Every place in this file
    * that used to do `el.querySelector("text")` now goes through this.
    */
@@ -841,15 +841,15 @@
    * a single-line plain `<text>`, the `<text>` itself) client rect that
    * line occupies.
    *
-   * Two index spaces, not one (NOOP-65 決定 A/F): `domStart/domEnd` is what
+   * Two index spaces, not one: `domStart/domEnd` is what
    * `getStartPositionOfChar`/`getEndPositionOfChar`/`getNumberOfChars`
    * address (every real character, INCLUDING nested run tspans' text via
    * `tspan.textContent`, since bold/italic runs never add or remove a
-   * character — 決定 B); `valueStart/valueEnd` is `textarea.value`'s own
+   * character); `valueStart/valueEnd` is `textarea.value`'s own
    * space, which additionally counts one virtual character per hard break
-   * (`data-slidra-break="1"`, 決定 A) that has no DOM position at all. Only
+   * (`data-slidra-break="1"`) that has no DOM position at all. Only
    * DIRECT child `<tspan>`s are lines — `getElementsByTagName` (this
-   * function's pre-NOOP-65 shape) would also pick up nested run tspans and
+   * function's earlier shape) would also pick up nested run tspans and
    * double-count every bold/italic span as its own extra "line".
    */
   function textLineRanges(textEl) {
@@ -886,7 +886,7 @@
   /**
    * The line (from `textLineRanges`) whose vertical band contains
    * `clientY`, clamped to the first/last line when `clientY` falls above
-   * or below all of them (ADR-0017 §4.2's "點在整段文字上方／下方" row).
+   * or below all of them (ADR-0017 §4.2's "point above/below the whole text" row).
    */
   function lineAtClientY(lines, clientY) {
     var line = lines[0];
@@ -899,7 +899,7 @@
 
   /**
    * Hit-tests a viewport point against the `<text>` currently being edited
-   * and returns a `textarea.value` character index (NOOP-65 決定 F — never
+   * and returns a `textarea.value` character index (never
    * a DOM index), or `null` when there is nothing to test against
    * (ADR-0017 §4.2's contract table: no editing session, missing
    * element/`<text>`, or an unusable CTM all return `null` rather than a
@@ -1083,8 +1083,8 @@
   /**
    * The chain of id-carrying ancestor containers from (but not including)
    * `el` up to (but not including) the `<svg>` root, outermost first —
-   * NOOP-90/T2 §4.6's `bounds` event payload, and the source F9 (群組) will
-   * read for its "Group 2 › Group 1" drill-in label. Every container in the
+   * feeds the `bounds` event payload, and the group-panel source will
+   * read it for its "Group 2 › Group 1" drill-in label. Every container in the
    * normal form carries an `id` (ADR-0012), so this never needs to guess at
    * a missing one the way `findSelectable`'s upward walk defensively does.
    */
@@ -1182,10 +1182,10 @@
   }
 
   /**
-   * `preview-table-cols` host->runtime command (E2.T14, plan §4.5): a
+   * `preview-table-cols` host->runtime command (plan §4.5): a
    * column-width drag's live preview. Moves only each cell `<g>`'s own
-   * `translate` x and its `<rect>`'s `width` — never re-wraps text (決定
-   * 13: "拖曳期間不重新換行"). `cols` not being an array of the SAME
+   * `translate` x and its `<rect>`'s `width` — never re-wraps text ("no
+   * rewrap during drag"). `cols` not being an array of the SAME
    * length as the table's current column count leaves the DOM completely
    * untouched (same "bad input is a no-op, never a partial mutation"
    * posture `applyPreviewTextboxWidth` already has for its own malformed
@@ -1315,7 +1315,7 @@
     return match ? { row: Number(match[1]), col: Number(match[2]) } : null;
   }
 
-  /** The template-row cell sharing `generatedCell`'s column, within the same table container — architecture: "雙擊編輯的是模板列" (plan §4.5). */
+  /** The template-row cell sharing `generatedCell`'s column, within the same table container — architecture: "double-click always edits the template row" (plan §4.5). */
   function findTemplateCellForColumn(tableEl, col) {
     var candidates = tableEl.querySelectorAll('[data-slidra-repeat="row"]');
     for (var i = 0; i < candidates.length; i++) {
@@ -1401,7 +1401,7 @@
   window.addEventListener(
     "click",
     function (event) {
-      // [E2.T17] plan §4.4: clicking the stage media layer's own play/seek
+      // Clicking the stage media layer's own play/seek
       // controls must never change selection — checked first, before any
       // other short-circuit below, the same `composedPath()` technique
       // `findHandleTarget` uses (this listener is on `window`, outside the
@@ -1409,13 +1409,15 @@
       if (findMediaControlTarget(event)) return;
       // A commit-triggering outside pointerdown already cleared editingId
       // and set suppressNextClick before this click fires (§4.2's
-      // "pointerdown 落在被編輯元素之外" row) — this guard only matters for
+      // "pointerdown lands outside the element being edited" row) — this guard only matters for
       // a click with no preceding pointerdown at all (e.g. synthetic).
       if (editingId !== null) return;
-      // 抓取模式下放開拖曳後，瀏覽器仍會補發一次原生 click——不短路的話會
-      // 多選到／清掉一個元素（05-INTERACTIONS.feature「抓取模式」場景，
-      // NOOP-83 §4.2）。stage-pan-end 本身不設 suppressNextClick，因為那個
-      // 旗標是給「已經送出 gesture-end 的手勢」用的，這裡是完全不同的路徑。
+      // The browser still dispatches one native click after releasing a
+      // drag in hand/pan mode — without this short-circuit it would
+      // multi-select or deselect an element (the "hand mode" scenario).
+      // stage-pan-end itself does not set suppressNextClick, because that
+      // flag is meant for "a gesture that already sent gesture-end" —
+      // this is an entirely different path.
       if (stageHandMode) return;
       if (suppressNextClick) {
         suppressNextClick = false;
@@ -1505,7 +1507,7 @@
       // logic below. resolveClickTarget already ran findSelectable, which
       // returns null (so `target` is null, handled above) for a locked
       // box or anything inside one — this is the dblclick path's half of
-      // the "two checks" lock posture (§7 決定 8); enterRuntimeTextEdit's
+      // the "two checks" lock posture; enterRuntimeTextEdit's
       // own isLockedOrInsideLocked is the other half, for the
       // host-initiated beginTextEdit path this click never goes through.
       if (target.hasAttribute("data-slidra-text-width") || isPlainTextContainer(target)) {
@@ -1513,12 +1515,12 @@
         post({ event: "dblclick-textbox", id: target.getAttribute("id") });
         return;
       }
-      // E2.T14 §4.5: double-clicking a table cell opens cell editing
+      // Double-clicking a table cell opens cell editing
       // instead of the group-entry logic below (a table is never a group,
       // see `isGroupContainer`'s own comment) — a generated cell reports
-      // its template row's row index instead of its own (架構:
-      // "雙擊編輯的是模板列").
-      // E2.T14 §4.5: a double-click on a table cell ALWAYS edits that cell,
+      // its template row's row index instead of its own (architecture:
+      // "double-click always edits the template row").
+      // A double-click on a table cell ALWAYS edits that cell,
       // however many not-yet-entered groups wrap the table — the group
       // chain becomes the drill-in path in one go (a table is never a group
       // itself, see `isGroupContainer`). One level per double-click (the
@@ -1538,13 +1540,13 @@
           return;
         }
       }
-      // E2.T12 plan §3.6: a chart container opens its data window instead
+      // A chart container opens its data window instead
       // of the group-entry logic below. A chart nested inside a not-yet-
       // entered group resolves to that GROUP here (findSelectable's
       // outermost-within-scope rule), so this branch naturally only fires
       // once the chart itself is the resolved target — the group-drilling
       // branch below still runs first for the outer dblclick, exactly the
-      // existing "group 鑽入" two-dblclick sequence plan §4.4 asks for.
+      // existing "group drill-in" two-dblclick sequence asks for.
       if (target.getAttribute("data-slidra-type") === "chart") {
         post({ event: "dblclick-chart", id: target.getAttribute("id") });
         return;
@@ -1588,7 +1590,7 @@
     return chain;
   }
 
-  /** E2.T14 §4.5: reports the cell under `rawTarget` of table `tableEl` for editing — a generated cell reports its template row's row index instead of its own (架構: "雙擊編輯的是模板列"). */
+  /** Reports the cell under `rawTarget` of table `tableEl` for editing — a generated cell reports its template row's row index instead of its own (architecture: "double-click always edits the template row"). */
   function postTableCellDblclick(tableEl, rawTarget) {
     var tableCellEl = findTableCellElement(rawTarget);
     var cellAddress = tableCellEl && tableCellAddress(tableCellEl);
@@ -1720,15 +1722,14 @@
     return null;
   }
 
-  // E2.T14r2 §4.2: the id of the table currently owning an active cell
+  // The id of the table currently owning an active cell
   // range, set by the host's own "table-range" command (below) — `null`
   // means no range is active, and every key this flag would otherwise
   // reroute (Delete/Backspace/Tab/⌘B/Esc) keeps its pre-existing behaviour
   // bit-for-bit (§2.20).
   var tableRangeId = null;
 
-  // --- Stage navigation relay (Dev-Leader 裁決核准的擴大範圍：舞台導航
-  // 5 場景，NOOP-83 §3.3/§4) ---
+  // --- Stage navigation relay (covers all 5 stage-navigation scenarios) ---
   // Same posture as every other message in this file: report raw
   // client-px coordinates and a wheel event's own ctrl/meta flag, do zero
   // geometry here. The parent (canvas.ts) converts iframe-local client
@@ -1746,7 +1747,7 @@
     "wheel",
     function (event) {
       // Always relayed regardless of stageHandMode — wheel-zoom/pan works
-      // whether or not 抓取模式 is toggled on (05-INTERACTIONS.feature).
+      // whether or not hand mode is toggled on.
       // preventDefault() is load-bearing for the ctrl/meta case: without
       // it the browser treats ⌘/Ctrl+wheel as a page zoom instead of
       // delivering the gesture here.
@@ -1799,7 +1800,7 @@
     post({ event: "dblclick-textbox", id: el.getAttribute("id") });
   });
 
-  // Space 暫時抓取的中繼 (§4.4)：when focus has moved into this iframe
+  // Relays the Space-for-temporary-hand-mode shortcut (§4.4): when focus has moved into this iframe
   // (e.g. after clicking a slide element), the parent document's own
   // window-level keydown listener (Stage.tsx) never sees Space at all —
   // without this relay, temporary-grab would only work before the first
@@ -1860,7 +1861,7 @@
           return;
         }
         // Outside the edited box: commit and leave editing (§4.2's
-        // "pointerdown 落在被編輯元素之外" row). This same pointerdown does
+        // "pointerdown lands outside the element being edited" row). This same pointerdown does
         // not also start a new gesture/selection — suppressNextClick only
         // eats the trailing click; a second, separate click is what
         // resumes normal selection.
@@ -1870,7 +1871,7 @@
         return;
       }
       if (stageHandMode) {
-        // 抓取模式短路分支：no element gesture starts at all while the
+        // Hand-mode short-circuit: no element gesture starts at all while the
         // ✋ toggle (or temporary Space-hold) is active — this branch
         // takes over the pointer completely instead of falling through
         // to the hit-test/gesture logic below, which stays byte-for-byte
@@ -1947,7 +1948,7 @@
             // Dragging an element that was not already part of the current
             // selection replaces the selection with just that element — the
             // same "select, then move" behaviour every direct-manipulation
-            // editor gives a plain (non-additive) drag (§4.2's "多選" row
+            // editor gives a plain (non-additive) drag (§4.2's "multi-select" row
             // implies the selection in effect at drag start is what moves).
             // With ⇧/⌘/Ctrl held it ADDS instead: a ⇧-click that jitters
             // past DRAG_THRESHOLD_PX (trackpads do) must not silently throw
@@ -2034,8 +2035,8 @@
 
   window.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
-    // Esc COMMITS an in-progress edit rather than cancelling it (§7 決定
-    // 4) — checked before the gesture-cancel branch below, since Escape
+    // Esc COMMITS an in-progress edit rather than cancelling it
+    // — checked before the gesture-cancel branch below, since Escape
     // must never fall through to popping groupPath while mid-edit. Works
     // regardless of whether the hidden textarea currently has focus: this
     // listener is on `window`, and keydown bubbles there from any focus
@@ -2079,7 +2080,7 @@
   });
 
   // A right-click while a gesture is in progress cancels it instead of
-  // opening the browser's context menu (§4.2's "拖曳中按 Esc" row extends
+  // opening the browser's context menu (§4.2's "Esc during drag" row extends
   // naturally to the other cancel gesture named in §4.1's gesture-end row).
   // Otherwise: right-click on an element selects it (if not already part of
   // the current selection) and suppresses the browser's own menu — there is
@@ -2102,7 +2103,7 @@
       updateBoxes();
       post(withGroupPath({ event: "select", id: id, name: target.getAttribute("data-slidra-name"), additive: false }));
     }
-    // E2.T14 §4.5: right-clicking a table cell also reports which one —
+    // Right-clicking a table cell also reports which one —
     // the host uses this to open the cell context menu (§3.7: the right-
     // click menu itself is a parent-document floating layer, this runtime
     // only ever reports the hit).
@@ -2116,12 +2117,12 @@
   });
 
   // Keyboard relay for the shortcuts that must work even when focus is
-  // inside this iframe (NOOP-90/T2 §4.4's "焦點在投影片 iframe 內" row —
+  // inside this iframe (§4.4's "focus is inside the slide iframe" row —
   // the parent document's own window-level keydown listener never sees a
   // keypress that landed in here). Whitelisted to exactly the keys the
-  // parent has shortcuts for: this ticket's four, plus ⌘Z/⇧⌘Z (issue 198;
+  // parent has shortcuts for: Delete/Backspace, plus ⌘Z/⇧⌘Z (issue 198;
   // written without the hash so the no-hex-colour source check stays
-  // honest), plus ←/→ (F-02: same "焦點在 iframe 內" gap as the rest of this
+  // honest), plus ←/→ (same "focus inside iframe" gap as the rest of this
   // list — App.tsx's own document-level ArrowLeft/ArrowRight paging listener
   // never sees a keypress that landed in here either). Everything else (⌘S,
   // Tab, …) is untouched and falls through to whatever this iframe's own
@@ -2131,7 +2132,7 @@
   // `stage-key`.
   function isRelayedStageKey(event) {
     if (event.key === "Delete" || event.key === "Backspace") return true;
-    // E2.T12: Escape closing the chart data window is a parent-side (React)
+    // Escape closing the chart data window is a parent-side (React)
     // concern with no runtime-local meaning of its own — unlike every other
     // relayed key, this one is on top of, not instead of, the runtime's own
     // unconditional Escape handling above (text-edit-commit / gesture
@@ -2238,7 +2239,7 @@
   }
 
   /**
-   * F8 (NOOP-289 決定 T1): rebuilds a text box's `<text>` content into "one
+   * Rebuilds a text box's `<text>` content into "one
    * hard-break paragraph = one `<tspan>`" — zero measurement, zero wrap.
    * `x` is read off the CURRENT first line (either an existing tspan, or —
    * on the very first call for a given edit session — the `<text>`'s own
@@ -2281,9 +2282,9 @@
    * The one place `<text>` content is repainted during an edit session
    * (begin-text-edit's initial paint, every keystroke, and a failed
    * commit's revert) — both a text box and a plain `<text>` go through
-   * `renderTextBoxLines` (F-04, NOOP-399): a plain `<text>` never wraps on
+   * `renderTextBoxLines`: a plain `<text>` never wraps on
    * its own, so a `\n` the browser's textarea already inserted on Enter
-   * (NOOP-65 決定 A) needs the same one-`<tspan>`-per-line treatment a text
+   * needs the same one-`<tspan>`-per-line treatment a text
    * box gets, or the edit session shows it collapsed onto one line while
    * the file underneath already has two. None of this function's three
    * call sites (all host-driven, or the runtime's own `input` handler)
@@ -2298,7 +2299,7 @@
     updateBoxes();
   }
 
-  // F8 (NOOP-289 決定 (b)): while dragging a textbox-width handle, the box
+  // While dragging a textbox-width handle, the box
   // and handles track the PROPOSED width without the `<text>` content
   // moving at all (there is no font engine left here to re-wrap it with) —
   // {id, width} of the element currently being live-previewed, read by
@@ -2308,7 +2309,7 @@
   // point it agrees with the container's own real bbox again.
   var previewTextWidth = null;
 
-  /** `preview-textbox-width` (F8, NOOP-289 決定 (b)): updates `data-slidra-text-width` and the live-preview override the box/handles read — never touches `<text>`. */
+  /** `preview-textbox-width`: updates `data-slidra-text-width` and the live-preview override the box/handles read — never touches `<text>`. */
   function applyPreviewTextboxWidth(id, width) {
     var container = document.getElementById(id);
     if (!container || typeof width !== "number" || !(width > 0)) return;
@@ -2350,7 +2351,7 @@
     } else if (data.command === "begin-text-edit") {
       var started = enterRuntimeTextEdit(data.id, data.text);
       if (started) {
-        // 決定 T1: always repaint immediately — a text box's existing
+        // Always repaint immediately — a text box's existing
         // content may still carry rich runs/soft-wrap tspans from before
         // this edit session; this flattens it to the "one tspan per hard
         // break" shape before the first keystroke, matching every
@@ -2400,9 +2401,9 @@
   });
 
   /**
-   * F8 (NOOP-289 決定 G1): every id-carrying element's bounding box — the
+   * Every id-carrying element's bounding box — the
    * browser has no bundled font-metrics engine any more to compute one
-   * from the parsed model, so this replaces core's `elementBounds` as the
+   * from the parsed model, so this is the
    * host's one source for marquee hit-testing and drag-to-move's snap
    * candidates (`canvas.ts`'s `elementBoundsById`). Two numbers per id:
    *
@@ -2484,7 +2485,7 @@
   // above) are attached — a `postMessage` sent before that would be
   // silently dropped (same race `selectOnceLoaded` in canvas.ts already
   // works around for other host->runtime commands). The parent re-sends
-  // "stage-mode" on this signal so 抓取模式 survives a slide's srcdoc being
+  // "stage-mode" on this signal so hand mode survives a slide's srcdoc being
   // rebuilt (e.g. navigating to another slide) instead of reverting to
   // off on every new document.
   post({ event: "runtime-ready" });

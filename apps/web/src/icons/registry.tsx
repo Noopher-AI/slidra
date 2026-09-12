@@ -71,8 +71,9 @@ export type IconName =
   | "distV"
   | "front"
   | "back"
-  // [E2.T7]: Animate › Object 的清單重排／移除，原型與既有 22 個圖示都沒有
-  // 對應的字形——這兩個不是任何既有圖示的重新命名，是這次新增的最小集合。
+  // Animate > Object list reorder/remove — neither the prototype nor the
+  // existing 22 icons has a matching glyph, so these two are new additions
+  // rather than a rename of any existing icon.
   | "chevron-up"
   | "chevron-down"
   | "close"
@@ -82,8 +83,9 @@ export type IconName =
   // teeth swept between root r=5.6 and tip r=7.6 around a r=2.6 hub, so
   // its 2.47..17.53 extent matches the neighbouring save/close icons.
   | "settings"
-  // #303 的停止鍵原本寫「停止」兩個字，跟旁邊的送出箭頭不同調——這個是
-  // 同一套 0 0 20 20 網格上的實心方塊（播放器通用的 stop 字形）。
+  // The stop button used to be the literal word "stop", which clashed in
+  // tone with the send arrow next to it — this is a solid square on the
+  // same 0 0 20 20 grid instead (the conventional player "stop" glyph).
   | "stop";
 
 /**

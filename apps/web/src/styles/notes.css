@@ -1,12 +1,12 @@
-/* 備忘稿 (T3 [E2.T3])：真的 textarea，blur 送 `slide notes set`
-   （Notes.tsx）。styled as the prototype's notes box (white card). Height
+/* Speaker notes: a real textarea, sends `slide notes set` on blur
+   (Notes.tsx). styled as the prototype's notes box (white card). Height
    is the design package's own `--notes-h` token. */
 .notes {
   grid-row: 2;
   height: var(--notes-h);
   background: var(--surface-0);
   border-top: 1px solid var(--surface-2);
-  padding: var(--space-4) calc(var(--space-5) * 2) var(--space-6); /* 左右 24px（原型量測） */
+  padding: var(--space-4) calc(var(--space-5) * 2) var(--space-6); /* 24px left/right, matching the prototype */
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

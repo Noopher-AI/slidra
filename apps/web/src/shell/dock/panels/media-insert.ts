@@ -23,13 +23,13 @@ export interface MediaInsertInput {
   href?: string;
   /** Present whenever a real asset was imported; absent for an empty placeholder insert. */
   media?: string;
-  /** [E2.T17] Present only for a third-party player embed (YouTube) — `media` is then the player URL, not a path inside the presentation. */
+  /** Present only for a third-party player embed (YouTube) — `media` is then the player URL, not a path inside the presentation. */
   embed?: string;
 }
 
 /**
- * Percentage-of-canvas boxes (plan §4.2's "抄原型 `MEDIA_BOX`"), the same
- * box for a real import and for that kind's empty placeholder — only
+ * Percentage-of-canvas boxes (matching the prototype's `MEDIA_BOX`), the
+ * same box for a real import and for that kind's empty placeholder — only
  * whether `href`/`media` get set differs.
  */
 const MEDIA_BOX: Record<MediaAssetKind, { l: number; t: number; w: number; h: number }> = {
@@ -42,7 +42,7 @@ const MEDIA_BOX: Record<MediaAssetKind, { l: number; t: number; w: number; h: nu
  * `kind` is the asset's own byte-detected kind (`ImportedAsset.kind` from
  * `resolveAssetImport`) when `path` is non-null — NOT necessarily the panel
  * the user opened (ADR-0015: format identity never comes from which panel
- * was open, plan §4.2 "在 Video 面板選了一個 PNG"). When `path` is null
+ * was open — e.g. picking a PNG in the Video panel). When `path` is null
  * (the "Insert" button pressed with no file/URL chosen), `kind` is instead
  * the panel's own identity, since there is no byte-detected asset to defer
  * to — this is what produces each kind's own empty placeholder shape.

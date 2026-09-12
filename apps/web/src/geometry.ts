@@ -1,12 +1,11 @@
 /**
- * SVG transform maths and drag-snap ("貼齊") calculation — the web's own
- * copy of core's geometry pure matrix/snap functions (F8,
- * NOOP-289 決定 G1). The browser no longer has a bundled font-metrics
- * engine to compute an element's bounding box from its parsed model, so
- * `elementBounds` is NOT ported: bounds now come from the runtime's own
- * `getBBox()`/`getCTM()` (real rendered geometry), reported over
- * `postMessage` — see `canvas.ts`'s `element-bounds` handling. Everything
- * below this line is unchanged pure math, ported verbatim from core.
+ * SVG transform math and drag-snap ("snap to guide") calculation — pure
+ * matrix/snap functions (decision G1). The browser no longer has a bundled
+ * font-metrics engine to compute an element's bounding box from its parsed
+ * model, so there is no `elementBounds` here: bounds now come from the
+ * runtime's own `getBBox()`/`getCTM()` (real rendered geometry), reported
+ * over `postMessage` — see `canvas.ts`'s `element-bounds` handling.
+ * Everything below this line is pure math with no side effects.
  */
 
 /** SVG's 2×3 affine matrix, in the same column order as `matrix(a b c d e f)`. */
@@ -156,7 +155,7 @@ export function transformRect(m: Matrix, r: Rect): Rect {
   return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
 }
 
-// --- 貼齊（智慧輔助線）, NOOP-91 §4.6 — pure, unchanged from core ---
+// --- Snap to guide (smart guides), §4.6 — pure functions ---
 
 export interface SnapCandidate {
   id: string;

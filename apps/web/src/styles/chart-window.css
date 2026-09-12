@@ -1,4 +1,4 @@
-/* Chart 資料視窗 (E2.T12 plan §3.6/§4.5/§5.2) — a free-floating glass window
+/* Chart data window — a free-floating glass window
    inside `.canvas-area`, same material as `.comment-composer` (stage-
    overlays.css) but its own file since it is sized/laid out nothing like a
    composer (a data table plus a two-column options grid, not a textarea). */

@@ -13,7 +13,7 @@ export interface CommentLayerProps {
   onClose(): void;
 }
 
-/** 與 AI 協作的留言框（[E2.T8]）。見 SelectionOverlay.tsx 同樣的範圍說明。 */
+/** The comment box for collaborating with the AI. See SelectionOverlay.tsx for the same scope note. */
 export function CommentLayer({ open, anchor, bounds, draft, onDraftChange, editingCommentId, onSubmit, onDelete, onClose }: CommentLayerProps) {
   return (
     <CommentComposer

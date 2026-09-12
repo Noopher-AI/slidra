@@ -4,8 +4,8 @@ import type { RefObject } from "react";
 /**
  * Shared close behavior for every floating layer this ticket adds (Dock's
  * insert panels / shape / arrange / zoom menus, Rail's New/Templates menu):
- * a `mousedown` (not `click`, per 02-DESIGN_DOC.md §4.3 "任一 mousedown 在
- * 外部 → 全關") outside the layer's own subtree closes it, and so does Esc.
+ * a `mousedown` (not `click`, per the design doc's "any mousedown outside
+ * closes everything") outside the layer's own subtree closes it, and so does Esc.
  * Not exported from stage-view.ts — that module is deliberately pure/DOM-free
  * (used from Vitest with no DOM), and this hook is exactly the DOM-touching
  * half its own doc comment says callers own.

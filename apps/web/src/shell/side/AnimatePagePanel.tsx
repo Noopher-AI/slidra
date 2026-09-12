@@ -9,11 +9,13 @@ export interface AnimatePagePanelProps {
 }
 
 /**
- * 動畫 › Page（[E2.T11]/#207 §4.7）：`useSlideTransition` 供資料，每個操作
- * 即時送出 `slide transition set`（D14：一次命令＝一次
- * `writePresentationFile`＝一筆 undo，這裡不寫任何 undo 程式碼）。命令成功後
- * 呼叫 `refresh()` 重新讀檔——不等下一次不相干的 reload() 才看到自己剛做的
- * 改動；失敗時不 `refresh()`、不改 UI（比照 `AnimateObjectPanel`）。
+ * Animate > Page (§4.7): `useSlideTransition` supplies the data; each action
+ * immediately sends `slide transition set` (D14: one command = one
+ * `writePresentationFile` = one undo entry, so no undo code is written
+ * here). Calls `refresh()` to re-read the file after a command succeeds —
+ * it doesn't wait for the next unrelated reload() to see its own change;
+ * on failure it neither calls `refresh()` nor changes the UI (mirroring
+ * `AnimateObjectPanel`).
  */
 export function AnimatePagePanel({ state, controller }: AnimatePagePanelProps) {
   const { transition, refresh } = useSlideTransition(state);

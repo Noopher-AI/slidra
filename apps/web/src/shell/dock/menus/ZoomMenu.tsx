@@ -7,13 +7,17 @@ export interface ZoomMenuProps {
 }
 
 /**
- * 縮放選單 — 這張骨架票唯一要求「完全可用」的浮層（其餘 Dock 面板／選單都是
- * 空容器）。05-INTERACTIONS.feature「縮放選單」：− 百分比 + ｜Fit｜預設值，
- * 目前值以 `--brand-red` 標示；選 Fit 回到 100% 並置中。
+ * Zoom menu — the only floating layer required to be fully functional in
+ * this skeleton pass (every other Dock panel/menu is still an empty
+ * container). Layout: − | percentage | + | Fit | presets, with the current
+ * value highlighted via `--brand-red`; choosing Fit resets to 100% and
+ * re-centers.
  *
- * +/− 兩顆按鈕比照 slidra-logic-v3.js 的 `zoomIn`/`zoomOut`：只呼叫
- * `setZoom`（不帶錨點），平移量不變，只是縮放係數改變——與滑鼠滾輪縮放
- * （`zoomByWheel`，以游標為錨點）是兩條不同路徑，這裡刻意不重用那一條。
+ * The +/− buttons mirror slidra-logic-v3.js's `zoomIn`/`zoomOut`: they
+ * only call `setZoom` (no anchor point), leaving the pan offset unchanged
+ * and only changing the zoom factor — a different path from mouse-wheel
+ * zoom (`zoomByWheel`, anchored on the cursor), which is deliberately not
+ * reused here.
  */
 export function ZoomMenu({ zoomPan, onChange, onClose }: ZoomMenuProps) {
   function zoomIn(): void {

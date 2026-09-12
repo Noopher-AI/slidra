@@ -1,9 +1,8 @@
 /**
- * A hand-written, offset-carrying SVG scanner — the web's own copy of
- * core's `slide/scan.ts` scanDocument (F8, NOOP-289 決定 M1).
+ * A hand-written, offset-carrying SVG scanner.
  *
- * Ported rather than replaced with `DOMParser` on purpose: notes/comments
- * written before core's `xmlns:slidra` fix are still sitting on disk without
+ * Written as a scanner rather than `DOMParser` on purpose: notes/comments
+ * written before the `xmlns:slidra` fix are still sitting on disk without
  * a bound namespace prefix, and `DOMParser().parseFromString(...,
  * "image/svg+xml")` treats an unbound prefix as a fatal parse error. A
  * byte-offset scanner has no notion of namespace binding at all, so it
@@ -216,7 +215,7 @@ function scanNodes(
   return { nodes, next: svg.length, closeStart: svg.length };
 }
 
-// --- 留言 (`<slidra:comment>`) — web's own copy of core's `readSlideComments` (read-only: the browser never writes metadata back) ---
+// --- Comments (`<slidra:comment>`) — read-only: the browser never writes metadata back ---
 
 const COMMENTS_TAG = "slidra:comments";
 const COMMENT_TAG = "slidra:comment";

@@ -2,14 +2,15 @@ import { useEffect, useState, type MouseEvent } from "react";
 
 export interface SaveTemplateModalProps {
   onClose: () => void;
-  /** 呼叫端負責用這個名稱呼叫 `template add` 並在成功時關閉這個 modal（失敗時保留輸入，讓既有的 `CanvasState.error` 橫幅顯示原因）。 */
+  /** The caller is responsible for calling `template add` with this name and closing this modal on success (on failure, the input stays, letting the existing `CanvasState.error` banner show the reason). */
   onSubmit: (name: string) => void;
 }
 
 /**
- * 縮圖右鍵選單「Save as template」的名稱輸入 UI，仿 `OutlineModal` 的
- * mask/dialog 骨架（同一份視覺語言，見 `settings-dialog-*` 的重命名前
- * 例）。Cancel／Esc／點遮罩一律關閉並丟棄草稿。
+ * The name-input UI for the thumbnail context menu's "Save as template",
+ * modeled on `OutlineModal`'s mask/dialog skeleton (the same visual
+ * language as the rename precedent in `settings-dialog-*`). Cancel/Esc/
+ * clicking the mask all close it and discard the draft.
  */
 export function SaveTemplateModal({ onClose, onSubmit }: SaveTemplateModalProps) {
   const [name, setName] = useState("");
