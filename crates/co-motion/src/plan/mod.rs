@@ -295,11 +295,7 @@ pub fn parse_outline(text: &str) -> CoMotionResult<OutlinePlan> {
         // for a known solution to a relationship, useful when one fits and
         // absent when the page needs its own answer.
         let relationship = require_str(page, "relationship", &what)?;
-        require_enum(
-            relationship,
-            RELATIONSHIPS,
-            &format!("{what}.relationship"),
-        )?;
+        require_enum(relationship, RELATIONSHIPS, &format!("{what}.relationship"))?;
         let page_type = match page.get("type") {
             None => None,
             Some(value) => {
@@ -463,9 +459,9 @@ pub fn parse_design_spec(text: &str) -> CoMotionResult<DesignSpec> {
     let shape_language = match obj.get("shape_language") {
         None => "plain",
         Some(value) => {
-            let name = value.as_str().ok_or_else(|| {
-                CoMotionError::invalid("design-spec.shape_language 必須是字串")
-            })?;
+            let name = value
+                .as_str()
+                .ok_or_else(|| CoMotionError::invalid("design-spec.shape_language 必須是字串"))?;
             require_enum(name, SHAPE_LANGUAGES, "design-spec.shape_language")?;
             name
         }
@@ -506,12 +502,9 @@ fn parse_blueprint(
 
     let mut counts = [0usize; 2];
     for (index, key) in ["nodes", "steps"].iter().enumerate() {
-        counts[index] = obj
-            .get(*key)
-            .and_then(Value::as_u64)
-            .ok_or_else(|| {
-                CoMotionError::invalid(format!("{what}.blueprint 缺少非負整數欄位 {key}"))
-            })? as usize;
+        counts[index] = obj.get(*key).and_then(Value::as_u64).ok_or_else(|| {
+            CoMotionError::invalid(format!("{what}.blueprint 缺少非負整數欄位 {key}"))
+        })? as usize;
     }
 
     Ok(Some(PageBlueprint {
@@ -540,7 +533,9 @@ fn parse_layout_anchors(obj: &serde_json::Map<String, Value>) -> CoMotionResult<
         ("footer_margin", &mut anchors.footer_margin),
         ("gutter", &mut anchors.gutter),
     ] {
-        let Some(value) = layout.get(key) else { continue };
+        let Some(value) = layout.get(key) else {
+            continue;
+        };
         let number = value
             .as_f64()
             .filter(|n| n.is_finite() && *n >= 0.0)
@@ -698,7 +693,10 @@ mod tests {
     fn shape_language_is_optional_and_checked_against_the_list() {
         // #303: borrowed from ppt-master — the shape language carries no
         // colour, so any of it pairs with any palette. Absent is `plain`.
-        assert_eq!(parse_design_spec(DESIGN_SPEC_OK).unwrap().shape_language, "plain");
+        assert_eq!(
+            parse_design_spec(DESIGN_SPEC_OK).unwrap().shape_language,
+            "plain"
+        );
         let with = DESIGN_SPEC_OK.replace(
             "\"type_scale\"",
             "\"shape_language\": \"ink-wash\", \"type_scale\"",

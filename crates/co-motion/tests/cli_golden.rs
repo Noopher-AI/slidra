@@ -2411,12 +2411,21 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
 
     // The bundled font doubles as a stand-in for "some other open-source
     // family": what matters here is the embedding path, not which face it is.
-    let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/NotoSansTC-Presentation.ttf");
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../assets/fonts/NotoSansTC-Presentation.ttf"
+    );
     let imported = fixture.run_rust(&[
-        "font", "import", &id, source,
-        "--family", "Catalogue Serif",
-        "--license", "SIL Open Font License 1.1",
-        "--source", "https://example.org/font",
+        "font",
+        "import",
+        &id,
+        source,
+        "--family",
+        "Catalogue Serif",
+        "--license",
+        "SIL Open Font License 1.1",
+        "--source",
+        "https://example.org/font",
         "--json",
     ]);
     assert!(imported.status.success(), "{imported:?}");
@@ -2435,23 +2444,49 @@ fn font_import_embeds_a_second_family_that_text_can_then_use() {
     // The new family is usable straight away.
     fixture.run_rust(&["slide", "add", &id]);
     let textbox = fixture.run_rust(&[
-        "textbox", "add", &id, "slides/001.svg",
-        "--x", "80", "--y", "100", "--width", "600",
-        "--text", "新字型", "--font-family", "Catalogue Serif",
+        "textbox",
+        "add",
+        &id,
+        "slides/001.svg",
+        "--x",
+        "80",
+        "--y",
+        "100",
+        "--width",
+        "600",
+        "--text",
+        "新字型",
+        "--font-family",
+        "Catalogue Serif",
     ]);
     assert!(textbox.status.success(), "{textbox:?}");
 
     // A family may only be embedded once, and a non-font is refused.
     let duplicate = fixture.run_rust(&[
-        "font", "import", &id, source,
-        "--family", "Catalogue Serif",
-        "--license", "x", "--source", "y",
+        "font",
+        "import",
+        &id,
+        source,
+        "--family",
+        "Catalogue Serif",
+        "--license",
+        "x",
+        "--source",
+        "y",
     ]);
     assert!(!duplicate.status.success(), "{duplicate:?}");
     let readme = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
     let not_a_font = fixture.run_rust(&[
-        "font", "import", &id, readme,
-        "--family", "Bogus", "--license", "x", "--source", "y",
+        "font",
+        "import",
+        &id,
+        readme,
+        "--family",
+        "Bogus",
+        "--license",
+        "x",
+        "--source",
+        "y",
     ]);
     assert!(!not_a_font.status.success(), "{not_a_font:?}");
 }
@@ -2570,7 +2605,8 @@ fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
     let before = fixture.run_rust(&["validate", &id, "--json"]);
     let before_out = String::from_utf8_lossy(&before.stdout).to_string();
     assert!(
-        before_out.contains("structure.background-image") && !before_out.contains("structure.scrim"),
+        before_out.contains("structure.background-image")
+            && !before_out.contains("structure.scrim"),
         "no background yet, no scrim needed: {before:?}"
     );
 

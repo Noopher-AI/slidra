@@ -711,7 +711,9 @@ pub fn check_slide(
             "role.node-label",
             format!("{labels} 個 label／{node_shapes} 個 node 色塊"),
             "label 不少於 node 色塊",
-            format!("第 {n} 頁有 {node_shapes} 個 node 色塊但只有 {labels} 個 label——沒有標籤的節點不是語意單位"),
+            format!(
+                "第 {n} 頁有 {node_shapes} 個 node 色塊但只有 {labels} 個 label——沒有標籤的節點不是語意單位"
+            ),
         );
     }
 
@@ -1150,31 +1152,31 @@ pub fn check_slide(
         // solution. A page with no `type` composed its own answer to the
         // relationship, and has no signature to match.
         if let Some(declared_type) = page.page_type.as_deref() {
-        let signature = match declared_type {
-            "cover" => "cover",
-            "section" => "section",
-            "number" => "number",
-            "closing" => "claim",
-            _ => "title",
-        };
-        let expected = spec.size(signature) * k;
-        if !facts
-            .text_boxes
-            .iter()
-            .any(|tb| same_size(tb.font_size, expected))
-        {
-            push(
-                errors,
-                slide,
-                None,
-                "roster.page-type",
-                format!("沒有字級 {expected:.0} 的文字框"),
-                format!("{declared_type} 頁需有字級 {expected:.0}"),
-                format!(
-                    "第 {n} 頁計畫是 {declared_type} 頁，卻沒有字級 {expected:.0} 的文字框"
-                ),
-            );
-        }
+            let signature = match declared_type {
+                "cover" => "cover",
+                "section" => "section",
+                "number" => "number",
+                "closing" => "claim",
+                _ => "title",
+            };
+            let expected = spec.size(signature) * k;
+            if !facts
+                .text_boxes
+                .iter()
+                .any(|tb| same_size(tb.font_size, expected))
+            {
+                push(
+                    errors,
+                    slide,
+                    None,
+                    "roster.page-type",
+                    format!("沒有字級 {expected:.0} 的文字框"),
+                    format!("{declared_type} 頁需有字級 {expected:.0}"),
+                    format!(
+                        "第 {n} 頁計畫是 {declared_type} 頁，卻沒有字級 {expected:.0} 的文字框"
+                    ),
+                );
+            }
         }
         check_rhythm(n, slide, page.rhythm.as_str(), Some(spec), k, facts, errors);
     }
@@ -1277,9 +1279,7 @@ pub fn check_deck(
             let (Some(a), Some(b)) = (first.blueprint.as_ref(), second.blueprint.as_ref()) else {
                 continue;
             };
-            if first.relationship != second.relationship
-                || a.shape != b.shape
-                || a.nodes != b.nodes
+            if first.relationship != second.relationship || a.shape != b.shape || a.nodes != b.nodes
             {
                 continue;
             }
@@ -1760,13 +1760,19 @@ mod tests {
         };
 
         // Three of four the same — the deck we actually produced.
-        assert!(run(["none", "membership", "membership", "membership"])
-            .contains(&"roster.relationship-variety"));
+        assert!(
+            run(["none", "membership", "membership", "membership"])
+                .contains(&"roster.relationship-variety")
+        );
         // Exactly half is fine.
-        assert!(!run(["none", "none", "membership", "membership"])
-            .contains(&"roster.relationship-variety"));
-        assert!(!run(["none", "order", "contrast", "membership"])
-            .contains(&"roster.relationship-variety"));
+        assert!(
+            !run(["none", "none", "membership", "membership"])
+                .contains(&"roster.relationship-variety")
+        );
+        assert!(
+            !run(["none", "order", "contrast", "membership"])
+                .contains(&"roster.relationship-variety")
+        );
     }
 
     #[test]
@@ -1855,7 +1861,15 @@ mod tests {
                 "<g id=\"{id}\" data-comot-role=\"node\"><rect x=\"80\" y=\"200\" width=\"200\" height=\"80\" fill=\"#1B2129\"/></g>"
             )
         };
-        let label = textbox("el-l1", 100.0, 240.0, 160.0, 24.0, "#F4F6F8", &[("字", false)]);
+        let label = textbox(
+            "el-l1",
+            100.0,
+            240.0,
+            160.0,
+            24.0,
+            "#F4F6F8",
+            &[("字", false)],
+        );
         let body = format!("{}{}{label}", node("el-n1"), node("el-n2"));
 
         // `slide()` writes exactly one on-click enter effect.
@@ -1886,7 +1900,8 @@ mod tests {
         assert!(!run(matching).iter().any(|r| r.starts_with("blueprint.")));
 
         // Drew three nodes but planned two; told in two steps but drew one.
-        let mismatched = ", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 3, \"steps\": 2 }";
+        let mismatched =
+            ", \"blueprint\": { \"shape\": \"card-wall\", \"nodes\": 3, \"steps\": 2 }";
         let r = run(mismatched);
         assert!(r.contains(&"blueprint.nodes"), "{r:?}");
         assert!(r.contains(&"blueprint.steps"), "{r:?}");
@@ -1896,8 +1911,20 @@ mod tests {
     fn composition_roles_are_optional_but_must_be_coherent() {
         // #303 §B: a page that declares no role is checked exactly as
         // before; one that declares them must hold together.
-        let plain = textbox("el-title", 80.0, 72.0, 1120.0, 40.0, "#F4F6F8", &[("標題", false)]);
-        let none = rules(&run_one(&slide(Some("#101418"), "n", &plain), "bullets", "dense"));
+        let plain = textbox(
+            "el-title",
+            80.0,
+            72.0,
+            1120.0,
+            40.0,
+            "#F4F6F8",
+            &[("標題", false)],
+        );
+        let none = rules(&run_one(
+            &slide(Some("#101418"), "n", &plain),
+            "bullets",
+            "dense",
+        ));
         assert!(!none.iter().any(|r| r.starts_with("role.")), "{none:?}");
 
         // Decoration cannot carry copy.
@@ -1905,7 +1932,11 @@ mod tests {
             "id=\"el-title\"",
             "id=\"el-title\" data-comot-role=\"garnish\"",
         );
-        let r = rules(&run_one(&slide(Some("#101418"), "n", &garnish), "bullets", "dense"));
+        let r = rules(&run_one(
+            &slide(Some("#101418"), "n", &garnish),
+            "bullets",
+            "dense",
+        ));
         assert!(r.contains(&"role.garnish-meaning"), "{r:?}");
 
         // One reading spine per page.
@@ -1915,7 +1946,11 @@ mod tests {
             )
         };
         let two = format!("{plain}{}{}", spine("el-s1"), spine("el-s2"));
-        let r = rules(&run_one(&slide(Some("#101418"), "n", &two), "bullets", "dense"));
+        let r = rules(&run_one(
+            &slide(Some("#101418"), "n", &two),
+            "bullets",
+            "dense",
+        ));
         assert!(r.contains(&"role.spine-count"), "{r:?}");
 
         // An edge needs two ends, and a node carrier needs a label.
@@ -1936,7 +1971,9 @@ mod tests {
         let facts = read_slide_facts(&animated).unwrap();
         let spec = spec();
         let names = vec![template_name_for("bullets").to_string()];
-        let outline = outline("{ \"n\": 1, \"relationship\": \"none\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" }");
+        let outline = outline(
+            "{ \"n\": 1, \"relationship\": \"none\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"t\" }",
+        );
         let ctx = Context {
             canvas_width: 1280.0,
             canvas_height: 720.0,
@@ -1946,7 +1983,11 @@ mod tests {
         };
         let mut errors = Vec::new();
         check_slide(&ctx, 0, "slides/001.svg", &facts, &mut errors);
-        assert!(rules(&errors).contains(&"role.garnish-animated"), "{:?}", rules(&errors));
+        assert!(
+            rules(&errors).contains(&"role.garnish-animated"),
+            "{:?}",
+            rules(&errors)
+        );
     }
 
     /// A slide whose effect list targets exactly `targets`.
@@ -1966,8 +2007,20 @@ mod tests {
         // 前景 → group → 動畫) used to hide the members from `validate`
         // entirely — an overflowing bullet stopped being reported the moment
         // it was grouped. The group's transform composes onto its members'.
-        let body = textbox("el-wide", 600.0, 240.0, 1400.0, 24.0, "#F4F6F8", &[("超寬", false)]);
-        let loose = rules(&run_one(&slide(Some("#101418"), "n", &body), "bullets", "dense"));
+        let body = textbox(
+            "el-wide",
+            600.0,
+            240.0,
+            1400.0,
+            24.0,
+            "#F4F6F8",
+            &[("超寬", false)],
+        );
+        let loose = rules(&run_one(
+            &slide(Some("#101418"), "n", &body),
+            "bullets",
+            "dense",
+        ));
         assert!(loose.contains(&"geometry.right-overflow"), "{loose:?}");
 
         let grouped = rules(&run_one(
@@ -1986,7 +2039,15 @@ mod tests {
     fn a_group_transform_composes_onto_its_members() {
         // A group moved in the editor carries a transform; its members'
         // canvas coordinates are the composition, not their local ones.
-        let body = textbox("el-body", 80.0, 200.0, 600.0, 24.0, "#F4F6F8", &[("要點", false)]);
+        let body = textbox(
+            "el-body",
+            80.0,
+            200.0,
+            600.0,
+            24.0,
+            "#F4F6F8",
+            &[("要點", false)],
+        );
         let svg = slide(
             Some("#101418"),
             "n",
@@ -2004,7 +2065,15 @@ mod tests {
         // notices when it is skipped — the page still renders, just not as
         // the plan says. Without this rule the build reports 0 errors.
         let bg = "<g id=\"el-background\" data-comot-role=\"background\" data-comot-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
-        let claim = textbox("el-claim", 80.0, 248.0, 1000.0, 48.0, "#F4F6F8", &[("主張", false)]);
+        let claim = textbox(
+            "el-claim",
+            80.0,
+            248.0,
+            1000.0,
+            48.0,
+            "#F4F6F8",
+            &[("主張", false)],
+        );
         let spec = spec();
         let names = vec![template_name_for("number").to_string()];
         let run = |svg: &str, background: &str| {
@@ -2026,8 +2095,13 @@ mod tests {
         };
 
         let missing = run(&claim, "on");
-        assert!(rules(&missing).contains(&"structure.background-image"), "{missing:?}");
-        assert!(!rules(&run(&format!("{bg}{claim}"), "on")).contains(&"structure.background-image"));
+        assert!(
+            rules(&missing).contains(&"structure.background-image"),
+            "{missing:?}"
+        );
+        assert!(
+            !rules(&run(&format!("{bg}{claim}"), "on")).contains(&"structure.background-image")
+        );
         // `background: off` means the page is meant to have none.
         assert!(!rules(&run(&claim, "off")).contains(&"structure.background-image"));
     }
