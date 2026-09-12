@@ -5,19 +5,22 @@ import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 
 /**
- * NOOP-60/#197 驗收條件第 3 條：docs/design/docs/05-INTERACTIONS.feature
- * 「舞台導航」的 5 個場景 e2e 化。這裡只驗「這些狀態確實接到了 DOM 上」
- * （transform、cursor、百分比文字）——縮放/平移/抓取的狀態轉換本身已經在
- * apps/web/test/stage-view.test.ts 窮舉邊界，不在這裡重測一次夾取
- * 邏輯（Plan §6.4）。
+ * e2e coverage for the 5 "stage navigation" scenarios in
+ * docs/design/docs/05-INTERACTIONS.feature. This only verifies that these
+ * states actually land on the DOM (transform, cursor, the percentage text)
+ * — the zoom/pan/hand-drag state transitions themselves are already
+ * exhaustively boundary-tested in apps/web/test/stage-view.test.ts, so the
+ * clamping logic isn't retested here.
  *
- * NOOP-83 §2/§4：投影片本體（`.stage`／iframe 範圍內，畫面絕大部分面積）
- * 上的滾輪縮放/平移與抓取模式拖曳，現在透過 canvas.ts 的
- * `subscribeStageInput`（selection-runtime.js 是實際來源）生效，不再只在
- * `.canvas-area` 留白（padding）背景上才有反應。以下「以滾輪縮放」「以滾輪
- * 平移」「抓取模式」三個場景的主斷言驅動在 `slidePoint()`（投影片正中
- * 央）；`gutterPoint()` 只保留在明確標註「留白區回歸」的地方，證明父文件
- * 自己的既有路徑沒有被這次改動動到。
+ * Wheel-zoom/pan and hand-mode dragging over the slide body (`.stage`/inside
+ * the iframe, the vast majority of the screen area) now take effect through
+ * canvas.ts's `subscribeStageInput` (selection-runtime.js is the actual
+ * source), no longer responding only over the `.canvas-area` gutter
+ * (padding) background. The main assertions in the "wheel zoom", "wheel
+ * pan", and "hand mode" scenarios below are driven at `slidePoint()` (dead
+ * centre of the slide); `gutterPoint()` is kept only where explicitly
+ * marked as a "gutter regression" check, proving the parent document's own
+ * pre-existing path wasn't touched by this change.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -54,22 +57,24 @@ async function stageTransform(page: Page): Promise<string> {
 }
 
 function scaleOf(matrix: string): number {
-  // matrix(a, b, c, d, tx, ty) — a 就是 scale（本殼的 zoom 不含旋轉/歪斜）。
+  // matrix(a, b, c, d, tx, ty) — a is the scale (this shell's zoom carries no rotation/skew).
   const m = matrix.match(/matrix\(([^,]+),/);
   if (!m) throw new Error(`無法解析 transform matrix: ${matrix}`);
   return parseFloat(m[1]);
 }
 
-/** 投影片本體正中央——iframe 實際渲染的區域，不是留白。這是
- * 05-INTERACTIONS.feature「在投影片、元素或空白處」裡的「投影片」。 */
+/** Dead centre of the slide body itself — the area the iframe actually
+ * renders, not the gutter. This is "the slide" in 05-INTERACTIONS.feature's
+ * "on the slide, an element, or the blank area". */
 async function slidePoint(page: Page): Promise<{ x: number; y: number }> {
   const stage = await page.locator(".stage").boundingBox();
   if (!stage) throw new Error(".stage 沒有 boundingBox");
   return { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
 }
 
-/** iframe 內文件的游標——抓取模式下投影片本體上看到的就是這個，不是
- * `.canvas-area` 的（那個是父文件自己的 cursor）。 */
+/** The cursor of the document inside the iframe — this is what you see over
+ * the slide body in hand mode, not `.canvas-area`'s cursor (that's the
+ * parent document's own). */
 async function slideCursor(page: Page): Promise<string> {
   return page
     .frameLocator("iframe.slide-frame")
@@ -77,8 +82,9 @@ async function slideCursor(page: Page): Promise<string> {
     .evaluate(() => getComputedStyle(document.documentElement).cursor);
 }
 
-/** `.canvas-area` 留白（padding）背景上的一點——不落在 `.stage`／iframe 範
- * 圍內。只用於「留白區回歸」斷言，見本檔頭部註解。 */
+/** A point on the `.canvas-area` gutter (padding) background — outside the
+ * `.stage`/iframe area. Used only for "gutter regression" assertions, see
+ * the file header comment. */
 async function gutterPoint(page: Page): Promise<{ x: number; y: number }> {
   const well = await page.locator(".canvas-area").boundingBox();
   if (!well) throw new Error("canvas-area 沒有 boundingBox");
@@ -86,24 +92,33 @@ async function gutterPoint(page: Page): Promise<{ x: number; y: number }> {
 }
 
 /**
- * Ctrl/Cmd+wheel 在 `point` 上縮放一次，並驗證「以游標為中心」
- * （05-INTERACTIONS.feature 原文）：縮放前記錄游標相對 `.stage` 矩形的比例
- * 位置 (u,v)，縮放後同一比例位置換算回來的螢幕座標必須仍落在游標原本的
- * 位置附近（±3px）。只斷言「scale 變大」分不出「以游標為中心」與「以中心
- * 為中心」——把錨點寫死成 well 中心也會通過那個斷言，這條才是真正的區分。
+ * Zooms once with Ctrl/Cmd+wheel over `point` and verifies it's "anchored
+ * on the cursor" (05-INTERACTIONS.feature's own wording): before zooming,
+ * record the cursor's proportional position (u,v) relative to the `.stage`
+ * rect; after zooming, the screen coordinate you get back from that same
+ * proportional position must still land near the cursor's original position
+ * (±3px). Asserting only that "scale increased" can't tell "anchored on the
+ * cursor" apart from "anchored on the centre" — hard-coding the anchor to
+ * the well's centre would also pass that assertion, so this is the check
+ * that actually distinguishes the two.
  *
- * `deltaY` 刻意用一個小值（-20，約 5% 縮放），不是常見的一整格滾輪
- * （-100~-240）：實測發現 `.stage` 的 CSS 置中原點（top/left:50% 相對
- * `.canvas-area` 的 grid track）與 `wellRef.getBoundingClientRect()` 的幾
- * 何中心在本測試視窗（1440×900）下垂直方向相差約 24px（水平方向對齊，
- * 差 0px）——`.canvas-area` 的 grid 版面本身不對稱（底部保留區），不是這
- * 次改動動到的程式碼（`stage-view.ts`/`Stage.tsx` 的 `handleWheel` 錨點公
- * 式一行沒動）。這個殘差幅度是 `24px × (1 - zoomFactor)`，隨 delta 增大而
- * 放大——用真實單格滾輪的 delta 會讓殘差超過 20px，遠遠蓋過量測噪訊，但那
- * 不是這次 relay 改動造成的迴歸，是既有 CSS 版面的既有特性。±3px 在這個
- * 較小的 delta 下有安全餘裕（量到的殘差約 1.5px），仍然足以在真的「錨點寫
- * 死成 well 中心」這種壞掉的實作上失敗（那種壞法的誤差是整個 well-中心到
- * `point` 的距離量級，不是 1–2px）。
+ * `deltaY` deliberately uses a small value (-20, about 5% zoom) rather than
+ * a typical full wheel notch (-100 to -240): measurement shows `.stage`'s
+ * CSS centring origin (top/left:50% relative to `.canvas-area`'s grid
+ * track) differs from `wellRef.getBoundingClientRect()`'s geometric centre
+ * by about 24px vertically in this test's viewport (1440x900) — horizontally
+ * they align, 0px difference. This comes from `.canvas-area`'s grid layout
+ * itself being asymmetric (the bottom reservation area), not from any code
+ * this change touches (`stage-view.ts`/`Stage.tsx`'s `handleWheel` anchor
+ * formula is untouched). This residual scales as `24px × (1 - zoomFactor)`,
+ * growing with delta — using a real single-notch wheel delta would push the
+ * residual past 20px, far outweighing measurement noise, but that's not a
+ * regression from this change; it's an existing property of the existing
+ * CSS layout. ±3px has enough margin at this smaller delta (the measured
+ * residual is about 1.5px) while still failing on a genuinely broken
+ * implementation that hard-codes the anchor to the well's centre (that kind
+ * of bug produces an error on the order of the whole well-centre-to-`point`
+ * distance, not 1-2px).
  */
 async function zoomAtPointAndAssertAnchored(page: Page, point: { x: number; y: number }): Promise<void> {
   const rect0 = await page.locator(".stage").boundingBox();
@@ -124,7 +139,7 @@ async function zoomAtPointAndAssertAnchored(page: Page, point: { x: number; y: n
   expect(Math.abs(rect1.y + v * rect1.height - point.y)).toBeLessThanOrEqual(3);
 }
 
-it("以滾輪縮放：Ctrl/Cmd+wheel 讓舞台縮放係數變大，落在 [25%,400%]，以游標為中心（投影片本體與留白區都成立）", async () => {
+it("wheel zoom: Ctrl/Cmd+wheel increases the stage's zoom factor, clamped to [25%,400%], anchored on the cursor (holds over both the slide body and the gutter)", async () => {
   const { started, page } = await start("stage-nav-wheel-zoom");
   try {
     const before = scaleOf(await stageTransform(page));
@@ -137,14 +152,14 @@ it("以滾輪縮放：Ctrl/Cmd+wheel 讓舞台縮放係數變大，落在 [25%,4
     expect(afterSlide).toBeLessThanOrEqual(4.0);
     expect(await page.locator(".dock-zoom-control").textContent()).not.toBe("100%");
 
-    // 留白區回歸：父文件自己既有的 wheel 路徑沒有被這次改動動到。
+    // Gutter regression: the parent document's own pre-existing wheel path wasn't touched by this change.
     await zoomAtPointAndAssertAnchored(page, await gutterPoint(page));
   } finally {
     await started.cleanup();
   }
 });
 
-it("以滾輪平移：不按修飾鍵的 wheel 只改變 translate，scale 與百分比文字不變（投影片本體上）", async () => {
+it("wheel pan: an unmodified wheel only changes translate, leaving scale and the percentage text unchanged (over the slide body)", async () => {
   const { started, page } = await start("stage-nav-wheel-pan");
   try {
     const beforeTransform = await stageTransform(page);
@@ -164,10 +179,10 @@ it("以滾輪平移：不按修飾鍵的 wheel 只改變 translate，scale 與�
   }
 });
 
-it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取，投影片本體/元素/留白區拖曳都能平移", async () => {
+it("hand mode: clicking the hand toggles aria-pressed and both cursor spots, clears selection, and dragging over the slide body/an element/the gutter all pan", async () => {
   const { started, page } = await start("stage-nav-hand");
   try {
-    // 先選起一個元素——抓取模式開啟時的第一個「那麼」是「目前選取被清除」。
+    // First select an element — the first thing entering hand mode should do is clear the current selection.
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
     const selectionChip = page.locator(".status-selection-chip");
     await expect.poll(() => selectionChip.textContent()).not.toBe("");
@@ -181,7 +196,7 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
     await expect.poll(() => slideCursor(page)).toBe("grab");
     await expect.poll(() => selectionChip.textContent()).toBe("");
 
-    // ④ 從投影片本體正中央拖曳。
+    // Drag starting from dead centre of the slide body.
     let beforeTransform = await stageTransform(page);
     let point = await slidePoint(page);
     await page.mouse.move(point.x, point.y);
@@ -190,7 +205,7 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
     await page.mouse.up();
     await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
 
-    // ⑤ 從一個元素上拖曳——抓取模式下不該重新選取或開始手勢，純平移。
+    // Drag starting from an element — in hand mode this should not reselect it or start any other gesture, only pan.
     beforeTransform = await stageTransform(page);
     const titleBox = await page.frameLocator("iframe.slide-frame").locator("#el-title").boundingBox();
     if (!titleBox) throw new Error("#el-title 沒有 boundingBox");
@@ -202,7 +217,7 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
     await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
     await expect.poll(() => selectionChip.textContent()).toBe("");
 
-    // ⑥ 從留白區拖曳——父文件自己既有的路徑沒有被這次改動動到。
+    // Drag starting from the gutter — the parent document's own pre-existing path wasn't touched by this change.
     beforeTransform = await stageTransform(page);
     point = await gutterPoint(page);
     await page.mouse.move(point.x, point.y);
@@ -211,7 +226,7 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
     await page.mouse.up();
     await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
 
-    // ⑦ 再點一次：兩處 cursor 都不再是 grab。
+    // Click again: neither cursor spot is grab any more.
     await handButton.click();
     expect(await handButton.getAttribute("aria-pressed")).toBe("false");
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("grab");
@@ -221,7 +236,7 @@ it("抓取模式：點 ✋ 切換 aria-pressed 與兩處 cursor、清除選取�
   }
 });
 
-it("暫時抓取：選取後情境列蓋在投影片上，按住 Space 從情境列正中央開始拖曳仍會平移（情境列在抓取模式下不攔截指標）", async () => {
+it("temporary hand mode: with a selection's context bar overlapping the slide, holding Space and dragging from the bar's centre still pans (the context bar doesn't intercept pointer events in hand mode)", async () => {
   const { started, page } = await start("stage-nav-space-over-bar");
   try {
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
@@ -243,10 +258,10 @@ it("暫時抓取：選取後情境列蓋在投影片上，按住 Space 從情境
   }
 });
 
-it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片本體拖曳，放開後恢復；焦點在輸入框時 Space 不啟用", async () => {
+it("temporary hand mode: holding Space makes both cursor spots grab and lets you drag over the slide body, reverting on release; Space does nothing while an input field has focus", async () => {
   const { started, page } = await start("stage-nav-space");
   try {
-    // (a) 焦點在父文件（尚未點過投影片上任何東西）。
+    // (a) Focus is on the parent document (nothing on the slide has been clicked yet).
     await page.keyboard.down("Space");
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).toBe("grab");
     await expect.poll(() => slideCursor(page)).toBe("grab");
@@ -261,8 +276,9 @@ it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片�
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("grab");
     await expect.poll(() => slideCursor(page)).not.toBe("grab");
 
-    // (b) 焦點在 iframe 內——先點一個投影片元素，父文件的 window keydown
-    // 監聽收不到接下來的 Space，必須靠 selection-runtime.js 的中繼。
+    // (b) Focus is inside the iframe — click a slide element first; the parent
+    // document's window keydown listener never sees the following Space, so
+    // it must be relayed through selection-runtime.js.
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
     await page.keyboard.down("Space");
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).toBe("grab");
@@ -277,7 +293,7 @@ it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片�
     await page.keyboard.up("Space");
     await expect.poll(() => page.locator(".canvas-area").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("grab");
 
-    // 焦點在 chat 輸入框時按 Space 打出空白字元，不進抓取模式。
+    // Pressing Space while the chat input is focused types a space character, and never enters hand mode.
     const chatInput = page.locator(".chat-input textarea");
     await chatInput.click();
     await chatInput.press("Space");
@@ -288,7 +304,7 @@ it("暫時抓取：按住 Space 期間兩處 cursor 為 grab、可在投影片�
   }
 });
 
-it("縮放選單：從工具列正上方中央長出，含 −/百分比/+/Fit/預設值，目前值標紅，Fit 回到 100% 並置中", async () => {
+it("zoom menu: opens centred directly above the dock, containing -/percentage/+/Fit/presets, the current value shown in red, and Fit returns to 100% centred", async () => {
   const { started, page } = await start("stage-nav-zoom-menu");
   try {
     await page.locator(".dock-zoom-control").click();
@@ -319,7 +335,7 @@ it("縮放選單：從工具列正上方中央長出，含 −/百分比/+/Fit/�
     });
     expect(currentColor).toBe(brandRedRgb);
 
-    // 先放大，再點 Fit：應回到 100% 且置中（translate 回到初始值）。
+    // Zoom in first, then click Fit: should return to 100% and centred (translate back to its initial value).
     await menu.locator('button[aria-label="Zoom in"]').click();
     await expect.poll(() => menu.locator(".zoom-menu-current").textContent()).not.toBe("100%");
     await menu.getByText("Fit", { exact: true }).click();
@@ -331,19 +347,21 @@ it("縮放選單：從工具列正上方中央長出，含 −/百分比/+/Fit/�
   }
 });
 
-it("中鍵拖曳：留白區平移畫布、不改變選取（06-KEYBOARD_AND_GESTURES.md「中鍵拖曳」）", async () => {
+it("middle-click drag: dragging over the gutter pans the canvas without changing the selection (06-KEYBOARD_AND_GESTURES.md's \"middle-click drag\")", async () => {
   const { started, page } = await start("stage-nav-middle-drag");
   try {
-    // 先選一個元素，平移不該動到它。
+    // Select an element first; panning shouldn't touch it.
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
     const selectionChip = page.locator(".status-selection-chip");
     await expect.poll(() => selectionChip.textContent()).not.toBe("");
 
-    // Stage.tsx 的 `shouldPan = event.button === 1 || ...` 是父文件自己的
-    // mousedown 處理，只在事件真的落在父文件（留白區）才會收到——本輪實測
-    // 確認：中鍵落在投影片本體（iframe 內容）上沒有反應，因為
-    // selection-runtime.js 的 pointerdown 監聽對非左鍵一律提前 return（見
-    // PR 報告「規格要求但這次沒做的」）。這裡驗證留白區這一半確實可用。
+    // Stage.tsx's `shouldPan = event.button === 1 || ...` is the parent
+    // document's own mousedown handling, which only fires when the event
+    // actually lands on the parent document (the gutter) — confirmed by
+    // testing that a middle-click over the slide body (iframe content) has
+    // no effect, because selection-runtime.js's pointerdown listener
+    // returns early for any non-left-button event. This verifies the
+    // gutter half of that behavior actually works.
     const beforeTransform = await stageTransform(page);
     const point = await gutterPoint(page);
     await page.mouse.move(point.x, point.y);
@@ -358,7 +376,7 @@ it("中鍵拖曳：留白區平移畫布、不改變選取（06-KEYBOARD_AND_GES
   }
 });
 
-it("F-05：點投影片外圈的留白區清除選取；同一塊留白區拖曳（平移）不清除（06-KEYBOARD_AND_GESTURES.md「點空白取消」，父票 NOOP-385/NOOP-351/#283）", async () => {
+it("clicking the gutter around the slide clears the selection; dragging (panning) over that same gutter does not (06-KEYBOARD_AND_GESTURES.md's \"click blank to deselect\")", async () => {
   const { started, page } = await start("stage-nav-gutter-click-deselect");
   try {
     await page.frameLocator("iframe.slide-frame").locator("#el-title").click();
@@ -367,8 +385,10 @@ it("F-05：點投影片外圈的留白區清除選取；同一塊留白區拖曳
     const contextBar = page.locator(".context-bar");
     await expect.poll(() => contextBar.isVisible()).toBe(true);
 
-    // 先驗證「拖曳」不算「點」：留白區拖曳照舊只平移，不清除選取（既有的
-    // 「中鍵拖曳」場景驗證的是中鍵，這裡驗證左鍵拖曳同樣不清除）。
+    // First verify that "dragging" doesn't count as "clicking": dragging over
+    // the gutter still only pans, without clearing the selection (the
+    // existing "middle-click drag" scenario tests the middle button; this
+    // verifies a left-click drag also doesn't clear).
     const beforeTransform = await stageTransform(page);
     let point = await gutterPoint(page);
     await page.mouse.move(point.x, point.y);
@@ -378,7 +398,7 @@ it("F-05：點投影片外圈的留白區清除選取；同一塊留白區拖曳
     await expect.poll(async () => await stageTransform(page)).not.toBe(beforeTransform);
     expect(await selectionChip.textContent()).not.toBe("");
 
-    // 留白區「點」（無位移）：選取框、把手、情境列全部清空。
+    // A "click" on the gutter (no displacement): selection box, handles, and context bar all clear.
     point = await gutterPoint(page);
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
@@ -390,7 +410,7 @@ it("F-05：點投影片外圈的留白區清除選取；同一塊留白區拖曳
   }
 });
 
-it("⌘0／⌘+／⌘−：回到 Fit、放大一級、縮小一級，且百分比文字同步", async () => {
+it("Cmd+0 / Cmd+= / Cmd+-: return to Fit, zoom in one step, zoom out one step, with the percentage text staying in sync", async () => {
   const { started, page } = await start("stage-nav-zoom-keys");
   try {
     expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
@@ -404,14 +424,14 @@ it("⌘0／⌘+／⌘−：回到 Fit、放大一級、縮小一級，且百分�
     await expect.poll(async () => scaleOf(await stageTransform(page))).toBeCloseTo(1, 5);
     expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
 
-    // 從一個非 100% 的縮放值用 ⌘0 回到 Fit（100%、置中）。
+    // From a non-100% zoom value, Cmd+0 returns to Fit (100%, centred).
     await page.keyboard.press("Meta+=");
     await expect.poll(() => page.locator(".dock-zoom-control").textContent()).not.toBe("100%");
     await page.keyboard.press("Meta+0");
     await expect.poll(async () => scaleOf(await stageTransform(page))).toBeCloseTo(1, 5);
     expect(await page.locator(".dock-zoom-control").textContent()).toBe("100%");
 
-    // 焦點在輸入框時，⌘0 完全不動（守衛同既有四個 keydown effect）。
+    // With an input field focused, Cmd+0 does nothing (same guard as the existing keydown effects).
     const chatInput = page.locator(".chat-input textarea");
     await chatInput.click();
     await page.keyboard.press("Meta+=");

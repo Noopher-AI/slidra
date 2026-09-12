@@ -5,17 +5,16 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
 /**
- * Perceptual-diff visual regression helper (ticket #49, tolerance added in
- * the E3.T8 non-determinism fix), following the existing precedent in
- * e2e/base-fragment-spike.test.ts: `page.screenshot()` + a pixel-level
- * comparison.
+ * Perceptual-diff visual regression helper, following the existing
+ * precedent in e2e/base-fragment-spike.test.ts: `page.screenshot()` + a
+ * pixel-level comparison.
  *
- * This is a seam consumed by every later appearance ticket (#50 stage, #54
- * play — two baselines, #55 grid, #56 selection), so its shape supports
- * more than one baseline per test file (distinct `name`s under the same
- * `baselineDir`), a clipped-region shot (`clip` provided), a viewport-sized
- * shot (both omitted), and a true full-page shot (`fullPage: true`) for
- * views that can scroll beyond the viewport, such as #55's grid.
+ * This is a seam consumed by every appearance test across the suite, so
+ * its shape supports more than one baseline per test file (distinct
+ * `name`s under the same `baselineDir`), a clipped-region shot (`clip`
+ * provided), a viewport-sized shot (both omitted), and a true full-page
+ * shot (`fullPage: true`) for views that can scroll beyond the viewport,
+ * such as a grid view.
  *
  * Comparison tolerates a small number of anti-aliasing-level pixel
  * differences (see `MAX_DIFF_PIXELS_RATIO`) but stays exact on image
@@ -57,8 +56,8 @@ const UPDATE_ENV_VAR = "UPDATE_APPEARANCE_BASELINES";
  * passing. Baselines are `ubuntu-latest`-rendered (CI's own runner); a local
  * machine's font rasterization (especially macOS) differs enough that a
  * pixel-level compare against those baselines fails deterministically, not
- * flakily. See AGENTS.md's "視覺回歸的把關分工" section for the local/CI
- * split this implements.
+ * flakily. See AGENTS.md's appearance-regression gatekeeping section for
+ * the local/CI split this implements.
  */
 const SKIP_ENV_VAR = "SKIP_APPEARANCE_BASELINES";
 
@@ -98,13 +97,13 @@ function failedDir(baselineDir: string): string {
  */
 export async function compareScreenshot(page: Page, options: CompareScreenshotOptions): Promise<void> {
   if (options.clip && options.fullPage) {
-    throw new Error("compareScreenshot：`clip` 與 `fullPage` 不能同時指定 — 兩者代表不同的截圖範圍，互斥。");
+    throw new Error("compareScreenshot: `clip` and `fullPage` cannot both be given — they represent mutually exclusive screenshot regions.");
   }
 
   const updateBaselines = process.env[UPDATE_ENV_VAR] === "1";
 
   if (!updateBaselines && process.env[SKIP_ENV_VAR] === "1") {
-    console.log(`已跳過外觀截圖比對（CI 平台與基準平台不同）：${options.name}`);
+    console.log(`Skipped appearance screenshot comparison (CI platform differs from the baseline platform): ${options.name}`);
     return;
   }
 
@@ -127,9 +126,9 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
     expected = await readFile(baselinePath);
   } catch {
     throw new Error(
-      `找不到基準截圖：${baselinePath}\n` +
-        `這是新基準嗎？到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來產生它，` +
-        `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
+      `Baseline screenshot not found: ${baselinePath}\n` +
+        `Is this a new baseline? Manually trigger the "e2e" workflow on GitHub Actions with update_baselines checked to generate it, ` +
+        `download the appearance-baselines artifact, verify the screenshot content is correct, then commit it.`,
     );
   }
 
@@ -141,10 +140,10 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
 
   if (actualPng.width !== expectedPng.width || actualPng.height !== expectedPng.height) {
     throw new Error(
-      `外觀截圖尺寸與基準不符：${baselinePath}` +
-        `（實際 ${actualPng.width}x${actualPng.height}，基準 ${expectedPng.width}x${expectedPng.height}）\n` +
-        `若這是刻意的外觀變更，到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來重新產生基準，` +
-        `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
+      `Appearance screenshot dimensions do not match the baseline: ${baselinePath}` +
+        ` (actual ${actualPng.width}x${actualPng.height}, baseline ${expectedPng.width}x${expectedPng.height})\n` +
+        `If this is a deliberate appearance change, manually trigger the "e2e" workflow on GitHub Actions with update_baselines checked to regenerate the baseline, ` +
+        `download the appearance-baselines artifact, verify the screenshot content is correct, then commit it.`,
     );
   }
 
@@ -168,11 +167,11 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
 
   const ratio = ((diffPixels / totalPixels) * 100).toFixed(3);
   throw new Error(
-    `外觀截圖與基準不符：${baselinePath}\n` +
-      `差異像素數：${diffPixels} / ${totalPixels}（${ratio}%），容忍上限：${maxDiffPixels}\n` +
-      `實際截圖：${actualPath}\n差異圖：${diffPath}\n` +
-      `若這是刻意的外觀變更，到 GitHub Actions 手動觸發「e2e」workflow，勾選 update_baselines 來重新產生基準，` +
-      `下載 appearance-baselines artifact，檢查過截圖內容正確後再提交。`,
+    `Appearance screenshot does not match the baseline: ${baselinePath}\n` +
+      `Diff pixel count: ${diffPixels} / ${totalPixels} (${ratio}%), tolerance limit: ${maxDiffPixels}\n` +
+      `Actual screenshot: ${actualPath}\nDiff image: ${diffPath}\n` +
+      `If this is a deliberate appearance change, manually trigger the "e2e" workflow on GitHub Actions with update_baselines checked to regenerate the baseline, ` +
+      `download the appearance-baselines artifact, verify the screenshot content is correct, then commit it.`,
   );
 }
 
@@ -182,9 +181,9 @@ export async function compareScreenshot(page: Page, options: CompareScreenshotOp
  * documents, the titlebar's own agent-connection badge past its transient
  * "Agent connected" placeholder (`TitleBar.tsx`'s `.agent-dot` — an
  * unrelated async SSE/fetch race that a broad sweep across this suite
- * confirmed exposed, not caused, by F8/NOOP-289: every affected baseline's
- * pixel differences are confined to this titlebar text/chat-panel chrome,
- * never the canvas/product content), then two animation frames so any
+ * confirmed was exposed, not caused, by an earlier change: every affected
+ * baseline's pixel differences are confined to this titlebar text/chat-panel
+ * chrome, never the canvas/product content), then two animation frames so any
  * in-flight layout/paint from the most recent DOM change has settled. This
  * is on top of, not instead of, each call site's own `waitForTimeout(50)`
  * — that wait is about DOM writes landing; this one is about the render
@@ -262,7 +261,7 @@ async function findSlideFrame(page: Page): Promise<Frame | null> {
 
 export type Box = { x: number; y: number; width: number; height: number };
 
-/** Upper bound on stability-check frames before `settledBox` gives up (NOOP-198's F1/F4 flake never needed more than a handful). */
+/** Upper bound on stability-check frames before `settledBox` gives up (a previously investigated flake never needed more than a handful). */
 const SETTLE_MAX_FRAMES = 20;
 
 function boxesEqual(a: Box, b: Box): boolean {
@@ -307,7 +306,7 @@ async function waitOneAnimationFrame(locator: Locator): Promise<void> {
  * plain `boundingBox()` call taken while a `scale()`/`translateY()` entrance
  * animation (`.floating-layer`, `.table-cell-menu`, `.context-bar`) is still
  * running measures a box that is smaller/offset compared to the settled
- * state — this is what produced NOOP-198's ~42% F1/F4 screenshot-clip flake.
+ * state — this is what produced a ~42% screenshot-clip flake seen previously.
  * This function replaces "wait a fixed amount of time and hope it's enough"
  * with a measurement that only returns once it can prove, by direct
  * observation, that the box is no longer changing.
@@ -316,18 +315,18 @@ export async function settledBox(locator: Locator, label: string): Promise<Box> 
   await waitForFiniteAnimations(locator);
 
   let previous = await locator.boundingBox();
-  if (previous === null) throw new Error(`找不到 ${label} 的版面框`);
+  if (previous === null) throw new Error(`could not find layout box for ${label}`);
 
   let current: Box | null = null;
   for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame++) {
     await waitOneAnimationFrame(locator);
     current = await locator.boundingBox();
-    if (current === null) throw new Error(`找不到 ${label} 的版面框`);
+    if (current === null) throw new Error(`could not find layout box for ${label}`);
     if (boxesEqual(previous, current)) return current;
     previous = current;
   }
 
   throw new Error(
-    `${label} 的版面框在 ${SETTLE_MAX_FRAMES} 幀內未穩定下來（最後兩次量到：${JSON.stringify(previous)} → ${JSON.stringify(current)}）`,
+    `${label}'s layout box did not settle within ${SETTLE_MAX_FRAMES} frames (last two measurements: ${JSON.stringify(previous)} -> ${JSON.stringify(current)})`,
   );
 }

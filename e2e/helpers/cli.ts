@@ -49,7 +49,7 @@ const E2E_ONLY_ENCODERS: Record<string, (input: Record<string, unknown>) => Enco
 
 /**
  * `--json`'s `cat` always returns `data: [{ path, content }]` with `content`
- * base64-encoded (§3.5's multi-path shape) — but every e2e caller was
+ * base64-encoded (the multi-path shape) — but every e2e caller was
  * written against the old registry's single-path shape, `data: { content }`
  * with `content` as plain UTF-8 text (none of them ever read a binary asset
  * through `dispatch("cat", ...)`, only `project.json`/`slides/*.svg`).
@@ -62,7 +62,7 @@ function reshapeCatResult(result: CommandResult): CommandResult {
   }
   const entries = result.data as Array<{ path: string; content: string }>;
   if (!Array.isArray(entries) || entries.length !== 1) {
-    throw new Error(`cat --json 回傳的資料格式與預期不符：${JSON.stringify(result.data)}`);
+    throw new Error(`cat --json returned data in an unexpected shape: ${JSON.stringify(result.data)}`);
   }
   return {
     ...result,

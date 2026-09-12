@@ -11,12 +11,12 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * T3 / ADR-0013, AC 10 (接縫三): a locked element cannot be selected in view
- * mode at all — `selection-runtime.js`'s `findSelectable` returns `null` for
- * a container carrying `data-slidra-lock="true"`. Modeled on
- * `e2e/selection.test.ts`'s fixture-deck posture: real Playwright mouse
- * clicks only, never `element.click()` inside page script (see that file's
- * header comment for why that distinction actually matters here).
+ * Per ADR-0013: a locked element cannot be selected in view mode at all —
+ * `selection-runtime.js`'s `findSelectable` returns `null` for a container
+ * carrying `data-slidra-lock="true"`. Modeled on `e2e/selection.test.ts`'s
+ * fixture-deck posture: real Playwright mouse clicks only, never
+ * `element.click()` inside page script (see that file's header comment for
+ * why that distinction actually matters here).
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -60,7 +60,7 @@ async function startServerFor(
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-lock-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-lock-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -106,7 +106,7 @@ async function openApp(server: RunningServer): Promise<Page> {
   return page;
 }
 
-it("點鎖定的元素選不起來：狀態列不顯示，沒有選取框", async () => {
+it("clicking a locked element does not select it: no status bar text, no selection box", async () => {
   const { server, cleanup } = await startServerFor(lockedDeckDir);
   try {
     const page = await openApp(server);
@@ -134,7 +134,7 @@ it("點鎖定的元素選不起來：狀態列不顯示，沒有選取框", asyn
   }
 });
 
-it("鎖定子元素包在未鎖定的父群組內：點子元素選不起來，不會回傳未鎖定父群組（Reviewer repro）", async () => {
+it("a locked child inside an unlocked parent group: clicking the child does not select it, and does not fall back to selecting the unlocked parent group", async () => {
   const { server, cleanup } = await startServerFor(lockedDeckDir);
   try {
     const page = await openApp(server);
@@ -159,7 +159,7 @@ it("鎖定子元素包在未鎖定的父群組內：點子元素選不起來，�
   }
 });
 
-it("點旁邊未鎖定的元素仍正常選取", async () => {
+it("clicking a neighboring unlocked element still selects it normally", async () => {
   const { server, cleanup } = await startServerFor(lockedDeckDir);
   try {
     const page = await openApp(server);

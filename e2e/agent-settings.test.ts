@@ -9,8 +9,8 @@ import { openApp, requireBuilt, startServerFor, type StartedServer } from "./hel
 
 /**
  * The chat panel's agent／model chips and their menus (AgentPicker.tsx) and the agent-
- * driven empty state, end to end (A1–A4). This started life as the settings
- * dialog's Agent tab test ([E3.T5] NOOP-235/#234); the dialog and the status
+ * driven empty state, end to end. This started life as the settings
+ * dialog's Agent tab test; the dialog and the status
  * bar gear are gone — everything the author used to do there is a pill
  * under the chat box now (a chip that opens a menu), so the scenarios stay and only the selectors and
  * the "open the dialog" step changed.
@@ -18,7 +18,7 @@ import { openApp, requireBuilt, startServerFor, type StartedServer } from "./hel
  * Login status is fully controlled by an injected `CommandRunner`
  * (`probe.ts`'s seam) — no real `claude`/`codex` CLI is ever consulted.
  * `editing-fake-acp-agent.mjs` (already used by e2e/freeze.test.ts and
- * friends) is reused for the one scenario (A3) that needs a real
+ * friends) is reused for the one scenario that needs a real
  * text-changing session.
  *
  * Assertion style matches e2e/freeze.test.ts: vitest's plain chai-based
@@ -33,7 +33,7 @@ const binDir = path.join(rootDir, "node_modules/.bin");
 
 const outcome = (partial: Partial<CommandOutcome> = {}): CommandOutcome => ({ code: 0, stdout: "", stderr: "", ...partial });
 
-/** A single fixed-adapter's `AgentAdapterConfig`, pointed at `editing-fake-acp-agent.mjs` with the real `presentationId` (Plan §3.8's launch.ts contract) and a per-kind `E2E_NEW_TITLE` so a slide edit can be attributed to whichever kind actually ran it (A3 step 5). */
+/** A single fixed-adapter's `AgentAdapterConfig`, pointed at `editing-fake-acp-agent.mjs` with the real `presentationId` (per launch.ts's contract) and a per-kind `E2E_NEW_TITLE` so a slide edit can be attributed to whichever kind actually ran it. */
 function fixtureAdapterFor(kind: AgentKind, presentationId: string, newTitle: string): AgentAdapterConfig {
   return {
     kind,
@@ -95,11 +95,11 @@ async function textOf(page: Page, selector: string): Promise<string | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// A1: 尚未登入／可用／偵測中三個場景，卡片文字與動作正確；未登入指令可複製。
+// The three states — not logged in / available / probing — show the right card text and actions; the not-logged-in row's login command can be copied.
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A1: agent 選單依探測結果顯示使用中／未登入／偵測中，未登入那列帶登入指令", async () => {
-  // An artificial pause before a probe resolves gives "偵測中…" a
+it("agent menu shows active/not-logged-in/probing based on probe results, with a login command on the not-logged-in row", async () => {
+  // An artificial pause before a probe resolves gives "Probing…" a
   // deterministic observation window. Only re-probes are delayed (not the
   // initial mount GET) so the menu opens against already-known data.
   const PROBE_DELAY_MS = 1200;
@@ -123,13 +123,13 @@ it("A1: agent 選單依探測結果顯示使用中／未登入／偵測中，未
   const page = await openPage(activeServer.server);
   await openAgentMenu(page);
 
-  // 初次載入（未延遲）：claude 使用中，codex 未登入且那列帶登入指令。
+  // Initial load (no delay): claude is active, codex is not logged in and that row carries a login command.
   await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
   expect(await itemDetail(page, "claude")).toBe("使用中");
   expect(await itemChecked(page, "codex")).toBe("false");
   expect(await itemDetail(page, "codex")).toBe("未登入 · codex login");
 
-  // 按「重新偵測」：這次探測被延遲，「偵測中…」有確定性的觀察窗。
+  // Click "re-probe": this probe is delayed, so the probing label has a deterministic observation window.
   const probeButton = page.locator(".chat-chip-menu-action");
   await probeButton.click();
   await expect.poll(() => probeButton.textContent()).toBe("偵測中…");
@@ -139,10 +139,10 @@ it("A1: agent 選單依探測結果顯示使用中／未登入／偵測中，未
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// A2: 探針結果改變後按「重新偵測」，卡片狀態更新。
+// Clicking "re-probe" after the probe result changes updates the card state.
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A2: 按「重新偵測」後選單裡的狀態隨探針結果更新", async () => {
+it("menu status updates with probe results after clicking re-probe", async () => {
   let codexLoggedIn = false;
   const runner: CommandRunner = async (command) => {
     if (command === "claude") return outcome({ stdout: '{"loggedIn":true}' });
@@ -170,10 +170,11 @@ it("A2: 按「重新偵測」後選單裡的狀態隨探針結果更新", async 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// A3: 切換後聊天出現系統訊息，下一則訊息由新 agent 處理；編輯鎖中按鈕停用。
+// Switching agents produces a system message in chat, the next message is
+// handled by the new agent, and the buttons are disabled while the edit lock holds.
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編輯鎖", async () => {
+it("switching agents from the menu — system message, chip, next message, and edit lock", async () => {
   const FREEZE_HOLD_MS = 1500;
   const bothLoggedIn: CommandRunner = async () => outcome({ stdout: '{"loggedIn":true}' });
 
@@ -192,7 +193,7 @@ it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編�
   const page = await openPage(server);
   await openAgentMenu(page);
 
-  // claude 是命令列指定的目前 agent：使用中，選單裡多一行說明來源。
+  // claude is the currently active agent, set via the command line: in use, with an extra menu row explaining the source.
   await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
   expect(await textOf(page, ".chat-chip-menu-hint")).toBe("本次由命令列指定");
 
@@ -200,7 +201,7 @@ it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編�
 
   await expect.poll(() => textOf(page, ".chat-system"), { timeout: 10_000 }).toBe("已切換到 Codex，接下來的訊息由它處理");
   await expect.poll(() => textOf(page, ".agent-dot-connected")).toBe("Codex");
-  // 選單選完就收起來；再打開時 codex 打勾、命令列說明消失。
+  // The menu collapses once a selection is made; reopening it shows codex checked and the command-line hint gone.
   expect(await page.locator(".chat-chip-menu").count()).toBe(0);
   await openAgentMenu(page);
   await expect.poll(() => itemChecked(page, "codex")).toBe("true");
@@ -220,7 +221,7 @@ it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編�
   }
   await expect.poll(isFrozen, { timeout: 5_000 }).toBe(true);
 
-  // 編輯鎖持有中：選單裡兩列都停用，並顯示固定提示。
+  // While the edit lock is held: both menu rows are disabled and show a fixed hint.
   await openAgentMenu(page);
   const rows = page.locator(".chat-chip-menu [data-kind]");
   const disabledFlags = await Promise.all((await rows.all()).map((row) => row.isDisabled()));
@@ -234,10 +235,10 @@ it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編�
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// A4: 無 agent 時聊天面板空狀態與「開啟設定」可開對話框。
+// With no agent, the chat panel shows an empty state and "Open settings" opens the dialog.
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A4: 沒有 agent 時聊天面板顯示空狀態，輸入框停用，從膠囊選單可以選一個", async () => {
+it("with no agent, the chat panel shows an empty state, the input is disabled, and one can be picked from the chip menu", async () => {
   const bothLoggedIn: CommandRunner = async () => outcome({ stdout: '{"loggedIn":true}' });
 
   activeServer = await startServerFor({

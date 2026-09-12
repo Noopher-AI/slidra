@@ -6,11 +6,11 @@ import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/
 import { runSmoke } from "./helpers/smoke.js";
 
 /**
- * Firefox／WebKit structural smoke (NOOP-9 Plan §1/§2.1-3/§4.5): the parent
- * ticket's AC explicitly does not require cross-browser pixel parity — this
- * file has no `compareScreenshot` import anywhere (verifiable with `grep -L
- * compareScreenshot e2e/cross-browser-smoke.test.ts`), only the structural
- * checks in e2e/helpers/smoke.ts.
+ * Firefox／WebKit structural smoke: cross-browser pixel parity is
+ * explicitly not required here — this file has no `compareScreenshot`
+ * import anywhere (verifiable with `grep -L compareScreenshot
+ * e2e/cross-browser-smoke.test.ts`), only the structural checks in
+ * e2e/helpers/smoke.ts.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -39,7 +39,7 @@ for (const engine of ENGINES) {
     try {
       browser = await engine.launcher.launch();
     } catch (error) {
-      throw new Error(`${engine.name} 啟動失敗（可能未安裝）：${(error as Error).message}`);
+      throw new Error(`${engine.name} failed to launch (possibly not installed): ${(error as Error).message}`);
     }
   });
 
@@ -48,7 +48,7 @@ for (const engine of ENGINES) {
   });
 
   for (const viewport of VIEWPORTS) {
-    it(`${engine.name} @ ${viewport.width}x${viewport.height}：核心流程可操作、無重疊、無裁切、非淺色破版`, async () => {
+    it(`${engine.name} @ ${viewport.width}x${viewport.height}: core flow is operable, no overlaps, no clipping, no washed-out layout breakage`, async () => {
       const { server, cleanup } = await startServerForHelper({
         deckDir: demoDir,
         prefix: `cross-browser-smoke-${engine.name}-${viewport.width}`,
@@ -56,7 +56,7 @@ for (const engine of ENGINES) {
       try {
         await runSmoke(browser, server, viewport);
       } catch (error) {
-        throw new Error(`${engine.name} @ ${viewport.width}x${viewport.height}：${(error as Error).message}`);
+        throw new Error(`${engine.name} @ ${viewport.width}x${viewport.height}: ${(error as Error).message}`);
       } finally {
         await cleanup();
       }

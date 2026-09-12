@@ -10,9 +10,9 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Multi-slide paging end to end (issue #25). The deck under test is the
+ * Multi-slide paging end to end. The deck under test is the
  * hand-written fixture in `fixtures/player-deck/`: three visibly different
- * 投影片, one of which references an asset by relative path. Everything is
+ * slides, one of which references an asset by relative path. Everything is
  * real — a real `.slidra` packed from that directory, the real `open`
  * command, a real server, the real built bundle, a real Chromium. The
  * agent is the same fake ACP subprocess the smoke test uses; nothing here
@@ -42,7 +42,7 @@ beforeAll(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-player-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
@@ -78,7 +78,7 @@ afterAll(async () => {
   if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", async () => {
+it("author can page forward and backward in the browser, and stops at both ends", async () => {
   const page = await browser.newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -96,7 +96,7 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
 
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第一頁");
   await expect.poll(() => position.textContent(), { timeout: 30_000 }).toBe("Slide 1 of 3");
-  // 第一頁再往前不動：the control is there, and it refuses.
+  // On the first slide, going back further does nothing: the control is there, and it refuses.
   await expect.poll(() => previousButton.isDisabled()).toBe(true);
 
   await nextButton.click();
@@ -107,7 +107,7 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
   await expect.poll(() => position.textContent()).toBe("Slide 3 of 3");
 
-  // 第三頁再往後不動，也不當機。
+  // On the last slide, going forward further does nothing, and it doesn't crash.
   await expect.poll(() => nextButton.isDisabled()).toBe(true);
   await page.keyboard.press("ArrowRight");
   await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("第三頁");
@@ -122,10 +122,10 @@ it("作者可以在瀏覽器裡往後翻、往前翻，兩端到底就停住", a
   expect(pageErrors).toEqual([]);
 });
 
-it("第二頁的相對路徑圖片真的載入了", async () => {
+it("the second slide's relative-path image actually loads", async () => {
   const page = await browser.newPage();
-  // Each response is recorded with the frame that issued it: since the 總覽
-  // (issue #27) renders real thumbnails, the same photo is legitimately
+  // Each response is recorded with the frame that issued it: since the
+  // overview panel renders real thumbnails, the same photo is legitimately
   // fetched by a thumbnail iframe too, and only frame attribution can keep
   // this test proving what it was written to prove — that the MAIN
   // canvas's slide loaded the image, not merely that somebody did.
@@ -164,8 +164,8 @@ it("第二頁的相對路徑圖片真的載入了", async () => {
   // independent checks that it really arrived: the bytes came back 200 as
   // a PNG, and the browser painted it with a non-zero box. The filter is
   // pinned to the main canvas's own frame — a thumbnail's load of the same
-  // asset (legitimate since the 總覽 exists) must neither satisfy nor
-  // break this assertion.
+  // asset (legitimate since the overview panel exists) must neither satisfy
+  // nor break this assertion.
   const photoFromCanvas = () =>
     rawResponses.filter((r) => r.url.endsWith("/assets/photo.png") && r.frame === slideFrame);
   await expect.poll(photoFromCanvas, { timeout: 30_000 }).toHaveLength(1);

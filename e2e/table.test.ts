@@ -7,14 +7,12 @@ import type { RunningServer } from "../packages/server/src/serve.js";
 import { openApp, requireBuilt, startServerFor } from "./helpers/launch.js";
 
 /**
- * E2.T14/E2.T14r2's real-Chromium acceptance tests (plan §5/§6) — the one
- * new e2e file this round adds (原 Plan §7 決定 14, 本輪不變): B1–B2 (single
- * SVG open, ADR-0001), E1–E13 + E12b (GUI operations, including the
- * keyboard cell-range shortcuts this round's plan exists for), and F1–F4
- * (6 screenshots). Every fixture table below is built through the live
- * `registry` (`table create`/`table cell set`/`table bind`), never
- * hand-written markup (NOOP-237's lesson, plan §6.3) — the SVG on disk is
- * always whatever core actually produces.
+ * Real-Chromium acceptance tests: B1-B2 (single SVG open, ADR-0001), E1-E13
+ * + E12b (GUI operations, including keyboard cell-range shortcuts), and
+ * F1-F4 (panel/menu geometry and state). Every fixture table below is
+ * built through the live `registry` (`table create`/`table cell set`/
+ * `table bind`), never hand-written markup — the SVG on disk is always
+ * whatever core actually produces.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -53,7 +51,7 @@ interface TableCreateOptions {
   header?: boolean;
 }
 
-/** Packs `table-deck` and creates one table via the live registry (plan §6.3) — the shared starting point every test below builds on unless noted otherwise. */
+/** Packs `table-deck` and creates one table via the live registry — the shared starting point every test below builds on unless noted otherwise. */
 async function newTableDeck(prefix: string, options: TableCreateOptions = {}) {
   const started = await startServerFor({ deckDir, prefix });
   const created = await started.registry.dispatch<{ elementId: string }>("table create", {
@@ -70,7 +68,7 @@ async function newTableDeck(prefix: string, options: TableCreateOptions = {}) {
   return { ...started, elementId };
 }
 
-/** Binds `elementId` (2 cols, last row as template) to the fixture CSV — 3 data rows × 2 cols = 6 generated cells (plan §6.3/§6.4, verified against the real CLI chain). */
+/** Binds `elementId` (2 cols, last row as template) to the fixture CSV — 3 data rows × 2 cols = 6 generated cells, verified against the real CLI chain. */
 async function bindToSalesCsv(
   registry: Awaited<ReturnType<typeof newTableDeck>>["registry"],
   presentationId: string,
@@ -106,7 +104,7 @@ function cellMarkup(svg: string, row: number, col: number): string {
   return match[0];
 }
 
-it("B1: 單獨用 file:// 開啟 workdir 的 slides/001.svg，無 parsererror，rect 數量等於實際格數", async () => {
+it("B1: opening workdir's slides/001.svg directly via file:// produces no parsererror, and the rect count matches the actual cell count", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("b1", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -126,7 +124,7 @@ it("B1: 單獨用 file:// 開啟 workdir 的 slides/001.svg，無 parsererror，
   }
 });
 
-it("B2: 模板列的儲存格 display:none，generated 儲存格不是 none", async () => {
+it("B2: template row cells are display:none, generated cells are not", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("b2", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -148,7 +146,7 @@ it("B2: 模板列的儲存格 display:none，generated 儲存格不是 none", as
   }
 });
 
-it("E1: Dock 的 Table 按鈕開出插入面板；hover 預覽格數；click 鎖定；Insert 後投影片多一個表格並成為選取", async () => {
+it("E1: the Dock's Table button opens the insert panel; hovering previews the cell count; clicking locks it in; after Insert the slide gains one more table and it becomes selected", async () => {
   const { server, cleanup } = await startServerFor({ deckDir, prefix: "e1" });
   try {
     const page = await openPage(server);
@@ -175,7 +173,7 @@ it("E1: Dock 的 Table 按鈕開出插入面板；hover 預覽格數；click 鎖
   }
 });
 
-it("E2: 面板的三個主題按鈕各按一次後 Insert，產出的 data-slidra-theme 對應正確", async () => {
+it("E2: clicking each of the panel's three theme buttons once then Insert produces the matching data-slidra-theme", async () => {
   for (const theme of ["dark", "light", "zebra"] as const) {
     const { server, registry, presentationId, cleanup } = await startServerFor({ deckDir, prefix: `e2-${theme}` });
     try {
@@ -194,7 +192,7 @@ it("E2: 面板的三個主題按鈕各按一次後 Insert，產出的 data-slidr
   }
 });
 
-it("E3: 面板的表頭開關關掉後 Insert，產出沒有 data-slidra-header", async () => {
+it("E3: turning off the panel's header toggle then Insert produces no data-slidra-header", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor({ deckDir, prefix: "e3" });
   try {
     const page = await openPage(server);
@@ -211,7 +209,7 @@ it("E3: 面板的表頭開關關掉後 Insert，產出沒有 data-slidra-header"
   }
 });
 
-it("E4: 點一格出現單格範圍框；⇧點另一格範圍框涵蓋兩格圍出的矩形", async () => {
+it("E4: clicking one cell shows a single-cell range box; shift-clicking another cell expands the range box to the rectangle spanning both cells", async () => {
   const { server, cleanup } = await newTableDeck("e4", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -232,7 +230,7 @@ it("E4: 點一格出現單格範圍框；⇧點另一格範圍框涵蓋兩格圍
   }
 });
 
-it("E5: 範圍作用中按 Tab 移到下一格；按 Esc 範圍框消失但表格仍被選取", async () => {
+it("E5: pressing Tab while a range is active moves to the next cell; pressing Esc dismisses the range box but the table stays selected", async () => {
   const { server, cleanup } = await newTableDeck("e5", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -263,7 +261,7 @@ it("E5: 範圍作用中按 Tab 移到下一格；按 Esc 範圍框消失但表�
   }
 });
 
-it("E6: 範圍作用中按 ⌘B，重載後該格 font-weight=700", async () => {
+it("E6: pressing ⌘B while a range is active sets that cell's font-weight to 700 after reload", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e6", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -282,7 +280,7 @@ it("E6: 範圍作用中按 ⌘B，重載後該格 font-weight=700", async () => 
   }
 });
 
-it("E7: 範圍涵蓋 2 格時按 Delete，兩格文字變空且投影片仍有同樣數量的儲存格", async () => {
+it("E7: pressing Delete with a 2-cell range selected clears both cells' text while the slide keeps the same number of cells", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e7", { rows: 2, cols: 2 });
   try {
     await registry.dispatch("table cell set", { id: presentationId, slidePath: SLIDE_PATH, elementId, row: 0, col: 0, text: "A" });
@@ -310,7 +308,7 @@ it("E7: 範圍涵蓋 2 格時按 Delete，兩格文字變空且投影片仍有�
   }
 });
 
-it("E8: 雙擊一格出現編輯輸入框；Enter 提交後重載顯示新文字，只產生一筆歷史，undo 還原", async () => {
+it("E8: double-clicking a cell opens an edit input; pressing Enter commits it, reload shows the new text, exactly one history entry is created, and undo restores it", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e8", { rows: 2, cols: 2 });
   try {
     const before = await catSlide(registry, presentationId);
@@ -344,7 +342,7 @@ it("E8: 雙擊一格出現編輯輸入框；Enter 提交後重載顯示新文字
   }
 });
 
-it("E8b: 表格在群組裡時，直接雙擊一格就進入編輯（同一次雙擊鑽入＋開編輯器），不需要先點一下", async () => {
+it("E8b: when the table is inside a group, double-clicking a cell directly enters edit mode (the same double-click both drills into the group and opens the editor), no initial click needed first", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e8b", { rows: 2, cols: 2 });
   try {
     const grouped = await registry.dispatch("element group", {
@@ -366,7 +364,7 @@ it("E8b: 表格在群組裡時，直接雙擊一格就進入編輯（同一次�
   }
 });
 
-it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（架構：雙擊編輯的是模板列）", async () => {
+it("E9: double-clicking a generated cell, the input's initial value is the raw template text with {{ }} (by design, double-click edits the template row)", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e9", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -395,14 +393,14 @@ it("E9: 雙擊一個 generated 格，input 初值是含 {{ }} 的模板原文（
   }
 });
 
-// F-09 (NOOP-399): Tab used to have no handler at all inside the cell
+// Tab used to have no handler at all inside the cell
 // editor's <input>, so it fell through to the browser default — focus
 // jumped clean out of the table to the dock's hand-tool button, and
 // whatever the user typed next went nowhere. This proves Tab now commits
 // the current cell, moves editing to the next one, and — critically —
 // keeps focus on the SAME <input> element the whole time (no
 // blur-then-remount cycle), so typing can continue immediately.
-it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-editor 並移到下一格，兩格都能寫入", async () => {
+it("F-09: pressing Tab while editing a cell keeps focus on the same input.table-cell-editor and moves it to the next cell; both cells can be written to", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("f9", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -418,13 +416,13 @@ it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-edi
 
     await editor.press("Tab");
 
-    // 沒有重新 mount：同一個 DOM 節點還在、還是 document.activeElement。
+    // No remount: it's the same DOM node, still document.activeElement.
     expect(await editorHandle!.evaluate((el) => el === document.activeElement)).toBe(true);
     await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("INPUT");
     await expect
       .poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.className))
       .toContain("table-cell-editor");
-    // Tab 之後編輯器已經移到下一格：rect 的 left 改變了。
+    // After Tab the editor has moved to the next cell: rect's left changed.
     await expect.poll(() => editor.evaluate((el) => (el as HTMLElement).style.left)).not.toBe(leftBeforeTab);
     expect(await editor.inputValue()).toBe("");
 
@@ -438,12 +436,15 @@ it("F-09: 儲存格編輯中按 Tab，焦點留在同一個 input.table-cell-edi
   }
 });
 
-// F-09 迴歸（Reviewer, NOOP-400）：Tab 落在 generated 格時，編輯框的初值必須
-// 是「同欄模板列的原文」，跟 E9 的雙擊路徑同一個契約——因為 `editing.row`
-// 已經被 `nextTableTabCell` 解析成模板列，寫回去的就是模板列。若初值取的是
-// generated 格自己的「已算好的值」，接著任何一次提交（Enter／blur／再按一次
-// Tab）都會把 `{{ }}` 模板表達式覆蓋成那個字面值，整欄的資料繫結當場消失。
-it("F-09b: Tab 落在 generated 格，input 初值是同欄模板原文，提交後模板列的 {{ }} 不被覆蓋", async () => {
+// Regression check: when Tab lands on a generated cell, the edit box's
+// initial value must be the same column's template-row text — the same
+// contract as E9's dblclick path — because `editing.row` has already been
+// resolved to the template row by `nextTableTabCell`, so that's what gets
+// written back. If the initial value were the generated cell's own
+// computed value instead, any commit (Enter/blur/another Tab) would
+// overwrite the `{{ }}` template expression with that literal value,
+// destroying the whole column's data binding on the spot.
+it("F-09b: Tab landing on a generated cell has an input initial value of the same column's template text, and committing does not overwrite the template row's {{ }}", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("f9b", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -470,7 +471,7 @@ it("F-09b: Tab 落在 generated 格，input 初值是同欄模板原文，提交
   }
 });
 
-it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產生一筆歷史，undo 還原", async () => {
+it("E10: dragging a column-boundary handle changes the width live during the drag; releasing produces exactly one history entry, and undo restores it", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e10", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -510,7 +511,7 @@ it("E10: 拖曳欄界把手，拖曳期間即時改變寬度；放開後只產�
   }
 });
 
-it("E11: 在格上按右鍵出現選單（Edit／Bold／插列插欄／Merge／刪列刪欄／Clear）；點 Merge 後左上格 span=2,2，其餘三格消失", async () => {
+it("E11: right-clicking a cell shows a menu (Edit/Bold/insert row-column/Merge/delete row-column/Clear); clicking Merge sets the top-left cell's span to 2,2 and removes the other three cells", async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e11", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -550,7 +551,7 @@ it("E11: 在格上按右鍵出現選單（Edit／Bold／插列插欄／Merge／�
   }
 });
 
-it("E12: 選取表格時右欄 Style › Object 顯示 table-section；點主題後重載主題改變；綁定表格按 Refresh 後 generated 數與 CSV 一致", async () => {
+it("E12: selecting the table shows table-section under the right panel's Style › Object; clicking a theme changes the theme after reload; clicking Refresh on a bound table makes the generated count match the CSV", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("e12", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -577,7 +578,7 @@ it("E12: 選取表格時右欄 Style › Object 顯示 table-section；點主題
   }
 });
 
-it('E12b: 點一格後出現 table-section-cell；點 align center 後重載該格有 data-slidra-align="center"；Esc 離開範圍後消失', async () => {
+it('E12b: clicking a cell shows table-section-cell; clicking align center gives that cell data-slidra-align="center" after reload; pressing Esc to leave the range makes it disappear', async () => {
   const { server, registry, presentationId, cleanup } = await newTableDeck("e12b", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -601,7 +602,7 @@ it('E12b: 點一格後出現 table-section-cell；點 align center 後重載該�
   }
 });
 
-it("E13: 選取表格時顯示四角縮放與旋轉把手（表格靠容器 transform 縮放），文字框寬度把手不顯示", async () => {
+it("E13: selecting the table shows the four corner resize handles and the rotate handle (the table scales via its container transform); text-box width handles are not shown", async () => {
   const { server, cleanup } = await newTableDeck("e13", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -623,7 +624,7 @@ it("E13: 選取表格時顯示四角縮放與旋轉把手（表格靠容器 tran
   }
 });
 
-// Header rect fill/fill-opacity per theme (plan §3.10, `theme.ts`'s
+// Header rect fill/fill-opacity per theme (`theme.ts`'s
 // `THEMES.<name>.head` — not exported from core's public barrel, so these
 // are the literal values read directly off that source).
 const HEADER_PAINT: Record<"dark" | "light" | "zebra", { fill: string; fillOpacity: string | null }> = {
@@ -632,7 +633,7 @@ const HEADER_PAINT: Record<"dark" | "light" | "zebra", { fill: string; fillOpaci
   zebra: { fill: "#ffffff", fillOpacity: "0.08" },
 };
 
-it("F1: table-panel 插入面板的格數與可用狀態", async () => {
+it("F1: the table-panel insert panel's cell count and enabled state", async () => {
   const { server, cleanup } = await startServerFor({ deckDir, prefix: "f1" });
   try {
     const page = await openPage(server);
@@ -646,7 +647,7 @@ it("F1: table-panel 插入面板的格數與可用狀態", async () => {
   }
 });
 
-// F2 的固定文字（3×3，第 0 列是表頭）。
+// F2's fixed text (3×3, row 0 is the header).
 const F2_TEXT: Record<string, string> = {
   "0,0": "產品",
   "0,1": "區域",
@@ -660,7 +661,7 @@ const F2_TEXT: Record<string, string> = {
 };
 
 for (const theme of ["dark", "light", "zebra"] as const) {
-  it(`F2: theme-${theme} 的表頭填色與文字`, async () => {
+  it(`F2: theme-${theme}'s header fill color and text`, async () => {
     const { registry, presentationId, elementId, cleanup } = await newTableDeck(`f2-${theme}`, { rows: 3, cols: 3, theme });
     try {
       for (const [addr, text] of Object.entries(F2_TEXT)) {
@@ -682,7 +683,7 @@ for (const theme of ["dark", "light", "zebra"] as const) {
   });
 }
 
-it("F3: cell-range 選取範圍框的幾何與情境列的邊界", async () => {
+it("F3: cell-range selection box geometry and the status bar boundary", async () => {
   const { server, cleanup } = await newTableDeck("f3", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);
@@ -721,7 +722,7 @@ it("F3: cell-range 選取範圍框的幾何與情境列的邊界", async () => {
   }
 });
 
-it("F4: cell-menu 右鍵選單的項目數與可用狀態", async () => {
+it("F4: cell-menu right-click menu's item count and enabled state", async () => {
   const { server, cleanup } = await newTableDeck("f4", { rows: 2, cols: 2 });
   try {
     const page = await openPage(server);

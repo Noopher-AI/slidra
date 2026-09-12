@@ -29,13 +29,13 @@ const VIEWPORT = { width: 1440, height: 900 };
 // demo/project.json's real canvas — the ratio the stage must match.
 const CANVAS_RATIO = 1280 / 720;
 // New v3 shell rebuild: `.canvas-area`'s padding is no longer uniform on
-// every side. `--space-gutter` (28px 上下/左右) is overridden on the
-// bottom edge by `--space-gutter-bottom` (76px) to reserve room for the
+// every side. `--space-gutter` (28px top-bottom/left-right) is overridden on
+// the bottom edge by `--space-gutter-bottom` (76px) to reserve room for the
 // floating Dock (apps/web/src/styles/shell.css's `.canvas-area` rule) —
 // 01-DESIGN_TOKENS.md's own token, not a value invented here. The stage is
 // therefore centred left/right but pushed 76-28=48px above true vertical
-// centre; the two "仍置中" assertions below check for exactly that offset
-// instead of a symmetric margin.
+// centre; the "still centred" assertions below check for exactly that
+// offset instead of a symmetric margin.
 const DOCK_RESERVATION = 76 - 28;
 
 let browser: Browser;
@@ -52,7 +52,7 @@ beforeAll(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -128,7 +128,7 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
   const altHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-4x3-home-"));
   const altFilesDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-stage-4x3-files-"));
   process.env.SLIDRA_HOME = altHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -156,7 +156,7 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     cleanup: async () => {
       await altServer.close();
       process.env.SLIDRA_HOME = savedHome;
-      // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+      // slidra serve now spawns the Rust binary for every read/write.
       process.env.SLIDRA_BIN = slidraBin;
       await rm(deckDir, { recursive: true, force: true });
       await rm(altHome, { recursive: true, force: true });
@@ -202,10 +202,10 @@ async function enterPlay(page: Page): Promise<void> {
     .toBe("true");
 }
 
-/** F-01 (NOOP-355 #287): the srcdoc document's own `<html>` — measured
- * separately from `.stage`/`.canvas-area` (both host-document elements)
- * because the scrollbar the bug report describes is painted *inside* the
- * iframe, on its own documentElement, not on either host box. */
+/** Measures the srcdoc document's own `<html>` — separately from
+ * `.stage`/`.canvas-area` (both host-document elements) because the
+ * scrollbar this guards against is painted *inside* the iframe, on its own
+ * documentElement, not on either host box. */
 async function measureSrcdocDocument(page: Page): Promise<{
   scrollWidth: number;
   scrollHeight: number;
@@ -220,14 +220,14 @@ async function measureSrcdocDocument(page: Page): Promise<{
   }));
 }
 
-it("舞台的實測寬高比等於 project.json 的 canvas.width/height", async () => {
+it("the stage's measured aspect ratio matches project.json's canvas.width/height", async () => {
   const page = await openApp();
   const { stage } = await measureStage(page);
   const ratio = stage.width / stage.height;
   expect(Math.abs(ratio - CANVAS_RATIO)).toBeLessThan(0.02);
 });
 
-it("非 16:9 畫布：舞台的實測寬高比仍等於 project.json 的 canvas.width/height，而非 CSS 的 16/9 fallback", async () => {
+it("non-16:9 canvas: the stage's measured aspect ratio still matches project.json's canvas.width/height, not the CSS 16/9 fallback", async () => {
   const { server: altServer, cleanup } = await startNonWidescreenServer();
   try {
     const page = await openApp(VIEWPORT, altServer);
@@ -239,7 +239,7 @@ it("非 16:9 畫布：舞台的實測寬高比仍等於 project.json 的 canvas.
   }
 });
 
-it("投影片永遠完整可見：舞台不超出留白區，留白區不出現捲軸", async () => {
+it("the slide is always fully visible: the stage never overflows its gutter area, and the gutter never scrolls", async () => {
   const page = await openApp();
   const { stage, well } = await measureStage(page);
 
@@ -253,7 +253,7 @@ it("投影片永遠完整可見：舞台不超出留白區，留白區不出現�
   expect(stage.x + stage.width).toBeLessThanOrEqual(well.x + well.width + 0.5);
   expect(stage.y + stage.height).toBeLessThanOrEqual(well.y + well.height + 0.5);
 
-  // F-01 (NOOP-355 #287): `.stage` itself must not need to clip an
+  // `.stage` itself must not need to clip an
   // overflow — `well`/`stage` above only measured the *host* document's
   // boxes, which said nothing about whether `.stage` (overflow:hidden) or
   // the srcdoc iframe's own document had scroll content to hide in the
@@ -275,7 +275,7 @@ it("投影片永遠完整可見：舞台不超出留白區，留白區不出現�
   expect(playSrcdoc.scrollHeight).toBeLessThanOrEqual(playSrcdoc.clientHeight);
 });
 
-it("視窗大小改變時舞台重新計算，仍然置中且完整可見、不出捲軸", async () => {
+it("the stage recomputes on window resize, staying centred, fully visible, and scroll-free", async () => {
   const page = await openApp();
   const before = await measureStage(page);
 
@@ -304,29 +304,33 @@ it("視窗大小改變時舞台重新計算，仍然置中且完整可見、不�
   expect(Math.abs(bottomMargin - topMargin - DOCK_RESERVATION)).toBeLessThan(1.5);
 });
 
-it("矮視窗（1440×600，高度會夾住舞台）：比例不跑掉、不出現文件捲軸、舞台完整落在視窗內、仍置中", async () => {
+it("short window (1440x600, height constrains the stage): the ratio holds, no document scrollbar, the stage fully fits the viewport, still centred", async () => {
   const page = await openApp({ width: 1440, height: 600 });
   const { stage, well } = await measureStage(page);
 
-  // 比例仍然是 project.json 的 16:9，不因為高度被夾住而變形（gate round 2
-  // finding：修正前寬釘死在滿版、只有高被夾，比例會跑掉）。
+  // The ratio still matches project.json's 16:9 rather than distorting
+  // when height is the constraining dimension (a prior bug pinned width to
+  // full-width and let only height be constrained, which threw off the ratio).
   const ratio = stage.width / stage.height;
   expect(Math.abs(ratio - CANVAS_RATIO)).toBeLessThan(0.02);
 
-  // 沒有文件級捲軸（修正前 `.main` 卡在內容高度，撐破可用空間，
-  // `document.documentElement` 因此長出捲軸）。
+  // No document-level scrollbar (a prior bug had `.main` locked to its
+  // content height, overflowing the available space and giving
+  // `document.documentElement` a scrollbar as a result).
   const docScroll = await page.evaluate(() => ({
     scrollHeight: document.documentElement.scrollHeight,
     clientHeight: document.documentElement.clientHeight,
   }));
   expect(docScroll.scrollHeight).toBe(docScroll.clientHeight);
 
-  // 舞台完整落在視窗內（不只是不出捲軸，下緣也真的沒有掉出視窗）。
+  // The stage fits entirely inside the viewport (not just scrollbar-free —
+  // its bottom edge really doesn't fall outside the viewport either).
   const viewportHeight = await page.evaluate(() => window.innerHeight);
   expect(stage.y).toBeGreaterThanOrEqual(0);
   expect(stage.y + stage.height).toBeLessThanOrEqual(viewportHeight + 0.5);
 
-  // 左右仍置中；上下刻意不對稱，見 DOCK_RESERVATION 的說明（New v3 殼重建）。
+  // Still centred left/right; top/bottom is intentionally asymmetric, see
+  // the DOCK_RESERVATION comment above (New v3 shell rebuild).
   const leftMargin = stage.x - well.x;
   const rightMargin = well.x + well.width - (stage.x + stage.width);
   expect(Math.abs(leftMargin - rightMargin)).toBeLessThan(1.5);

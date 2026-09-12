@@ -12,14 +12,14 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
 
 /**
- * #210 條件 1 — Open／Save round-trips a `.slidra` byte-for-byte, and
- * `POST /api/open` clears undo history and replaces the served presentation
- * without changing its id (NOOP-93 §7 decision 5).
+ * Open/Save round-trips a `.slidra` byte-for-byte, and `POST /api/open`
+ * clears undo history and replaces the served presentation without changing
+ * its id.
  *
- * Pure HTTP-level tests (§6.2's "公開邊界一"): `startServe` + real `fetch`,
- * no browser, matching `packages/server/test/serve.test.ts`'s own
- * convention — the agent is a fixture nothing here ever spawns (lazy on
- * first `/api/chat`, same reasoning as that file's `fakeAgent`).
+ * Pure HTTP-level tests: `startServe` + real `fetch`, no browser, matching
+ * `packages/server/test/serve.test.ts`'s own convention — the agent is a
+ * fixture nothing here ever spawns (lazy on first `/api/chat`, same
+ * reasoning as that file's `fakeAgent`).
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,7 +48,7 @@ async function startHarness(): Promise<Harness> {
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-files-"));
   const staticDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-static-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const slidraPath = path.join(slidraDir, "a.slidra");
@@ -103,7 +103,7 @@ afterEach(async () => {
   }
 });
 
-describe("file round-trip via POST /api/save (#210 條件 1)", () => {
+describe("file round-trip via POST /api/save", () => {
   it("an edit saved through /api/save survives a reopen into a second SLIDRA_HOME, byte-for-byte", async () => {
     harness = await startHarness();
     const { server, slidraPath } = harness;
@@ -134,7 +134,7 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     secondHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home2-"));
     const previousHome = process.env.SLIDRA_HOME;
     process.env.SLIDRA_HOME = secondHome;
-    // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+    // slidra serve now spawns the Rust binary for every read/write.
     process.env.SLIDRA_BIN = slidraBin;
     try {
       const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: slidraPath });
@@ -157,17 +157,17 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
       expect(editedSlide).toContain("roundtrip 已編輯");
     } finally {
       process.env.SLIDRA_HOME = previousHome;
-      // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+      // slidra serve now spawns the Rust binary for every read/write.
       process.env.SLIDRA_BIN = slidraBin;
     }
   });
 
-  it("POST /api/save without a sourcePath (a pre-NOOP-93 registry entry) is refused with 400, not a guessed path", async () => {
+  it("POST /api/save without a sourcePath (a legacy registry entry) is refused with 400, not a guessed path", async () => {
     harness = await startHarness();
     const { server, slidraHome, presentationId } = harness;
 
-    // Simulate a registry entry created before this ticket: no
-    // sourcePath/savedAt at all.
+    // Simulate a registry entry created before sourcePath/savedAt tracking
+    // existed: no sourcePath/savedAt at all.
     const registryPath = path.join(slidraHome, "projects.json");
     const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { workDir: string }>;
     const workDir = raw[presentationId].workDir;
@@ -181,7 +181,7 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
   });
 });
 
-describe("POST /api/open (#210 條件 1)", () => {
+describe("POST /api/open", () => {
   it("replaces the served presentation in place, clears undo history, and keeps the same id", async () => {
     harness = await startHarness();
     const { server, presentationId } = harness;
@@ -219,7 +219,7 @@ describe("POST /api/open (#210 條件 1)", () => {
       const undoBody = (await undoResponse.json()) as { error: string };
       expect(undoBody.error).toContain("沒有可復原的操作");
 
-      // The presentation id served did not change (§7 decision 5).
+      // The presentation id served did not change.
       expect(await workDirFor(presentationId)).toBeTruthy();
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -300,19 +300,20 @@ describe("POST /api/open (#210 條件 1)", () => {
   });
 });
 
-describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器——上面兩個 describe 都是純 HTTP，這裡才有 App.tsx 的 keydown handler）", () => {
+describe("Cmd+S keyboard entry point (via a real browser — the two describe blocks above are pure HTTP, this is the only one exercising App.tsx's keydown handler)", () => {
   let browser: Browser;
 
-  it("按 ⌘S：POST /api/save 被送出，GET /api/save-state 回 dirty: false", async () => {
+  it("pressing Cmd+S sends POST /api/save, and GET /api/save-state then reports dirty: false", async () => {
     await requireBuilt(rootDir);
     browser = await chromium.launch();
     const started = await startServerFor({ deckDir, prefix: "roundtrip-cmd-s" });
     try {
       const page = await openApp(browser, started.server);
-      // startServerFor 用 registry.dispatch("open", { path: slidraPath }) 開檔，
-      // 這條路徑一定帶 sourcePath（見 helpers/launch.ts 本身的說明），
-      // /api/save 才有東西可以寫回。先真的改動一次，dirty 才會是 true——
-      // 不改就按 ⌘S，看到 dirty: false 證明不了 ⌘S 做了什麼（本來就是 false）。
+      // startServerFor opens the file via registry.dispatch("open", { path: slidraPath }),
+      // which always carries a sourcePath (see helpers/launch.ts's own notes),
+      // so /api/save has something to write back to. Make a real edit first so
+      // dirty becomes true — pressing Cmd+S without changing anything would
+      // leave dirty: false regardless of whether Cmd+S did anything.
       const setResult = await started.registry.dispatch("text set", {
         id: started.presentationId,
         slidePath: "slides/001.svg",
@@ -324,10 +325,13 @@ describe("⌘S 鍵盤入口（06-KEYBOARD_AND_GESTURES.md，走真實瀏覽器�
         .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
         .toEqual({ known: true, dirty: true, fileName: "deck.slidra" });
 
-      // 焦點刻意留在父文件（不點投影片）：⌘S 的 keydown 監聽掛在 App.tsx 的
-      // `document`，焦點若先移進 sandbox iframe，這個按鍵事件根本不會冒泡
-      // 回父文件（跨 iframe 邊界不冒泡），⌘S 就打不到——這裡驗證的正是「焦點
-      // 在父文件時」這個最直接可達的路徑。
+      // Focus is deliberately left on the parent document (no click into the
+      // slide): the Cmd+S keydown listener is attached to App.tsx's
+      // `document`, and if focus first moved into the sandbox iframe, this
+      // key event would never bubble back to the parent document (events
+      // don't bubble across iframe boundaries), so Cmd+S would never fire —
+      // this verifies exactly the most directly reachable path, "focus in
+      // the parent document".
       await page.keyboard.press("Meta+s");
 
       await expect

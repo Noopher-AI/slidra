@@ -58,7 +58,7 @@ export function parseColor(value: string): Rgb {
     };
   }
 
-  throw new Error(`parseColor：無法解析的顏色值：${value}`);
+  throw new Error(`parseColor: could not parse color value: ${value}`);
 }
 
 /** One channel's contribution to relative luminance (WCAG 2.x). */

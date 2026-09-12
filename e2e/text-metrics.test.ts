@@ -9,15 +9,16 @@ import { workDirFor } from "../packages/server/src/slidra/home.js";
 import { requireBuilt } from "./helpers/launch.js";
 
 /**
- * Ticket #71's original AC ("同一段文字在 Node 與瀏覽器量出的寬度一致") no
- * longer applies: F8 (NOOP-289) deletes the browser's own font-metrics
- * engine (`text-metrics.ts`, `window.slidraMeasureText`) entirely — the
- * browser never measures text at all any more, it only displays what the
- * CLI already wrapped. This file now verifies the CLI's OUTPUT instead
- * (父票 wording): write a text box with the CLI (`textbox add`), read back
- * the `<tspan>` lines it actually wrote, and confirm each line's real
- * Chromium-rendered width (`getComputedTextLength()`, the same external
- * ground truth the old A5 section already used) fits inside the declared
+ * The original acceptance criterion here ("the same text measures the
+ * same width in Node and in the browser") no longer applies: a later
+ * change deletes the browser's own font-metrics engine (`text-metrics.ts`,
+ * `window.slidraMeasureText`) entirely — the browser never measures text
+ * at all any more, it only displays what the CLI already wrapped. This
+ * file now verifies the CLI's OUTPUT instead: write a text box with the
+ * CLI (`textbox add`), read back the `<tspan>` lines it actually wrote,
+ * and confirm each line's real Chromium-rendered width
+ * (`getComputedTextLength()`, the same external ground truth an earlier
+ * version of this test already used) fits inside the declared
  * `data-slidra-text-width` — proving the server-side wrap decision agrees
  * with what a real browser draws, not just with another run of the same
  * code.
@@ -39,10 +40,10 @@ interface Sample {
 }
 
 const SAMPLES: Sample[] = [
-  { label: "純 ASCII，窄寬度強制換行", text: "Hello Slidra this text should wrap across several lines", width: 220, fontSizePx: 28 },
-  { label: "純中文，窄寬度強制換行", text: "投影片文字量測與換行行為驗證", width: 200, fontSizePx: 32 },
-  { label: "中英混排", text: "Slidra 是一個簡報工具，支援 agent 協作", width: 260, fontSizePx: 24 },
-  { label: "寬度足夠，單行不換行", text: "Hi", width: 400, fontSizePx: 40 },
+  { label: "pure ASCII, narrow width forces wrapping", text: "Hello Slidra this text should wrap across several lines", width: 220, fontSizePx: 28 },
+  { label: "pure Chinese, narrow width forces wrapping", text: "投影片文字量測與換行行為驗證", width: 200, fontSizePx: 32 },
+  { label: "mixed Chinese/English", text: "Slidra 是一個簡報工具，支援 agent 協作", width: 260, fontSizePx: 24 },
+  { label: "width is generous, stays one line", text: "Hi", width: 400, fontSizePx: 40 },
 ];
 
 let browser: Browser;
@@ -66,12 +67,12 @@ beforeAll(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-text-metrics-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-text-metrics-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  await registry.dispatch("new", { path: slidraPath, name: "字型量測煙霧測試" });
+  await registry.dispatch("new", { path: slidraPath, name: "font metrics smoke test" });
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   presentationId = opened.data!.id;
   // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
@@ -87,12 +88,12 @@ afterAll(async () => {
   if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-/** `<tspan>` line texts and `data-slidra-text-width`, read straight off the CLI-written file — this is "驗證 CLI 輸出", not a second parser. */
+/** `<tspan>` line texts and `data-slidra-text-width`, read straight off the CLI-written file — this verifies the CLI's own output, not a second parser. */
 async function readTextboxLines(elementId: string): Promise<{ lines: string[]; width: number }> {
   const workDir = await workDirFor(presentationId);
   const svg = await readFile(path.join(workDir, SLIDE_PATH), "utf-8");
   const openTagMatch = new RegExp(`<g id="${elementId}"[^>]*data-slidra-text-width="([^"]+)"[^>]*>`).exec(svg);
-  if (!openTagMatch) throw new Error(`找不到文字框容器：${elementId}`);
+  if (!openTagMatch) throw new Error(`could not find text box container: ${elementId}`);
   const width = Number(openTagMatch[1]);
   // Scoped to elementId's own container body (up to the next sibling <g id=
   // or this container's own </g>) — an unscoped scan would also pick up
@@ -135,8 +136,8 @@ async function renderedWidthInChromium(text: string, fontSizePx: number): Promis
   );
 }
 
-describe("CLI 的文字框換行輸出 vs Chromium 實際渲染", () => {
-  it.each(SAMPLES)("$label：CLI 寫出的每一行，Chromium 實際渲染寬度都不超過宣告的 data-slidra-text-width（容差 0.5%，沿用原 A5 論證）", async ({ text, width, fontSizePx }) => {
+describe("CLI's text box wrap output vs actual Chromium rendering", () => {
+  it.each(SAMPLES)("$label: every line the CLI writes renders in Chromium no wider than the declared data-slidra-text-width (0.5% tolerance)", async ({ text, width, fontSizePx }) => {
     const added = await registry.dispatch<{ elementId: string; lines: number }>("textbox add", {
       id: presentationId,
       slidePath: SLIDE_PATH,
@@ -157,7 +158,7 @@ describe("CLI 的文字框換行輸出 vs Chromium 實際渲染", () => {
     for (const line of lines) {
       if (line === "") continue; // A trailing empty wrapped line (rare, width barely fits a whole word) has nothing to measure.
       const renderedWidth = await renderedWidthInChromium(line, fontSizePx);
-      expect(renderedWidth, `行 "${line}" 的實際渲染寬度`).toBeLessThanOrEqual(declaredWidth * 1.005);
+      expect(renderedWidth, `rendered width of line "${line}"`).toBeLessThanOrEqual(declaredWidth * 1.005);
     }
 
     await registry.dispatch("element delete", { id: presentationId, slidePath: SLIDE_PATH, elementIds: [elementId] });

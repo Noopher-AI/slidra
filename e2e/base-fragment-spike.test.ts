@@ -7,10 +7,10 @@ import { wrapSlideDocument as wrapThumbnailDocument } from "../apps/web/src/over
 import { renderHideStyle, renderPlanScript } from "../apps/web/src/player-plan.js";
 
 /**
- * `<base>` 與同文件片段參照實測（外部審查對 overview.ts 提出，實為 canvas.ts
- * 與 overview.ts 共同的問題）。A spike in the exact shape of
- * e2e/fullscreen-spike.test.ts: we do not ship on a spec claim for a
- * load-bearing corner; we measure it on all three engines.
+ * A real-browser measurement of `<base>` and same-document fragment
+ * references — a problem shared by canvas.ts and overview.ts. A spike in
+ * the exact shape of e2e/fullscreen-spike.test.ts: we do not ship on a spec
+ * claim for a load-bearing corner; we measure it on all three engines.
  *
  * The claim under test: the injected `<base href="/api/raw/<dir>/">` (which
  * exists so the browser's own URL resolution — not a regex rewrite of
@@ -21,7 +21,7 @@ import { renderHideStyle, renderPlanScript } from "../apps/web/src/player-plan.j
  * ADR-0001's promise that the SVG file is the artifact and renders
  * correctly.
  *
- * Method, per engine and per wrapper (view canvas / 總覽 thumbnail / 播放):
+ * Method, per engine and per wrapper (view canvas / overview thumbnail / play):
  * three srcdoc iframes built by the REAL wrapper functions —
  *
  *   - control: same slide, no `<base>` — the known-good local resolution;
@@ -104,7 +104,7 @@ interface Variant {
   broken: string;
 }
 
-// The empty plan a slide with no 效果清單 gets — built from the real
+// The empty plan a slide with no effect list gets — built from the real
 // renderers, so the play document is the production shape end to end.
 const EMPTY_PLAN = { steps: [], hidden: [] };
 const PLAN_SCRIPT = renderPlanScript(EMPTY_PLAN);
@@ -112,14 +112,14 @@ const HIDE_STYLE = renderHideStyle(EMPTY_PLAN.hidden);
 
 const VARIANTS: Variant[] = [
   {
-    name: "檢視 canvas（wrapSlideDocument, sandbox=\"\"）",
+    name: "view canvas (wrapSlideDocument, sandbox=\"\")",
     sandbox: "",
     control: wrapSlideDocument(SLIDE_SVG),
     withBase: wrapSlideDocument(SLIDE_SVG, BASE_HREF),
     broken: wrapSlideDocument(BROKEN_SVG),
   },
   {
-    name: "總覽縮圖（overview 的 wrapSlideDocument, sandbox=\"\"）",
+    name: "overview thumbnail (overview's wrapSlideDocument, sandbox=\"\")",
     sandbox: "",
     control: wrapThumbnailDocument(SLIDE_SVG),
     withBase: wrapThumbnailDocument(SLIDE_SVG, BASE_HREF),
@@ -131,7 +131,7 @@ const VARIANTS: Variant[] = [
     // the SAME sandbox tokens: the only pixel-relevant difference to the
     // withBase document is the <base> itself — the runtime with an empty
     // plan paints nothing.
-    name: "播放（wrapPlayDocument, sandbox=\"allow-scripts\"）",
+    name: "play (wrapPlayDocument, sandbox=\"allow-scripts\")",
     sandbox: "allow-scripts",
     control: wrapSlideDocument(SLIDE_SVG),
     withBase: wrapPlayDocument(SLIDE_SVG, BASE_HREF, HIDE_STYLE, PLAN_SCRIPT),
@@ -154,7 +154,7 @@ function buildSpikePage(): { html: string; rowIndex: (variant: number, doc: numb
     }
   }
   const html = [
-    `<!doctype html><html><head><meta charset="utf-8"><title>base 與片段參照實測</title>`,
+    `<!doctype html><html><head><meta charset="utf-8"><title>base and fragment reference measurement</title>`,
     `<style>html,body{margin:0}iframe.row{display:block;border:0;margin:0;width:${ROW_WIDTH}px;height:${ROW_HEIGHT}px}</style>`,
     `</head><body>${rows.join("")}</body></html>`,
   ].join("");
@@ -168,7 +168,7 @@ const ENGINES: Engine[] = [
   { name: "WebKit", type: webkit },
 ];
 
-describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照", (engine) => {
+describe.each(ENGINES)("$name: same-document fragment references under srcdoc + <base>", (engine) => {
   let browser: Browser;
   let page: Page;
   let server: Server;
@@ -178,8 +178,8 @@ describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照",
   beforeAll(async () => {
     // A real http server: the srcdoc documents' fallback base URL is the
     // parent page's URL, and "/api/raw/…" must be resolvable against it for
-    // the <base> to be live at all. Everything under /api/raw/ 404s, same
-    // as the real server would for a fragment mis-resolved to a directory.
+    // the <base> to be live at all. Everything under /api/raw/ returns 404,
+    // same as the real server would for a fragment mis-resolved to a directory.
     server = createServer((req, res) => {
       if (req.url === "/") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -205,11 +205,11 @@ describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照",
     // Every row must have parsed its SVG before any pixel is judged.
     // (expect.poll is not usable inside beforeAll, hence the hand poll —
     // it fails loudly on timeout rather than passing on a lucky sleep.)
-    await pollUntil(async () => (await page.locator("iframe.row").count()) === VARIANTS.length * 3, "iframe 列數量");
+    await pollUntil(async () => (await page.locator("iframe.row").count()) === VARIANTS.length * 3, "iframe row count");
     for (let i = 0; i < VARIANTS.length * 3; i++) {
       await pollUntil(
         async () => (await page.frameLocator(`iframe.row >> nth=${i}`).locator("svg").count()) === 1,
-        `第 ${i} 列的 svg`,
+        `row ${i}'s svg`,
       );
     }
     // One extra beat so paint (and any in-flight reference fetch) settles.
@@ -222,7 +222,7 @@ describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照",
       if (await check()) return;
       await page.waitForTimeout(100);
     }
-    throw new Error(`等不到：${what}`);
+    throw new Error(`timed out waiting for: ${what}`);
   }
 
   afterAll(async () => {
@@ -243,7 +243,7 @@ describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照",
   }
 
   it.each(VARIANTS.map((variant, index) => ({ variant, index })))(
-    "$variant.name：<base> 不改變任何片段參照的繪製結果",
+    "$variant.name: <base> does not change how any fragment reference is painted",
     async ({ index }) => {
       const matrix: string[] = [];
       const failures: string[] = [];
@@ -264,20 +264,20 @@ describe.each(ENGINES)("$name：srcdoc + <base> 之下的同文件片段參照",
 
         // Sanity: a probe set that cannot tell a resolved reference from a
         // dangling one would make "matches control" vacuous.
-        expect(controlDiffersFromBroken, `${form.name}：control 與 broken 在所有探測點都相同，探測點失去鑑別力`).toBe(true);
+        expect(controlDiffersFromBroken, `${form.name}: control and broken match at every probe point, so the probe has no discriminating power`).toBe(true);
 
         const verdict = matchesControl
-          ? "有 <base> 仍在本文件內解析（與 control 相同）"
+          ? "resolves within the document even with <base> (matches control)"
           : matchesBroken
-            ? "有 <base> 時參照失效（與 broken 相同）"
-            : "有 <base> 時繪製結果異於 control 也異於 broken";
+            ? "reference fails to resolve with <base> (matches broken)"
+            : "with <base>, the paint differs from both control and broken";
         matrix.push(`  ${form.name}: ${verdict}`);
         if (!matchesControl) failures.push(`${form.name}: ${verdict}`);
       }
 
       console.log(`${engine.name} / ${VARIANTS[index].name}\n${matrix.join("\n")}`);
       if (rawRequests.length > 0) {
-        console.log(`  對 /api/raw/ 發出的請求：${JSON.stringify(rawRequests)}`);
+        console.log(`  requests made to /api/raw/: ${JSON.stringify(rawRequests)}`);
       }
 
       // The regression this spike leaves behind: on this engine, in this

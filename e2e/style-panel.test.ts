@@ -10,19 +10,16 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * #200 (NOOP-69): the editable Style panel end to end, against a real
- * Chromium — same `startServerFor`/`openApp` shape as
- * `e2e/object-animation.test.ts`. This is the one e2e file this ticket's
- * plan authorizes opening (§6.3): §5's A1–A10 (Style › Object), B1–B5
- * (Style › Page), C (sub-tab state machine), D (Edit style entry point),
- * G (skeleton sections never fire a command) all live here.
+ * The editable Style panel end to end, against a real Chromium — same
+ * `startServerFor`/`openApp` shape as `e2e/object-animation.test.ts`. This
+ * is the one e2e file for: A1-A10 (Style › Object), B1-B5 (Style › Page),
+ * C (sub-tab state machine), D (Edit style entry point), G (skeleton
+ * sections never fire a command).
  *
  * Every test opens its own server against a fresh copy of the fixture deck
  * (`style-panel-deck`) — no test depends on another's mutations. File
  * content is always read back with `registry.dispatch("cat", ...)` and
- * checked verbatim — never trusted from what the panel itself displays
- * (the discipline the deleted pre-rebuild `e2e/style-panel.test.ts`, commit
- * `5f8709a`, already established).
+ * checked verbatim — never trusted from what the panel itself displays.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -71,7 +68,7 @@ async function startServerFor(): Promise<TestServer> {
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-style-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-style-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -135,7 +132,7 @@ async function readProjectJson(registry: CommandRegistry, presentationId: string
   return JSON.parse(result.data!.content);
 }
 
-/** Selects `elementId` on the stage, then opens Style › Object via the ContextBar's `Edit style` entry (§4.5, the one legal entry point). */
+/** Selects `elementId` on the stage, then opens Style › Object via the ContextBar's `Edit style` entry (the one legal entry point). */
 async function selectAndOpenStyleObject(page: Page, frame: Frame, elementId: string): Promise<void> {
   await frame.locator(`#${elementId}`).click();
   await hoverContextBar(page);
@@ -144,7 +141,7 @@ async function selectAndOpenStyleObject(page: Page, frame: Frame, elementId: str
   await expect.poll(() => page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
 }
 
-/** [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
+/** The context bar is ghost (`pointer-events: none`) until the pointer hovers it long enough to solidify — a click before this never reaches a button, it always resolves to the iframe underneath instead. */
 async function hoverContextBar(page: Page): Promise<void> {
   const box = (await page.locator(".context-bar").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -155,7 +152,7 @@ async function hoverContextBar(page: Page): Promise<void> {
  * `canvasSize` (App.tsx's `presentationInfo`) loads over its own
  * `/api/presentation` fetch, separate from the iframe's slide render
  * `openApp` already waits on — until it resolves, Style › Page renders its
- * "沒有可編輯的投影片" empty state instead of real fields. Poll for the
+ * "no editable slide" empty state instead of real fields. Poll for the
  * Width field rather than a fixed sleep.
  */
 async function openStylePage(page: Page): Promise<void> {
@@ -179,9 +176,9 @@ async function undo(registry: CommandRegistry, presentationId: string): Promise<
   expect(result.ok, JSON.stringify(result)).toBe(true);
 }
 
-// ── §5-A: Style › Object ──────────────────────────────────────────────
+// ── Style › Object ──────────────────────────────────────────────
 
-it("A1 Text·Font：改成 Noto Sans TC → 檔案與 iframe 一致；undo 回退", async () => {
+it("A1 Text·Font: switching to Noto Sans TC keeps the file and the iframe in sync; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -199,7 +196,7 @@ it("A1 Text·Font：改成 Noto Sans TC → 檔案與 iframe 一致；undo 回�
   }
 });
 
-it("A2 Text·Size：改成 32 → 檔案 font-size=32 且重新換行（tspan y 改變）；undo 回退", async () => {
+it("A2 Text·Size: switching to 32 sets file font-size=32 and rewraps the line (tspan y changes); undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -229,7 +226,7 @@ it("A2 Text·Size：改成 32 → 檔案 font-size=32 且重新換行（tspan y 
   }
 });
 
-it("A3 Text·Weight：改成 700 → 檔案 font-weight=700；undo 回退", async () => {
+it("A3 Text·Weight: switching to 700 sets file font-weight=700; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -248,7 +245,7 @@ it("A3 Text·Weight：改成 700 → 檔案 font-weight=700；undo 回退", asyn
   }
 });
 
-it("A4 Text·Text color：改成 #ff0000 → 檔案 fill=#ff0000；undo 回退", async () => {
+it("A4 Text·Text color: switching to #ff0000 sets file fill=#ff0000; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -267,7 +264,7 @@ it("A4 Text·Text color：改成 #ff0000 → 檔案 fill=#ff0000；undo 回退",
   }
 });
 
-it("A5 Text·Align（文字框）：改成 center → 檔案 data-slidra-text-align=center 且 tspan x 改變；undo 回退", async () => {
+it("A5 Text·Align (text box): switching to center sets file data-slidra-text-align=center and tspan x changes; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -296,13 +293,13 @@ it("A5 Text·Align（文字框）：改成 center → 檔案 data-slidra-text-al
   }
 });
 
-it("A6 Text·Align（純 <text>）：改成 left → 檔案 text-anchor=start；undo 回退", async () => {
+it("A6 Text·Align (plain <text>): switching to left sets file text-anchor=start; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const frame = await canvasFrame(page);
     const before = await readSlide(registry, presentationId);
-    expect(before).toContain('text-anchor="middle"'); // el-caption 的原始值 — 對齊起點是 Center
+    expect(before).toContain('text-anchor="middle"'); // el-caption's original value — starting alignment is Center
     await selectAndOpenStyleObject(page, frame, "el-caption");
 
     await selectField(page, "align", "left");
@@ -316,7 +313,7 @@ it("A6 Text·Align（純 <text>）：改成 left → 檔案 text-anchor=start；
   }
 });
 
-it("A7 Shape·Fill color：改成 #123456 → 檔案 fill=#123456；undo 回退", async () => {
+it("A7 Shape·Fill color: switching to #123456 sets file fill=#123456; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -335,7 +332,7 @@ it("A7 Shape·Fill color：改成 #123456 → 檔案 fill=#123456；undo 回退"
   }
 });
 
-it("A8 Shape·Stroke color：改成 #000000 → 檔案 stroke=#000000；undo 回退", async () => {
+it("A8 Shape·Stroke color: switching to #000000 sets file stroke=#000000; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -354,7 +351,7 @@ it("A8 Shape·Stroke color：改成 #000000 → 檔案 stroke=#000000；undo 回
   }
 });
 
-it("A9 Shape·Stroke width：改成 4 → 檔案 stroke-width=4；undo 回退", async () => {
+it("A9 Shape·Stroke width: switching to 4 sets file stroke-width=4; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -373,7 +370,7 @@ it("A9 Shape·Stroke width：改成 4 → 檔案 stroke-width=4；undo 回退", 
   }
 });
 
-it("A10 Appearance·Opacity：改成 0.5 → 檔案 opacity=0.5；undo 回退", async () => {
+it("A10 Appearance·Opacity: switching to 0.5 sets file opacity=0.5; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -392,9 +389,9 @@ it("A10 Appearance·Opacity：改成 0.5 → 檔案 opacity=0.5；undo 回退", 
   }
 });
 
-// ── §5-B: Style › Page ─────────────────────────────────────────────────
+// ── Style › Page ─────────────────────────────────────────────────
 
-it("B1 Background：改成 #202020 → 根 <svg> style 含 background-color；iframe 反映；undo 回退（入歷史）", async () => {
+it("B1 Background: switching to #202020 sets background-color in the root <svg>'s style; the iframe reflects it; undo reverts (recorded in history)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -415,7 +412,7 @@ it("B1 Background：改成 #202020 → 根 <svg> style 含 background-color；if
   }
 });
 
-it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --slidra-accent；iframe 反映；undo 回退", async () => {
+it("B2 Accent: switching to #00ff00 sets --slidra-accent in the root <svg>'s style; the iframe reflects it; undo reverts", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -436,12 +433,12 @@ it("B2 Accent：改成 #00ff00 → 根 <svg> style 含 --slidra-accent；iframe 
   }
 });
 
-it("B3 Slide size 預設鈕（4:3）：project.json/viewBox 改變、元素 transform 不動、.stage 比例跟著變；undo 只復原先前的內容編輯，尺寸維持新值", async () => {
+it("B3 Slide size preset button (4:3): project.json/viewBox changes, element transforms are untouched, and .stage's ratio follows; undo only reverts the prior content edit, size stays at the new value", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const frame = await canvasFrame(page);
-    // 先做一筆會入歷史的內容編輯，讓 undo 有東西可以復原（跟 canvas set 本身無關）。
+    // Make a content edit that lands in history first, so undo has something to revert (unrelated to canvas set itself).
     await selectAndOpenStyleObject(page, frame, "el-b");
     await fillField(page, "opacity", "0.9");
     await expect.poll(async () => readSlide(registry, presentationId)).toContain('opacity="0.9"');
@@ -466,12 +463,12 @@ it("B3 Slide size 預設鈕（4:3）：project.json/viewBox 改變、元素 tran
     await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 1024, height: 768 });
     await expect.poll(async () => readSlide(registry, presentationId)).toContain('viewBox="0 0 1024 768"');
     const afterResize = await readSlide(registry, presentationId);
-    expect(afterResize).toContain('transform="translate(80 80)"'); // el-a 的 transform 一字未改
+    expect(afterResize).toContain('transform="translate(80 80)"'); // el-a's transform is unchanged, byte for byte
     await expect
       .poll(() => page.locator(".stage").evaluate((el) => (el as HTMLElement).style.aspectRatio))
       .toBe("1024 / 768");
 
-    await undo(registry, presentationId); // 復原的是 opacity 那筆，不是尺寸
+    await undo(registry, presentationId); // this reverts the opacity edit, not the size
     const afterUndo = await readSlide(registry, presentationId);
     expect(afterUndo).not.toContain('opacity="0.9"');
     expect((await readProjectJson(registry, presentationId)).canvas).toEqual({ width: 1024, height: 768 });
@@ -480,7 +477,7 @@ it("B3 Slide size 預設鈕（4:3）：project.json/viewBox 改變、元素 tran
   }
 });
 
-it("B4 Width/Height 手動輸入：project.json/viewBox 改成輸入值", async () => {
+it("B4 manual Width/Height input: project.json/viewBox change to the entered values", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -488,7 +485,7 @@ it("B4 Width/Height 手動輸入：project.json/viewBox 改成輸入值", async 
 
     await fillField(page, "canvas-width", "1600");
     await expect.poll(async () => (await readProjectJson(registry, presentationId)).canvas.width).toBe(1600);
-    // §2 決定「不做樂觀預覽」: the Height field's commit reads the CURRENT
+    // decision: no optimistic preview — the Height field's commit reads the CURRENT
     // `canvasSize` prop for the width half of the pair — that prop only
     // catches up once the browser's own presentation-changed → reload
     // round trip lands. Editing Height before that round trip completes
@@ -505,7 +502,7 @@ it("B4 Width/Height 手動輸入：project.json/viewBox 改成輸入值", async 
   }
 });
 
-it("B5 Swap orientation：寬高互換", async () => {
+it("B5 Swap orientation: width and height swap", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -519,9 +516,9 @@ it("B5 Swap orientation：寬高互換", async () => {
   }
 });
 
-// ── §5-C: 子分頁狀態機 ───────────────────────────────────────────────────
+// ── Sub-tab state machine ───────────────────────────────────────────────
 
-it("C：無選取時 Object 鈕 disabled 且停在 Page；選取後自動切 Object；取消選取後自動回 Page", async () => {
+it("C: with no selection, the Object button is disabled and stays on Page; selecting auto-switches to Object; deselecting auto-returns to Page", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -541,9 +538,9 @@ it("C：無選取時 Object 鈕 disabled 且停在 Page；選取後自動切 Obj
   }
 });
 
-// ── §5-D: Edit style 入口 ────────────────────────────────────────────────
+// ── Edit style entry point ────────────────────────────────────────────────
 
-it("D：情境列恰好一顆 Edit style；點擊只切右欄，不送任何命令（檔案位元組不變）", async () => {
+it("D: the context bar has exactly one Edit style button; clicking it only switches the right panel, issuing no command (file bytes unchanged)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -564,9 +561,9 @@ it("D：情境列恰好一顆 Edit style；點擊只切右欄，不送任何命�
   }
 });
 
-// ── §5-G: 骨架段不會誤送命令 ─────────────────────────────────────────────
+// ── Skeleton sections never fire a stray command ─────────────────────────────────────────────
 
-it("G：Table／Chart／Image caption 三段的每個控制項都是 disabled，投影片位元組不變", async () => {
+it("G: every control in the Table/Chart/Image caption sections is disabled, and the slide's bytes are unchanged", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);

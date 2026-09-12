@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * Ticket #158, A2: a test file that fails to *load* (bad import, syntax
+ * A test file that fails to *load* (bad import, syntax
  * error, …) must make `npm run test:e2e` exit non-zero, not get silently
  * skipped. The main `e2e/vitest.config.ts` include (`e2e/**\/*.test.ts`)
  * never matches the `*.fixture.ts` fixture, so it can't be used here — it
@@ -18,8 +18,8 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const fixtureConfig = path.join(e2eDir, "fixtures/loader-failure/vitest.config.ts");
 
-describe("測試檔載入失敗守衛", () => {
-  it("import 不到模組的測試檔會讓 vitest 子行程 exit 非 0", () => {
+describe("test file load-failure guard", () => {
+  it("a test file that fails to import causes the vitest subprocess to exit non-zero", () => {
     const result = spawnSync("npx", ["vitest", "run", "--config", fixtureConfig], {
       cwd: rootDir,
       encoding: "utf-8",

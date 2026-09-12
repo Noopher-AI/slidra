@@ -5,22 +5,21 @@ import { chromium, type Browser, type Page } from "playwright";
 import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/launch.js";
 
 /**
- * Cross-cutting motion-budget verification (NOOP-9 Plan §1/§4.7): duration
- * ceilings and reduced-motion behaviour checked *across* the whole shell at
- * once, rather than per-feature.
+ * Cross-cutting motion-budget verification: duration ceilings and
+ * reduced-motion behaviour checked *across* the whole shell at once, rather
+ * than per-feature.
  *
- * New v3 shell rebuild (this ticket): the old ribbon/grid-view/template-
- * dialog UI this file used to exercise is gone (Ribbon.tsx, GridView.tsx,
- * TemplateDialog.tsx all deleted — see that ticket's PR report). Category
- * ceilings below now map onto the New v3 shell's own token set
- * (tokens.css's `--dur-fast` 150ms / `--dur-base` 180ms — the old three-tier
- * `--dur-micro`/`--dur-panel`/`--dur-view` naming from NOOP-9 Plan §4.7 no
- * longer exists in tokens.css, which was rewritten wholesale onto
- * 01-DESIGN_TOKENS.md's naming; see that ticket's own tokens.css file
- * header). The 300ms overall ceiling (below) and the two category ceilings
- * are still meaningful sanity checks even though the specific named tokens
- * they were once keyed to are gone: every New v3 shell animation/transition
- * in fact uses `--dur-fast` or `--dur-base`, both well under 300ms.
+ * New v3 shell rebuild: the old ribbon/grid-view/template-dialog UI this
+ * file used to exercise is gone (Ribbon.tsx, GridView.tsx, TemplateDialog.tsx
+ * all deleted). Category ceilings below now map onto the New v3 shell's own
+ * token set (tokens.css's `--dur-fast` 150ms / `--dur-base` 180ms — the old
+ * three-tier `--dur-micro`/`--dur-panel`/`--dur-view` naming no longer
+ * exists in tokens.css, which was rewritten wholesale onto the design
+ * tokens doc's naming). The 300ms overall ceiling (below) and the two
+ * category ceilings are still meaningful sanity checks even though the
+ * specific named tokens they were once keyed to are gone: every New v3
+ * shell animation/transition in fact uses `--dur-fast` or `--dur-base`,
+ * both well under 300ms.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -100,7 +99,7 @@ async function openApp(page: Page, server: { url: string }): Promise<void> {
   await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
 }
 
-it("正常 motion 下，全站任一（非無限循環）動畫／transition 的每個 duration 值都 ≤ 0.300s（--dur-view 的上限）", async () => {
+it("under normal motion, every (non-infinitely-looping) animation/transition duration site-wide is ≤ 0.300s (the --dur-view ceiling)", async () => {
   const { server, cleanup } = await startServerForHelper({ deckDir: demoDir, prefix: "motion-ceiling" });
   try {
     const page = await browser.newPage({ viewport: VIEWPORT });
@@ -110,9 +109,10 @@ it("正常 motion 下，全站任一（非無限循環）動畫／transition 的
     const motions = await scanMotion(page);
     const offenders: string[] = [];
     for (const m of motions) {
-      // 持續循環的載入指示器（chat-working-spin，chat.css）不是「view
-      // switch/dialog」類的一次性 motion，不受這個上限約束——它用
-      // calc(var(--dur-base) * 4) 當自己的節奏，是刻意的設計決定，不是回歸。
+      // The continuously-looping loading indicator (chat-working-spin,
+      // chat.css) is not a one-shot "view switch/dialog" motion, so it is
+      // exempt from this ceiling — it uses calc(var(--dur-base) * 4) as its
+      // own cadence, a deliberate design choice, not a regression.
       if (m.animationIterationCount === "infinite") continue;
       for (const d of [...m.animationDurations, ...m.transitionDurations]) {
         if (d > 0.3) offenders.push(`${m.selector}[${m.index}]: ${d}s`);
@@ -132,15 +132,17 @@ interface CategoryCase {
 }
 
 const CATEGORY_CASES: CategoryCase[] = [
-  { category: "微互動（--dur-fast ≤160ms）", selector: ".dock-command", ceiling: 0.16 },
-  // `.slide-nav-button` 不是這裡的好選擇：demo 牌組第一頁時「上一頁」按鈕
-  // 是 disabled 狀態（40% 透明，見 shell.css 的全域 disabled 規則），reduced
-  // motion 測項斷言 opacity 必須是 1，用它會誤判成違規。`.dock-hand-button`
-  // 沒有停用邏輯，永遠可見/可按，是同一類「微互動」控制項裡更穩定的樣本。
-  { category: "微互動（--dur-fast ≤160ms）", selector: ".dock-hand-button", ceiling: 0.16 },
-  { category: "微互動（--dur-fast ≤160ms）", selector: ".side-panel-tab", ceiling: 0.16 },
+  { category: "micro-interaction (--dur-fast ≤160ms)", selector: ".dock-command", ceiling: 0.16 },
+  // `.slide-nav-button` is not a good pick here: on the demo deck's first
+  // slide the "previous" button is disabled (40% opacity, per shell.css's
+  // global disabled rule), and the reduced-motion assertion requires
+  // opacity to be 1 — using it would misreport as a violation.
+  // `.dock-hand-button` has no disabled logic, is always visible/clickable,
+  // and is a more stable sample of the same "micro-interaction" control class.
+  { category: "micro-interaction (--dur-fast ≤160ms)", selector: ".dock-hand-button", ceiling: 0.16 },
+  { category: "micro-interaction (--dur-fast ≤160ms)", selector: ".side-panel-tab", ceiling: 0.16 },
   {
-    category: "面板類（--dur-base ≤220ms）",
+    category: "panel (--dur-base ≤220ms)",
     selector: ".side-panel-tabpanel",
     ceiling: 0.22,
     arrive: async (page) => {
@@ -148,13 +150,15 @@ const CATEGORY_CASES: CategoryCase[] = [
     },
   },
   {
-    // New v3 shell's floating layers (Dock 的 Insert 面板／Shape／Arrange／
-    // Zoom 選單，02-DESIGN_DOC.md §2.3「一律從同一個地方長出」) — grid-view／
-    // template-dialog 已刪除（GridView.tsx／TemplateDialog.tsx 整個拿掉，
-    // 見該張票的 PR 報告），`.floating-layer` 是這張骨架票唯一新增、會播放
-    // 進場動畫的浮層 class（`floating-layer-in`，用 --dur-fast）。用縮放選
-    // 單（唯一整個可用的浮層）進場來量測。
-    category: "浮層類（--dur-fast ≤300ms，取代已刪除的 .grid-view／.template-dialog）",
+    // New v3 shell's floating layers (the Dock's Insert panel / Shape /
+    // Arrange / Zoom menus, all grown from the same spot per the design
+    // doc) — grid-view/template-dialog have been deleted
+    // (GridView.tsx/TemplateDialog.tsx removed entirely), and
+    // `.floating-layer` is the one surviving floating-layer class that
+    // plays an entrance animation (`floating-layer-in`, using --dur-fast).
+    // Measured via the zoom menu's entrance (the one floating layer still
+    // fully available).
+    category: "floating layer (--dur-fast ≤300ms, replaces the deleted .grid-view/.template-dialog)",
     selector: ".floating-layer",
     ceiling: 0.3,
     arrive: async (page) => {
@@ -165,7 +169,7 @@ const CATEGORY_CASES: CategoryCase[] = [
 ];
 
 for (const testCase of CATEGORY_CASES) {
-  it(`${testCase.category}：${testCase.selector} 的 duration ≤ ${testCase.ceiling}s`, async () => {
+  it(`${testCase.category}: ${testCase.selector}'s duration ≤ ${testCase.ceiling}s`, async () => {
     const { server, cleanup } = await startServerForHelper({ deckDir: demoDir, prefix: `motion-cat-${testCase.selector.replace(/[^a-z0-9]/gi, "")}` });
     try {
       const page = await browser.newPage({ viewport: VIEWPORT });
@@ -185,7 +189,7 @@ for (const testCase of CATEGORY_CASES) {
     }
   });
 
-  it(`reducedMotion 下，${testCase.selector} 的 animation/transition duration ≤ 0.001s`, async () => {
+  it(`under reducedMotion, ${testCase.selector}'s animation/transition duration ≤ 0.001s`, async () => {
     const { server, cleanup } = await startServerForHelper({
       deckDir: demoDir,
       prefix: `motion-reduced-${testCase.selector.replace(/[^a-z0-9]/gi, "")}`,
@@ -196,11 +200,14 @@ for (const testCase of CATEGORY_CASES) {
       openPages.push(page);
       await openApp(page, server);
       if (testCase.arrive) await testCase.arrive(page);
-      // reducedMotion 下 duration 趨近 0 不代表 0——像 .floating-layer 這種入場動畫仍會
-      // 從 opacity:0 起跑，只是幾乎瞬間跑完；緊接著 evaluate() 有機會量到還沒跑完那一格
-      // 影格的 opacity（CI 上實測會量到 0，不是產品沒把內容顯示出來）。給一次事件迴圈
-      // 加一個影格的時間讓它真的跑完，同檔其餘既有測試（如 F1）沒有這個問題是因為它們
-      // 量的元素本身不是「淡入」動畫。
+      // Under reducedMotion the duration approaches 0 but isn't exactly 0 —
+      // an entrance animation like .floating-layer's still starts from
+      // opacity:0, it just finishes almost instantly. A synchronous
+      // evaluate() right after can catch a not-yet-finished frame's opacity
+      // (observed as 0 on CI, not a real failure to render content). Give
+      // it one event-loop tick plus a frame to actually finish; other
+      // existing tests in this file are unaffected because the elements
+      // they measure aren't fade-in animations.
       await page.waitForTimeout(50);
 
       const el = page.locator(testCase.selector).first();
@@ -211,7 +218,7 @@ for (const testCase of CATEGORY_CASES) {
       for (const d of [...parseAllSeconds(durations.animation), ...parseAllSeconds(durations.transition)]) {
         expect(d, `${testCase.selector}（reduced motion）`).toBeLessThanOrEqual(0.001);
       }
-      expect(Number.parseFloat(durations.opacity), `${testCase.selector} 內容在 reduced motion 下仍可讀`).toBe(1);
+      expect(Number.parseFloat(durations.opacity), `${testCase.selector} content stays readable under reduced motion`).toBe(1);
 
       await context.close();
     } finally {
@@ -220,7 +227,7 @@ for (const testCase of CATEGORY_CASES) {
   });
 }
 
-it("合法但奇怪：沒有任何動畫的元素（duration 為 0s）不算違規", async () => {
+it("legal but odd: an element with no animation at all (duration 0s) does not count as a violation", async () => {
   const { server, cleanup } = await startServerForHelper({ deckDir: demoDir, prefix: "motion-no-animation" });
   try {
     const page = await browser.newPage({ viewport: VIEWPORT });

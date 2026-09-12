@@ -7,12 +7,11 @@ import { chromium, type Browser, type Page } from "playwright";
 import { openApp, requireBuilt, startServerFor, type StartedServer } from "./helpers/launch.js";
 
 /**
- * [E2.T17] plan §5 A1/A2/A8 — the one new e2e file this ticket adds (plan
- * §6.3): 05-INTERACTIONS.feature「底部玻璃工具列」的插入場景（`87-99` 行）
- * and the Shape menu scenario, driven through a real Chromium against a
- * real server (existing `table.test.ts`/`chart.test.ts` pattern). Appearance
- * (panel/menu centred over the dock) is covered by shell-visual.test.ts's
- * screenshot baselines, not asserted here — this file is behaviour only.
+ * The bottom glass toolbar's insert scenarios (image/video/audio/shape) and
+ * the Shape menu scenario, driven through a real Chromium against a real
+ * server (existing `table.test.ts`/`chart.test.ts` pattern). Appearance
+ * (panel/menu centred over the dock) is not asserted here — this file is
+ * behaviour only.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -53,8 +52,8 @@ async function readSlide(started: StartedServer): Promise<string> {
   return result.data!.content;
 }
 
-describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插入（所有類型先詢問）」）", () => {
-  it("按 Image/Video/Audio/Shape 各自從 dock 正上方中央長出對應浮層", async () => {
+describe("bottom glass toolbar — insert panels (insert always asks for type first)", () => {
+  it("clicking Image/Video/Audio/Shape each opens its floating panel centered directly above the dock", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-open" });
     try {
       const page = await openPage(started.server);
@@ -65,12 +64,12 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
         await expect.poll(() => panel.count()).toBe(1);
         const dockBox = (await page.locator(".dock").boundingBox())!;
         const panelBox = (await panel.boundingBox())!;
-        // "正上方中央" (02-DESIGN_DOC.md §2.3): horizontally centred over
+        // "Centered directly above": horizontally centred over
         // the whole dock, sitting above it — exact centring, ±2px for
         // sub-pixel rounding.
         expect(Math.abs(panelBox.x + panelBox.width / 2 - (dockBox.x + dockBox.width / 2))).toBeLessThan(2);
         expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(dockBox.y + 1);
-        // 關掉，換下一個
+        // Close it, move to the next one
         await page.keyboard.press("Escape");
         await expect.poll(() => panel.count()).toBe(0);
       }
@@ -86,7 +85,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
     }
   });
 
-  it("Image/Video/Audio 面板各自有檔案選擇、URL 文字框、caption 文字框三個欄位", async () => {
+  it("Image/Video/Audio panels each have a file picker, a URL field, and a caption field", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-fields" });
     try {
       const page = await openPage(started.server);
@@ -105,7 +104,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
     }
   });
 
-  it("Image 面板：從 URL 匯入 + caption，按 Insert → 元素加到目前頁、被選取、面板關閉", async () => {
+  it("Image panel: import from URL + caption, clicking Insert adds the element to the current page, selects it, and closes the panel", async () => {
     const sourceServer = http.createServer((req, res) => {
       if (req.url === "/photo.gif") {
         res.writeHead(200, { "Content-Type": "image/gif" });
@@ -130,14 +129,14 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       await panel.locator(".media-panel-caption").fill("我的圖片");
       await panel.locator(".media-panel-insert").click();
 
-      await expect.poll(() => panel.count()).toBe(0); // 面板關閉
+      await expect.poll(() => panel.count()).toBe(0); // panel closed
 
       const after = await readSlide(started);
       expect(after).not.toBe(before);
       expect(after).toContain('data-slidra-name="我的圖片"');
       expect(after).toMatch(/<image[^>]*href="\.\.\/assets\/photo(-1)?\.gif"/);
 
-      // 新元素被選取
+      // the new element is selected
       const sel = page.frameLocator("iframe.slide-frame").locator(".sel");
       await expect.poll(() => sel.boundingBox()).not.toBeNull();
     } finally {
@@ -146,7 +145,7 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
     }
   });
 
-  it("Image 面板：選擇本機檔案，按 Insert → 走 controller.importAsset(file)，元素加到目前頁、面板關閉", async () => {
+  it("Image panel: picking a local file and clicking Insert goes through controller.importAsset(file), adding the element to the current page and closing the panel", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-file-import" });
     try {
       const page = await openPage(started.server);
@@ -161,15 +160,16 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       const after = await readSlide(started);
       expect(after).toMatch(/<image[^>]*href="\.\.\/assets\/photo\.gif"/);
       const listed = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
-      // demo/ 這份 fixture 本身已有 assets/（004.svg 用到的 intro.webm 等）
-      // ——只斷言這次匯入「多出來」的那一個，不假設目錄一開始是空的。
+      // The demo/ fixture already has its own assets/ (e.g. intro.webm used
+      // by 004.svg) — only assert the one entry this import adds, don't
+      // assume the directory started out empty.
       expect(listed.data!.entries).toEqual([...before.data!.entries, "photo.gif"].sort());
     } finally {
       await started.cleanup();
     }
   });
 
-  it("Video 面板：三個欄位留空按 Insert → 插入 kind=video 的占位元素，不做任何匯入", async () => {
+  it("Video panel: clicking Insert with all fields empty inserts a kind=video placeholder element, without importing anything", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-video-placeholder" });
     try {
       const page = await openPage(started.server);
@@ -186,14 +186,14 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       expect(after).not.toContain("data-slidra-media=");
 
       const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
-      expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries); // 沒有任何匯入發生
+      expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries); // no import happened
       expect(after).not.toBe(before);
     } finally {
       await started.cleanup();
     }
   });
 
-  it("Video 面板貼 YouTube 網址 → 不下載任何資產，改成 data-slidra-embed，且父文件疊出 <iframe> 播放器", async () => {
+  it("pasting a YouTube URL into the Video panel doesn't download any asset — it becomes a data-slidra-embed, and the parent document overlays an <iframe> player", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-video-youtube" });
     try {
       const page = await openPage(started.server);
@@ -206,25 +206,28 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
       await expect.poll(() => panel.count()).toBe(0);
 
       const after = await readSlide(started);
-      // 網頁連結沒有位元組可下載：這條路徑必須完全繞過資產匯入。
+      // There are no bytes to download for a web link: this path must
+      // bypass asset import entirely.
       expect(after).toContain('data-slidra-embed="youtube"');
       expect(after).toContain('data-slidra-media="https://www.youtube-nocookie.com/embed/MtKyexX-GQc"');
       const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
       expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries);
 
-      // 播放器活在父文件（ADR-0011：投影片的 srcdoc iframe 永遠不給
-      // allow-same-origin，YouTube 播放器在那裡根本載不起來）。
+      // The player lives in the parent document (per ADR-0011: the slide's
+      // srcdoc iframe never gets allow-same-origin, so the YouTube player
+      // could never load there).
       const embed = page.locator(".embed-frame");
       await expect.poll(() => embed.count()).toBe(1);
-      // `enablejsapi=1` 是載入用的，不寫進投影片檔案——上面斷言過檔案裡
-      // 存的是乾淨的網址。有它，media 效果才驅動得動這個播放器。
+      // `enablejsapi=1` is only for loading and is never written into the
+      // slide file — asserted above that the stored URL is clean. Having it
+      // is what lets the media effect drive this player.
       expect(await embed.getAttribute("src")).toBe("https://www.youtube-nocookie.com/embed/MtKyexX-GQc?enablejsapi=1");
     } finally {
       await started.cleanup();
     }
   });
 
-  it("Audio 面板：三個欄位留空按 Insert → 插入 kind=audio 的占位元素", async () => {
+  it("Audio panel: clicking Insert with all fields empty inserts a kind=audio placeholder element", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-audio-placeholder" });
     try {
       const page = await openPage(started.server);
@@ -242,8 +245,8 @@ describe("底部玻璃工具列 — 插入面板（05-INTERACTIONS.feature「插
   });
 });
 
-describe("Shape 選單（05-INTERACTIONS.feature「Shape / Arrange 選單」）", () => {
-  it("長出 Rectangle/Ellipse/Line；點 Rectangle 插入矩形，被選取，選單關閉", async () => {
+describe("Shape menu", () => {
+  it("shows Rectangle/Ellipse/Line; clicking Rectangle inserts a rectangle, selects it, and closes the menu", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-shape-rect" });
     try {
       const page = await openPage(started.server);
@@ -270,7 +273,7 @@ describe("Shape 選單（05-INTERACTIONS.feature「Shape / Arrange 選單」）"
     }
   });
 
-  it("點 Line 插入線元素，且帶有非空 stroke（沒有 pageStyle.accent 時的後備色，不是看不見的洞）", async () => {
+  it("clicking Line inserts a line element with a non-empty stroke (the fallback color when there's no pageStyle.accent, not an invisible gap)", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-shape-line" });
     try {
       const page = await openPage(started.server);
@@ -291,8 +294,8 @@ describe("Shape 選單（05-INTERACTIONS.feature「Shape / Arrange 選單」）"
   });
 });
 
-describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 apps/web/test/dock.test.ts 沒有涵蓋的可從 UI 到達的三種狀態）", () => {
-  it("無選取時 Animate/Arrange/Group 停用，選 2 個元素後 Group 變成可按（Insert 群組不受影響）", async () => {
+describe("disabled state (e2e covering three UI-reachable states apps/web/test/dock.test.ts doesn't reach)", () => {
+  it("Animate/Arrange/Group are disabled with no selection, and Group becomes clickable once 2 elements are selected (the Insert group is unaffected)", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-disabled-state" });
     try {
       const page = await openPage(started.server);
@@ -301,15 +304,19 @@ describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 apps/w
       const groupButton = page.locator('.dock-command[aria-label="Group"]');
       const textButton = page.getByRole("button", { name: "Text" });
 
-      // 無選取：Animate／Arrange／Group 三顆都停用；Insert 群組（Text 為代表）不受影響。
+      // With no selection: Animate/Arrange/Group are all disabled; the Insert
+      // group (Text as a representative) is unaffected.
       expect(await animateButton.isDisabled()).toBe(true);
       expect(await arrangeButton.isDisabled()).toBe(true);
       expect(await groupButton.isDisabled()).toBe(true);
       expect(await textButton.isDisabled()).toBe(false);
 
-      // 選 2 個元素：Group 變成可按。先選副標、再 Shift 加選標題（不是反過來
-      // ——標題選取後的情境列＝正下方，會落在副標的點擊區域上方，先選標題
-      // 會讓第二次點擊打中情境列而不是副標本身，選取不會變成 2 個元素）。
+      // Selecting 2 elements: Group becomes clickable. Select the subtitle
+      // first, then Shift-add the title (not the reverse order — the
+      // context bar that appears right below the title after selecting it
+      // sits above the subtitle's click area, so selecting the title first
+      // would make the second click hit the context bar instead of the
+      // subtitle itself, and the selection would never reach 2 elements).
       const slideFrame = page.frameLocator("iframe.slide-frame");
       const selName = page.locator(".status-selection-chip");
       await slideFrame.locator("#el-subtitle").click();
@@ -325,8 +332,8 @@ describe("停用態（05-INTERACTIONS.feature「停用態」，e2e 補齊 apps/w
   });
 });
 
-describe("Text 插入面板（05-INTERACTIONS.feature「插入」Text：輸入 + 樣式預設 + 對齊，Enter 直接插入）", () => {
-  it("打字後按 Enter：直接插入文字框，元素被選取、面板關閉", async () => {
+describe("Text insert panel (typing + style presets + alignment; Enter inserts directly)", () => {
+  it("typing then pressing Enter inserts the text box directly, selecting the element and closing the panel", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-text-enter" });
     try {
       const page = await openPage(started.server);
@@ -338,7 +345,7 @@ describe("Text 插入面板（05-INTERACTIONS.feature「插入」Text：輸入 +
       await panel.locator(".text-panel-input").fill("Enter 直接插入");
       await panel.locator(".text-panel-input").press("Enter");
 
-      await expect.poll(() => panel.count()).toBe(0); // 面板關閉
+      await expect.poll(() => panel.count()).toBe(0); // panel closed
 
       const after = await readSlide(started);
       expect(after).not.toBe(before);
@@ -351,7 +358,7 @@ describe("Text 插入面板（05-INTERACTIONS.feature「插入」Text：輸入 +
     }
   });
 
-  it("打字後按 Shift+Enter：換行，不插入、面板不關", async () => {
+  it("typing then pressing Shift+Enter inserts a newline without submitting, and the panel stays open", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-text-shift-enter" });
     try {
       const page = await openPage(started.server);
@@ -365,17 +372,17 @@ describe("Text 插入面板（05-INTERACTIONS.feature「插入」Text：輸入 +
       await textarea.press("Shift+Enter");
       await textarea.type("第二行");
 
-      expect(await panel.count()).toBe(1); // 面板還開著
+      expect(await panel.count()).toBe(1); // panel still open
       expect(await textarea.inputValue()).toBe("第一行\n第二行");
-      expect(await readSlide(started)).toBe(before); // 沒有插入任何東西
+      expect(await readSlide(started)).toBe(before); // nothing was inserted
     } finally {
       await started.cleanup();
     }
   });
 });
 
-describe("拖放檔案到插入面板（06-KEYBOARD_AND_GESTURES.md「拖放檔案到插入面板」）", () => {
-  it("對 Image 面板的 dropzone 派送帶檔案的 drop 事件：檔名出現在面板上，此時還沒有插入任何元素", async () => {
+describe("dragging a file onto an insert panel", () => {
+  it("dispatching a drop event carrying a file onto the Image panel's dropzone shows the filename on the panel, without inserting anything yet", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-drag-drop" });
     try {
       const page = await openPage(started.server);
@@ -392,14 +399,14 @@ describe("拖放檔案到插入面板（06-KEYBOARD_AND_GESTURES.md「拖放檔�
           const dataTransfer = new DataTransfer();
           dataTransfer.items.add(file);
           const dropzone = document.querySelector(".media-panel-dropzone");
-          if (!dropzone) throw new Error("找不到 .media-panel-dropzone");
+          if (!dropzone) throw new Error("dropzone not found: .media-panel-dropzone");
           dropzone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
         },
         { base64: GIF_BYTES.toString("base64"), name: "dropped.gif", mime: "image/gif" },
       );
 
       await expect.poll(() => panel.locator(".media-panel-dropzone").textContent()).toBe("dropped.gif");
-      expect(await panel.count()).toBe(1); // 面板還開著，還沒插入
+      expect(await panel.count()).toBe(1); // panel still open, nothing inserted yet
       expect(await readSlide(started)).toBe(before);
     } finally {
       await started.cleanup();
@@ -407,8 +414,8 @@ describe("拖放檔案到插入面板（06-KEYBOARD_AND_GESTURES.md「拖放檔�
   });
 });
 
-describe("Esc 優先序（06-KEYBOARD_AND_GESTURES.md：面板開著且有選取時，一次 Esc 只關面板、選取還在）", () => {
-  it("插入面板開著＋有選取：第一次 Esc 只關面板，選取不變；再對舞台按一次 Esc 才清選取", async () => {
+describe("Escape key priority (with a panel open and a selection active, one Escape only closes the panel and keeps the selection)", () => {
+  it("with an insert panel open and a selection active: the first Escape only closes the panel and keeps the selection; a second Escape on the stage then clears the selection", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-esc-priority" });
     try {
       const page = await openPage(started.server);
@@ -423,13 +430,16 @@ describe("Esc 優先序（06-KEYBOARD_AND_GESTURES.md：面板開著且有選取
       await expect.poll(() => panel.count()).toBe(1);
 
       await page.keyboard.press("Escape");
-      await expect.poll(() => panel.count()).toBe(0); // 面板關閉
-      expect(await selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題"); // 選取還在
+      await expect.poll(() => panel.count()).toBe(0); // panel closed
+      expect(await selName.textContent().then((t) => t?.trim())).toBe("Selected: 標題"); // selection still there
 
-      // 面板關閉後焦點還停在剛才點開它的 Dock 按鈕（父文件），不在 iframe
-      // 裡——selection-runtime.js 的 Escape 監聽只在 iframe 本身有焦點時收
-      // 得到。點一下已選取的元素（不改變選取本身：同一個元素、非疊加）把
-      // 焦點帶回 iframe，再按 Esc 才輪到清除選取。
+      // After the panel closes, focus is still on the Dock button that
+      // opened it (the parent document), not inside the iframe —
+      // selection-runtime.js's Escape listener only picks up the keypress
+      // when the iframe itself has focus. Clicking the already-selected
+      // element (without changing the selection: same element, no
+      // stacking) brings focus back into the iframe, so that the next
+      // Escape is the one that clears the selection.
       await slideFrame.locator("#el-title").click();
       await page.keyboard.press("Escape");
       await expect.poll(() => selName.textContent().then((t) => t?.trim())).toBe("");

@@ -10,15 +10,15 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Gate review round 2, P2: a legal slide element can carry its own inline
- * `style="opacity:1"`. Inline style normally wins the CSS cascade over any
- * injected stylesheet rule, regardless of that rule's specificity — without
- * `!important` on both the hide stylesheet (player-plan.ts) and the
- * runtime's own reveal (player-runtime.js), such an element flashes fully
- * visible at the very start of play, defeating "進入播放時不會閃過完整內
- * 容". This is a real-browser cascade question, not something jsdom can
- * answer reliably, so it is tested here end to end rather than only at the
- * unit level.
+ * A legal slide element can carry its own inline `style="opacity:1"`.
+ * Inline style normally wins the CSS cascade over any injected stylesheet
+ * rule, regardless of that rule's specificity — without `!important` on
+ * both the hide stylesheet (player-plan.ts) and the runtime's own reveal
+ * (player-runtime.js), such an element flashes fully visible at the very
+ * start of play, defeating the guarantee that entering play mode never
+ * flashes the full content. This is a real-browser cascade question, not
+ * something jsdom can answer reliably, so it is tested here end to end
+ * rather than only at the unit level.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,14 +35,14 @@ let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
 
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-inlineop-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -59,7 +59,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -75,7 +75,7 @@ afterAll(async () => {
   if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it('元素自帶 inline style="opacity:1" 時，進場前仍被藏起來，推進後仍看得到', async () => {
+it('an element with its own inline style="opacity:1" is still hidden before entering and visible after advancing', async () => {
   const page = await browser.newPage();
   await page.goto(server.url);
 

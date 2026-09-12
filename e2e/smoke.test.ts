@@ -55,7 +55,7 @@ beforeAll(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   registry = createDefaultRegistry();
@@ -110,7 +110,7 @@ afterAll(async () => {
   if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it("在瀏覽器裡送出訊息後，畫布上的 SVG 文字真的變了", async () => {
+it("sending a chat message in the browser actually changes the SVG text on the canvas", async () => {
   const page = await browser.newPage();
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));

@@ -10,19 +10,20 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * [E2.T3] `05-INTERACTIONS.feature`「頁面管理」的 New／Templates 與拖曳排
- * 序場景（#208 的驗收硬性下限），加上 T3 plan §0 的根因迴歸守門測試（E）
- * ——`slide notes set` 曾經寫出未繫結 `slidra:` 前綴的 `<slidra:notes>`，讓
- * 那一頁的播放模式解析失敗；這個檔案的 "root cause" 測試就是防止它再發
- * 生的迴歸測試。
+ * Page management: the New/Templates panel and drag-to-reorder scenarios,
+ * plus a regression test against a real root cause — `slide notes set` used
+ * to write an `<slidra:notes>` element without binding the `slidra:` prefix,
+ * which broke play-mode parsing for that slide.
  *
- * 拖曳排序（B）不用 Playwright 的滑鼠事件合成原生 HTML5 拖放——Chromium
- * 的原生 DnD 依賴作業系統層級的拖放協調，在無頭環境下用滑鼠事件序列
- * 觸發並不可靠。改用 `page.evaluate` 直接對真實 DOM 節點派送
- * `DragEvent`（`dragstart`/`dragover`/`drop`/`dragend`，帶一個真的
- * `DataTransfer`）——這仍然是瀏覽器裡跑的、`overview.ts` 真正掛上去的事
- * 件監聽器，測的是同一段production code，只是跳過作業系統那一層無法在
- * 無頭 CI 穩定重現的部分。
+ * Drag reordering does not synthesize native HTML5 drag-and-drop through
+ * Playwright's mouse events — Chromium's native DnD depends on OS-level drag
+ * coordination, which is unreliable to trigger via a mouse event sequence in
+ * a headless environment. Instead, `page.evaluate` dispatches real `DragEvent`s
+ * (`dragstart`/`dragover`/`drop`/`dragend`, with a real `DataTransfer`)
+ * directly on the DOM nodes — this still exercises the same event listeners
+ * `overview.ts` actually attaches in the browser, testing the same production
+ * code, just skipping the OS layer that cannot be reliably reproduced in
+ * headless CI.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -39,9 +40,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -70,7 +71,7 @@ async function startServerFor(): Promise<{
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -87,7 +88,7 @@ async function startServerFor(): Promise<{
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -120,7 +121,7 @@ async function startRegistryFor(): Promise<{
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-cli-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-pm-cli-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -187,7 +188,7 @@ async function readSlide(registry: CommandRegistry, id: string, slidePath: strin
   return result.data!.content;
 }
 
-/** Fires `dragstart` on `fromIndex`'s `<li>` then `dragover` on `toIndex`'s, at a Y offset near that item's top or bottom edge (T3 plan §3.8's "cursor position decides insert-before/-after" rule as this shell implements it — no trailing placeholder card, see overview.ts's own comment). */
+/** Fires `dragstart` on `fromIndex`'s `<li>` then `dragover` on `toIndex`'s, at a Y offset near that item's top or bottom edge (the "cursor position decides insert-before/-after" rule as this shell implements it — no trailing placeholder card, see overview.ts's own comment). */
 async function dragOver(page: Page, fromIndex: number, toIndex: number, edge: "top" | "bottom"): Promise<void> {
   await page.evaluate(
     ({ fromIndex, toIndex, edge }) => {
@@ -232,7 +233,7 @@ async function dragEnd(page: Page, fromIndex: number): Promise<void> {
   }, fromIndex);
 }
 
-it("New 面板：Blank 與範本清單皆可用，套用會插入新頁（05-INTERACTIONS「New／Templates」場景）", async () => {
+it("New panel: Blank and the template list are both usable, applying either inserts a new slide", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -274,7 +275,7 @@ it("New 面板：Blank 與範本清單皆可用，套用會插入新頁（05-INT
   }
 });
 
-it("Templates 按鈕：只列範本清單（沒有 Blank／From outline…），套用走跟 New 面板同一個函式", async () => {
+it("Templates button: lists only templates (no Blank/From outline…), applying goes through the same function as the New panel", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -297,7 +298,7 @@ it("Templates 按鈕：只列範本清單（沒有 Blank／From outline…），
   }
 });
 
-it("拖曳排序：紅色插入線出現在放置目標上緣，放開後 project.json 順序改變（05-INTERACTIONS「拖曳排序」場景）", async () => {
+it("drag reordering: a red insertion line appears at the drop target's edge, releasing changes project.json's order", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -310,7 +311,7 @@ it("拖曳排序：紅色插入線出現在放置目標上緣，放開後 projec
 
     // Drop item 0 (slides/001.svg) onto the BOTTOM half of item 2
     // (slides/003.svg): to=3, newIndex=2 → final order [002,003,001,004]
-    // (T3 plan §5-B's own expected result, "[2,3,1,4]" by original numbering).
+    // ("[2,3,1,4]" by original numbering).
     await dragOver(page, 0, 2, "bottom");
     await expect.poll(() => page.locator(".overview-drop-line").count(), { timeout: 5_000 }).toBe(1);
     const dropLineColor = await page
@@ -363,7 +364,7 @@ it("拖曳排序：紅色插入線出現在放置目標上緣，放開後 projec
   }
 });
 
-it("根因迴歸守門測試（T3 plan §0/§5-E）：slide notes set 之後進播放模式，不出現 [role=alert]，投影片正常渲染", async () => {
+it("root-cause regression guard: entering play mode after slide notes set shows no [role=alert] and the slide renders normally", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const result = await registry.dispatch("slide notes set", {
@@ -377,10 +378,12 @@ it("根因迴歸守門測試（T3 plan §0/§5-E）：slide notes set 之後進�
 
     const page = await openApp(server);
 
-    // 縮圖不得畫出 <metadata> 內容（備忘稿文字不該外流到 rail）——`<metadata>`
-    // 本來就在 markup 裡（wrapSlideDocument 直接把整份 slide markup 塞進
-    // iframe 的 body），所以這裡斷言的是「不可見」（SVG UA 樣式表對
-    // `<metadata>` 是 `display:none`），不是「HTML 裡沒有這段文字」。
+    // The thumbnail must not render <metadata> content (notes text must not
+    // leak into the rail) — `<metadata>` is legitimately present in the
+    // markup (wrapSlideDocument stuffs the whole slide markup into the
+    // iframe's body), so what's asserted here is "invisible" (the SVG UA
+    // stylesheet sets `display:none` on `<metadata>`), not "the text is
+    // absent from the HTML".
     const thumbFrame = page.frameLocator(".overview-item[data-index=\"0\"] iframe.overview-frame");
     await expect.poll(() => thumbFrame.locator("metadata").count().catch(() => 0), { timeout: 15_000 }).toBeGreaterThan(0);
     const metadataVisible = await thumbFrame.locator("metadata").first().isVisible();
@@ -401,7 +404,7 @@ it("根因迴歸守門測試（T3 plan §0/§5-E）：slide notes set 之後進�
   }
 });
 
-it("備忘稿（T3 plan §4.1／§5-D）：打字 → blur → 檔案內容；換頁往返；跳脫字元往返", async () => {
+it("speaker notes: type -> blur -> file content; survives switching pages back and forth; escaped characters round-trip", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -414,14 +417,16 @@ it("備忘稿（T3 plan §4.1／§5-D）：打字 → blur → 檔案內容；�
       .poll(async () => readSlide(registry, presentationId, "slides/001.svg"), { timeout: 10_000 })
       .toEqual(expect.stringContaining('<slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一頁的講稿</slidra:notes>'));
 
-    // 換頁往返：切到第二頁（沒有備忘稿，顯示 placeholder），再切回第一頁，
-    // 欄位要顯示剛才存的內容——不是空的，也不是第二頁的草稿。
+    // Switching pages and back: switch to slide 2 (no notes, shows the
+    // placeholder), then switch back to slide 1 — the field must show what
+    // was just saved, not empty and not slide 2's draft.
     await page.locator('.overview-item[data-index="1"] .overview-thumb').click();
     await expect.poll(() => notes.inputValue()).toBe("");
     await page.locator('.overview-item[data-index="0"] .overview-thumb').click();
     await expect.poll(() => notes.inputValue()).toBe("第一頁的講稿");
 
-    // 跳脫字元往返：檔案裡要轉義，UI 讀回要還原。
+    // Escaped characters round-trip: the file must escape them, and the UI
+    // must decode them back on read.
     await notes.click();
     await notes.fill("1 < 2 && true");
     await page.locator(".rail-slides-label").click();
@@ -438,12 +443,13 @@ it("備忘稿（T3 plan §4.1／§5-D）：打字 → blur → 檔案內容；�
   }
 });
 
-it("鍵盤（T3 plan §4.3）：⌘D 複製目前頁、Delete 刪目前頁（皆限無選取）、PageUp／PageDown 換頁", async () => {
+it("keyboard shortcuts: Cmd+D duplicates the current slide, Delete removes it (both only with no selection), PageUp/PageDown change pages", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
-    // 先點一個不會把焦點送進投影片 iframe 的安全元素，讓 page.keyboard.press
-    // 送到 document 層級的 keydown effect，而不是播放器 runtime。
+    // Click a safe element first that doesn't send focus into the slide
+    // iframe, so page.keyboard.press reaches the document-level keydown
+    // effect rather than the player runtime.
     await page.locator(".rail-slides-label").click();
 
     await page.keyboard.press("PageDown");
@@ -471,7 +477,7 @@ it("鍵盤（T3 plan §4.3）：⌘D 複製目前頁、Delete 刪目前頁（皆
   }
 });
 
-it("縮圖右鍵選單（T3 plan §3.9／§4.4）：開啟、Comment to agent 停用、Duplicate／Move／Delete 各自送出對應命令", async () => {
+it("thumbnail context menu: opens, Comment to agent is disabled, Duplicate/Move/Delete each dispatch their own command", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -482,7 +488,7 @@ it("縮圖右鍵選單（T3 plan §3.9／§4.4）：開啟、Comment to agent �
     const commentItem = menu.getByRole("menuitem", { name: "Comment to agent" });
     expect(await commentItem.getAttribute("aria-disabled")).toBe("true");
     expect(await commentItem.isDisabled()).toBe(true);
-    // Move up is disabled on the first slide (T3 plan §4.4).
+    // Move up is disabled on the first slide.
     expect(await menu.getByRole("menuitem", { name: "Move up" }).isDisabled()).toBe(true);
 
     await menu.getByRole("menuitem", { name: /^Duplicate slide/ }).click();
@@ -508,7 +514,7 @@ it("縮圖右鍵選單（T3 plan §3.9／§4.4）：開啟、Comment to agent �
   }
 });
 
-it("縮圖右鍵選單「Save as template」：存檔後 Templates／New › Layouts 即時出現該範本，套用後內容與來源頁一致（NOOP-357／#289）", async () => {
+it("thumbnail context menu \"Save as template\": saving makes the template appear immediately under Templates/New › Layouts, and applying it reproduces the source slide's content", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -541,7 +547,7 @@ it("縮圖右鍵選單「Save as template」：存檔後 Templates／New › Lay
     );
     const afterSlides = (await readProject(registry, presentationId)).slides;
     const newSlidePath = afterSlides.find((slidePath) => !beforeSlides.includes(slidePath));
-    if (!newSlidePath) throw new Error("找不到新插入的投影片");
+    if (!newSlidePath) throw new Error("could not find the newly inserted slide");
     const newContent = await readSlide(registry, presentationId, newSlidePath);
     expect(normalizeIds(newContent)).toBe(normalizeIds(sourceContent));
   } finally {
@@ -549,16 +555,18 @@ it("縮圖右鍵選單「Save as template」：存檔後 Templates／New › Lay
   }
 });
 
-it("縮圖留言鈕依 03-UI_RATIONALE.md「滑入才顯示」：靜止態不可見，滑入該縮圖才可見（T3 plan §5-I-3）", async () => {
+it("the thumbnail comment button is hidden at rest and only appears on hover", async () => {
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const pin = page.locator('.overview-item[data-index="0"] .overview-comment-button');
 
-    // 這條「滑入才顯示」規則只在沒有整頁留言的縮圖上成立——有留言時
-    // `.has-comments` 讓它恆亮（rail.css），下面的靜止態斷言才有意義；這個
-    // fixture deck 目前沒有任何留言，若哪天長出留言，這裡會先用看得懂的訊
-    // 息失敗，而不是讓 opacity 斷言莫名其妙不為 0。
+    // The "only visible on hover" rule only holds for a thumbnail with no
+    // page-level comments — when it has one, `.has-comments` keeps it always
+    // lit (rail.css), which is what makes the rest-state assertion below
+    // meaningful. This fixture deck currently has no comments; if it ever
+    // grows one, this will fail with a readable message instead of the
+    // opacity assertion mysteriously not being 0.
     await expect.poll(() => pin.evaluate((el) => el.classList.contains("has-comments"))).toBe(false);
 
     await page.mouse.move(0, 0);
@@ -567,7 +575,7 @@ it("縮圖留言鈕依 03-UI_RATIONALE.md「滑入才顯示」：靜止態不可
     await page.locator('.overview-item[data-index="0"]').hover();
     await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
 
-    // 滑入別的縮圖時，只有被滑入的那一項顯示，其餘維持 0。
+    // Hovering a different thumbnail: only the hovered one shows, others stay at 0.
     await page.locator('.overview-item[data-index="1"]').hover();
     await expect.poll(() => pin.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
   } finally {
@@ -575,22 +583,27 @@ it("縮圖留言鈕依 03-UI_RATIONALE.md「滑入才顯示」：靜止態不可
   }
 });
 
-it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對應 CLI 命令；agent 用同一命令可重現」）", async () => {
-  // 每個操作各自在一份全新的 fixture 副本上做一次 GUI 操作、再在另一份全新
-  // 副本上做一次等價的 registry.dispatch，比較兩邊的結果——而不是把五個操
-  // 作串在同一份簡報上：串起來之後 CLI 那一側要嘛重新讀 GUI 那一側寫出的
-  // 中繼狀態（等於在斷言「CLI 讀得懂 GUI 的輸出」而不是「兩條路徑本身等
-  // 價」），要嘛得手算五步的中繼索引——後者正是 slide-ops.ts 的索引語意已
-  // 經在單元測試裡覆蓋過的東西，這裡重複沒有增加驗證力道。「各做一次」照
-  // 字面：同一個操作，兩條路徑，同一份起始位元組。
+it("GUI and CLI are byte-for-byte equivalent (every operation has a matching CLI command; an agent can reproduce it with the same command)", async () => {
+  // Each operation runs once as a GUI action against a fresh copy of the
+  // fixture, and once as an equivalent registry.dispatch against another
+  // fresh copy, then the two results are compared — rather than chaining
+  // all five operations on one deck: chaining would force the CLI side to
+  // either re-read the intermediate state the GUI side wrote (which asserts
+  // "CLI can read the GUI's output", not "the two paths are equivalent"), or
+  // hand-compute five steps of intermediate indices — something slide-ops.ts's
+  // index semantics already cover in its unit tests, so repeating it here adds
+  // no verification value. "Run each once" is taken literally: one operation,
+  // two paths, the same starting bytes.
   //
-  // GUI 與 CLI 兩側絕不能同時開著：`SLIDRA_HOME` 是行程層級的環境變數
-  // （`workspace.ts` 每次呼叫都重新讀一次，見它自己的說明），`startServerFor`
-  // 與 `startRegistryFor` 都會覆寫它。GUI 側必須先跑完、`cleanup()` 收尾之
-  // 後，CLI 側才能開始，否則兩邊的檔案操作會打到同一個暫存目錄。
+  // The GUI and CLI sides must never be open at the same time: `SLIDRA_HOME`
+  // is a process-level env var (`workspace.ts` re-reads it on every call, see
+  // its own comment), and both `startServerFor` and `startRegistryFor`
+  // overwrite it. The GUI side must finish and `cleanup()` before the CLI
+  // side starts, or both sides' file operations would hit the same temp
+  // directory.
 
-  // 1) slide add（Blank）：GUI 走 New > Blank，等價 CLI 是 `slide add --at 1`
-  //    （insertAt = hasSlides ? currentIndex+1 : 0，currentIndex 剛載入時是 0）。
+  // 1) slide add (Blank): GUI goes through New > Blank, the equivalent CLI is
+  //    `slide add --at 1` (insertAt = hasSlides ? currentIndex+1 : 0, currentIndex is 0 right after load).
   {
     const gui = await startServerFor();
     let guiProject: { slides: string[] };
@@ -627,8 +640,9 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
     }
   }
 
-  // 2) slide duplicate：GUI 走縮圖右鍵選單，等價 CLI 是
-  //    `slide duplicate slides/001.svg`。複製會重鑄 element id，比對前先正規化。
+  // 2) slide duplicate: GUI goes through the thumbnail context menu, the
+  //    equivalent CLI is `slide duplicate slides/001.svg`. Duplicating re-mints
+  //    element ids, so normalize before comparing.
   {
     const gui = await startServerFor();
     let guiProject: { slides: string[] };
@@ -665,7 +679,7 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
     }
   }
 
-  // 3) slide delete：GUI 走 Delete 鍵（無選取），等價 CLI 是 `slide delete slides/001.svg`。
+  // 3) slide delete: GUI presses the Delete key (no selection), the equivalent CLI is `slide delete slides/001.svg`.
   {
     const gui = await startServerFor();
     let guiProject: { slides: string[] };
@@ -696,8 +710,9 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
     }
   }
 
-  // 4) slide move：GUI 拖曳（同 test B 的拖法：0 拖到 2 的下緣 → newIndex=2），
-  //    等價 CLI 是 `slide move slides/001.svg 2`。只動 project.json，不開 SVG。
+  // 4) slide move: GUI drags (same drag as test B: 0 dragged to slide 2's
+  //    bottom edge -> newIndex=2), the equivalent CLI is `slide move
+  //    slides/001.svg 2`. Only touches project.json, doesn't open any SVG.
   {
     const gui = await startServerFor();
     let guiProject: { slides: string[] };
@@ -730,7 +745,7 @@ it("GUI 與 CLI 的逐位元組等價（T3 plan §5-C／#208「每個操作對�
     }
   }
 
-  // 5) slide notes set：GUI 打字＋blur，等價 CLI 是 `slide notes set slides/001.svg "…"`。
+  // 5) slide notes set: GUI types + blur, the equivalent CLI is `slide notes set slides/001.svg "…"`.
   {
     const text = "GUI／CLI 等價測試備忘稿";
     const gui = await startServerFor();

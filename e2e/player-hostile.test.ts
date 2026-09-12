@@ -10,7 +10,7 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Spec user story 22: a slide carrying malicious script cannot reach
+ * The spec requires that a slide carrying malicious script cannot reach
  * presentation data. A separate fixture deck from `player-deck` /
  * `play-deck` (per the design doc — those decks' existing assertions must
  * not have to change shape to make room for a hostile fourth slide). The
@@ -34,14 +34,14 @@ let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
 
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-hostile-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-hostile-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -58,7 +58,7 @@ beforeAll(async () => {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -74,7 +74,7 @@ afterAll(async () => {
   if (slidraDir) await rm(slidraDir, { recursive: true, force: true });
 });
 
-it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", async () => {
+it("a hostile slide's script still cannot reach presentation data once in play mode", async () => {
   const page = await browser.newPage();
 
   // Collected on the TOP page — this is the parent document the hostile
@@ -127,12 +127,11 @@ it("惡意投影片的 script 進入播放模式後仍取不到簡報資料", as
   // wire (confirmed by `opaqueOriginResponses` staying empty below). That
   // is a *stronger* guarantee than ADR-0010's stated threat model assumes
   // ("an opaque origin can still send simple requests — it just can't
-  // read the response"): here it cannot even send this one. This is
-  // reported to the coordinator (see the unit's own report) rather than
-  // treated as this test's problem to route around; the "fetch-resolved"
-  // branch below is kept so this test still passes correctly if some
-  // other engine, or a future Chromium, actually lets the simple request
-  // reach the network the way the spec assumed.
+  // read the response"): here it cannot even send this one. This is a
+  // stronger result than the test strictly needs, not a problem to route
+  // around; the "fetch-resolved" branch below is kept so this test still
+  // passes correctly if some other engine, or a future Chromium, actually
+  // lets the simple request reach the network the way the spec assumed.
   if (probe.outcome === "fetch-resolved") {
     // The request reached the network (an opaque origin can still write),
     // but must never have handed real presentation content to the script:

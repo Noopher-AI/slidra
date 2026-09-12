@@ -9,21 +9,23 @@ import { JSDOM } from "jsdom";
 import type { CommandRegistry } from "./helpers/cli.js";
 import { requireBuilt, startServerFor, openApp, type StartedServer } from "./helpers/launch.js";
 
-/** Parses a slide's raw SVG text into a queryable DOM — this file's own minimal stand-in for the deleted TypeScript engine's `scanDocument`/`readTableModel` (plan boundary 2.0-9: this file's assertions only, not a new shared utility). */
+/** Parses a slide's raw SVG text into a queryable DOM — this file's own minimal stand-in for the deleted TypeScript engine's `scanDocument`/`readTableModel` (this file's assertions only, not a new shared utility). */
 function parseSlideSvg(svg: string): Document {
   return new JSDOM(svg, { contentType: "image/svg+xml" }).window.document;
 }
 
 /**
- * [E2.T18] 剪貼簿：⌘C／⌘X／⌘V 對元素（含多選、群組）與儲存格範圍，跨頁貼上，
- * 右鍵選單... 見計畫 §5 的驗收標準 A0-A7. 唯一一個新開的 e2e 檔（計畫 §6.3：
- * `e2e/vitest.config.ts` 的 `fileParallelism: false` 讓每個 e2e 檔都是一次完整
- * build+Chromium+server 啟動的成本，六個測項共用一次瀏覽器啟動，each `it()`
- * still packs its own fresh copy of the fixture via `startServerFor`, so the
- * six tests never share mutated state).
+ * Clipboard: Cmd+C/Cmd+X/Cmd+V against elements (including multi-select and
+ * groups) and cell ranges, cross-page pasting, and the context menu.
+ * `e2e/vitest.config.ts`'s `fileParallelism: false` makes every e2e file pay
+ * the full cost of a build+Chromium+server startup, so this file shares one
+ * browser launch across its tests — each `it()` still packs its own fresh
+ * copy of the fixture via `startServerFor`, so the tests never share
+ * mutated state.
  *
- * 不做截圖比對（計畫第 2 節邊界 10）：AGENTS.md 的視覺回歸把關分工只認 CI 上
- * 的逐像素比對，本檔完全不呼叫 `compareScreenshot`。
+ * No screenshot comparison here: per AGENTS.md's visual-regression
+ * division of responsibility, only the pixel-by-pixel comparison on CI
+ * counts, and this file never calls `compareScreenshot`.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -38,7 +40,7 @@ let startedServers: StartedServer[] = [];
 beforeAll(async () => {
   await requireBuilt(rootDir);
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -80,7 +82,7 @@ async function readSystemClipboardText(page: Page): Promise<string> {
  * Playwright `BrowserContext` — a `Meta+c` keydown only *starts* the async
  * `navigator.clipboard.writeText()` (canvas.ts's controller never awaits
  * it, since nothing here can hold a synchronous ClipboardEvent open; see
- * A0's comment). Reading it back immediately can race ahead of that write
+ * the Cmd+C test below). Reading it back immediately can race ahead of that write
  * and observe whatever a PRIOR test in this same file left behind. Every
  * copy below waits for the clipboard to actually contain `expectMarker`
  * (something unique to what was just copied) before treating the copy as
@@ -118,13 +120,13 @@ function runCli(args: string[]): Promise<CliResult> {
 /** The CLI's default renderer prints `message` then `JSON.stringify(data, null, 2)` on the next line(s) (bin.ts) — this pulls that JSON back out. */
 function parseCliData<T>(stdout: string): T {
   const jsonStart = stdout.indexOf("{");
-  if (jsonStart === -1) throw new Error(`CLI 輸出沒有 JSON：${stdout}`);
+  if (jsonStart === -1) throw new Error(`CLI output has no JSON: ${stdout}`);
   return JSON.parse(stdout.slice(jsonStart)) as T;
 }
 
 const slideFrame = (page: Page) => page.frameLocator("iframe.slide-frame");
 
-it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法的 slidra 剪貼簿 SVG", async () => {
+it("Cmd+C inside the sandboxed iframe writes to the system clipboard, and the content is a valid slidra clipboard SVG", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
@@ -136,7 +138,7 @@ it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法�
   expect(clipboardText).toContain('id="el-solo"');
 });
 
-it("06-KEYBOARD ⌘X：元素離開投影片且進系統剪貼簿，一筆歷史，undo 還原", async () => {
+it("06-KEYBOARD Cmd+X: the element leaves the slide and enters the system clipboard as one history entry, restorable with undo", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
   const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
@@ -167,7 +169,7 @@ it("06-KEYBOARD ⌘X：元素離開投影片且進系統剪貼簿，一筆歷史
     .toBe(before);
 });
 
-it("A1：元素同頁貼上 — 新 <g>，新 id ≠ 原 id，位移恰為 PASTE_OFFSET_STEP", async () => {
+it("pasting an element on the same page — a new <g>, a new id ≠ the original id, offset by exactly PASTE_OFFSET_STEP", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
   const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
@@ -189,7 +191,7 @@ it("A1：元素同頁貼上 — 新 <g>，新 id ≠ 原 id，位移恰為 PASTE
   expect(match![1]).not.toBe("el-solo");
 });
 
-it("A2：跨頁貼上 — 目標頁多出元素與其效果（指向新 id），來源頁逐位元組不變", async () => {
+it("pasting across pages — the target page gains the element and its effects (pointing at the new id), and the source page is byte-for-byte unchanged", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
   const before1 = await readSlide(started.registry, started.presentationId, "slides/001.svg");
@@ -214,11 +216,11 @@ it("A2：跨頁貼上 — 目標頁多出元素與其效果（指向新 id），
   expect(await readSlide(started.registry, started.presentationId, "slides/001.svg")).toBe(before1);
 });
 
-it("A3：群組貼上 — 兩個子容器 id 都是新的，且子元素相對位置不變", async () => {
+it("pasting a group — both child containers get new ids, and the children's relative positions are unchanged", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
-  // Clicking a group's child selects the whole group (05-INTERACTIONS.feature「選取群組」).
+  // Clicking a group's child selects the whole group (05-INTERACTIONS.feature's "selecting a group").
   await slideFrame(page).locator("#el-group-a rect").click();
   await copyAndWaitForClipboard(page, "el-group-a");
   await page.keyboard.press("Meta+v");
@@ -245,7 +247,7 @@ it("A3：群組貼上 — 兩個子容器 id 都是新的，且子元素相對�
   expect(Math.abs(xOffsets[1] - xOffsets[0])).toBeCloseTo(80, 5);
 });
 
-it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返，瀏覽器載入後畫面看得到新文字", async () => {
+it("copy-pasting a cell range (CLI) — a TSV round-trip, and the new text is visible in the browser after loading", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
@@ -279,7 +281,7 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   expect(await slideFrame(page).locator('[data-slidra-cell="2,2"] text').textContent()).toBe("C1");
 });
 
-it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent 走同一條路，僅隨機 id 不同）", async () => {
+it("the file change from a paste is reproducible via CLI element paste (the GUI and the agent take the same path, differing only in the random id)", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
@@ -321,7 +323,7 @@ it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent
   expect(normalize(guiResult, guiNewId)).toBe(normalize(cliResult, cliNewId));
 });
 
-it("A7：不可信內容貼不進去 — 含 onload 的偽造剪貼簿 SVG 貼上後檔案不變，畫面顯示錯誤", async () => {
+it("untrusted content is rejected on paste — a forged clipboard SVG with onload leaves the file unchanged and shows an error", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
   const before = await readSlide(started.registry, started.presentationId, "slides/001.svg");
@@ -337,9 +339,9 @@ it("A7：不可信內容貼不進去 — 含 onload 的偽造剪貼簿 SVG 貼�
 });
 
 /**
- * 三輪繞過樣本各取一個代表性 payload（[E2.T18r2]／[E2.T18r3]／[E2.T18r4] 三輪
- * Review 累積發現的角度）：任何一格若被漏放行，`page.context().route` 都會
- * 攔到對 evil.example 的請求並讓 `outbound` 非空。
+ * One representative payload per bypass angle: if any cell is wrongly let
+ * through, `page.context().route` catches the request to evil.example and
+ * `outbound` ends up non-empty.
  */
 const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> = [
   ["R1 entity-encoded href", '<g id="el-hostile"><image href="&#104;ttps://evil.example/x.png" width="10" height="10"/></g>'],
@@ -350,38 +352,37 @@ const A8_BYPASS_MATRIX: ReadonlyArray<[cell: string, hostileFragment: string]> =
   ["R3 backslash href", '<g id="el-hostile"><image href="\\\\evil.example\\x.png" width="10" height="10"/></g>'],
   [
     "R3 xl:href namespace alias",
-    // r5 (NOOP-201 §6.2): the "//"-form payload was already caught by ABSOLUTE_URL before ever
+    // The "//"-form payload was already caught by ABSOLUTE_URL before ever
     // reaching the local-name check this cell means to isolate; omitting "//" (still a real
-    // outbound reference once I2's shape match applies) actually exercises that check alone.
+    // outbound reference once the shape match applies) actually exercises that check alone.
     '<g id="el-hostile" xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https:evil.example/x.png" width="10" height="10"/></g>',
   ],
-  // r5 (NOOP-201 §6.2): round-4's two bypasses that reached a real outbound request.
+  // Two bypasses that reached a real outbound request.
   ["R4 TAB href", '<g id="el-hostile"><image href="/\t/evil.example/x.png" width="10" height="10"/></g>'],
   ["R4 uppercase HREF", '<g id="el-hostile"><image HREF="https:evil.example/y.png" width="10" height="10"/></g>'],
-  // [E2.T18r8 §6.3, test budget] r5's CSS-hex-escape row and r6's three
-  // style-carrying rows are pruned here: `style` dropped from the allowlist
-  // entirely in r6, so all four are rejected at the same "style not in
-  // allowlist" line as "R2 url(...) raw-string bypass" above (kept as the
-  // one representative — it carries entity-encoding, `url()`, and a
-  // protocol-relative `//` in a single payload, the most dimensions of any
-  // style-carrying cell). Each removed row's payload survives verbatim in
-  // core's cheaper (0.4s, no browser) `REJECT_MATRIX` — a browser launch adds
-  // no information a unit-layer assertion doesn't already give:
+  // A CSS-hex-escape row and three style-carrying rows are pruned here:
+  // `style` was dropped from the allowlist entirely, so all four are
+  // rejected at the same "style not in allowlist" line as "R2 url(...)
+  // raw-string bypass" above (kept as the one representative — it carries
+  // entity-encoding, `url()`, and a protocol-relative `//` in a single
+  // payload, the most dimensions of any style-carrying cell). Each removed
+  // row's payload survives verbatim in core's cheaper (0.4s, no browser)
+  // `REJECT_MATRIX` — a browser launch adds no information a unit-layer
+  // assertion doesn't already give:
   //   R5 CSS-escaped url()                 → core REJECT_MATRIX N11
   //   R6 style unclosed url()              → core REJECT_MATRIX R1
   //   R6 style cursor image-set()          → core REJECT_MATRIX R2
   //   R6 style background-image image-set() → core REJECT_MATRIX R3
-  // [E2.T18r8 F1] the real-world entry point for the raw-form XML legality
-  // defect: a raw, unescaped `<` in `href` used to pass through and write an
-  // unparsable slide (`DOMParser` failure → that page's animations silently
-  // vanish). Unlike the cells above, this one has no cheaper single-layer
-  // equivalent worth keeping it off — it's the shape Reviewer actually found
-  // the regression through.
+  // The real-world entry point for the raw-form XML legality defect: a raw,
+  // unescaped `<` in `href` used to pass through and write an unparsable
+  // slide (`DOMParser` failure → that page's animations silently vanish).
+  // Unlike the cells above, this one has no cheaper single-layer equivalent
+  // worth keeping it off — it's the shape that actually surfaced the regression.
   ["R8 raw < in href", '<g id="el-hostile"><image href="a<b.png" width="10" height="10"/></g>'],
 ];
 
 it.each(A8_BYPASS_MATRIX)(
-  "A8：%s 的偽造剪貼簿內容貼不進去，且瀏覽器不對 evil.example 發出任何請求",
+  "%s's forged clipboard content is rejected on paste, and the browser makes no request at all to evil.example",
   async (_cell, hostileFragment) => {
     const started = await start();
     const page = await openWithClipboard(started);

@@ -10,12 +10,11 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * [E2.T7]/NOOP-66/#206: `05-INTERACTIONS.feature`「物件動畫（PPTX 心智）」
- * end to end, against a real Chromium — same `startServerFor`/`openApp`
- * shape as e2e/direct-manipulation.test.ts. This is the ONE e2e file this
- * ticket's plan allows opening (§6.3): every family, the
- * badges, the Edit animation entry, and the GUI↔CLI equivalence all live
- * here rather than one file each.
+ * Object animation (the PPTX-style mental model) end to end, against a
+ * real Chromium — same `startServerFor`/`openApp` shape as
+ * e2e/direct-manipulation.test.ts. Every family, the badges, the Edit
+ * animation entry, and the GUI↔CLI equivalence all live here rather than
+ * one file each.
  *
  * Each test opens its own server against a fresh copy of the fixture deck
  * (`object-animation-deck`) — no test depends on another's mutations.
@@ -35,9 +34,9 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist 不存在，請先執行 npm run build");
+  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
-  console.log(`瀏覽器：Chromium ${browser.version()}`);
+  console.log(`Browser: Chromium ${browser.version()}`);
 });
 
 afterAll(async () => {
@@ -68,7 +67,7 @@ async function startServerFor(): Promise<TestServer> {
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-e2e-anim-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-anim-files-"));
   process.env.SLIDRA_HOME = slidraHome;
-  // [E4.T9]/F7: slidra serve now spawns the Rust binary for every read/write.
+  // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
@@ -85,7 +84,7 @@ async function startServerFor(): Promise<TestServer> {
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}`,
       E2E_PRESENTATION_ID: presentationId,
-      E2E_NEW_TITLE: "此測試不會送出訊息",
+      E2E_NEW_TITLE: "this test never sends a message",
     },
   };
 
@@ -119,7 +118,7 @@ async function canvasFrame(page: Page): Promise<Frame> {
     const element = await frame.frameElement().catch(() => null);
     if (element && (await element.getAttribute("class")) === "slide-frame") return frame;
   }
-  throw new Error("找不到主畫布的 iframe.slide-frame");
+  throw new Error("could not find the main canvas's iframe.slide-frame");
 }
 
 interface EffectRow {
@@ -132,13 +131,16 @@ interface EffectRow {
   d?: string;
 }
 
-// [E4.T7] 裁示（Dev-Leader, NOOP-304 [需決策] 回覆）：改讀原始 XML，不再透過
-// `effect list`。`effect list` 現在會依 cli.md 既有規格對「清單第一項
-// start 不是 on-click」的清單回報損毀（[E4.T7] 把 step 推導搬進 effect
-// list 之後才第一次讓這裡撞上，`effect add` 本身允許寫入這個狀態——見
-// cli.md `effect add`「不確定與保留事項」）。這個函式只是讀回機制，測的是
-// GUI／CLI 寫進檔案的內容對不對，不是 `effect list` 合不合規格，所以改用
-// `cat` + regex，跟 packages/cli/test/effect.test.ts:76-89 對稱處理。
+// Reads the raw XML directly rather than going through `effect list`.
+// `effect list` reports corruption per the CLI's own spec whenever the
+// first item in the list has a `start` other than `on-click` (moving step
+// derivation into `effect list` is what first made this reachable here —
+// `effect add` itself allows writing that state; see the CLI reference's
+// "open questions" for `effect add`). This function is purely a read-back
+// mechanism: it's testing whether the content the GUI/CLI wrote to the
+// file is correct, not whether `effect list` itself conforms to spec, so
+// it uses `cat` + regex instead, mirroring the same approach used in
+// packages/cli/test/effect.test.ts.
 async function readEffects(registry: CommandRegistry, presentationId: string): Promise<EffectRow[]> {
   const result = await registry.dispatch<{ content: string }>("cat", {
     id: presentationId,
@@ -205,7 +207,7 @@ function objectCards(page: Page) {
   return page.locator(".animate-object-list .animate-card");
 }
 
-it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一條 CLI 命令能重現同樣的結果", async () => {
+it("selecting an element and clicking Add animation issues effect add; the agent can reproduce the same result via the same CLI command", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -215,7 +217,7 @@ it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一�
     await openAnimatePanel(page);
     await addAnimationViaPanel(page, { family: "enter", effect: "fade", duration: 0.5, delay: 0 });
 
-    // 右欄自動切到 Animate › Object，新卡在清單末端。
+    // The right panel auto-switches to Animate › Object, with the new card at the end of the list.
     await expect.poll(() => objectCards(page).count()).toBe(1);
     expect(await page.locator('[role="tab"][data-tab="animate"]').getAttribute("aria-selected")).toBe("true");
     // …and stays on Object once the write's own reload has landed: the
@@ -230,7 +232,7 @@ it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一�
     expect(afterGui).toHaveLength(1);
     expect(afterGui[0]).toMatchObject({ target: "el-a", family: "enter", effect: "fade", start: "on-click", duration: 0.5, delay: 0 });
 
-    // A16：agent 用同一條命令重現——直接呼叫 CLI 的 effect add，對另一個元素做同樣的事。
+    // The agent reproduces this via the same command: call the CLI's effect add directly, doing the same thing to another element.
     const cliResult = await registry.dispatch("effect add", {
       id: presentationId,
       slidePath: "slides/001.svg",
@@ -244,7 +246,7 @@ it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一�
     expect(cliResult.ok).toBe(true);
     const afterCli = await readEffects(registry, presentationId);
     expect(afterCli).toHaveLength(2);
-    // 兩筆項目除了 target／index 之外的欄位完全相同——GUI 與 CLI 產生的是同一種結果。
+    // The two entries are identical apart from target/index — the GUI and the CLI produce the same result.
     const { target: _guiTarget, index: _guiIndex, ...guiRest } = afterCli[0];
     const { target: _cliTarget, index: _cliIndex, ...cliRest } = afterCli[1];
     expect(guiRest).toEqual(cliRest);
@@ -253,7 +255,7 @@ it("A11/A16：選取元素、Add animation 送出 effect add；agent 用同一�
   }
 });
 
-it("A11：群組動畫——多選散落元素，第一筆帶指定的 start，其餘一律 with-previous", async () => {
+it("group animation: multi-selecting scattered elements gives the first entry the specified start, all others with-previous", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
@@ -264,21 +266,24 @@ it("A11：群組動畫——多選散落元素，第一筆帶指定的 start，�
     await openAnimatePanel(page);
     await addAnimationViaPanel(page, { family: "enter", effect: "zoom", start: "after-previous" });
 
-    // 插入面板只在 `effect add` 真的回 ok 之後才關（AnimatePanel.tsx 的
-    // `addAnimation()`：await runCommand → 只有 result.ok 才呼叫
-    // onClose()）——等它關閉，證明寫入已經落地，下面兩個斷言才不會在寫入
-    // 完成前就搶跑。原本用 `objectCards(...).toBe(2)` 當這個同步點，但
-    // Plan 已核准的行為讓終態是 0（下一段註解），跟開局的 0 沒有落差可
-    // poll，需要換一個訊號。
+    // The insert panel only closes once `effect add` actually returns ok
+    // (AnimatePanel.tsx's `addAnimation()`: await runCommand → onClose() is
+    // only called when result.ok) — waiting for it to close proves the
+    // write has landed, so the two assertions below can't race ahead of the
+    // write completing. `objectCards(...).toBe(2)` used to serve as this
+    // sync point, but the approved end state is 0 (see the comment below),
+    // which is indistinguishable from the starting count of 0 via polling,
+    // so a different signal is needed.
     await expect.poll(() => page.locator(".animate-panel").count()).toBe(0);
 
-    // [E4.T7] 裁示（Dev-Leader, NOOP-304 [需決策] 回覆，擴大自 Plan NOOP-306
-    // 「2.3 已知會被本票改掉的使用者可見行為」第 2 點）：清單第一項的 start
-    // 不是 on-click 時，`effect list` 依 cli.md L2412 回 failed，路由轉成
-    // 500，Animate › Object 面板的 `useSlideEffects` 把它當成空清單——這是
-    // 規格的直接後果，Plan 已核准的行為，不是缺陷，也不是這次修改造成的。
-    // 面板變空不影響底層檔案：下面 readEffects() 直接讀 XML，證明兩筆效果
-    // 確實照 start 規則正確寫入。
+    // When the first item in the list has a start other than on-click,
+    // `effect list` returns failed per the CLI's own spec, the route turns
+    // that into a 500, and the Animate › Object panel's `useSlideEffects`
+    // treats it as an empty list — this is a direct, approved consequence
+    // of the spec, not a bug and not something this change introduced. The
+    // panel going empty doesn't affect the underlying file: readEffects()
+    // below reads the XML directly, proving both effects were in fact
+    // written correctly per the start rules.
     await expect.poll(() => objectCards(page).count()).toBe(0);
     const effects = await readEffects(registry, presentationId);
     expect(effects).toHaveLength(2);
@@ -288,14 +293,14 @@ it("A11：群組動畫——多選散落元素，第一筆帶指定的 start，�
   }
 });
 
-it("A11：群組動畫——選取整個群組 <g>，只產生一筆效果項，清單顯示 Group N (n)", async () => {
+it("group animation: selecting an entire group <g> produces exactly one effect entry, listed as Group N (n)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server);
     const slideFrame = await canvasFrame(page);
 
-    // el-group-a 是 el-group 的巢狀子元素，點擊會依 #72 的規則解析到最外層
-    // 帶 id 的容器（也就是 el-group 本身）。
+    // el-group-a is a nested child of el-group; a click resolves to the
+    // outermost id-carrying container (el-group itself).
     await slideFrame.locator("#el-group-a").click();
     await openAnimatePanel(page);
     await addAnimationViaPanel(page, { family: "enter", effect: "appear" });
@@ -311,7 +316,7 @@ it("A11：群組動畫——選取整個群組 <g>，只產生一筆效果項，
   }
 });
 
-it("A11：排序與參數——改 Duration 立即寫回檔案；↑ 交換相鄰兩筆效果項的順序", async () => {
+it("ordering and parameters: editing Duration writes back to the file immediately; ↑ swaps two adjacent effect entries' order", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -322,9 +327,11 @@ it("A11：排序與參數——改 Duration 立即寫回檔案；↑ 交換相�
     });
 
     const page = await openApp(server);
-    // Object 子分頁在沒有任何選取時停用（自動回 Page）——選一個元素（不需要
-    // 是有效果的那個）只是為了讓子分頁可以切過去，Object 清單本身顯示的是
-    // 整張投影片的效果清單，不是只顯示選取元素的。
+    // The Object sub-tab is disabled with no selection at all (auto-reverts
+    // to Page) — selecting an element (it doesn't need to be one with an
+    // effect) is only so the sub-tab can be switched to; the Object list
+    // itself shows the whole slide's effect list, not just the selected
+    // element's.
     const slideFrame = await canvasFrame(page);
     await slideFrame.locator("#el-a").click();
     await page.locator('[role="tab"][data-tab="animate"]').click();
@@ -347,7 +354,7 @@ it("A11：排序與參數——改 Duration 立即寫回檔案；↑ 交換相�
   }
 });
 
-it("A11：預覽——卡片的 ▶ 在播放模式下真的觸發那個效果的動畫", async () => {
+it("preview: a card's ▶ actually triggers that effect's animation in play mode", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -371,15 +378,16 @@ it("A11：預覽——卡片的 ▶ 在播放模式下真的觸發那個效果�
       })
       .toBeGreaterThan(0);
 
-    // preview-done 之後自動回到 view 模式——情境列可以再度作用，證明選取／
-    // runtime 都還原了。
+    // Automatically returns to view mode after preview-done — the context
+    // bar becomes responsive again, proving both selection and runtime were
+    // restored.
     await expect.poll(() => page.locator(".play-bar").count()).toBe(0);
   } finally {
     await cleanup();
   }
 });
 
-it("A12：enter 家族——推進到該步驟後，元素真的產生了動畫並且 opacity 回到 1", async () => {
+it("enter family: advancing to that step actually animates the element, and opacity returns to 1", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -405,7 +413,7 @@ it("A12：enter 家族——推進到該步驟後，元素真的產生了動畫�
   }
 });
 
-it("A12：emphasis 家族——推進後產生 transform 動畫，元素本身不被隱藏", async () => {
+it("emphasis family: advancing produces a transform animation, and the element itself is never hidden", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -426,7 +434,7 @@ it("A12：emphasis 家族——推進後產生 transform 動畫，元素本身�
   }
 });
 
-it("A12：exit 家族——目標一開始就可見（D12），推進後動畫收尾在 opacity 0", async () => {
+it("exit family: the target starts out visible (D12), and advancing ends the animation at opacity 0", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -434,7 +442,7 @@ it("A12：exit 家族——目標一開始就可見（D12），推進後動畫�
     });
 
     const page = await openApp(server);
-    // D12：exit-only 目標從一開始（進入播放模式）就是可見的。
+    // D12: an exit-only target is visible from the start (on entering play mode).
     await page.locator(".play-button").click();
     const slideFrame = await canvasFrame(page);
     expect(await slideFrame.locator("#el-exit").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
@@ -447,7 +455,7 @@ it("A12：exit 家族——目標一開始就可見（D12），推進後動畫�
   }
 });
 
-it("A12：path 家族——推進後元素沿著 d 位移（transform 不再是初始值）", async () => {
+it("path family: advancing moves the element along d (transform is no longer its initial value)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -468,7 +476,7 @@ it("A12：path 家族——推進後元素沿著 d 位移（transform 不再是�
   }
 });
 
-it("A14：舞台徽章與清單同步——清單按 ↑ 之後，徽章的數字順序跟著換", async () => {
+it("stage badges stay in sync with the list: pressing ↑ in the list also swaps the badges' numbering", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -510,12 +518,15 @@ it("A14：舞台徽章與清單同步——清單按 ↑ 之後，徽章的數�
   }
 });
 
-// [E5.T3] 兩層化：F-16（動畫徽章誤開 pointer-events:auto，擋住元素左上的縮
-// 放把手）的結構性修復。放在這個檔案而非新開 e2e 檔或 shell-layout.test.ts
-// 的無選取 demo：那裡 `.stage-geometry` 底下只有兩個空容器，掃描結果恆真
-// 且無意義（NOOP-63 那種空斷言）；這裡已經有「選取有動畫的元素 + 開
-// Animate 分頁」的完整 setup，徽章真的在舞台上，斷言才有力。
-it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素左上把手（F-16）", async () => {
+// The structural fix for the animation badge wrongly turning on
+// pointer-events:auto and blocking the element's top-left resize handle.
+// This lives in this file rather than a new e2e file or shell-layout.test.ts's
+// no-selection demo: there, `.stage-geometry` contains only two empty
+// containers, making any scan vacuously true and meaningless; here there
+// is already a full "select an animated element + open the Animate tab"
+// setup, with a real badge on the stage, so the assertion actually means
+// something.
+it("two-layer split: the geometry layer passes clicks through entirely, so the animation badge no longer blocks the element's top-left handle", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -527,8 +538,9 @@ it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素�
     await page.locator('[role="tab"][data-tab="animate"]').click();
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
 
-    // AC4：幾何層底下沒有任何元素的 computed pointer-events 是 auto，且掃
-    // 描真的看到東西（防空斷言）——徽章必須真的在幾何層裡。
+    // No element under the geometry layer has computed pointer-events
+    // auto, and the scan actually sees something (guarding against a
+    // vacuous assertion) — the badge must really be inside the geometry layer.
     const scan = await page.evaluate(() => {
       const nodes = Array.from(document.querySelectorAll<HTMLElement>(".stage-geometry, .stage-geometry *"));
       return nodes.map((el) => ({ cls: el.className, pe: getComputedStyle(el).pointerEvents }));
@@ -537,9 +549,10 @@ it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素�
     expect(scan.some((n) => String(n.cls).includes("animation-badge"))).toBe(true);
     expect(scan.filter((n) => n.pe === "auto")).toEqual([]);
 
-    // AC5（F-16 本體）：徽章正中心＝元素左上把手中心（`transform:
-    // translate(-50%,-50%)`）；那一點必須穿透到 iframe，不再被幾何層或
-    // widget 層接住。
+    // The core fix: the badge's exact center coincides with the
+    // element's top-left handle center (`transform: translate(-50%,-50%)`);
+    // that point must pass through to the iframe, no longer caught by
+    // either the geometry layer or the widget layer.
     const badgeBox = await page.locator(".animation-badge").boundingBox();
     expect(badgeBox).not.toBeNull();
     const hit = await page.evaluate(
@@ -557,7 +570,7 @@ it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素�
       [badgeBox!.x + badgeBox!.width / 2, badgeBox!.y + badgeBox!.height / 2] as [number, number],
     );
     expect(hit).not.toBeNull();
-    expect(hit!.inGeometry).toBe(false); // 突變點：徽章重新開回 auto 就會紅
+    expect(hit!.inGeometry).toBe(false); // mutation point: this fails if the badge is switched back to pointer-events:auto
     expect(hit!.inWidgets).toBe(false);
     expect(hit!.tag).toBe("IFRAME");
   } finally {
@@ -565,7 +578,7 @@ it("[E5.T3] 兩層化：幾何層整層穿透，動畫徽章不再擋住元素�
   }
 });
 
-it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動畫時渲染且切到 Animate › Object；全站只有一個入口", async () => {
+it("Edit animation entry point: not rendered when an element with no animation is selected; rendered and switches to Animate › Object when one has an animation; there is exactly one entry point site-wide", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -582,7 +595,7 @@ it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動�
     await slideFrame.locator("#el-a").click();
     await expect.poll(() => page.locator('[title="Edit animation"]').count()).toBe(1);
 
-    // [E5.T7]/F-17 決定 8: the context bar is ghost (`pointer-events: none`)
+    // the context bar is ghost (`pointer-events: none`)
     // until the pointer hovers it long enough to solidify — a plain
     // `.click()` never reaches the button, it always resolves to the
     // iframe underneath instead.
@@ -593,17 +606,17 @@ it("A15：Edit animation 入口——無動畫元素選取時不渲染；有動�
     await expect.poll(() => page.locator('[role="tab"][data-tab="animate"]').getAttribute("aria-selected")).toBe("true");
     expect(await page.locator('[role="tab"][data-subtab="object"]').getAttribute("aria-selected")).toBe("true");
 
-    // 全站沒有第二個入口（原型的右鍵選單已移除，見 NOOP-124 計畫）。
+    // No second entry point exists site-wide (the prototype's right-click menu has been removed).
     expect(await page.locator('[title="Edit animation"]').count()).toBe(1);
   } finally {
     await cleanup();
   }
 });
 
-it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all slides；agent 用同一條 slide transition set --all 可重現", async () => {
+it("Animate › Page: setting an Enter effect via the GUI and clicking Apply to all slides; the agent can reproduce it via the same slide transition set --all", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    // 造第二頁，證明 --all 真的套用到「每一張」，不是只有目前這頁。
+    // Create a second slide to prove --all really applies to "every" slide, not just the current one.
     const added = await registry.dispatch<{ slidePath: string }>("slide add", { id: presentationId });
     expect(added.ok).toBe(true);
     const secondSlidePath = added.data!.slidePath;
@@ -612,7 +625,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
     await page.locator('[role="tab"][data-tab="animate"]').click();
     const panel = page.locator(".animate-page-panel");
     await panel.waitFor();
-    // 沒有選取任何元素——停在預設的 Page 子分頁，不是 Object。
+    // No element selected — stays on the default Page sub-tab, not Object.
     expect(await page.locator('[role="tab"][data-subtab="page"]').getAttribute("aria-selected")).toBe("true");
 
     await panel.locator('[data-edge="enter"] .animate-page-effect-card', { hasText: "Fade" }).click();
@@ -620,7 +633,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
     await expect
       .poll(async () => (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content)
       .toContain('enter="fade"');
-    // 還沒按 Apply to all slides——第二頁不受影響。
+    // Apply to all slides hasn't been clicked yet — the second slide is unaffected.
     expect(
       (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: secondSlidePath })).data!.content,
     ).not.toContain("slidra:transition");
@@ -631,7 +644,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
       .poll(async () => (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: secondSlidePath })).data!.content)
       .toContain('enter="fade"');
 
-    // agent 用同一條命令可重現：CLI 版的 --all 在另一張全新簡報上產生一致的結果。
+    // The agent can reproduce this via the same command: the CLI's --all produces a consistent result on a brand-new presentation.
     const cliResult = await registry.dispatch("slide transition set", {
       id: presentationId,
       slidePath: "slides/001.svg",
@@ -643,7 +656,7 @@ it("[E2.T11] [A14] Animate › Page：GUI 設定 Enter 效果並按 Apply to all
   }
 });
 
-it("A17：Animate 面板／Animate ›Object 清單／舞台編號徽章／Animate ›Page 各自的結構斷言（[E2.T11] 新增第四項）", async () => {
+it("structural assertions for the Animate panel, the Animate › Object list, the stage's numbered badges, and Animate › Page", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     await registry.dispatch("effect add", {
@@ -659,7 +672,7 @@ it("A17：Animate 面板／Animate ›Object 清單／舞台編號徽章／Anima
     await page.locator('[role="tab"][data-tab="animate"]').click();
     await expect.poll(() => objectCards(page).count()).toBe(1);
 
-    // F-14 (NOOP-355 #287): the card's fields grid must fit inside the
+    // the card's fields grid must fit inside the
     // panel — before the fix, a <select>'s min-content forced the grid
     // track wider than the panel (`.animate-card-fields` scrollWidth >
     // clientWidth) and pushed the Start/Delay column's right edge past the
@@ -673,10 +686,12 @@ it("A17：Animate 面板／Animate ›Object 清單／舞台編號徽章／Anima
 
     await expect.poll(() => page.locator(".animation-badge").count()).toBe(1);
 
-    // [E2.T11]/[A16]：Animate › Page（無選取，回到 Page 子分頁）。
-    // `.animate-page-panel` 容器在資料載入前就已存在（AnimatePagePanel.tsx 的載入態回傳同名空殼），
-    // 只等容器出現不夠——改等 Apply to all slides 按鈕與全部 8 張效果卡
-    // （Enter 4 張＋Exit 4 張）都渲染出來。
+    // Animate › Page (no selection, back to the Page sub-tab).
+    // The `.animate-page-panel` container already exists before its data
+    // loads (AnimatePagePanel.tsx's loading state returns an empty shell
+    // with the same name) — waiting for just the container to appear isn't
+    // enough, so instead wait for the Apply to all slides button and all 8
+    // effect cards (4 Enter + 4 Exit) to actually render.
     await page.locator('[role="tab"][data-subtab="page"]').click();
     await page.locator(".animate-page-panel .animate-page-apply-all").waitFor();
     await expect.poll(() => page.locator(".animate-page-effect-card").count()).toBe(8);
