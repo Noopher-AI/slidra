@@ -588,8 +588,7 @@ mod tests {
 
     /// The other half of the same contract: an already-present `fonts`
     /// value — populated or not — must survive untouched, in its original
-    /// position, never synthesized over or moved (`slidra-format.md`:
-    /// "3→4 遷移時…絕不合成任何字型項目").
+    /// position, never synthesized over or moved.
     #[test]
     fn write_project_leaves_an_existing_fonts_value_untouched_in_place() {
         let fixture = WriteProjectFixture::new("existing-fonts");

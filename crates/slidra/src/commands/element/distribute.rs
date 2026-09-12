@@ -11,9 +11,8 @@ fn parse_axis(raw: &str) -> SlidraResult<DistributeAxis> {
     match raw {
         "horizontal" => Ok(DistributeAxis::Horizontal),
         "vertical" => Ok(DistributeAxis::Vertical),
-        // TS's own wording: `argv.ts`'s distribute branch names the axis
-        // parameter "方向" (direction) in this error, not "軸" — copied
-        // verbatim (plan decision D5), not a typo to fix here.
+        // This error intentionally names the axis parameter "direction",
+        // not "axis" — not a typo to fix here.
         _ => Err(SlidraError::invalid(format!(
             "element distribute 不支援的方向：{raw}"
         ))),

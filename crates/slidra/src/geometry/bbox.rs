@@ -1,4 +1,4 @@
-//! Bounding boxes, ported from `packages/core/src/geometry/bbox.ts`.
+//! Bounding boxes.
 //! Together with `transform.rs` this is the whole of "where is this
 //! element, and how big is it" — one implementation, so a CLI-side answer
 //! and a future front-end preview can never disagree.
@@ -255,15 +255,15 @@ fn resolve_font<'a>(
         })
 }
 
-/// The box of a `<text>` primitive (NOOP-91 §4.7). Ports `textBounds`.
+/// The box of a `<text>` primitive. Ports `textBounds`.
 ///
 /// Two shapes, placed differently, because the format places them
 /// differently:
 ///
 ///  - A TEXT BOX (`data-slidra-text-width` on the container, one `<tspan>`
 ///    per baked-in line): the box starts at the local origin, is the
-///    declared width wide, and is `行數 × 行高` tall (or the baked-in
-///    `text_height` when present) — the declared width, never a
+///    declared width wide, and is `line count × line height` tall (or the
+///    baked-in `text_height` when present) — the declared width, never a
 ///    re-measurement.
 ///  - A PLAIN `<text>` (no tspans): `y` is the FIRST BASELINE, so the box's
 ///    top sits `ascent` above it; width is the measured advance of the
@@ -853,10 +853,10 @@ fn bounds_within(
     }
     let matrix = multiply_matrices(ancestor_matrix, &element.matrix);
 
-    // A table's bbox is its declared grid extent, not a primitive union
-    // (E2.T14): cells carry no `id` and are not independently measurable
-    // elements, and `element.table`'s `rows` are always core-computed
-    // heights already baked into the file.
+    // A table's bbox is its declared grid extent, not a primitive union:
+    // cells carry no `id` and are not independently measurable elements,
+    // and `element.table`'s `rows` are always core-computed heights
+    // already baked into the file.
     if element.kind == SlideElementKind::Table {
         let table = element
             .table
@@ -906,8 +906,7 @@ fn bounds_within(
     });
     // A list-marker `<text>` never contributes its own geometry (see
     // `LIST_MARKER_ATTRIBUTE`'s doc comment). A chart's `<slidra:chart>` data
-    // primitive is excluded the same way (E2.T12, `chart/model.ts` out of
-    // scope for this port) — it is not an SVG shape at all.
+    // primitive is excluded the same way — it is not an SVG shape at all.
     let measurable: Vec<&SlidePrimitive> = element
         .primitives
         .iter()

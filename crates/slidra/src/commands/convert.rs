@@ -1,10 +1,8 @@
-//! `slidra convert <presentation-id>`, ported from
-//! `packages/cli/src/commands/convert.ts`. Every slide is read and
+//! `slidra convert <presentation-id>`. Every slide is read and
 //! normalised BEFORE anything is written, so one unconvertible slide aborts
 //! the run with not a single byte written; the write loop rolls already-
 //! written slides back if a later write fails. Never goes through
-//! `workspace::write` (does not occupy an undo step — TS writes directly,
-//! and this ports that exactly).
+//! `workspace::write` (does not occupy an undo step).
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::result::{CommandResult, FailureKind};

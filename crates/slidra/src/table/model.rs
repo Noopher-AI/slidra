@@ -1,17 +1,14 @@
-//! `TableModel`/`TableCell`, ported from `packages/core/src/table/model.ts`
-//! (362 lines) — the rich, editable table model (cells, header, theme,
-//! source, span coverage). `crates/slidra/src/slide/table_grid.rs` (F2's
-//! territory, read-only here) already ports the SHALLOW structural half of
-//! this same TS file — `TABLE_CONTAINER_TYPE` and `describe_table_shape_problem`
-//! — which `slide/format.rs`'s `assert_slide_compliant` already runs before
-//! every table command reads its container (mirroring `table/edit.ts`'s own
-//! `assertSlideCompliant` call at the top of every write). This file does
-//! NOT re-run that shallow check and does NOT redeclare
-//! `TABLE_CONTAINER_TYPE` — it `use`s the table_grid.rs constant directly.
-//! What it adds is the DEEP validation `describe_table_shape_problem`
-//! explicitly defers (grid coverage, span overlap — see that function's own
-//! doc comment) plus the full cell-content model TS's `readTableModel`
-//! reassembles from markup.
+//! `TableModel`/`TableCell` — the rich, editable table model (cells, header,
+//! theme, source, span coverage). `crates/slidra/src/slide/table_grid.rs`
+//! (read-only here) covers the SHALLOW structural half —
+//! `TABLE_CONTAINER_TYPE` and `describe_table_shape_problem` — which
+//! `slide/format.rs`'s `assert_slide_compliant` already runs before every
+//! table command reads its container. This file does NOT re-run that
+//! shallow check and does NOT redeclare `TABLE_CONTAINER_TYPE` — it `use`s
+//! the table_grid.rs constant directly. What it adds is the DEEP
+//! validation `describe_table_shape_problem` explicitly defers (grid
+//! coverage, span overlap — see that function's own doc comment) plus the
+//! full cell-content model reassembled from markup.
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_document};

@@ -85,12 +85,12 @@ pub fn template_name_for(page_type: &str) -> &'static str {
     }
 }
 
-/// What the build decided in its 構圖思考 step, written down so it can be
-/// reconciled against the page it then drew (#303 §D). Without this the
+/// What the build decided in its composition-reasoning step, written down
+/// so it can be reconciled against the page it then drew. Without this the
 /// step is a private thought and nothing can tell whether the page kept it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageBlueprint {
-    /// A short name for the composition actually chosen (#303 §A') — e.g.
+    /// A short name for the composition actually chosen — e.g.
     /// `card-wall`, `shared-field`, `split-panel`. Free text: it exists so
     /// two adjacent pages that solved the same relationship the same way
     /// can be spotted, not to be validated against a catalogue.
@@ -107,14 +107,14 @@ pub struct PageBlueprint {
 pub struct PlanPage {
     pub n: usize,
     /// What this page's content IS — one of `RELATIONSHIPS`. Required: the
-    /// geometry has to carry it (#303 §A').
+    /// geometry has to carry it.
     pub relationship: String,
-    /// A known solution's name, when one fits (#303 §A'). Absent means the
+    /// A known solution's name, when one fits. Absent means the
     /// page composes its own answer to `relationship`.
     pub page_type: Option<String>,
     pub rhythm: String,
     pub title: String,
-    /// Absent until the build's 構圖思考 step writes it.
+    /// Absent until the build's composition-reasoning step writes it.
     pub blueprint: Option<PageBlueprint>,
 }
 
@@ -604,7 +604,7 @@ fn describe_blueprint(blueprint: Option<&PageBlueprint>) -> String {
 
 /// What a `plan set outline` may still change once the author has confirmed
 /// the plan. The build legitimately keeps writing here — `blueprint` is its
-/// own 構圖思考 written down (see `PageBlueprint`) — so this is a field
+/// own composition-reasoning written down (see `PageBlueprint`) — so this is a field
 /// whitelist, not a read-only flag. What it stops is the one move that makes
 /// the reconciliation meaningless: draw the page, fail `validate`, then edit
 /// the blueprint until the numbers agree. A real session did exactly that
@@ -668,7 +668,7 @@ pub fn assert_confirmed_outline_change_allowed(
                 violations.push(format!("第 {n} 頁 {field}：{old_value} → {new_value}"));
             }
         }
-        // Writing a blueprint for the first time is the 構圖思考 step doing
+        // Writing a blueprint for the first time is the composition-reasoning step doing
         // its job, whenever it happens. Rewriting one the page was already
         // drawn against is the move this guard exists for.
         if index < drawn_pages

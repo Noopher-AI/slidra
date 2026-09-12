@@ -1,4 +1,4 @@
-//! `slidra slide background set` (#303 §13): a locked, full-canvas
+//! `slidra slide background set`: a locked, full-canvas
 //! `<image>` at the very back of a page, marked
 //! `data-slidra-role="background"`, pointing at an SVG (or raster) asset.
 //! One per page: setting again replaces it; `--none` removes it.
@@ -52,7 +52,7 @@ pub fn background_markup(
     // Slides live in `slides/`, so an asset reference is written relative
     // to that directory (`../assets/x.svg`) — the same form `element insert
     // image --href` uses and the only one the stage's `/api/raw/slides/`
-    // base resolves (#303: a bare `assets/…` href renders as a broken image).
+    // base resolves (a bare `assets/…` href renders as a broken image).
     format!(
         "<g id=\"{BACKGROUND_ELEMENT_ID}\" data-slidra-name=\"背景圖\" {BACKGROUND_ROLE_ATTRIBUTE}=\"{BACKGROUND_ROLE}\" {LOCK_ATTRIBUTE}=\"true\"><image x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" href=\"../{}\"{opacity_attr}/></g>",
         format_svg_number(width),

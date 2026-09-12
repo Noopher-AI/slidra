@@ -1,14 +1,13 @@
-//! Workspace read AND write paths. Originally ([E4.T2]) ported from only the
-//! READ half of `packages/core/src/workspace.ts` (home-dir resolution, the
-//! registry read, id-to-workDir lookup) plus `project-json.ts` and
-//! `virtual-fs.ts` in the `project`/`virtual_fs` submodules — this crate's
-//! `registry` submodule now also writes `projects.json` ([E4.T4]:
-//! `new`/`open`/`pack` need to register/update a presentation), and
-//! `write.rs` holds the content-write doors (`assertSlidePathListed`,
-//! `write_presentation_file` and friends, plus — as of [E4.T5] —
-//! `require_slide` and the per-presentation clipboard file I/O). Container
-//! packing/unpacking lives in `container.rs`. NOOP-281/F5 adds `list_presentation_entries` (`asset
-//! import`'s conflict-free-filename scan) directly to this file, and a
+//! Workspace read AND write paths: home-dir resolution, the registry read,
+//! id-to-workDir lookup, project-json and virtual-fs logic in the
+//! `project`/`virtual_fs` submodules. The `registry` submodule also writes
+//! `projects.json` (`new`/`open`/`pack` need to register/update a
+//! presentation), and `write.rs` holds the content-write doors
+//! (`assert_slide_path_listed`, `write_presentation_file` and friends,
+//! plus `require_slide` and the per-presentation clipboard file I/O).
+//! Container packing/unpacking lives in `container.rs`.
+//! `list_presentation_entries` (`asset import`'s conflict-free-filename
+//! scan) is added directly to this file, and a
 //! `fonts` submodule for a presentation's embedded font book — every other
 //! write this crate's commands need (`write_presentation_file`/
 //! `create_presentation_file`/`assert_slide_path_listed`/`require_slide`)
@@ -83,9 +82,8 @@ fn home_dir() -> PathBuf {
 }
 
 /// Read-only registry access: resolving a presentation id to the `workDir`
-/// `packages/core/src/workspace.ts`'s `openPresentation` registered it
-/// under. Ported from that file's `readRegistry`/`isRegistryEntry`/
-/// `lookupWorkDir` — the read slice only. This module never calls
+/// the original engine's `openPresentation` registered it under — the read
+/// slice only. This module never calls
 /// `writeRegistry`; nothing here can create or mutate `projects.json`.
 pub mod registry {
     use super::resolve_home;
@@ -94,10 +92,10 @@ pub mod registry {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
-    /// One `projects.json` entry. `source_path`/`saved_at` ([E4.T4]): the
+    /// One `projects.json` entry. `source_path`/`saved_at`: the
     /// `.slidra` path `open`/`pack` last read from or wrote to, and the work
-    /// directory's own max-mtime reading at that moment — absent for a
-    /// pre-[E4.T4] registry entry (read side must tolerate missing fields,
+    /// directory's own max-mtime reading at that moment — absent for an
+    /// older registry entry (read side must tolerate missing fields,
     /// see `is_registry_entry`).
     #[derive(Debug, Clone, PartialEq)]
     pub struct RegistryEntry {
@@ -379,7 +377,7 @@ pub mod registry {
     }
 
     /// Test-only convenience: registers `id -> work_dir` with no
-    /// `source_path`/`saved_at`, matching a pre-[E4.T4] registry entry —
+    /// `source_path`/`saved_at`, matching an older registry entry —
     /// used by sibling modules' `#[cfg(test)]` fixtures so each doesn't
     /// hand-roll `projects.json` JSON text.
     #[cfg(test)]
@@ -609,8 +607,7 @@ pub mod registry {
     }
 }
 
-/// Resolves an opaque presentation id to its real work directory — mirrors
-/// `packages/core/src/workspace.ts`'s exported `resolveWorkDir`.
+/// Resolves an opaque presentation id to its real work directory.
 pub fn resolve_work_dir(id: &str) -> SlidraResult<PathBuf> {
     Ok(registry::lookup(id)?.work_dir)
 }

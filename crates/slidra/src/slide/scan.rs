@@ -233,7 +233,7 @@ impl Utf16Tracker {
     }
 }
 
-/// `describe` from scan.ts: `第 N 行第 M 欄` for the UTF-16 offset
+/// `describe`: `第 N 行第 M 欄` ("line N column M") for the UTF-16 offset
 /// corresponding to `byte_pos`.
 fn describe(svg: &str, tracker: &mut Utf16Tracker, byte_pos: usize) -> String {
     let (line, column) = position_at(svg, tracker.at(svg, byte_pos));

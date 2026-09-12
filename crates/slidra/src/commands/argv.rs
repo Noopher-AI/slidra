@@ -1,10 +1,10 @@
-//! Shared argv-parsing helpers for every multi-token command family this
-//! ticket adds (`element`/`text`/`textbox`/`comment`) — ported from
-//! `packages/cli/src/argv.ts`'s own private helpers of the same names
+//! Shared argv-parsing helpers for every multi-token command family
+//! (`element`/`text`/`textbox`/`comment`) — mirroring the original CLI's
+//! own private helpers of the same names
 //! (`requirePositional`/`optionalFlag`/`requireFlag`/`requireNumberFlag`/
 //! `optionalNumberFlag`/`hasFlag`/`requireIdList`), which every one of that
-//! file's ~40 command branches shares. One Rust module for the same reason:
-//! this is genuinely one set of parsing rules TS itself never duplicates,
+//! file's ~40 command branches shared. One Rust module for the same reason:
+//! this is genuinely one set of parsing rules the original never duplicated,
 //! not a candidate for the "each command family keeps its own copy"
 //! posture `element::edit`/`element::group`'s doc comments describe for
 //! their own, much smaller, structural helpers.

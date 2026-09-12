@@ -1,4 +1,4 @@
-//! The normal-form slide model, ported from `packages/core/src/slide/format.ts`.
+//! The normal-form slide model.
 //!
 //! The single answer to "what is a compliant slide" (ADR-0012). The normal
 //! form: every element is one `<g>` container wrapping one or more
@@ -87,7 +87,7 @@ const CONVERT_HINT: &str = "請執行 slidra convert <簡報識別碼> 轉換成
 
 /// `data-slidra-text-width`; see `SlideElement::text_width`'s doc comment.
 pub const TEXT_WIDTH_ATTRIBUTE: &str = "data-slidra-text-width";
-/// `data-slidra-text-height` (NOOP-65 決定 C); see `SlideElement::text_height`.
+/// `data-slidra-text-height`; see `SlideElement::text_height`.
 pub const TEXT_HEIGHT_ATTRIBUTE: &str = "data-slidra-text-height";
 const TEXT_ALIGN_ATTRIBUTE: &str = "data-slidra-text-align";
 
@@ -104,7 +104,7 @@ pub enum SlideElementKind {
     /// One container holding several primitives (ADR-0012 allows "one or
     /// more primitives").
     Compound,
-    /// A table container (E2.T14).
+    /// A table container.
     Table,
     /// A chart container (E2.T12).
     Chart,
@@ -188,12 +188,12 @@ pub struct SlideElement {
     /// Parsed `data-slidra-text-width`; `None` when the element is not a text
     /// box.
     pub text_width: Option<f64>,
-    /// Parsed `data-slidra-text-height` (NOOP-65 決定 C); `None` when absent.
+    /// Parsed `data-slidra-text-height`; `None` when absent.
     pub text_height: Option<f64>,
     /// `read_text_align`'s result (`Left` when the container has no
     /// `data-slidra-text-align`).
     pub text_align: TextAlign,
-    /// `Some` only when `kind == Table` (E2.T14).
+    /// `Some` only when `kind == Table`.
     pub table: Option<TableGrid>,
 }
 
@@ -209,7 +209,7 @@ pub struct ViewBox {
 pub struct SlideModel {
     pub view_box: ViewBox,
     pub elements: Vec<SlideElement>,
-    /// #200 §4.4: the slide's Page style, read off the root `<svg>`'s own
+    /// The slide's Page style, read off the root `<svg>`'s own
     /// `style` attribute.
     pub page_style: PageStyle,
 }
@@ -246,7 +246,7 @@ pub struct ComplianceIssue {
     pub message: String,
 }
 
-/// `Some(" el-a ")`-shaped padding for `容器{} ...`-style messages, matching
+/// `Some(" el-a ")`-shaped padding for `container{} ...`-style messages, matching
 /// the TS source's `${id ? \` ${id} \` : ""}` inline ternary exactly
 /// (including the surrounding spaces when present).
 fn id_suffix(id: Option<&str>) -> String {
@@ -387,7 +387,7 @@ impl Checker<'_> {
             return;
         }
 
-        // A table container relaxes ADR-0012's normal partition (E2.T14).
+        // A table container relaxes ADR-0012's normal partition.
         if attribute_value(element, "data-slidra-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
             if let Some(problem) = describe_table_shape_problem(element) {
                 self.report(
@@ -404,7 +404,7 @@ impl Checker<'_> {
             return;
         }
 
-        // A chart container relaxes ADR-0012's normal partition (E2.T12).
+        // A chart container relaxes ADR-0012's normal partition.
         if attribute_value(element, "data-slidra-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
             let others: Vec<&ScannedNode> = children
                 .iter()

@@ -294,7 +294,7 @@ pub fn remove(args: &[String]) -> CommandResult {
     match outcome {
         // `indices.length` here is the count BEFORE dedup — the same count
         // the argv positional itself carried, not the effective removal
-        // count (plan 3.3: "去重前的長度").
+        // count (plan 3.3: "length before dedup").
         Ok(()) => CommandResult::success(
             format!("已移除 {slide_path} 的 {} 個效果項", indices.len()),
             Some(json!({})),

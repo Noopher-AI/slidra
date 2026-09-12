@@ -1,5 +1,4 @@
-//! `wrapText`, ported from `packages/core/src/text/wrap.ts` (276 lines,
-//! ported in full).
+//! `wrapText`.
 //!
 //! Every width, ascent and line-height number here comes from
 //! `measure_text_width`/`FontMetrics` — this module never re-measures or
@@ -70,8 +69,7 @@ pub struct WrappedText {
 // CJK-ish code point ranges: CJK symbols/punctuation, hiragana/katakana, CJK
 // unified ideographs (BMP and extension A), hangul syllables, CJK
 // compatibility ideographs, halfwidth/fullwidth forms, and the
-// supplementary-plane CJK unified ideographs extension B. Verified against
-// `packages/core/src/text/wrap.ts`'s own `CJK_RANGES` constant.
+// supplementary-plane CJK unified ideographs extension B.
 const CJK_RANGES: &[(u32, u32)] = &[
     (0x3000, 0x303f),
     (0x3040, 0x30ff),
@@ -90,23 +88,19 @@ fn is_cjk(code_point: u32) -> bool {
 }
 
 // Closing/trailing punctuation a line must never end immediately before, and
-// opening punctuation a line must never end immediately after. Copied
-// character-for-character from `packages/core/src/text/wrap.ts`'s
-// `NO_BREAK_BEFORE`/`NO_BREAK_AFTER` literals — do not retype these from
-// memory or description if they ever need touching; re-copy from the TS
-// source.
+// opening punctuation a line must never end immediately after — do not
+// retype these from memory or description if they ever need touching.
 const NO_BREAK_BEFORE_CHARS: &str = "」』）］｝〉》、，。．！？：；・…〜ー";
 const NO_BREAK_AFTER_CHARS: &str = "「『（［｛〈《";
 
-/// The parsed `NO_BREAK_BEFORE_CHARS` set, matching the TS source's exported
-/// `NO_BREAK_BEFORE` (`text/index.ts` re-exports it as part of the module's
-/// public surface).
+/// The parsed `NO_BREAK_BEFORE_CHARS` set, exposed as part of this module's
+/// public surface.
 pub fn no_break_before() -> &'static HashSet<u32> {
     static SET: OnceLock<HashSet<u32>> = OnceLock::new();
     SET.get_or_init(|| NO_BREAK_BEFORE_CHARS.chars().map(|ch| ch as u32).collect())
 }
 
-/// The parsed `NO_BREAK_AFTER_CHARS` set, matching the TS source's exported `NO_BREAK_AFTER`.
+/// The parsed `NO_BREAK_AFTER_CHARS` set.
 pub fn no_break_after() -> &'static HashSet<u32> {
     static SET: OnceLock<HashSet<u32>> = OnceLock::new();
     SET.get_or_init(|| NO_BREAK_AFTER_CHARS.chars().map(|ch| ch as u32).collect())

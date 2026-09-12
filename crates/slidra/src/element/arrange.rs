@@ -232,7 +232,7 @@ fn center_of(axis: DistributeAxis, bounds: &Bbox) -> f64 {
 }
 
 /// Equalizes the spacing between targets' bounding-box CENTERS along `axis`
-/// — not the gaps between their edges (決定 3, settled, do not re-litigate).
+/// — not the gaps between their edges (decision 3, settled, do not re-litigate).
 /// The first and last target by center coordinate stay fixed; every target
 /// in between is repositioned to an equally-spaced center. All centers
 /// coinciding is legal and produces zero displacement.

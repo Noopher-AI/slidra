@@ -2,7 +2,8 @@
 //! commands/element/insert.ts` + the `"insert"` branch of `argv.ts`'s
 //! `case "element":`. `kind` is validated here, at the argv layer, exactly
 //! where TS validates it too (`docs/spec/cli.md`'s `element insert` entry:
-//! "不在此集合內會在 argv 解析階段直接報錯") — the pure core layer
+//! "not being one of this set errors out directly at the argv parsing
+//! stage") — the pure core layer
 //! (`element::edit::insert_element`) receives only an already-valid
 //! `InsertElementKind`, so its own kind dispatch has no "unsupported kind"
 //! arm to fall through to (the Rust type system enforces what TS's runtime

@@ -960,7 +960,7 @@ fn substitute_template(text: &str, headers: &[String], values: &[String]) -> Sli
 }
 
 /// Removes every `generated` cell and re-numbers the remaining rows
-/// contiguously — the "刪掉所有 generated 儲存格" half of a refresh.
+/// contiguously — the "delete all generated cells" half of a refresh.
 fn strip_generated_rows(cells: &[TableCell]) -> Vec<TableCell> {
     let remaining: Vec<&TableCell> = cells.iter().filter(|cell| !cell.generated).collect();
     let mut unique_rows: Vec<usize> = remaining.iter().map(|cell| cell.row).collect();

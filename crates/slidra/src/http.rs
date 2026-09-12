@@ -19,9 +19,9 @@ use std::io::Read;
 /// body bytes.
 ///
 /// - Connection/DNS failure (the request never got a response at all) ->
-///   `failed`, "無法下載來源：<url>".
+///   `failed`, "Unable to download source: <url>".
 /// - A response was received but its status is not 2xx -> `failed`,
-///   "無法下載來源，伺服器回應 <status>：<url>".
+///   "Unable to download source, server responded <status>: <url>".
 /// - 2xx -> the body bytes, in full (no size cap — see module doc).
 pub fn download_source(url: &str) -> SlidraResult<Vec<u8>> {
     match ureq::get(url).call() {

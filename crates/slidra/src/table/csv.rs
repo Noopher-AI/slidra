@@ -1,5 +1,4 @@
-//! `parseTableCsv`, ported from `packages/core/src/table/csv.ts` (124
-//! lines, ported in full).
+//! `parseTableCsv`.
 //!
 //! RFC 4180 CSV parsing shared by `table bind`/`table refresh`/`table set
 //! --from`. Quoted fields (comma/newline inside a value), `""` escaping,

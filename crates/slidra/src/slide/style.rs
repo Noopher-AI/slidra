@@ -1,23 +1,20 @@
-//! `PageStyle` + `readSlidePageStyle`, ported from
-//! `packages/core/src/slide-style.ts`. Only the READ half is ported —
-//! `slide/format.rs`'s `SlideModel.page_style` is this ticket's only
-//! caller. `setSlidePageStyle` needs `applySplices`/`setAttrSplice` from
-//! `element-text.ts`, an editing-history-aware rewrite helper that is a
-//! separate, later ticket's port; writing the page style is out of scope
-//! here.
+//! `PageStyle` + `readSlidePageStyle`. Only the READ half is implemented —
+//! `slide/format.rs`'s `SlideModel.page_style` is currently the only
+//! caller. Writing the page style needs a splice-based rewrite helper
+//! equivalent to `applySplices`/`setAttrSplice`, which does not exist yet;
+//! writing the page style is out of scope here.
 //!
-//! ## Deviation from the ticket's suggested signature
+//! ## Why this returns a `Result`
 //!
-//! The ticket's guide writes this as `fn read_slide_page_style(svg_content:
-//! &str) -> PageStyle` (infallible). The real TS source is NOT infallible:
-//! `requireSvgRoot` throws a `SlidraError` when the document has no
+//! A naive signature would be `fn read_slide_page_style(svg_content: &str)
+//! -> PageStyle` (infallible). That would not actually be safe:
+//! `require_svg_root` returns a `SlidraError` when the document has no
 //! `<svg>` root at all (e.g. malformed markup, or markup that scans fine but
 //! whose root tag is not `svg`). Swallowing that into a fabricated default
-//! `PageStyle` would be exactly the "fallback for invalid input" this port's
-//! house style forbids elsewhere (see `errors.rs`, `table_grid.rs`'s own
-//! explicit-error stance) — so this port keeps the signature honestly
-//! fallible (`SlidraResult<PageStyle>`) instead of matching the guide
-//! literally.
+//! `PageStyle` would be exactly the "fallback for invalid input" this
+//! crate's house style forbids elsewhere (see `errors.rs`, `table_grid.rs`'s
+//! own explicit-error stance) — so this keeps the signature honestly
+//! fallible (`SlidraResult<PageStyle>`).
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::slide::scan::{ScannedNode, attribute_of, attribute_value, scan_document};
@@ -25,16 +22,16 @@ use crate::splice::{Splice, apply_splices, set_attr_splice};
 use crate::text::runs::utf16_offset_to_byte_offset;
 
 /// CSS property names `readSlidePageStyle`/`setSlidePageStyle` read/write on
-/// the root `<svg>`'s own `style` attribute (see that TS module's header
-/// comment for why a CSS declaration was chosen over a `data-slidra-*`
-/// attribute or a background `<rect>`).
+/// the root `<svg>`'s own `style` attribute (a CSS declaration was chosen
+/// over a `data-slidra-*` attribute or a background `<rect>`).
 const BACKGROUND_PROPERTY: &str = "background-color";
 const ACCENT_PROPERTY: &str = "--slidra-accent";
 
-/// Ports `requireSvgRoot`. Consumes `scan_document`'s result (rather than
-/// borrowing) so the un-matched sibling top-level nodes can drop normally
-/// once this function returns — there is exactly one `<svg>` root in any
-/// well-formed slide, so this is never expected to discard a large tree.
+/// Requires the document to have an `<svg>` root, erroring otherwise.
+/// Consumes `scan_document`'s result (rather than borrowing) so the
+/// un-matched sibling top-level nodes can drop normally once this function
+/// returns — there is exactly one `<svg>` root in any well-formed slide, so
+/// this is never expected to discard a large tree.
 fn require_svg_root(svg_content: &str) -> SlidraResult<ScannedNode> {
     let roots = scan_document(svg_content)?;
     roots
@@ -43,7 +40,7 @@ fn require_svg_root(svg_content: &str) -> SlidraResult<ScannedNode> {
         .ok_or_else(|| SlidraError::invalid("投影片的根節點不是 <svg>"))
 }
 
-/// A slide's Page style (#200 §4.4): background colour and accent colour.
+/// A slide's Page style: background colour and accent colour.
 /// `None` means the declaration is absent — never a fabricated default.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PageStyle {
@@ -52,13 +49,11 @@ pub struct PageStyle {
 }
 
 /// Reads `property`'s value out of a `style="a:b;c:d"`-shaped attribute
-/// value, ported from `parseStyleDeclarations` + a `Map#get` narrowed to one
-/// property (this module never needs to round-trip the whole declaration
-/// list back to a string, unlike the TS source's `setSlidePageStyle`, which
-/// this port does not implement — see module header comment). Mirrors
-/// `Map#set`'s overwrite-on-duplicate-key semantics: the LAST declaration of
-/// a repeated property wins, matching `parseStyleDeclarations`'s
-/// `declarations.set(...)` inside its `for` loop.
+/// value — this function never needs to round-trip the whole declaration
+/// list back to a string, unlike `set_slide_page_style` below (see this
+/// module's header comment for why that half is not implemented here).
+/// Mirrors JS `Map#set`'s overwrite-on-duplicate-key semantics: the LAST
+/// declaration of a repeated property wins.
 fn declaration_value(style: Option<&str>, property: &str) -> Option<String> {
     let style = style?;
     let mut result = None;
@@ -79,8 +74,8 @@ fn declaration_value(style: Option<&str>, property: &str) -> Option<String> {
     result
 }
 
-/// Ports `readSlidePageStyle`. See this module's header comment for why the
-/// signature is fallible where the ticket's guide suggested it would not be.
+/// See this module's header comment for why the signature is fallible
+/// rather than returning a fabricated default on error.
 pub fn read_slide_page_style(svg_content: &str) -> SlidraResult<PageStyle> {
     let svg_root = require_svg_root(svg_content)?;
     let style = attribute_value(&svg_root, "style");

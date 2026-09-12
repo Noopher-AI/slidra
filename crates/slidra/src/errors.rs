@@ -1,8 +1,7 @@
-//! Shared error type for the Rust engine. TS distinguishes error kinds only
-//! by message text (`SlidraError` in `packages/core/src/errors.ts` is a
-//! plain `Error` subclass); the two variants here exist purely so that
-//! `undo`/`redo` can map "no such presentation" to `FailureKind::NotFound`
-//! (see result.rs) without string-matching the message.
+//! Shared error type for the Rust engine. The two variants here exist
+//! purely so that `undo`/`redo` can map "no such presentation" to
+//! `FailureKind::NotFound` (see result.rs) without string-matching the
+//! message.
 
 use std::fmt;
 

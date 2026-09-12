@@ -1,5 +1,5 @@
 //! The Rust binary's only remaining reliance on Node: `docs/spec/cli.md`'s
-//! `## 不經 registry 的入口：serve 與 export` is normative — `serve` and
+//! "## Entry points that bypass the registry: serve and export" is normative — `serve` and
 //! `export` are not CLI commands with a `data` shape, they start a
 //! long-running HTTP server / drive a headless-browser export pipeline, and
 //! that logic lives in `@slidra/server`, not in this crate. For those two
@@ -10,7 +10,7 @@
 //!
 //! This is NOT the coexistence-era fallback it replaces: every command
 //! outside `serve`/`export` that used to fall through to here now gets
-//! "未知的命令" from `main.rs` instead (plan section 2.1) — there is no
+//! "unknown command" from `main.rs` instead (plan section 2.1) — there is no
 //! takeover table left to miss.
 
 use std::env;

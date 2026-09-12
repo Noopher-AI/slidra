@@ -106,8 +106,8 @@ pub struct TextBox {
     pub width: f64,
     pub font_size: f64,
     pub fill: Option<String>,
-    /// `font-weight` is 700/bold — labels (章節編號、結語小標) are the one
-    /// place small text may take the accent colour.
+    /// `font-weight` is 700/bold — labels (section numbers, closing-slide
+    /// short headings) are the one place small text may take the accent colour.
     pub bold: bool,
     pub paragraphs: Vec<Paragraph>,
     /// Declared composition role (#303 §B), when the author set one.
@@ -541,7 +541,7 @@ pub fn check_slide(
         None => (SIDE_MARGIN, BOTTOM_MARGIN, FOOTER_MARGIN),
     };
     let right_limit = ctx.canvas_width - side_margin * k;
-    // Caption-sized boxes are the footer (簡報名、頁碼): they live in the
+    // Caption-sized boxes are the footer (deck title, page number): they live in the
     // bottom margin by design and may run down to the canvas edge minus
     // a hairline; everything else stops at the content zone.
     let caption_size = ctx.spec.map(|spec| spec.size("caption")).unwrap_or(18.0) * k;
@@ -917,7 +917,7 @@ pub fn check_slide(
         }
     }
 
-    // --- blueprint (#303 §D): the build's 構圖思考 step, reconciled against
+    // --- blueprint (#303 §D): the build's composition-reasoning step, reconciled against
     // the page it then drew. Only pages whose plan carries a blueprint are
     // checked — the step is written down precisely so it stops being a
     // private thought nothing can verify.
@@ -1183,7 +1183,7 @@ pub fn check_slide(
             );
         }
         // The accent colour is allowed on the big number and on bold labels
-        // (章節編號、結語小標 — ≥ column size); body-sized regular text stays
+        // (section numbers, closing-slide short headings — ≥ column size); body-sized regular text stays
         // text／muted so small copy never drops below the contrast floor.
         let accent_ok = same_size(tb.font_size, spec.size("number") * k)
             || (tb.bold && tb.font_size >= spec.size("column") * k - 0.5);
@@ -2033,7 +2033,7 @@ mod tests {
 
     #[test]
     fn a_blueprint_is_reconciled_against_the_page_that_was_drawn() {
-        // #303 §D: 構圖思考 writes down node count and click steps; the page
+        // #303 §D: the composition-reasoning step writes down node count and click steps; the page
         // has to match what was decided, or one of the two is wrong.
         let spec = spec();
         let names = vec![template_name_for("bullets").to_string()];
@@ -2186,8 +2186,8 @@ mod tests {
 
     #[test]
     fn grouped_elements_are_still_seen_by_every_rule() {
-        // Grouping a card with its copy (the build's own flow: 構圖 → 背景 →
-        // 前景 → group → 動畫) used to hide the members from `validate`
+        // Grouping a card with its copy (the build's own flow: composition → background →
+        // foreground → group → animation) used to hide the members from `validate`
         // entirely — an overflowing bullet stopped being reported the moment
         // it was grouped. The group's transform composes onto its members'.
         let body = textbox(
@@ -2244,9 +2244,9 @@ mod tests {
 
     #[test]
     fn a_plan_with_background_on_requires_every_page_to_carry_one() {
-        // #303: `slide background set` is the one build step nothing else
+        // `slide background set` is the one build step nothing else
         // notices when it is skipped — the page still renders, just not as
-        // the plan says. Without this rule the build reports 0 errors.
+        // planned. Without this rule the build reports 0 errors.
         let bg = "<g id=\"el-background\" data-slidra-role=\"background\" data-slidra-lock=\"true\"><image x=\"0\" y=\"0\" width=\"1280\" height=\"720\" href=\"assets/bg.svg\"/></g>";
         let claim = textbox(
             "el-claim",

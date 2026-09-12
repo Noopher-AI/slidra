@@ -1,23 +1,23 @@
-//! The write half of `packages/core/src/workspace.ts`. `write_presentation_file`
-//! (the one door every content-writing command in this ticket goes through),
+//! Workspace write paths. `write_presentation_file`
+//! (the one door every content-writing command goes through),
 //! `assert_slide_path_listed` (the widened slide-or-template membership
 //! check every one of them opens with), and the per-presentation clipboard
-//! file's raw I/O (`workspace.ts:1298-1322`) are this ticket's own additions.
+//! file's raw I/O are additions on top of the original engine's write half.
 //! `write_presentation_file_without_history` (`presentation canvas set`'s
 //! one exception door), `create_presentation_file` (`slide add`/`template
 //! add`'s new-file door), and `delete_presentation_file` (`slide delete`/
-//! `template delete`'s door) predate this ticket ([E4.T7]/F3) and are carried
+//! `template delete`'s door) predate these additions and are carried
 //! over unchanged in spirit — every content-writing command in this crate
 //! routes through one of these doors, so undo/redo is free (`history.rs`'s
 //! staging API) without each command writing its own inverse logic.
 //! `workspace/mod.rs`'s doc comment ("This module WRITES NOTHING") predates
 //! all of this — see this file for the write path that comment now points to.
 //!
-//! Bundles the four-step boilerplate every one of TS's per-command write
-//! wrappers (`setElementText`, `addTextBox`, `insertSlideElement`, ...)
+//! Bundles the four-step boilerplate every one of the original CLI's
+//! per-command write wrappers (`setElementText`, `addTextBox`, `insertSlideElement`, ...)
 //! repeats verbatim — resolve the work dir, confirm the real file exists,
 //! confirm it's a listed slide/template, read it — into one `require_slide`
-//! call, so this ticket's ~19 `element`/`text`/`textbox` command handlers
+//! call, so these ~19 `element`/`text`/`textbox` command handlers
 //! don't each hand-roll the same four lines.
 
 use crate::errors::{SlidraError, SlidraResult};
@@ -78,8 +78,7 @@ pub fn require_slide(id: &str, slide_path: &str) -> SlidraResult<RequiredSlide> 
     })
 }
 
-/// The single door every content-writing command must use (plan section
-/// 0/3.2; NOOP-337's write ordering). Snapshots the file's current content
+/// The single door every content-writing command must use. Snapshots the file's current content
 /// into undo history before overwriting it, so any command that writes
 /// through here gets undo for free without writing its own inverse logic.
 ///
@@ -365,11 +364,11 @@ mod tests {
 
     #[test]
     fn write_presentation_file_failure_reverts_the_undo_group_and_leaves_no_orphan_snapshot() {
-        // Round-1 review (NOOP-300, M3): removing the `revert_committed_entries`
-        // call in `write_presentation_file` left 291 tests green — nothing
+        // Removing the `revert_committed_entries` call in
+        // `write_presentation_file` left 291 tests green — nothing
         // exercised the "commit succeeded, the actual write then failed"
-        // branch. A directory swapped in for the slide file (the reviewer's
-        // suggested approach) does not reach that branch: `write_presentation_file`
+        // branch. A directory swapped in for the slide file does not reach
+        // that branch: `write_presentation_file`
         // resolves `real_path` via `resolve_virtual_file_path` BEFORE staging,
         // and that resolution already rejects a directory ("不是檔案：…"), so
         // the function would return before ever calling `commit_snapshot_entries`.

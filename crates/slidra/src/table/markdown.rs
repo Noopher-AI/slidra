@@ -1,5 +1,4 @@
-//! `parseMarkdownTable`, ported from `packages/core/src/table/markdown.ts`
-//! (83 lines, ported in full).
+//! `parseMarkdownTable`.
 //!
 //! GitHub-flavored Markdown pipe table parsing (`table set --markdown`).
 //! Header row, an alignment row (`:---`/`---:`/`:---:`), then data rows.

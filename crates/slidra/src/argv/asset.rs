@@ -3,7 +3,7 @@
 //! There was no existing TS `argv.ts` `case "asset"` to port field-for-field
 //! from — the grammar below was defined directly for this command (see
 //! `docs/spec/cli.md`'s `## \`asset import\`` section, now the sole
-//! authority on it since [E4.T12] deleted the TypeScript CLI). This Rust
+//! authority on it since the TypeScript CLI was deleted). This Rust
 //! argv module is written directly against that spec section's literal
 //! grammar:
 //!
@@ -35,7 +35,7 @@ pub struct AssetImportArgs {
     pub source: String,
     /// Raw `--as` value, unvalidated. `None` when the flag was omitted.
     pub as_format: Option<String>,
-    /// `--svg` inline markup (#303 §13); `source` is empty when set.
+    /// `--svg` inline markup; `source` is empty when set.
     pub svg: Option<String>,
     /// `--name`, only with `--svg`.
     pub name: Option<String>,
@@ -50,8 +50,8 @@ pub fn parse_import(args: &[String]) -> Result<AssetImportArgs, SlidraError> {
     let svg = optional_flag(args, "--svg")?;
     let name = optional_flag(args, "--name")?;
     let as_format = optional_flag(args, "--as")?;
-    // `--svg` builds the asset from inline markup (#303 §13): no source
-    // positional then, and `--name` is required. Both given → refuse.
+    // `--svg` builds the asset from inline markup: no source positional
+    // then, and `--name` is required. Both given → refuse.
     let has_source_positional = args.get(1).is_some_and(|a| !is_flag_like(a));
     if svg.is_some() {
         if has_source_positional {

@@ -79,8 +79,7 @@ pub fn set_attr_splice(svg: &str, node: &ScannedNode, attr: &str, value: &str) -
 }
 
 /// Resolves `font_family` in `fonts`, throwing the same "缺少字型" error
-/// every text-box measurement call uses on a miss. Ported from
-/// `element-text.ts`'s exported `resolveFont`, used here by the table
+/// every text-box measurement call uses on a miss. Used here by the table
 /// write path (`table/layout.rs`) to re-measure/wrap a cell's text.
 pub fn resolve_font<'a>(
     fonts: &'a HashMap<String, crate::text::font::ParsedFont>,

@@ -1,7 +1,7 @@
-//! `textbox *` family: `textbox add` / `textbox width` / `textbox align`
-//! (plan section 1.1, phase P6). CLI argv layer only — the pure mutation
-//! logic lives at `crate::element::text`, mirroring `packages/cli/src/
-//! commands/textbox.ts`'s split from `packages/core/src/element-text.ts`.
+//! `textbox *` family: `textbox add` / `textbox width` / `textbox align`.
+//! CLI argv layer only — the pure mutation logic lives at
+//! `crate::element::text`, mirroring the original CLI's own split between
+//! its argv layer and its core mutation logic.
 
 use crate::commands::CommandTokens;
 use crate::result::CommandResult;
@@ -24,8 +24,7 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
 /// `--font-family` defaults to the one font this project bundles: every
 /// presentation has it, so a text box created with no `--font-family`
 /// never fails to resolve. `--font-size` defaults to 24 user units — no
-/// ticket or ADR names a default; copied verbatim from `packages/cli/src/
-/// commands/textbox.ts`'s own judgement call.
+/// ADR names a default; this matches the original CLI's own judgement call.
 const DEFAULT_FONT_FAMILY: &str = "Noto Sans TC";
 const DEFAULT_FONT_SIZE: f64 = 24.0;
 

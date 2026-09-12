@@ -31,8 +31,10 @@ fn main() {
 
 fn dispatch(argv: Vec<OsString>) -> i32 {
     let Some(first) = argv.first() else {
-        // argv 為空（`slidra`）— 沒有並存期回退可以轉手了，Rust 自己報
-        // 錯，逐位元組對齊既有文案（原本由 Node 印出同一句話）。
+        // argv is empty (`slidra`) — there is no coexistence-era fallback
+        // left to hand off to, so Rust reports the error itself, matching
+        // the existing wording byte-for-byte (originally printed by Node
+        // for this exact message).
         eprintln!("缺少命令名稱");
         return 1;
     };
@@ -41,7 +43,7 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
     // are ASCII) or "--version"/"serve"/"export", so it always falls
     // through to the final "未知的命令" branch below — untouched, no lossy
     // conversion performed on it until it is actually printed (plan 4.1's
-    // "非 UTF-8 位元組" row).
+    // "non-UTF-8 bytes" row).
     if let Some(first_str) = first.to_str() {
         if first_str == "--version" || first_str == "-V" {
             // This is a deliberate, ticket-scoped behavior CHANGE from the
@@ -53,8 +55,9 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         }
 
         if first_str == "serve" || first_str == "export" {
-            // The only two names that still exec Node — spec's `## 不經
-            // registry 的入口`, not a coexistence-era fallback. Always
+            // The only two names that still exec Node — spec's "## Entry
+            // point that bypasses the registry", not a coexistence-era
+            // fallback. Always
             // taken even when arguments are missing/malformed — Rust never
             // pre-validates these, Node's own error path
             // (`runServeCli`/`runExportCli`) is the single source of truth
@@ -63,13 +66,13 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         }
     }
 
-    // [E4.T5]'s family mechanism spans multiple tokens (`element move`,
+    // The family mechanism spans multiple tokens (`element move`,
     // `text style set`, ...), not just `argv[0]` — plan section 1.4. A
     // non-UTF-8 token can never equal any (ASCII) takeover-table entry, so
     // it is mapped to `""` here — a value no registered command token ever
     // is — rather than erroring or lossily converting: it simply fails to
     // match at that position and the whole argv falls through to the legacy
-    // probe, then Node, untouched (plan 4.1's "非 UTF-8 位元組" row). This
+    // probe, then Node, untouched (plan 4.1's "non-UTF-8 bytes" row). This
     // view is used ONLY for matching; both dispatch calls below pass the
     // ORIGINAL `argv`.
     let str_tokens: Vec<&str> = argv.iter().map(|arg| arg.to_str().unwrap_or("")).collect();
@@ -77,7 +80,7 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         return dispatch_family_takeover(matched, &argv[matched.len()..]);
     }
 
-    // Legacy (pre-[E4.T5]) mechanism: probe the first one or two argv
+    // Legacy (predecessor) mechanism: probe the first one or two argv
     // tokens against `TAKEOVER_TABLE` (plan 2.4) — a two-word command like
     // `effect add` needs both tokens to be valid UTF-8 to match at all; a
     // non-UTF-8 second token simply can't equal any (ASCII) table entry, so
@@ -96,10 +99,10 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
         }
     }
 
-    // Nothing matched: this ticket removes the coexistence-era fallback to
-    // Node for everything outside serve/export (plan section 0.1/2.1) —
-    // argv[0] alone is reported, `to_string_lossy()` so a non-UTF-8 token
-    // still prints something rather than panicking (plan 4.1's "合法但奇怪"
+    // Nothing matched: the coexistence-era fallback to Node for everything
+    // outside serve/export is removed (plan section 0.1/2.1) — argv[0]
+    // alone is reported, `to_string_lossy()` so a non-UTF-8 token still
+    // prints something rather than panicking (plan 4.1's "legal but odd"
     // rows). This also covers a registered family name used with a
     // sub-command outside its own takeover entries when that family itself
     // is not in `TAKEOVER_TABLE` (e.g. `element frobnicate`) — deliberately
@@ -114,7 +117,7 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
     1
 }
 
-/// Runs an [E4.T5]-mechanism takeover-table command's handler and renders
+/// Runs a family-mechanism takeover-table command's handler and renders
 /// its `CommandResult`. `rest` is `argv` with the matched command-name
 /// tokens already stripped off, so `undo`'s single-token name leaves the
 /// same `rest` it always did and e.g. `element move`'s two-token name
@@ -129,7 +132,7 @@ fn dispatch(argv: Vec<OsString>) -> i32 {
 /// UN-stripped argv (see `dispatch` above), `--json` appearing BEFORE the
 /// command name's tokens have all matched (including between them) simply
 /// prevents a match in the first place and falls back to Node instead —
-/// exactly the "--json 出現在命令名之前" contract row.
+/// exactly the "--json appears before the command name" contract row.
 fn dispatch_family_takeover(tokens: commands::CommandTokens, rest: &[OsString]) -> i32 {
     let mut json_flag = false;
     let mut positional: Vec<String> = Vec::new();
@@ -152,14 +155,14 @@ fn dispatch_family_takeover(tokens: commands::CommandTokens, rest: &[OsString]) 
     };
     let command_result = commands::dispatch(tokens, &positional);
 
-    // No command registered by this ticket (or `undo`/`redo`) has a
+    // No command registered here (or `undo`/`redo`) has a
     // renderer — `None` here is correct, not a placeholder (plan 3.2 /
     // result.rs's doc: only `cat`-shaped commands get a raw-bytes
     // renderer, and this ticket registers none of those).
     result::render(&command_result, None, json_flag)
 }
 
-/// Runs a legacy-mechanism (pre-[E4.T5]) takeover-table command's handler
+/// Runs a legacy-mechanism (predecessor) takeover-table command's handler
 /// and renders its `CommandResult`.
 /// `--json` is a Rust-only flag: meaningful only here, stripped from the
 /// positional arguments the command handler sees, and never forwarded to
@@ -168,7 +171,7 @@ fn dispatch_family_takeover(tokens: commands::CommandTokens, rest: &[OsString]) 
 /// argument" error, which is correct: `--json` has no meaning outside the
 /// takeover table).
 ///
-/// D9: `--json` is recognised ONLY as the LAST token of `rest` — a
+/// `--json` is recognised ONLY as the LAST token of `rest` — a
 /// deliberate change from this mechanism's predecessor, which stripped it
 /// from any position. Several commands take free-text as their final
 /// positional (`slide notes set`'s `text`, `template rename`'s
@@ -246,11 +249,11 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
         };
 
     // None of undo/redo/chart/table/asset has a renderer (plan 3.2/4.3, and
-    // cli.md's own "Renderer 命令" list names only `cat`/`ls`/`slide
+    // cli.md's own "Renderer commands" list names only `cat`/`ls`/`slide
     // render`) — every match arm above reflects that.
     let code = result::render(&command_result, renderer, json_flag);
-    // `validate` with findings exits 1 after rendering its full report
-    // (#303): the report is the point, so it is printed like any success,
+    // `validate` with findings exits 1 after rendering its full report:
+    // the report is the point, so it is printed like any success,
     // and the exit code tells a script/agent "there are errors" — the same
     // "non-zero is a result, not a fault" convention `effect list` uses.
     if command == "validate" && code == 0 && commands::validate::has_findings(&command_result) {
@@ -259,7 +262,7 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
     code
 }
 
-/// Serialises every invocation that names a presentation (#303): the
+/// Serialises every invocation that names a presentation: the
 /// presentation id is the first positional after the command tokens for
 /// most commands and the second/third for sub-verb families (`slide add
 /// <id>`, `presentation canvas set <id>`), so the first three positionals

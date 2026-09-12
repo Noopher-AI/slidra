@@ -1,17 +1,15 @@
-//! `TextRun`, `apply_run_style`, and `read_text_box_runs`, ported from
-//! `packages/core/src/text/runs.ts` (166 lines, ported in full).
+//! `TextRun`, `apply_run_style`, and `read_text_box_runs`.
 //!
 //! ## The UTF-16 index space (critical, load-bearing)
 //!
 //! `TextRun.start`/`end` are indices into the **UTF-16 code-unit space** of
 //! the content string — exactly what JavaScript's `String#length` and
 //! `String#slice` use. This is NOT a byte offset and NOT a Unicode scalar
-//! (`char`) count. A sibling module (`slide/format.rs`, outside this
-//! ticket's file list) depends on `TextRun` verbatim and needs this index
-//! space preserved exactly, because it is the same index space
-//! `text style set`'s (a different, not-yet-built ticket's) user-visible
-//! range parameters use — nothing in *this* ticket exercises that CLI
-//! command end-to-end, but the type must already speak its index space.
+//! (`char`) count. A sibling module (`slide/format.rs`) depends on
+//! `TextRun` verbatim and needs this index space preserved exactly, because
+//! it is the same index space `text style set`'s user-visible range
+//! parameters use — nothing exercises that CLI command end-to-end yet, but
+//! the type must already speak its index space.
 //!
 //! Concretely: a 4-byte UTF-8 astral character (e.g. most emoji) is ONE
 //! `char` in Rust but TWO UTF-16 code units in JS — `char_indices()`-based
@@ -218,8 +216,7 @@ pub fn apply_run_style(
     merge_adjacent(&all)
 }
 
-// `ScannedNode` used to be a local placeholder mirroring
-// `packages/core/src/slide/scan.ts`'s shape (this file landed before
+// `ScannedNode` used to be a local placeholder (this file landed before
 // `slide::scan` did). Now that the real scanner exists, `read_text_box_runs`
 // operates on its actual `ScannedNode`/`attribute_of` — same field shape
 // this file assumed, so the swap needed no logic changes.

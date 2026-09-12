@@ -475,8 +475,8 @@ mod tests {
 
     #[test]
     fn axis_set_single_with_right_flag_is_parsed_but_rejected_downstream() {
-        // argv layer only parses — the "single 不可指定 --right" business
-        // rule lives in chart::edit::set_chart_axis, not here.
+        // argv layer only parses — the "single may not specify --right"
+        // business rule lives in chart::edit::set_chart_axis, not here.
         let cmd = parse(&s(&[
             "axis",
             "set",

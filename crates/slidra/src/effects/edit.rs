@@ -566,9 +566,9 @@ pub fn set_effect(
 /// `removeEffectsTargeting`, the "dangling-target cleanup" `element/group.rs`
 /// (grouping clears each new member's own effects; ungrouping clears the
 /// dissolved group's own effect) and `element/edit.rs` (`element delete`
-/// clears effects targeting the deleted subtree) both need ([E4.T5] plan
-/// section 3.1/3.2, "與同 wave 的重疊" table) — not called by anything in
-/// this file's own `effect *` command family.
+/// clears effects targeting the deleted subtree) both need (plan
+/// section 3.1/3.2's "overlap with the same wave" table) — not called by
+/// anything in this file's own `effect *` command family.
 ///
 /// Removes every effect item whose `target` is in `target_ids`. A slide with
 /// no effect list at all is a legal no-op (returns the content unchanged,

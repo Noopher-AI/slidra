@@ -1,6 +1,5 @@
 //! `element copy` / `element cut` / `element paste` / `element duplicate`
-//! (plan section 1.1, phase P7). Ported from
-//! `packages/core/src/element-clipboard.ts` (932 lines) — this ticket's
+//! (plan section 1.1, phase P7) — this ticket's
 //! technically riskiest phase (plan section 0): a from-scratch allowlist
 //! sanitizer over pasted markup (ADR-0010), a system-clipboard exchange SVG
 //! format, and a WHATWG-`URL`-shaped defense-in-depth check ported without
@@ -306,7 +305,7 @@ fn append_effects(svg_content: &str, effect_markups: &[String]) -> SlidraResult<
 /// serialized object entirely when absent (`skip_serializing_if`), matching
 /// `JSON.stringify` dropping an `undefined` field rather than writing
 /// `"viewBox":null` — the two engines must produce byte-identical clipboard
-/// files for AC9 (round-1 review) to hold.
+/// files.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardPayload {
@@ -330,12 +329,10 @@ const CLIPBOARD_SOURCE_ATTR: &str = "data-slidra-source";
 /// `view_box`.
 const SANITIZE_PLACEHOLDER_VIEWBOX: &str = "0 0 1280 720";
 
-/// [E2.T7]/D2: `EFFECTS_NS` — the ONE shared namespace `<slidra:effects>`
+/// `EFFECTS_NS` — the ONE shared namespace `<slidra:effects>`
 /// lives in everywhere it's read or written (`effects::edit::EFFECTS_NS`,
-/// `apps/web/src/effects.ts`, `packages/core/src/notes.ts`'s
-/// `NOTES_NS`). Reused directly, not redeclared — this ticket's own
-/// `effects::remove_effects_targeting` (P2 foundation) already established
-/// that constant.
+/// `apps/web/src/effects.ts`). Reused directly, not redeclared —
+/// `effects::remove_effects_targeting` already established that constant.
 use crate::effects::edit::EFFECTS_NS;
 
 const XML_NAMED_ENTITIES: [(&str, char); 5] = [
@@ -549,7 +546,7 @@ fn has_illegal_raw_xml_text(raw: &str) -> Option<&'static str> {
     None
 }
 
-/// [I1, r5] Delegates, as closely as a hand-written port can, to the same
+/// Delegates, as closely as a hand-written port can, to the same
 /// WHATWG `URL` parser a browser uses — but this crate cannot import one
 /// (plan decision D4: no new crate dependency, `url` included). This is
 /// therefore a PROVEN REDUCTION, not a URL parser: `isRelativeRef`'s shape
@@ -703,10 +700,10 @@ fn is_paint_url_ref(value: &str) -> bool {
     }
 }
 
-/// [NOOP-213] Narrower than the write side (`element style set` does not
+/// Narrower than the write side (`element style set` does not
 /// validate `fill`/`stroke`'s value at all beyond the style whitelist) —
-/// known mis-rejection: `fill="rgb(1,2,3)"`. Not fixed here; that is
-/// NOOP-213's own scope (plan section 2, boundary 11).
+/// known mis-rejection: `fill="rgb(1,2,3)"`. Not fixed here (plan section
+/// 2, boundary 11).
 fn is_paint(value: &str) -> bool {
     value == "none"
         || value == "currentColor"
@@ -728,9 +725,8 @@ fn is_transform(value: &str) -> bool {
 }
 
 /// Character set only — path data isn't a reference carrier, so there's
-/// nothing to parse for, only a shape to bound. [NOOP-213] known
-/// mis-rejection: an arbitrary `element insert path --d` string outside SVG
-/// path syntax.
+/// nothing to parse for, only a shape to bound. Known mis-rejection: an
+/// arbitrary `element insert path --d` string outside SVG path syntax.
 fn is_path_data(value: &str) -> bool {
     value.chars().all(|c| {
         matches!(
@@ -770,7 +766,7 @@ fn is_relative_ref_path_charset(value: &str) -> bool {
     })
 }
 
-/// [NOOP-213] Known mis-rejection: no non-ASCII sample this ticket's
+/// Known mis-rejection: no non-ASCII sample this ticket's
 /// predecessor tested ever relied on the charset alone — only on the
 /// `:`/`\`/leading-`//` exclusions or `resolves_within_document`. A
 /// Chinese asset filename (ordinary input for a Traditional-Chinese-first
@@ -796,7 +792,7 @@ fn is_cell_ref(value: &str) -> bool {
 }
 
 /// Excludes `(`/`)`/`\`/`:`/`;`/`<`/`>`/`"`/`'`/`&` — i.e. every character a
-/// CSS function, a protocol, or a markup delimiter needs. [NOOP-213] known
+/// CSS function, a protocol, or a markup delimiter needs. Known
 /// mis-rejection: a quoted/comma-listed font-family value.
 fn is_font_family(value: &str) -> bool {
     value.chars().count() <= 128
@@ -861,7 +857,7 @@ fn textish_attributes() -> HashMap<&'static str, Grammar> {
     m
 }
 
-/// [E2.T18r6] Plan §4.3: one grammar map per tag `sanitize_clipboard_markup`
+/// Plan §4.3: one grammar map per tag `sanitize_clipboard_markup`
 /// ("element" kind) may see. A tag with no entry here is rejected outright —
 /// this *is* the allowlist's tag layer, alongside `assert_slide_compliant`'s
 /// own (broader, structural) tag sweep.
@@ -1088,7 +1084,7 @@ fn check_node_attributes(node: &ScannedNode, label: &str, is_effect: bool) -> Sl
     Ok(())
 }
 
-/// [E2.T18r8] Same raw-form XML legality as `check_attribute_value`, applied
+/// Same raw-form XML legality as `check_attribute_value`, applied
 /// to element/character content instead of an attribute value.
 fn check_text_content(markup: &str, node: &ScannedNode, label: &str) -> SlidraResult<()> {
     if node.self_closing {
@@ -1402,7 +1398,7 @@ mod tests {
         assert!(is_paint("#ff0000ff"));
         assert!(is_paint("red"));
         assert!(is_paint("url(#grad-1)"));
-        // Known mis-rejection (NOOP-213), not fixed by this port.
+        // Known mis-rejection, not fixed by this port.
         assert!(!is_paint("rgb(1,2,3)"));
     }
 
@@ -1457,7 +1453,7 @@ mod tests {
     #[test]
     fn is_font_family_rejects_quotes_and_comma_lists_known_mis_rejection() {
         assert!(is_font_family("Noto Sans TC"));
-        // Known mis-rejection (NOOP-213): a quoted/comma-separated CSS
+        // Known mis-rejection: a quoted/comma-separated CSS
         // font-family list, not fixed by this port.
         assert!(!is_font_family("\"Noto Sans TC\", sans-serif"));
     }
@@ -1552,7 +1548,8 @@ mod tests {
     fn sanitize_rejects_the_wrong_root_tag() {
         // Same structural-sweep reasoning as the tag-outside-allowlist test
         // above: a bare non-"g" root for "element" kind is already rejected
-        // by `assert_slide_compliant` itself ("裸圖元，必須包在 <g> 容器裡"),
+        // by `assert_slide_compliant` itself ("a bare primitive must be
+        // wrapped in a <g> container"),
         // never reaching this module's own root-tag check — so this is
         // exercised via "effect" kind instead, where a non-"slidra:effect"
         // top-level tag inside `<metadata>` passes the structural sweep.

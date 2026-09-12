@@ -1,8 +1,6 @@
-//! `table` family argv parsing, ported from `packages/cli/src/argv.ts`'s
-//! `case "table":` block (lines 465-663) — flag names, positional order,
-//! the `level1`/`level2`/`level3` sub-verb dispatch shape for multi-word
-//! commands (`table cell style set`), and every error message are ported
-//! verbatim from that range.
+//! `table` family argv parsing: flag names, positional order, the
+//! `level1`/`level2`/`level3` sub-verb dispatch shape for multi-word
+//! commands (`table cell style set`), and every error message.
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::table::clipboard::{CellAnchor, CellRange, parse_cell_anchor, parse_cell_range};

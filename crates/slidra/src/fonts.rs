@@ -1,5 +1,4 @@
-//! Resolves every font a presentation embeds, keyed by font-family — ported
-//! from `packages/core/src/fonts.ts`'s `resolvePresentationFonts` (plan
+//! Resolves every font a presentation embeds, keyed by font-family (plan
 //! section 3.2). This is what the text write path (`textbox add`/`text
 //! set`/`text style set`/`text list set`/`element style set`) needs to pick
 //! the right font for whichever `font-family` a `<text>` node declares, and
@@ -31,8 +30,9 @@ use std::collections::HashMap;
 /// `family`. A presentation that declares its own entry for
 /// `DEFAULT_FONT_FAMILY` overwrites the bundled default with its own
 /// bytes — inserted second, so it wins (mirrors the TS original's own
-/// `Map` construction order, plan section 3.2's "簡報自己宣告同名家族時後
-/// 加者勝").
+/// `Map` construction order, plan section 3.2's rule that a presentation
+/// declaring its own entry for an existing family name wins over the
+/// bundled default).
 ///
 /// `project.json`'s `fonts` field, when present, was already structurally
 /// validated by `read_project_json` (required string fields, no duplicate

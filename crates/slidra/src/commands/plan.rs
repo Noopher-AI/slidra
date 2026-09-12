@@ -1,4 +1,4 @@
-//! `slidra plan set|list|delete` (#303, ADR-0018): the presentation's
+//! `slidra plan set|list|delete` (ADR-0018): the presentation's
 //! plan files under `plan/`. Reading is `cat <id> plan/outline.md`.
 
 use crate::commands::argv;
