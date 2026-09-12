@@ -2397,6 +2397,50 @@ fn plan_set_then_validate_round_trip_via_rust_binary() {
     );
 }
 
+/// Once the author has confirmed the plan, a page that has already been
+/// drawn owns its blueprint: the build may not fail `validate` and then
+/// edit the numbers until they agree. `--force` is still the way out.
+#[test]
+fn a_confirmed_plans_drawn_page_guards_its_blueprint() {
+    let fixture = Fixture::new("plan-guard");
+    let comot_path = fixture.workspace.join("t.comot");
+    fixture.run_rust(&["new", comot_path.to_str().unwrap(), "--name", "測試"]);
+    let id = extract_id(&fixture.run_rust(&["open", comot_path.to_str().unwrap()]));
+    fixture.seed_slide(&id);
+
+    let outline = |nodes: u32| {
+        format!(
+            "```json\n{{ \"status\": \"confirmed\", \"mode\": \"narrative\", \"pages\": [ {{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"標題\", \"blueprint\": {{ \"shape\": \"spine-path\", \"nodes\": {nodes}, \"steps\": 4 }} }} ] }}\n```\n"
+        )
+    };
+    assert!(
+        fixture
+            .run_rust(&["plan", "set", &id, "outline", &outline(3)])
+            .status
+            .success()
+    );
+
+    let refused = fixture.run_rust(&["plan", "set", &id, "outline", &outline(0)]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("slides/001.svg"),
+        "{refused:?}"
+    );
+    let on_disk = fixture.run_rust(&["cat", &id, "plan/outline.md"]);
+    assert!(
+        String::from_utf8_lossy(&on_disk.stdout).contains("\"nodes\": 3"),
+        "a refused set must not land: {on_disk:?}"
+    );
+
+    let forced = fixture.run_rust(&["plan", "set", &id, "outline", &outline(0), "--force"]);
+    assert!(forced.status.success(), "{forced:?}");
+    let on_disk = fixture.run_rust(&["cat", &id, "plan/outline.md"]);
+    assert!(
+        String::from_utf8_lossy(&on_disk.stdout).contains("\"nodes\": 0"),
+        "{on_disk:?}"
+    );
+}
+
 /// #303: `font import` embeds a second family and the write path can
 /// immediately measure text in it — the whole point of the command, since a
 /// style catalogue that varies typography is useless if the family it names

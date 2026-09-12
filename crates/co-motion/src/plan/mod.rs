@@ -604,19 +604,127 @@ pub fn read_design_spec(work_dir: &Path) -> CoMotionResult<Option<DesignSpec>> {
     }
 }
 
+fn describe_blueprint(blueprint: Option<&PageBlueprint>) -> String {
+    match blueprint {
+        None => "（沒有）".to_string(),
+        Some(b) => format!("{} / {} 個 node / {} 步", b.shape, b.nodes, b.steps),
+    }
+}
+
+/// What a `plan set outline` may still change once the author has confirmed
+/// the plan. The build legitimately keeps writing here — `blueprint` is its
+/// own 構圖思考 written down (see `PageBlueprint`) — so this is a field
+/// whitelist, not a read-only flag. What it stops is the one move that makes
+/// the reconciliation meaningless: draw the page, fail `validate`, then edit
+/// the blueprint until the numbers agree. A real session did exactly that
+/// three times, and `blueprint.nodes`/`blueprint.steps` reported nothing.
+///
+/// `drawn_pages` is how many slides the deck actually has. Pages pair with
+/// slides by position, exactly as `validate` pairs them — `n` is already
+/// pinned to `index + 1` by `parse_outline`.
+///
+/// Every violation is reported at once: told one at a time, an agent just
+/// tries them one at a time.
+pub fn assert_confirmed_outline_change_allowed(
+    old: &OutlinePlan,
+    new: &OutlinePlan,
+    drawn_pages: usize,
+    force: bool,
+) -> CoMotionResult<()> {
+    if force || old.status != "confirmed" {
+        return Ok(());
+    }
+
+    let mut violations: Vec<String> = Vec::new();
+    if new.status != "confirmed" {
+        violations.push(format!(
+            "status：{} → {}（退回 draft 會重開作者的確認閘門）",
+            old.status, new.status
+        ));
+    }
+    for (field, old_value, new_value) in [
+        ("mode", &old.mode, &new.mode),
+        ("animation", &old.animation, &new.animation),
+        ("background", &old.background, &new.background),
+    ] {
+        if old_value != new_value {
+            violations.push(format!("{field}：{old_value} → {new_value}"));
+        }
+    }
+    if new.pages.len() < old.pages.len() {
+        violations.push(format!(
+            "頁數：{} 頁 → {} 頁（不能刪頁）",
+            old.pages.len(),
+            new.pages.len()
+        ));
+    }
+
+    for (index, old_page) in old.pages.iter().enumerate() {
+        let Some(new_page) = new.pages.get(index) else {
+            break;
+        };
+        let n = index + 1;
+        for (field, old_value, new_value) in [
+            (
+                "relationship",
+                &old_page.relationship,
+                &new_page.relationship,
+            ),
+            ("rhythm", &old_page.rhythm, &new_page.rhythm),
+            ("title", &old_page.title, &new_page.title),
+        ] {
+            if old_value != new_value {
+                violations.push(format!("第 {n} 頁 {field}：{old_value} → {new_value}"));
+            }
+        }
+        // Writing a blueprint for the first time is the 構圖思考 step doing
+        // its job, whenever it happens. Rewriting one the page was already
+        // drawn against is the move this guard exists for.
+        if index < drawn_pages
+            && old_page.blueprint.is_some()
+            && old_page.blueprint != new_page.blueprint
+        {
+            violations.push(format!(
+                "第 {n} 頁 blueprint（slides/{n:03}.svg 已經畫出來了）：{} → {}",
+                describe_blueprint(old_page.blueprint.as_ref()),
+                describe_blueprint(new_page.blueprint.as_ref()),
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        return Ok(());
+    }
+    Err(CoMotionError::invalid(format!(
+        "計畫已經確認過了，這些不能再改：\n  - {}\n\
+         構圖先於頁面：頁面畫錯就改頁面，不要改計畫去配合。\n\
+         作者答過的題目要改，先問作者。拆頁或中途換版面請在同一條命令最後加上 --force。",
+        violations.join("\n  - ")
+    )))
+}
+
 /// `plan set`: validates the content for `name`, then writes it — no undo
 /// history entry (plan files are not slide content).
-pub fn set_plan(id: &str, name: &str, content: &str) -> CoMotionResult<String> {
+pub fn set_plan(id: &str, name: &str, content: &str, force: bool) -> CoMotionResult<String> {
     let path = plan_path_for(name)?;
+    let work_dir = workspace::resolve_work_dir(id)?;
     match name {
         "outline" => {
-            parse_outline(content)?;
+            let new = parse_outline(content)?;
+            // An existing outline this build cannot parse gets no guard —
+            // that write is the repair path, and refusing it would leave
+            // the plan unfixable.
+            if let Ok(Some(old)) = read_outline(&work_dir) {
+                let drawn = workspace::project::read_project_json(&work_dir)
+                    .map(|project| project.slides.len())
+                    .unwrap_or(0);
+                assert_confirmed_outline_change_allowed(&old, &new, drawn, force)?;
+            }
         }
         _ => {
             parse_design_spec(content)?;
         }
     }
-    let work_dir = workspace::resolve_work_dir(id)?;
     let plan_dir = work_dir.join("plan");
     std::fs::create_dir_all(&plan_dir)
         .map_err(|_| CoMotionError::invalid(format!("寫入檔案時發生錯誤：{path}")))?;
@@ -875,5 +983,125 @@ mod tests {
         assert_eq!(plan_path_for("outline").unwrap(), OUTLINE_PATH);
         assert_eq!(plan_path_for("design-spec").unwrap(), DESIGN_SPEC_PATH);
         assert!(plan_path_for("brief").is_err());
+    }
+
+    /// One page, `order`/`dense`, with the blueprint the build wrote.
+    const PAGE_WITH_BLUEPRINT: &str = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"第一頁\", \"blueprint\": { \"shape\": \"spine-path\", \"nodes\": 3, \"steps\": 4 } }";
+
+    fn outline(status: &str, pages: &str) -> OutlinePlan {
+        parse_outline(&format!(
+            "```json\n{{ \"status\": \"{status}\", \"mode\": \"narrative\", \"pages\": [{pages}] }}\n```\n"
+        ))
+        .unwrap()
+    }
+
+    fn guard(old: &OutlinePlan, new: &OutlinePlan, drawn_pages: usize) -> CoMotionResult<()> {
+        assert_confirmed_outline_change_allowed(old, new, drawn_pages, false)
+    }
+
+    #[test]
+    fn a_draft_plan_is_not_guarded() {
+        let old = outline("draft", PAGE_WITH_BLUEPRINT);
+        let new = outline(
+            "draft",
+            &PAGE_WITH_BLUEPRINT.replace("\"nodes\": 3", "\"nodes\": 0"),
+        );
+        assert!(guard(&old, &new, 1).is_ok());
+    }
+
+    #[test]
+    fn a_confirmed_plan_refuses_changing_an_answer_the_author_gave() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let mut new = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        new.mode = "pyramid".to_string();
+        assert!(guard(&old, &new, 1).unwrap_err().message().contains("mode"));
+    }
+
+    #[test]
+    fn a_confirmed_plan_refuses_rewriting_a_drawn_pages_blueprint() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let new = outline(
+            "confirmed",
+            &PAGE_WITH_BLUEPRINT.replace("\"nodes\": 3", "\"nodes\": 0"),
+        );
+        assert!(
+            guard(&old, &new, 1)
+                .unwrap_err()
+                .message()
+                .contains("slides/001.svg")
+        );
+    }
+
+    #[test]
+    fn the_same_rewrite_is_fine_while_the_page_is_still_undrawn() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let new = outline(
+            "confirmed",
+            &PAGE_WITH_BLUEPRINT.replace("\"nodes\": 3", "\"nodes\": 0"),
+        );
+        assert!(guard(&old, &new, 0).is_ok());
+    }
+
+    #[test]
+    fn writing_a_blueprint_for_the_first_time_is_always_allowed() {
+        let without = "{ \"n\": 1, \"relationship\": \"order\", \"rhythm\": \"dense\", \"title\": \"第一頁\" }";
+        let old = outline("confirmed", without);
+        let new = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        assert!(guard(&old, &new, 1).is_ok());
+    }
+
+    #[test]
+    fn a_confirmed_plan_allows_appending_a_page_but_not_dropping_one() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let appended = format!(
+            "{PAGE_WITH_BLUEPRINT}, {{ \"n\": 2, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"新頁\" }}"
+        );
+        assert!(guard(&old, &outline("confirmed", &appended), 1).is_ok());
+
+        let old_two = outline("confirmed", &appended);
+        assert!(
+            guard(&old_two, &outline("confirmed", PAGE_WITH_BLUEPRINT), 2)
+                .unwrap_err()
+                .message()
+                .contains("不能刪頁")
+        );
+    }
+
+    #[test]
+    fn a_confirmed_plan_refuses_going_back_to_draft() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let new = outline("draft", PAGE_WITH_BLUEPRINT);
+        assert!(
+            guard(&old, &new, 1)
+                .unwrap_err()
+                .message()
+                .contains("status")
+        );
+    }
+
+    #[test]
+    fn every_violation_is_reported_at_once() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let mut new = outline(
+            "confirmed",
+            &PAGE_WITH_BLUEPRINT
+                .replace("\"nodes\": 3", "\"nodes\": 0")
+                .replace("第一頁", "改過的標題"),
+        );
+        new.mode = "pyramid".to_string();
+        let message = guard(&old, &new, 1).unwrap_err().message().to_string();
+        assert!(message.contains("mode"), "{message}");
+        assert!(message.contains("title"), "{message}");
+        assert!(message.contains("blueprint"), "{message}");
+    }
+
+    #[test]
+    fn force_bypasses_the_guard() {
+        let old = outline("confirmed", PAGE_WITH_BLUEPRINT);
+        let new = outline(
+            "draft",
+            "{ \"n\": 1, \"relationship\": \"none\", \"rhythm\": \"anchor\", \"title\": \"全都改了\" }",
+        );
+        assert!(assert_confirmed_outline_change_allowed(&old, &new, 1, true).is_ok());
     }
 }

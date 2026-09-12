@@ -2185,14 +2185,29 @@ co-motion table cell paste pres-1 slides/1.svg el-table1 --at 1,0 --tsv-file ./c
 **語法**
 
 ```
-co-motion plan set <presentation-id> <name> <content>
+co-motion plan set <presentation-id> <name> <content> [--force]
 ```
 
 **參數**
 
 - `presentation-id`：字串，必填。
 - `name`：位置引數，必填，只能是 `outline`（寫 `plan/outline.md`）或 `design-spec`（寫 `plan/design-spec.md`）。
-- `content`：位置引數，必填，檔案全文。開頭必須是一個 ```` ```json ```` 圍欄（機器可讀段），其後可接任意 markdown 正文。寫入前會解析並驗證 JSON 段：`outline` 要有 `status`（`draft`｜`confirmed`）、`mode`（`pyramid`｜`narrative`｜`instructional`｜`showcase`｜`briefing`）、非空的 `pages`（每項 `n` 從 1 連續遞增、`type` ∈ cover｜section｜bullets｜compare｜number｜closing、`rhythm` ∈ anchor｜dense｜breathing、`title`），選填 `questions`（每題 `id` 唯一、`question`、`recommended` 必須是 2～4 個 `options` 之一的 `value`、選填 `note` 與 `free_text`）；`design-spec` 要有 `density`（`presentation`｜`balanced`｜`text`）、`palette`（七個角色 `background`／`secondary_bg`／`primary`／`accent`／`secondary_accent`／`text`／`muted`，皆為大寫 `#RRGGBB`）、`type_scale`（九個角色 `cover`／`section`／`number`／`claim`／`title`／`subtitle`／`body`／`column`／`caption`，皆為正數）。任何一項不合就拒絕、不落地。計畫檔不是投影片內容，**不進 undo 歷史**（ADR-0018）。
+- `content`：位置引數，必填，檔案全文。開頭必須是一個 ```` ```json ```` 圍欄（機器可讀段），其後可接任意 markdown 正文。寫入前會解析並驗證 JSON 段：`outline` 要有 `status`（`draft`｜`confirmed`）、`mode`（`pyramid`｜`narrative`｜`instructional`｜`showcase`｜`briefing`）、非空的 `pages`（每項 `n` 從 1 連續遞增、必填的 `relationship` ∈ membership｜order｜contrast｜parent｜link｜overlap｜none、`rhythm` ∈ anchor｜dense｜breathing、`title`，選填的 `type` ∈ cover｜section｜bullets｜compare｜number｜closing 與 `blueprint`（`shape` 非空字串、`nodes`／`steps` 非負整數）），選填 `questions`（每題 `id` 唯一、`question`、`recommended` 必須是 2～4 個 `options` 之一的 `value`、選填 `note` 與 `free_text`）；`design-spec` 要有 `density`（`presentation`｜`balanced`｜`text`）、`palette`（七個角色 `background`／`secondary_bg`／`primary`／`accent`／`secondary_accent`／`text`／`muted`，皆為大寫 `#RRGGBB`）、`type_scale`（九個角色 `cover`／`section`／`number`／`claim`／`title`／`subtitle`／`body`／`column`／`caption`，皆為正數）。任何一項不合就拒絕、不落地。計畫檔不是投影片內容，**不進 undo 歷史**（ADR-0018）。
+- `--force`：選填，只能出現在 `content` 之後。繞過下面那條「確認過的計畫」守衛，其他驗證照跑。
+
+**確認過的計畫可以改什麼**
+
+既有的 `plan/outline.md` 的 `status` 是 `confirmed` 時（`draft` 不受限），這一次寫入會跟既有內容比對，下列改動一律拒絕，除非帶 `--force`：
+
+| 拒絕 | 為什麼 |
+|---|---|
+| `status` 從 `confirmed` 變回 `draft` | 會重開作者的確認閘門，並關掉 `validate` 的 `blueprint.required` |
+| `mode`／`animation`／`background` 改變 | 作者在閘門上答過的三題 |
+| `pages` 變少 | 刪頁 |
+| 既有頁的 `relationship`／`rhythm`／`title` 改變 | 同上，作者確認過的頁面骨架 |
+| 第 `n` 頁**已經有** `blueprint` 且 `n ≤ 投影片數`時改動它 | 構圖先於頁面。畫完再改構圖數字，`blueprint.nodes`／`blueprint.steps` 兩條規則就只是在對事後補的答案卡 |
+
+放行：第一次替某頁寫 `blueprint`、改一頁還沒畫出來的頁（`n > 投影片數`）的 `blueprint`、`type` 欄位、以及接在最後面的新增頁。頁面與計畫按位置配對，跟 `validate` 一致。既有檔案本身解析不了時不做比對——那一次寫入是修復路徑。
 
 **成功 `data`**
 
@@ -2207,6 +2222,7 @@ co-motion plan set <presentation-id> <name> <content>
 | `presentation-id` 不存在 | `not-found` |
 | `name` 不是 `outline` 或 `design-spec` | `failed` |
 | `content` 沒有 ```` ```json ```` 圍欄、JSON 無法解析、或任一欄位不合上述規則 | `failed` |
+| 確認過的計畫改了受保護的欄位，且沒帶 `--force` | `failed` |
 
 **範例**
 

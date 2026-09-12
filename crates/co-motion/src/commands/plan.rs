@@ -33,7 +33,13 @@ fn run_set(args: &[String]) -> CommandResult {
         Ok(v) => v,
         Err(err) => return CommandResult::from_error(&err),
     };
-    match plan::set_plan(id, name, content) {
+    // `content` is a raw positional, so `--force` can only be pinned right
+    // after it — the same shape `text set`/`textbox width` use.
+    let force = match argv::require_trailing_force_flag(args, 3, COMMAND) {
+        Ok(v) => v,
+        Err(err) => return CommandResult::from_error(&err),
+    };
+    match plan::set_plan(id, name, content, force) {
         Ok(path) => CommandResult::success(
             format!("已寫入 {path}"),
             Some(serde_json::json!({ "path": path })),
