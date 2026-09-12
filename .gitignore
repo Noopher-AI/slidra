@@ -6,12 +6,8 @@ __pycache__/
 build/
 dist/
 
-# Fleet plan records — local working notes, not part of the product
-# Fleet working files stay out of the repository -- except the environment file.
-# `.fleet/*` rather than `.fleet/`: git never descends into an excluded directory,
-# so a negation under `.fleet/` would never be reached.
-.fleet/*
-!.fleet/environment.md
+# Fleet plan records — local working notes, not part of the product.
+.fleet/
 
 # macOS
 .DS_Store
