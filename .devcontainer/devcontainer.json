@@ -1,5 +1,5 @@
 {
-  "name": "co-motion",
+  "name": "comotion",
   "build": {
     "dockerfile": "Dockerfile",
     "args": { "UID": "1000" }

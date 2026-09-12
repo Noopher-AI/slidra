@@ -8,26 +8,21 @@ import type { CommandOutcome, CommandRunner } from "../packages/server/src/agent
 import { openApp, requireBuilt, startServerFor, type StartedServer } from "./helpers/launch.js";
 
 /**
- * [E3.T5] NOOP-235/#234 — the settings dialog's Agent tab and the chat
- * panel's agent-driven empty state, end to end (A1–A4, Plan §5). The only
- * new e2e file this ticket opens (D9): every scenario needs
- * `initialAgent`/`agentManager.{runCommand,resolveAdapter}` (Plan §3.8),
- * a server construction shape no existing e2e file uses, and folding it
- * into `ai-collab.test.ts`'s own `startServerFor` would force that shared
- * helper to grow a second, incompatible mode.
+ * The chat panel's agent／model chips and their menus (AgentPicker.tsx) and the agent-
+ * driven empty state, end to end (A1–A4). This started life as the settings
+ * dialog's Agent tab test ([E3.T5] NOOP-235/#234); the dialog and the status
+ * bar gear are gone — everything the author used to do there is a pill
+ * under the chat box now (a chip that opens a menu), so the scenarios stay and only the selectors and
+ * the "open the dialog" step changed.
  *
  * Login status is fully controlled by an injected `CommandRunner`
  * (`probe.ts`'s seam) — no real `claude`/`codex` CLI is ever consulted.
  * `editing-fake-acp-agent.mjs` (already used by e2e/freeze.test.ts and
  * friends) is reused for the one scenario (A3) that needs a real
- * text-changing session, since a real agent needing to run a real
- * `co-motion` command is exactly why `agentEnv`/`resolveAdapter` must be
- * able to name a real `presentationId` before the session is built.
+ * text-changing session.
  *
- * Assertion style matches e2e/freeze.test.ts, not `@playwright/test`'s own
- * `expect(locator).toBeVisible()` family — this suite runs on vitest's
- * plain chai-based `expect`, which has no such matchers; every assertion
- * below is `expect.poll(() => locator.textContent()/.isVisible()/...)`.
+ * Assertion style matches e2e/freeze.test.ts: vitest's plain chai-based
+ * `expect`, every assertion `expect.poll(() => locator…)`.
  */
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
@@ -79,9 +74,20 @@ async function openPage(server: StartedServer["server"]): Promise<Page> {
   return page;
 }
 
-async function openSettingsDialog(page: Page): Promise<void> {
-  await page.locator(".status-settings-button").click();
-  await expect.poll(() => page.locator('[role="dialog"][aria-label="Settings"]').isVisible()).toBe(true);
+/** Opens the agent chip's menu (the chip is enabled once `GET /api/agent` has answered). */
+async function openAgentMenu(page: Page): Promise<void> {
+  const chip = page.locator('.chat-chip[data-chip="agent"]');
+  await expect.poll(() => chip.isEnabled().catch(() => false), { timeout: 10_000 }).toBe(true);
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  await expect.poll(() => page.locator('.chat-chip-menu [data-kind="claude"]').count()).toBeGreaterThan(0);
+}
+
+async function itemChecked(page: Page, kind: string): Promise<string | null> {
+  return page.locator(`.chat-chip-menu [data-kind="${kind}"]`).getAttribute("aria-checked");
+}
+
+async function itemDetail(page: Page, kind: string): Promise<string | null> {
+  return page.locator(`.chat-chip-menu [data-kind="${kind}"] .chat-chip-menu-detail`).textContent();
 }
 
 async function textOf(page: Page, selector: string): Promise<string | null> {
@@ -92,13 +98,10 @@ async function textOf(page: Page, selector: string): Promise<string | null> {
 // A1: 尚未登入／可用／偵測中三個場景，卡片文字與動作正確；未登入指令可複製。
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A1: 對話框裡卡片依探測結果顯示尚未登入／可用／偵測中，未登入指令可複製", async () => {
-  // Plan §3.8: an artificial pause before a probe resolves gives "偵測
-  // 中…" a deterministic observation window. Only re-probes are delayed
-  // here (not the initial mount GET) so the dialog opens against already-
-  // known card data — AgentTab's "偵測中" row (Plan §4.4 row 1) explicitly
-  // renders on top of "依上一次已知結果顯示", which the very first load has
-  // none of yet (noted in this PR's own "不確定與保留事項").
+it("A1: agent 選單依探測結果顯示使用中／未登入／偵測中，未登入那列帶登入指令", async () => {
+  // An artificial pause before a probe resolves gives "偵測中…" a
+  // deterministic observation window. Only re-probes are delayed (not the
+  // initial mount GET) so the menu opens against already-known data.
   const PROBE_DELAY_MS = 1200;
   let probeCount = 0;
   const runner: CommandRunner = async (command) => {
@@ -117,33 +120,29 @@ it("A1: 對話框裡卡片依探測結果顯示尚未登入／可用／偵測中
     resolveAdapter: (kind, presentationId) => fixtureAdapterFor(kind, presentationId, "不會用到"),
   });
 
-  const server = activeServer.server;
-  const page = await openPage(server);
-  await openSettingsDialog(page);
+  const page = await openPage(activeServer.server);
+  await openAgentMenu(page);
 
-  // 初次載入（未延遲）：claude 可用且使用中，codex 尚未登入且登入指令逐字正確。
-  await expect.poll(() => textOf(page, '[data-kind="claude"] .agent-card-status'), { timeout: 10_000 }).toBe("可用");
-  expect(await textOf(page, '[data-kind="claude"] .agent-card-in-use-badge')).toBe("使用中");
-  expect(await textOf(page, '[data-kind="codex"] .agent-card-status')).toBe("尚未登入");
-  expect(await textOf(page, '[data-kind="codex"] .agent-card-login-command')).toBe("codex login");
+  // 初次載入（未延遲）：claude 使用中，codex 未登入且那列帶登入指令。
+  await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
+  expect(await itemDetail(page, "claude")).toBe("使用中");
+  expect(await itemChecked(page, "codex")).toBe("false");
+  expect(await itemDetail(page, "codex")).toBe("未登入 · codex login");
 
   // 按「重新偵測」：這次探測被延遲，「偵測中…」有確定性的觀察窗。
-  await page.locator(".agent-tab-probe-button").click();
-  await expect.poll(() => textOf(page, '[data-kind="codex"] .agent-card-status')).toBe("偵測中…");
-  expect(await textOf(page, '[data-kind="claude"] .agent-card-status')).toBe("偵測中…");
-  await expect.poll(() => textOf(page, '[data-kind="claude"] .agent-card-status'), { timeout: 10_000 }).toBe("可用");
-
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: server.url });
-  await page.locator('[data-kind="codex"] .agent-card-copy-button').click();
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toBe("codex login");
+  const probeButton = page.locator(".chat-chip-menu-action");
+  await probeButton.click();
+  await expect.poll(() => probeButton.textContent()).toBe("偵測中…");
+  await expect.poll(() => itemDetail(page, "codex")).toBe("偵測中…");
+  await expect.poll(() => probeButton.textContent(), { timeout: 10_000 }).toBe("重新偵測登入狀態");
+  expect(await itemDetail(page, "claude")).toBe("使用中");
 });
 
 // ─────────────────────────────────────────────────────────────────────────
 // A2: 探針結果改變後按「重新偵測」，卡片狀態更新。
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A2: 按「重新偵測」後卡片狀態隨探針結果更新", async () => {
+it("A2: 按「重新偵測」後選單裡的狀態隨探針結果更新", async () => {
   let codexLoggedIn = false;
   const runner: CommandRunner = async (command) => {
     if (command === "claude") return outcome({ stdout: '{"loggedIn":true}' });
@@ -160,23 +159,21 @@ it("A2: 按「重新偵測」後卡片狀態隨探針結果更新", async () => 
   });
 
   const page = await openPage(activeServer.server);
-  await openSettingsDialog(page);
+  await openAgentMenu(page);
 
-  await expect.poll(() => textOf(page, '[data-kind="codex"] .agent-card-status'), { timeout: 10_000 }).toBe("尚未登入");
-  expect(await page.locator('[data-kind="codex"] .agent-card-use-button').count()).toBe(0);
+  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("未登入 · codex login");
 
   codexLoggedIn = true;
-  await page.locator(".agent-tab-probe-button").click();
+  await page.locator(".chat-chip-menu-action").click();
 
-  await expect.poll(() => textOf(page, '[data-kind="codex"] .agent-card-status'), { timeout: 10_000 }).toBe("可用");
-  expect(await textOf(page, '[data-kind="codex"] .agent-card-use-button')).toBe("使用這個");
+  await expect.poll(() => itemDetail(page, "codex"), { timeout: 10_000 }).toBe("可用");
 });
 
 // ─────────────────────────────────────────────────────────────────────────
 // A3: 切換後聊天出現系統訊息，下一則訊息由新 agent 處理；編輯鎖中按鈕停用。
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A3: 切換 agent 後系統訊息、標題列、下一則訊息與編輯鎖", async () => {
+it("A3: 從選單切換 agent 後系統訊息、膠囊、下一則訊息與編輯鎖", async () => {
   const FREEZE_HOLD_MS = 1500;
   const bothLoggedIn: CommandRunner = async () => outcome({ stdout: '{"loggedIn":true}' });
 
@@ -193,27 +190,27 @@ it("A3: 切換 agent 後系統訊息、標題列、下一則訊息與編輯鎖",
 
   const server = activeServer.server;
   const page = await openPage(server);
-  await openSettingsDialog(page);
+  await openAgentMenu(page);
 
-  // claude 是命令列指定的目前 agent：使用中 + 本次由命令列指定。
-  await expect.poll(() => textOf(page, '[data-kind="claude"] .agent-card-in-use-badge'), { timeout: 10_000 }).toBe("使用中");
-  expect(await textOf(page, '[data-kind="claude"] .agent-card-cli-badge')).toBe("本次由命令列指定");
+  // claude 是命令列指定的目前 agent：使用中，選單裡多一行說明來源。
+  await expect.poll(() => itemChecked(page, "claude"), { timeout: 10_000 }).toBe("true");
+  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("本次由命令列指定");
 
-  await page.locator('[data-kind="codex"] .agent-card-use-button').click();
+  await page.locator('.chat-chip-menu [data-kind="codex"]').click();
 
   await expect.poll(() => textOf(page, ".chat-system"), { timeout: 10_000 }).toBe("已切換到 Codex，接下來的訊息由它處理");
   await expect.poll(() => textOf(page, ".agent-dot-connected")).toBe("Codex");
-  // source 已變回 settings：命令列標記消失。
-  await expect.poll(() => page.locator(".agent-card-cli-badge").count()).toBe(0);
-
-  await page.locator(".settings-dialog-close").click();
-  await expect.poll(() => page.locator('[role="dialog"][aria-label="Settings"]').count()).toBe(0);
+  // 選單選完就收起來；再打開時 codex 打勾、命令列說明消失。
+  expect(await page.locator(".chat-chip-menu").count()).toBe(0);
+  await openAgentMenu(page);
+  await expect.poll(() => itemChecked(page, "codex")).toBe("true");
+  expect(await page.locator(".chat-chip-menu-hint").count()).toBe(0);
+  await page.keyboard.press("Escape");
 
   // `editing-fake-acp-agent.mjs` only ever answers its session's very first
-  // real author prompt (see its own header comment) — one message proves
-  // both A3 assertions: the next message really reaches the new (codex)
-  // session, AND the editing lock it takes disables the settings dialog's
-  // switch buttons for the freeze window before that session's turn ends.
+  // real author prompt — one message proves both: the next message really
+  // reaches the new (codex) session, AND the editing lock it takes disables
+  // the menu's agent rows for the freeze window before that session's turn ends.
   await page.locator(".chat-input textarea").fill("改標題");
   await page.locator('.chat-input button[type="submit"]').click();
 
@@ -223,13 +220,13 @@ it("A3: 切換 agent 後系統訊息、標題列、下一則訊息與編輯鎖",
   }
   await expect.poll(isFrozen, { timeout: 5_000 }).toBe(true);
 
-  // 編輯鎖持有中：開設定，兩張卡的「使用這個」都停用，並顯示固定提示。
-  await openSettingsDialog(page);
-  const useButtons = page.locator(".agent-card-use-button");
-  const disabledFlags = await Promise.all((await useButtons.all()).map((button) => button.isDisabled()));
+  // 編輯鎖持有中：選單裡兩列都停用，並顯示固定提示。
+  await openAgentMenu(page);
+  const rows = page.locator(".chat-chip-menu [data-kind]");
+  const disabledFlags = await Promise.all((await rows.all()).map((row) => row.isDisabled()));
   expect(disabledFlags.every(Boolean)).toBe(true);
-  expect(await textOf(page, ".agent-card-frozen-hint")).toBe("agent 正在編輯中，請稍候");
-  await page.locator(".settings-dialog-close").click();
+  expect(await textOf(page, ".chat-chip-menu-hint")).toBe("agent 正在編輯中，切換請稍候");
+  await page.keyboard.press("Escape");
 
   const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
   await expect.poll(() => slideText.textContent(), { timeout: 10_000 }).toBe("Codex改的標題");
@@ -240,7 +237,7 @@ it("A3: 切換 agent 後系統訊息、標題列、下一則訊息與編輯鎖",
 // A4: 無 agent 時聊天面板空狀態與「開啟設定」可開對話框。
 // ─────────────────────────────────────────────────────────────────────────
 
-it("A4: 沒有 agent 時聊天面板顯示空狀態，輸入框停用，開啟設定可開對話框", async () => {
+it("A4: 沒有 agent 時聊天面板顯示空狀態，輸入框停用，從膠囊選單可以選一個", async () => {
   const bothLoggedIn: CommandRunner = async () => outcome({ stdout: '{"loggedIn":true}' });
 
   activeServer = await startServerFor({
@@ -257,7 +254,12 @@ it("A4: 沒有 agent 時聊天面板顯示空狀態，輸入框停用，開啟�
   expect(await textOf(page, ".chat-empty-state")).toContain("尚未選擇 agent");
   expect(await page.locator(".chat-input textarea").isDisabled()).toBe(true);
   expect(await page.locator('.chat-input button[type="submit"]').isDisabled()).toBe(true);
+  await expect.poll(() => textOf(page, '.chat-chip[data-chip="agent"]'), { timeout: 10_000 }).toContain("選擇 agent");
 
-  await page.locator(".chat-empty-state-button").click();
-  await expect.poll(() => page.locator('[role="dialog"][aria-label="Settings"]').isVisible()).toBe(true);
+  await openAgentMenu(page);
+  expect(await itemChecked(page, "claude")).toBe("false");
+  expect(await itemChecked(page, "codex")).toBe("false");
+  await page.locator('.chat-chip-menu [data-kind="claude"]').click();
+  await expect.poll(() => textOf(page, ".agent-dot-connected"), { timeout: 10_000 }).toBe("Claude Code");
+  await expect.poll(() => page.locator(".chat-empty-state").count()).toBe(0);
 });

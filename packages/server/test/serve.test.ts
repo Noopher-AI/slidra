@@ -13,7 +13,7 @@ import type { AgentAdapterConfig } from "../src/agent/session.js";
 const execFileAsync = promisify(execFile);
 
 /** The real Rust binary this whole suite drives — [E4.T9]/F7's `startServe` spawns it for every read, and these fixtures spawn it directly to set presentations up. */
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -22,7 +22,7 @@ interface CliEnvelope<T = unknown> {
   failureKind?: string;
 }
 
-/** Runs the real `co-motion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
+/** Runs the real `comotion` binary with `--json`, exit-code-blind (mirrors `comotion/command.ts`'s `runJsonCommand`). */
 async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
   try {
     const { stdout } = await execFileAsync(coMotionBinPath, [...args, "--json"], { env: process.env });
@@ -104,7 +104,7 @@ const fakeAgent: AgentAdapterConfig = {
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
-// Every test points CO_MOTION_HOME at its own temp directory (ADR-0004
+// Every test points COMOTION_HOME at its own temp directory (ADR-0004
 // testing convention) and always binds port 0, reading the assigned port
 // back — a fixed port would collide with ticket #6's own server tests.
 
@@ -119,12 +119,12 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-serve-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-static-"));
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-static-"));
   webDist = path.join(staticRoot, "dist");
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
@@ -132,8 +132,8 @@ afterEach(async () => {
   // Always shut every server started in the test down, including on
   // failure, or the suite hangs on an open listening socket.
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -145,6 +145,9 @@ async function openFreshPresentation(name = "測試簡報"): Promise<string> {
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  const added = await runCli(["slide", "add", opened.data!.id]);
+  expect(added.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -173,6 +176,9 @@ async function openPresentationWithRampAsset(): Promise<string> {
   await writeFile(comotPath, zipped);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  const added = await runCli(["slide", "add", opened.data!.id]);
+  expect(added.ok).toBe(true);
   return opened.data!.id;
 }
 
@@ -305,7 +311,7 @@ describe("startServe", () => {
     expect(sameOrigin.status).toBe(200);
   });
 
-  it("serves the presentation's metadata reached only through the co-motion binary", async () => {
+  it("serves the presentation's metadata reached only through the comotion binary", async () => {
     const id = await openFreshPresentation("我的簡報");
 
     const server = await serve(id);
@@ -333,14 +339,14 @@ describe("startServe", () => {
   });
 
   // Validation standard 8 (plan §5): the structural proof that `serve` no
-  // longer reads any presentation file itself now points `CO_MOTION_BIN` at
+  // longer reads any presentation file itself now points `COMOTION_BIN` at
   // a fake, hand-written `.mjs` binary — never touching a real filesystem —
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
   // injection point: it proves the server goes through `runCoMotion`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
-  it("serves fabricated content from a stub CO_MOTION_BIN, never touching the real filesystem", async () => {
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
+  it("serves fabricated content from a stub COMOTION_BIN, never touching the real filesystem", async () => {
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -363,9 +369,9 @@ describe("startServe", () => {
       { mode: 0o755 },
     );
 
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
     try {
-      // CO_MOTION_HOME is this test's own fresh, empty temp directory —
+      // COMOTION_HOME is this test's own fresh, empty temp directory —
       // "unregistered-stub-id" names nothing on the real filesystem at all.
       const server = await serve("unregistered-stub-id");
 
@@ -375,7 +381,7 @@ describe("startServe", () => {
       const slide = await (await fetch(`${server.url}/api/files/slides/fake.svg`)).text();
       expect(slide).toBe("<svg>STUB</svg>");
     } finally {
-      process.env.CO_MOTION_BIN = coMotionBinPath;
+      process.env.COMOTION_BIN = coMotionBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });
@@ -391,7 +397,7 @@ describe("startServe", () => {
     await expect(serve(id, { port: first.port })).rejects.toThrow(/連接埠/);
   });
 
-  it("rejects with an explicit error when the presentation has no slides", async () => {
+  it("serves a presentation with no slides (ADR-0018: `new` creates none; the editor makes the first page)", async () => {
     const { zipSync } = await import("fflate");
     const { writeFile } = await import("node:fs/promises");
     const zipped = zipSync({
@@ -407,7 +413,10 @@ describe("startServe", () => {
     expect(opened.ok).toBe(true);
     const id = opened.data!.id;
 
-    await expect(serve(id)).rejects.toThrow();
+    const server = await serve(id);
+    const response = await fetch(`${server.url}/api/presentation`);
+    expect(response.status).toBe(200);
+    expect((await response.json()).slides).toEqual([]);
   });
 
   it("responds with an explicit error, not an empty body, for a slide that does not exist", async () => {
@@ -490,25 +499,30 @@ describe("startServe", () => {
 
   // [E4.T7]: `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
-  // the browser. Reuses `openFreshPresentation` + `convert` (a compliant,
-  // `<g>`-wrapped slide is required for `effect add`, same fixture shape
-  // `packages/cli/test/effect.test.ts` uses) rather than a hand-built
-  // container, since these tests exercise the route end-to-end against the
-  // real Rust binary, not a mocked one.
+  // the browser. Builds its fixture through the real Rust binary rather
+  // than a hand-built container, since these tests exercise the route
+  // end-to-end.
   describe("GET /api/effects/", () => {
-    async function openConvertedPresentation(): Promise<string> {
+    /**
+     * A presentation whose slides/001.svg holds exactly one element.
+     * `openFreshPresentation`'s `slide add` leaves the page empty
+     * (ADR-0018), and `effect add` needs something to target, so the page
+     * is written once with a bare shape: `slide set --svg` wraps it in a
+     * `<g>` and mints its id, and returns that id — no need to scrape the
+     * SVG for it.
+     */
+    async function openPresentationWithOneElement(): Promise<{ id: string; elementId: string }> {
       const id = await openFreshPresentation();
-      const converted = await runCli(["convert", id]);
-      expect(converted.ok).toBe(true);
-      return id;
+      const written = await runCli<{ elementIds: string[] }>([
+        "slide", "set", id, "slides/001.svg",
+        "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><rect x="100" y="100" width="200" height="120"/></svg>',
+      ]);
+      expect(written.ok).toBe(true);
+      return { id, elementId: written.data!.elementIds[0]! };
     }
 
     it("responds 200 with effects/steps/transition for a slide with an effect list", async () => {
-      const id = await openConvertedPresentation();
-      const svg = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-      expect(svg.ok).toBe(true);
-      const svgText = Buffer.from(svg.data![0]!.content, "base64").toString("utf-8");
-      const elementId = /id="(el-[^"]+)"/.exec(svgText)![1]!;
+      const { id, elementId } = await openPresentationWithOneElement();
       const added = await runCli([
         "effect", "add", id, "slides/001.svg", elementId, "--family", "enter", "--effect", "fade",
       ]);
@@ -530,7 +544,7 @@ describe("startServe", () => {
     });
 
     it("responds 200 with an empty plan for a declared slide that never had an effect list", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const server = await serve(id);
 
       const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
@@ -545,7 +559,7 @@ describe("startServe", () => {
     });
 
     it("responds 404 for a virtual path that is not a declared slide", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const server = await serve(id);
 
       const response = await fetch(`${server.url}/api/effects/project.json`);
@@ -556,7 +570,7 @@ describe("startServe", () => {
     });
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
-      const id = await openConvertedPresentation();
+      const { id } = await openPresentationWithOneElement();
       const realSlidePath = path.join(coMotionHome, "work", id, "slides", "001.svg");
       const original = await readFile(realSlidePath, "utf-8");
       const damaged = original.replace(
@@ -616,7 +630,7 @@ describe("startServe", () => {
   it("never leaks the hidden work directory's path in project.json validation errors", async () => {
     // Echoing back the .comot path the caller supplied is legitimate
     // (ADR-0004) — it's the user's own argument, not the work directory.
-    // What must never appear is CO_MOTION_HOME's hidden work directory.
+    // What must never appear is COMOTION_HOME's hidden work directory.
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
     );

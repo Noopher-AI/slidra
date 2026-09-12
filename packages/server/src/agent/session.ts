@@ -9,7 +9,10 @@ import { runJsonCommand } from "../comotion/command.js";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isCoMotionCommand } from "./command-allowlist.js";
+import { hintForBlockedCommand } from "./command-hints.js";
+import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js";
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
+import { readProjectsRegistry, resolveCoMotionHome } from "../comotion/home.js";
 import type { EditingLock } from "../editing-lock.js";
 
 /**
@@ -25,7 +28,7 @@ const NO_MESSAGE_INSTRUCTION = "作者沒有輸入訊息，只送出上面這些
 const EMPTY_MESSAGE_MESSAGE = "訊息內容不可為空（沒有輸入文字，也沒有釘選的留言）";
 
 const WRITE_REFUSED_MESSAGE =
-  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `co-motion text set` 命令。";
+  "CoMotion 不允許 agent 直接寫入檔案，這個方法一律會被拒絕。若要修改文字內容，請改執行 `comotion text set` 命令。";
 
 /** A comment read back out with the slide it lives on — `comment list <id> --json`'s (no slide-path) output shape, mirroring `packages/core`'s former `SlideCommentWithPath` ([E4.T9]/F7). */
 interface SlideCommentWithPath {
@@ -127,8 +130,81 @@ const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "找不到檔案：路徑不在這個�
  * the way down would otherwise push the whole conversation off screen.
  * Truncation is announced in the text itself — never silent.
  */
-const MAX_COMMAND_OUTPUT_CHARS = 2000;
-const COMMAND_OUTPUT_TRUNCATED_SUFFIX = "\n…（輸出過長，僅顯示前段）";
+/**
+ * Shown in place of the adapter's own wording when the allowlist refused a
+ * command. ACP's `session/request_permission` can answer only allow or
+ * reject — there is no field to say *why* — so Claude Code renders every
+ * refusal as "The user doesn't want to proceed with this tool use", which
+ * reads to the author as though they had clicked something. They did not:
+ * the rule is hard-coded and the author is never asked (user story 12).
+ * This says what actually happened, on the author's side of the screen.
+ */
+const BLOCKED_COMMAND_MESSAGE =
+  "CoMotion 擋下了這條命令（不是作者拒絕的）：它直接動到這份簡報的檔案，而簡報只能透過 comotion 命令讀寫。其他不碰簡報檔案的命令不受限制。";
+
+/**
+ * Said once when a refused command took the whole turn down with it — see
+ * `findRejectOption` for why some adapters leave no other way to refuse.
+ * Without it the conversation ends on 「已停止」, which reads as the author's
+ * own doing.
+ */
+/**
+ * How many times one author message may be handed back to the agent with
+ * advice after a refusal. Two is enough for the case this exists for (the
+ * agent reached for `cat`, was told to use the read tool, carried on); an
+ * agent still refused after that is not going to be talked round, and the
+ * author should see the turn end rather than watch it loop.
+ */
+const MAX_REFUSAL_CORRECTIONS = 2;
+
+/** What the agent is told after CoMotion takes the turn back — see the loop in `runTurn`. */
+function refusalCorrectionPrompt(hints: string[]): string {
+  const advice = hints.map((hint) => `- ${hint}`).join("\n");
+  return [
+    "【CoMotion 系統訊息｜不是作者說的】",
+    "剛剛那條命令沒有執行：它直接動到這份簡報的檔案，而簡報的內容只能透過 `comotion` 命令讀寫（其他不碰簡報檔案的命令不受限制）。",
+    "這不是作者拒絕你，也不需要問他——換成下面的做法就可以繼續：",
+    advice,
+    "請接著把剛才沒做完的部分做完，不要再送同一條被擋下的命令。",
+  ].join("\n");
+}
+
+/**
+ * The author's one line about a refusal. The command itself is not shown —
+ * it is the agent's own shell work, which the timeline deliberately leaves
+ * out (`relayCommandStart`) — so this says what CoMotion did and what it
+ * told the agent to do instead.
+ */
+function refusalNotice(hint: string | undefined): string {
+  const head = "CoMotion 擋下了 agent 直接動簡報檔案的命令（簡報只能透過 comotion 命令改）";
+  return hint === undefined ? `${head}。` : `${head}，並告訴它：${hint}`;
+}
+
+const TURN_ABORTED_BY_REFUSAL_MESSAGE =
+  "這一輪到此為止：CoMotion 擋下了上面那條直接動簡報檔案的命令，而這個 agent 把「拒絕」當成中止整個回合——不是作者按了停止。改用 comotion 命令重新發送即可。";
+
+/** The model a live session runs on, as its adapter reports it at `session/new`. */
+export interface AgentModel {
+  name: string;
+  /** The adapter's own description of that model, when it gives one. */
+  detail?: string;
+}
+
+/** One model the adapter lets the session switch to — the chat panel's picker rows. */
+export interface AgentModelChoice {
+  id: string;
+  name: string;
+  detail?: string;
+}
+
+/**
+ * Where a session's model list came from, which also decides how a switch
+ * is sent back: `claude-code-acp` reports ACP's (experimental) `models`
+ * state and takes `session/set_model`; `codex-acp` reports it as the
+ * `configOptions` entry whose `category` is `model` and takes
+ * `session/set_config_option` instead.
+ */
+type ModelMechanism = { kind: "models" } | { kind: "config"; configId: string };
 
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
@@ -136,12 +212,24 @@ interface ChatEvents {
   "chat-done": (payload: { stopReason: string }) => void;
   "chat-error": (payload: { message: string }) => void;
   /** A command the agent has started running — `command` verbatim from ACP's `rawInput.command`. */
-  "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus }) => void;
-  /** A status change on a command already relayed by `chat-command`. `output` only ever accompanies a failure. */
+  /**
+   * A command the agent is about to run. `cli` says whether it is a
+   * `comotion` invocation — the only kind that carries a status the author
+   * is meant to read (see `relayCommandStart`). A command with `cli: false`
+   * is shown once and never followed by `chat-command-update`.
+   */
+  "chat-command": (payload: { toolCallId: string; command: string; status: acp.ToolCallStatus; cli: boolean }) => void;
+  /**
+   * A status change on a command already relayed by `chat-command`.
+   * `output` only ever accompanies a failure. `blocked` marks the one
+   * failure that is not the command's own: CoMotion's allowlist refused to
+   * let it run (see `BLOCKED_COMMAND_MESSAGE`).
+   */
   "chat-command-update": (payload: {
     toolCallId: string;
     status: acp.ToolCallStatus;
     output?: string;
+    blocked?: true;
   }) => void;
   /**
    * The agent's own `available_commands_update` — a session-level fact, not
@@ -149,6 +237,8 @@ interface ChatEvents {
    * is stored separately from the other, turn-scoped events above).
    */
   "available-commands": (payload: { commands: readonly acp.AvailableCommand[] }) => void;
+  /** A line the server itself has to say (not the agent) — e.g. how many queued messages Stop threw away. */
+  "chat-notice": (payload: { text: string }) => void;
 }
 
 /**
@@ -160,7 +250,7 @@ interface ChatEvents {
 export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
 
 /**
- * Drives one ACP adapter subprocess for the lifetime of `co-motion serve`.
+ * Drives one ACP adapter subprocess for the lifetime of `comotion serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
  * messages (§4 of the ticket), and the 編輯規約 is sent as its own, separate
@@ -178,7 +268,7 @@ export class AgentChatSession extends EventEmitter {
    * The deployed product work directory (`deployAgentWorkdir()`'s result),
    * already resolved to its real (symlink-free) form — handed to the agent
    * as its session `cwd` on every attempt, and never removed by this
-   * session (its lifetime is `CO_MOTION_HOME`'s, not the session's). A
+   * session (its lifetime is `COMOTION_HOME`'s, not the session's). A
    * conforming ACP agent echoes back an *absolute* path rooted at the cwd
    * it was given — but resolved, not verbatim (confirmed against a real
    * `claude-code-acp` 0.12.6: the cwd sent to `session/new` was
@@ -189,11 +279,46 @@ export class AgentChatSession extends EventEmitter {
    * resolved form is what actually matches.
    */
   private readonly workdirReal: string;
+  /**
+   * The open presentation's `.comot` file, read once from the registry
+   * when the session is established. Undefined when the registry has no
+   * `sourcePath` for this id (a presentation created but never saved out)
+   * — `<COMOTION_HOME>` still covers its live files either way.
+   */
+  private sourcePath: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
+  /**
+   * #303: messages accepted but not yet started, in send order. The queue
+   * is a plain array rather than state hidden inside `turnQueue`'s promise
+   * chain for one reason: `cancel()` has to be able to *empty* it. Stopping
+   * only the turn in flight let the next queued message start the instant
+   * the stopped one ended, which reads as "Stop restarted the agent".
+   */
+  private readonly pendingTurns: string[] = [];
+  /** True from the first `sendMessage` until the adapter handshake settles — the window where a turn is coming but `session/prompt` has not been sent yet. */
+  private settingUp = false;
   /** True only while relaying updates for a turn the author actually asked for — not for the 編輯規約 turn. */
   private relayingCurrentTurn = false;
+  /**
+   * #303: set by `cancel()`, cleared when the next author turn starts. A
+   * real `claude-code-acp` answers our `session/prompt` with `cancelled`
+   * but its model keeps going for a while, still emitting `session/update`
+   * and `session/request_permission` with no prompt in flight (trial 4:
+   * 137 chunks and 20 commands after our `chat-done`). Everything that
+   * arrives while this is set — or while no turn is running at all — is
+   * dropped, and every permission request is answered `cancelled`, so no
+   * command can run outside a turn.
+   */
+  private cancelledUntilNextPrompt = false;
+  private droppedOutsideTurn = 0;
+  private refusedOutsideTurnLogged = false;
+  /** Set at `session/new` from the adapter's own model report (and again on every switch); stays null when it reports none. */
+  private model: AgentModel | null = null;
+  private modelId: string | null = null;
+  private modelChoices: AgentModelChoice[] = [];
+  private modelMechanism: ModelMechanism | null = null;
   /**
    * The most recent `available_commands_update` the agent has sent, or `[]`
    * if it has never sent one. Unlike the turn-scoped events above, this
@@ -214,6 +339,20 @@ export class AgentChatSession extends EventEmitter {
    * scoped to the turn that showed them.
    */
   private readonly relayedToolCalls = new Set<string>();
+  /**
+   * Tool calls this turn whose command the allowlist refused. Kept so the
+   * failure the adapter reports for them can be shown to the author in
+   * CoMotion's own words rather than the adapter's misleading one — same
+   * turn scope, and cleared alongside, `relayedToolCalls`.
+   */
+  private readonly refusedToolCalls = new Set<string>();
+  /**
+   * This turn's advice for the commands the allowlist refused, keyed by
+   * tool call so the author sees it attached to the command it belongs to,
+   * and deduplicated on the way out (an agent that tried `cat` three times
+   * gets told once). Same turn scope as `refusedToolCalls`.
+   */
+  private readonly refusalHints = new Map<string, string>();
   private disposed = false;
   /**
    * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
@@ -256,12 +395,27 @@ export class AgentChatSession extends EventEmitter {
    */
   private turnHasEditLock = false;
 
-  constructor(config: AgentAdapterConfig, presentationId: string, editingLock: EditingLock, workdirReal: string) {
+  /**
+   * The model the author last picked for this adapter kind (settings.json),
+   * applied right after `session/new` when the adapter still offers it —
+   * a "new session" or a reconnect after a crash keeps the author's choice
+   * instead of silently reverting to the adapter's default.
+   */
+  private readonly preferredModelId: string | null;
+
+  constructor(
+    config: AgentAdapterConfig,
+    presentationId: string,
+    editingLock: EditingLock,
+    workdirReal: string,
+    preferredModelId: string | null = null,
+  ) {
     super();
     this.config = config;
     this.presentationId = presentationId;
     this.editingLock = editingLock;
     this.workdirReal = workdirReal;
+    this.preferredModelId = preferredModelId;
   }
 
   override on<K extends keyof ChatEvents>(event: K, listener: ChatEvents[K]): this {
@@ -276,6 +430,104 @@ export class AgentChatSession extends EventEmitter {
     this.emit(event, ...args);
   }
 
+  /** The model this session runs on, as the adapter named it at `session/new`; null when the adapter reports none. */
+  getModel(): AgentModel | null {
+    return this.model;
+  }
+
+  /**
+   * Establishes the ACP session without sending an author message, so the
+   * model list (a `session/new` fact) exists before the first message. The
+   * 編輯規約 goes out exactly as it would on the first message; a later
+   * message reuses this session. No-op when a session is already live.
+   */
+  async warm(): Promise<void> {
+    await this.ensureSession();
+  }
+
+  /** The current model's id, or null when the adapter reports no model state. */
+  getModelId(): string | null {
+    return this.modelId;
+  }
+
+  /** Every model the adapter lets this session switch to; `[]` when it reports none. */
+  getModelChoices(): readonly AgentModelChoice[] {
+    return this.modelChoices;
+  }
+
+  /**
+   * Switches the live session to `modelId`. Establishes the session first
+   * when no message has been sent yet (the model list only exists once
+   * `session/new` has answered), so the picker works before the first
+   * message too. Refused mid-turn: the adapter would apply it to a reply
+   * already in progress.
+   */
+  async setModel(modelId: string): Promise<void> {
+    if (this.relayingCurrentTurn || this.pendingTurns.length > 0) {
+      throw new CoMotionError("agent 正在回覆中，等這一輪結束再切換模型");
+    }
+    await this.ensureSession();
+    const choice = this.modelChoices.find((candidate) => candidate.id === modelId);
+    if (!choice || !this.modelMechanism || !this.connection || !this.sessionId) {
+      throw new CoMotionError(`${this.config.label} 沒有這個模型：${modelId}`);
+    }
+    await this.applyModel(this.connection, this.sessionId, this.modelMechanism, choice);
+  }
+
+  /** Sends the switch over whichever request the adapter's mechanism uses, then records the new current model. */
+  private async applyModel(
+    connection: acp.ClientSideConnection,
+    sessionId: string,
+    mechanism: ModelMechanism,
+    choice: AgentModelChoice,
+  ): Promise<void> {
+    if (mechanism.kind === "models") {
+      await connection.unstable_setSessionModel({ sessionId, modelId: choice.id });
+    } else {
+      const response = await connection.setSessionConfigOption({ sessionId, configId: mechanism.configId, value: choice.id });
+      this.readConfigOptions(response.configOptions);
+    }
+    this.modelId = choice.id;
+    this.model = { name: choice.name, ...(choice.detail ? { detail: choice.detail } : {}) };
+  }
+
+  /**
+   * Reads the model list out of a `session/new` response. Leaves everything
+   * null when the adapter reports neither shape — the chat panel then shows
+   * no model rather than a guessed one.
+   */
+  private readModelState(session: acp.NewSessionResponse): void {
+    // `@agentclientprotocol/codex-acp` reports both: `models` is every
+    // model × reasoning effort (dozens of rows), the `model` config option
+    // is one row per model — the list a person actually picks from. So the
+    // config option wins when present; `models` is what `claude-code-acp`
+    // sends and the only shape it has.
+    this.readConfigOptions(session.configOptions ?? []);
+    if (this.modelMechanism || !session.models) return;
+    this.modelMechanism = { kind: "models" };
+    this.modelChoices = session.models.availableModels.map(toChoice);
+    this.setCurrentModel(session.models.currentModelId);
+  }
+
+  /** `codex-acp`'s shape: the `configOptions` entry whose `category` is `model`. Grouped options are flattened. */
+  private readConfigOptions(options: readonly acp.SessionConfigOption[]): void {
+    const option = options.find((candidate) => candidate.category === "model");
+    if (!option) return;
+    this.modelMechanism = { kind: "config", configId: option.id };
+    this.modelChoices = option.options.flatMap((entry) =>
+      "options" in entry
+        ? entry.options.map((inner) => ({ id: inner.value, name: inner.name, ...(inner.description ? { detail: inner.description } : {}) }))
+        : [{ id: entry.value, name: entry.name, ...(entry.description ? { detail: entry.description } : {}) }],
+    );
+    this.setCurrentModel(option.currentValue);
+  }
+
+  private setCurrentModel(id: string): void {
+    const current = this.modelChoices.find((candidate) => candidate.id === id);
+    this.modelId = current ? id : null;
+    this.model = current ? { name: current.name, ...(current.detail ? { detail: current.detail } : {}) } : null;
+  }
+
   /** The agent's most recently reported `available_commands_update`, or `[]` if it has never sent one. */
   getReportedCommands(): readonly acp.AvailableCommand[] {
     return this.reportedCommands;
@@ -287,9 +539,75 @@ export class AgentChatSession extends EventEmitter {
    * immediately; the reply streams separately over SSE).
    */
   sendMessage(text: string): void {
-    this.turnQueue = this.turnQueue.then(() => this.runTurn(text));
+    this.pendingTurns.push(text);
+    this.turnQueue = this.turnQueue.then(() => {
+      const next = this.pendingTurns.shift();
+      // `cancel()` emptied the queue: this message was dropped on purpose
+      // and the author has already been told how many went with it.
+      if (next === undefined) return;
+      return this.runTurn(next);
+    });
     // A rejected turn must not poison the queue for the next message.
     this.turnQueue = this.turnQueue.catch(() => {});
+  }
+
+  /**
+   * True whenever `cancel()` has something to stop: a turn in flight, a
+   * message queued behind it, or an adapter handshake on its way to one.
+   * The chat panel shows Stop from this, so every state the author would
+   * describe as "it is working" has a working Stop button.
+   */
+  isBusy(): boolean {
+    return this.relayingCurrentTurn || this.pendingTurns.length > 0 || this.settingUp;
+  }
+
+  /**
+   * #303: sends ACP `session/cancel` for the turn in flight. Per the ACP
+   * contract the agent then stops its model requests, aborts tool calls it
+   * still controls, flushes pending updates, and answers the original
+   * `session/prompt` with `stopReason: "cancelled"` — so the turn ends
+   * through `runTurn`'s normal path (`chat-done` carrying that stopReason,
+   * history group closed, editing lock released). A `comotion` command
+   * the agent had already launched runs to completion on its own (each
+   * command is atomic); nothing written so far is rolled back — undo is
+   * the author's tool for that, not this.
+   *
+   * Throws when no author turn is running: cancelling nothing is a caller
+   * mistake worth surfacing (a 409 upstream), not a silent no-op.
+   */
+  async cancel(): Promise<void> {
+    // Queued-but-unstarted messages go first and unconditionally: whatever
+    // else Stop can or cannot reach, nothing the author has not seen start
+    // may start after they pressed it.
+    const dropped = this.pendingTurns.length;
+    this.pendingTurns.length = 0;
+
+    const turnInFlight = this.relayingCurrentTurn && this.connection !== undefined && this.sessionId !== undefined;
+    if (turnInFlight) {
+      this.cancelledUntilNextPrompt = true;
+      await this.connection!.cancel({ sessionId: this.sessionId! });
+    } else if (this.settingUp) {
+      // Still shaking hands with the adapter, so there is no `sessionId` to
+      // cancel against. Rejecting the awaited call is the only way out;
+      // `ensureSession`'s own catch then tears the half-built session down
+      // so the next message starts from a clean spawn.
+      const reject = this.activeReject;
+      this.activeReject = undefined;
+      reject?.(new CoMotionError(`${this.config.label} 的連線在建立過程中被停止，請重新發送訊息`));
+    } else if (dropped === 0) {
+      throw new CoMotionError("目前沒有進行中的回合可以停止");
+    }
+
+    if (dropped > 0) {
+      this.emitTyped("chat-notice", {
+        text: `已停止；另有 ${dropped} 則尚未開始的訊息一併取消。`,
+      });
+    }
+  }
+
+  /** True when an update or permission request has no author turn to belong to (see `cancelledUntilNextPrompt`). */
+  private outsideTurn(): boolean {
+    return !this.relayingCurrentTurn || this.cancelledUntilNextPrompt;
   }
 
   private async runTurn(text: string): Promise<void> {
@@ -331,19 +649,72 @@ export class AgentChatSession extends EventEmitter {
     }
 
     this.relayingCurrentTurn = true;
+    this.cancelledUntilNextPrompt = false;
+    if (this.droppedOutsideTurn > 0) {
+      console.warn(`[agent] 上一輪停止後仍收到 ${this.droppedOutsideTurn} 則 session/update，已全部丟棄`);
+      this.droppedOutsideTurn = 0;
+    }
+    this.refusedOutsideTurnLogged = false;
     try {
-      const response = await this.withInterrupt(
-        this.connection!.prompt({
-          sessionId: this.sessionId!,
-          prompt: [{ type: "text", text: prompt }],
-        }),
-      );
-      this.emitTyped("chat-done", { stopReason: response.stopReason });
-    } catch (error) {
-      this.emitTyped("chat-error", { message: describeError(error) });
+      // One author message can take more than one ACP turn: a command the
+      // allowlist refused ends the turn under both adapters (see
+      // `findRejectOption`), and the agent is never told why — so CoMotion
+      // takes the turn back, says what to use instead, and lets the agent
+      // carry on. Bounded, because an agent that ignores the advice twice
+      // will ignore it a third time.
+      for (let correction = 0; ; correction++) {
+        let response: acp.PromptResponse | undefined;
+        let failure: unknown;
+        try {
+          response = await this.withInterrupt(
+            this.connection!.prompt({
+              sessionId: this.sessionId!,
+              prompt: [{ type: "text", text: prompt }],
+            }),
+          );
+        } catch (error) {
+          failure = error;
+        }
+
+        // The turn ended without the agent getting anywhere: either the
+        // adapter aborted it on our refusal (`cancelled`), or it turned
+        // the refusal into a protocol error (claude-code-acp's
+        // `interrupt: true`, which surfaces as `Internal error`). The
+        // author pressing Stop is neither, and never continues.
+        const hints = [...new Set(this.refusalHints.values())];
+        const endedOnRefusal =
+          this.refusedToolCalls.size > 0 &&
+          !this.cancelledUntilNextPrompt &&
+          (failure !== undefined || response?.stopReason === "cancelled");
+
+        if (endedOnRefusal && hints.length > 0 && correction < MAX_REFUSAL_CORRECTIONS && !this.disposed) {
+          // No notice here: the author was already told at the moment of
+          // the refusal. Taking the turn back is plumbing.
+          prompt = refusalCorrectionPrompt(hints);
+          this.relayedToolCalls.clear();
+          this.refusedToolCalls.clear();
+          this.refusalHints.clear();
+          continue;
+        }
+
+        if (failure !== undefined) {
+          this.emitTyped("chat-error", { message: describeError(failure) });
+          return;
+        }
+        // A refusal ended the turn and there was nothing useful to say
+        // about it (or the advice has already been given twice): at least
+        // tell the author it was not their Stop that did this.
+        if (endedOnRefusal) {
+          this.emitTyped("chat-notice", { text: TURN_ABORTED_BY_REFUSAL_MESSAGE });
+        }
+        this.emitTyped("chat-done", { stopReason: response!.stopReason });
+        return;
+      }
     } finally {
       this.relayingCurrentTurn = false;
       this.relayedToolCalls.clear();
+      this.refusedToolCalls.clear();
+      this.refusalHints.clear();
       await this.closeEditLockIfOpen();
     }
   }
@@ -402,6 +773,7 @@ export class AgentChatSession extends EventEmitter {
    */
   private ensureSession(): Promise<void> {
     if (!this.readyPromise) {
+      this.settingUp = true;
       this.readyPromise = this.establishSession().catch(async (error) => {
         // A failed setup must be retried on the next message — but retrying
         // must spawn a genuinely fresh session, not leave the failed
@@ -412,6 +784,9 @@ export class AgentChatSession extends EventEmitter {
         // handler already tore things down and rejected us here (fix 1).
         await this.teardownSession();
         throw error;
+      });
+      this.readyPromise = this.readyPromise.finally(() => {
+        this.settingUp = false;
       });
     }
     return this.readyPromise;
@@ -427,7 +802,7 @@ export class AgentChatSession extends EventEmitter {
    * more than once for the same attempt.
    *
    * Does **not** touch `workdirReal` — the product work directory belongs
-   * to `CO_MOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
+   * to `COMOTION_HOME`, deployed once by `deployAgentWorkdir()` before this
    * session is ever constructed, and outlives every session teardown,
    * including the process's own shutdown.
    */
@@ -465,11 +840,28 @@ export class AgentChatSession extends EventEmitter {
 
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
+    // The `.comot` this presentation was opened from, for the permission
+    // policy's protected set. A registry that cannot be read is not worth
+    // failing the session over: `<COMOTION_HOME>` still covers the live
+    // files, and the container is only reachable through a path the agent
+    // was never told.
+    this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
     const child = spawn(this.config.command, this.config.args ?? [], {
-      stdio: ["pipe", "pipe", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       env: this.config.env ? { ...process.env, ...this.config.env } : process.env,
     });
     this.child = child;
+    // The adapter's own diagnostics used to go to `"ignore"`, which is why
+    // an adapter-side failure reached serve's log as nothing at all —
+    // every question about *why* a turn behaved oddly had to be answered
+    // by re-running it against a hand-written ACP client. Tagged with the
+    // adapter's name so it is never mistaken for CoMotion's own output.
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      for (const line of chunk.split("\n")) {
+        if (line.trim() !== "") console.warn(`[${this.config.label}] ${line}`);
+      }
+    });
     // `error` fires when the process never spawns at all (e.g. the command
     // does not exist); `exit` fires whenever it stops running afterwards,
     // mid-setup or mid-turn. Both leave stdio dead, so both must reach for
@@ -532,6 +924,18 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     this.sessionId = session.sessionId;
+    // ACP's model state is still marked experimental (`claude-code-acp`
+    // sends it; `codex-acp` reports the same thing as a config option), so
+    // this is read defensively and stays `null` when absent. The author sees
+    // "which model am I talking to" under the chat box; saying nothing is
+    // the honest answer when the adapter did not say.
+    this.readModelState(session);
+    if (this.preferredModelId !== null && this.preferredModelId !== this.modelId && this.modelMechanism) {
+      const preferred = this.modelChoices.find((candidate) => candidate.id === this.preferredModelId);
+      // A model the adapter no longer offers is simply not applied — the
+      // adapter's own default is the truthful state, and the picker shows it.
+      if (preferred) await this.applyModel(connection, session.sessionId, this.modelMechanism, preferred);
+    }
 
     // The 編輯規約 is the first user message the agent ever sees — its own
     // `session/prompt` call, never folded into the author's first message.
@@ -539,7 +943,7 @@ export class AgentChatSession extends EventEmitter {
     // the browser as if it were a response to something the author typed.
     const brief = buildEditorialBrief(this.presentationId);
     const executionGuidance = this.config.kind === "codex"
-      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 co-motion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權或執行其他 shell 命令。"
+      ? "\n\nCodex 執行命令：工作階段是唯讀沙箱。執行 comotion 命令時請使用工具的 sandbox_permissions=require_escalated，讓 CoMotion 逐次檢查並授權命令；不要先在唯讀沙箱嘗試修改。這也讓 CoMotion 能在執行前取得編輯鎖並將復原快照歸入同一輪對話。不得要求永久授權。讀工作目錄裡的文件（AGENTS.md、reference/*.md、.agents/skills/*/SKILL.md）就是你的原生檔案讀取：在沙箱內用 cat 或 sed 讀相對路徑即可，這種唯讀命令不需要授權；comotion cat 只讀簡報本身的虛擬路徑（slides/001.svg、project.json、plan/outline.md），讀不到工作目錄的文件。"
       : "";
     await connection.prompt({
       sessionId: this.sessionId,
@@ -562,7 +966,10 @@ export class AgentChatSession extends EventEmitter {
           this.emitTyped("available-commands", { commands: update.availableCommands });
           return;
         }
-        if (!this.relayingCurrentTurn) return;
+        if (this.outsideTurn()) {
+          this.droppedOutsideTurn += 1;
+          return;
+        }
         if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
           this.emitTyped("chat-chunk", { text: update.content.text });
           return;
@@ -583,12 +990,21 @@ export class AgentChatSession extends EventEmitter {
         // turn.
       },
       requestPermission: async (params: acp.RequestPermissionRequest) => {
+        // #303: fail closed outside a turn — a stopped adapter that keeps
+        // asking gets `cancelled` every time, and we say so once.
+        if (this.outsideTurn()) {
+          if (!this.refusedOutsideTurnLogged) {
+            this.refusedOutsideTurnLogged = true;
+            console.warn("[agent] 沒有進行中的回合，拒絕 agent 的命令請求（已停止的回合仍在送出請求）");
+          }
+          return { outcome: { outcome: "cancelled" } };
+        }
         // Only a command actually about to run needs the floor — a request
         // the allowlist was always going to refuse touches nothing on
         // disk, so freezing for it would be pure side effect with no
         // corresponding write to protect (and would open/immediately-close
         // an empty history group for every refused command, for nothing).
-        if (isAllowedCommand(params)) {
+        if (isCoMotionCliCommand(params)) {
           await this.openEditLockOnFirstCommand();
         }
         return this.decidePermission(params);
@@ -601,6 +1017,11 @@ export class AgentChatSession extends EventEmitter {
         // for why the capability is nonetheless advertised as available.
         throw new acp.RequestError(WRITE_REFUSED_CODE, WRITE_REFUSED_MESSAGE);
       },
+      // `@agentclientprotocol/codex-acp` sends `_auth/status_update` (which
+      // account the session is on) as an extension notification. Nothing
+      // here needs it, and without a handler the SDK logs a "Method not
+      // found" error for every one.
+      extNotification: async () => {},
     };
   }
 
@@ -621,7 +1042,16 @@ export class AgentChatSession extends EventEmitter {
   private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
     if (command === undefined) return;
-    this.relayedToolCalls.add(update.toolCallId);
+    // Every command the agent runs is shown — since ADR-0019 that includes
+    // its own shell work (reading its references, grepping, temp files),
+    // and the author is entitled to see what is happening on their
+    // machine. What only the CLI gets is a *status*: 執行中／完成／失敗 is
+    // a claim about the presentation, and a failed `grep` of the agent's
+    // own notes is the agent's problem to solve, not an outcome the author
+    // is being asked to read. So a non-CLI command is relayed once, as the
+    // line it is, and never updated.
+    const cli = namesCoMotionProgram(command);
+    if (cli) this.relayedToolCalls.add(update.toolCallId);
     this.emitTyped("chat-command", {
       toolCallId: update.toolCallId,
       // ACP declares `status` optional on `tool_call` and specifies
@@ -629,6 +1059,7 @@ export class AgentChatSession extends EventEmitter {
       // default, not a guess standing in for missing information.
       command,
       status: update.status ?? "pending",
+      cli,
     });
   }
 
@@ -647,16 +1078,29 @@ export class AgentChatSession extends EventEmitter {
     toolCallId: string;
     status?: acp.ToolCallStatus | null;
     content?: acp.ToolCallContent[] | null;
+    rawOutput?: unknown;
   }): void {
     if (!this.relayedToolCalls.has(update.toolCallId)) return;
     // An update carrying no status is a content/location-only update —
     // nothing the author's view of "running / done / failed" reacts to.
     if (update.status == null) return;
-    const output = update.status === "failed" ? extractCommandOutput(update.content) : undefined;
+    // A command the allowlist refused never ran, so the adapter's own
+    // "the user rejected this" text describes neither what happened nor
+    // who did it — CoMotion's wording replaces it.
+    const blocked = update.status === "failed" && this.refusedToolCalls.has(update.toolCallId);
+    const hint = this.refusalHints.get(update.toolCallId);
+    const output = blocked
+      ? hint === undefined
+        ? BLOCKED_COMMAND_MESSAGE
+        : `${BLOCKED_COMMAND_MESSAGE}\n${hint}`
+      : update.status === "failed"
+        ? extractCommandOutput(update.content, update.rawOutput)
+        : undefined;
     this.emitTyped("chat-command-update", {
       toolCallId: update.toolCallId,
       status: update.status,
       ...(output === undefined ? {} : { output }),
+      ...(blocked ? { blocked: true as const } : {}),
     });
   }
 
@@ -682,7 +1126,7 @@ export class AgentChatSession extends EventEmitter {
   /**
    * `session/request_permission` — the second layer of ADR-0004. Allows a
    * request only when the command it names is structurally guaranteed to
-   * invoke the `co-motion` program and nothing else (see
+   * invoke the `comotion` program and nothing else (see
    * `command-allowlist.ts`); refuses everything else, including any request
    * the command cannot be extracted from at all. The rule is hard-coded —
    * the author is never asked (user story 12).
@@ -691,7 +1135,7 @@ export class AgentChatSession extends EventEmitter {
    * `allow_always`. Some adapters stop calling `session/request_permission`
    * for a tool entirely once a persistent grant has been given, which would
    * silently disable this whole gate for every later command in the
-   * session, including ones that are not `co-motion` at all. If the
+   * session, including ones that are not `comotion` at all. If the
    * adapter does not offer `allow_once`, the request is refused rather than
    * falling back to a permanent grant — a visible, recoverable refusal
    * beats a permission layer that quietly stops running. (The real
@@ -699,12 +1143,63 @@ export class AgentChatSession extends EventEmitter {
    * that path.) Rejecting has no equivalent risk, so `reject_once` and
    * `reject_always` are both acceptable there.
    */
+  /**
+   * The permission policy (ADR-0004's second layer, as re-drawn): the CLI
+   * is the only way to change a `.comot`, and everything else the agent
+   * wants to run is its own business. So a `comotion` command is allowed
+   * because it *is* the CLI, and every other command is allowed unless it
+   * names one of the presentation's real files (`touchesProtectedPath`).
+   *
+   * A tool call carrying no command string at all is not a shell command
+   * and has nothing to judge — but its raw input is still scanned for a
+   * protected path, so an unrecognised shell shape (Codex has more than
+   * one) cannot slip a work-directory path past this by arriving in a
+   * field this code does not know how to read.
+   */
+  private isPermittedCommand(params: acp.RequestPermissionRequest): boolean {
+    const command = extractCommand(params.toolCall);
+    if (command !== undefined) {
+      if (isCoMotionCommand(command)) return true;
+      // A command an encoder shell-quoted (see `unquoteShellWord`) is
+      // judged on the literal text it stands for, never on the quoting.
+      const literal = unquoteShellWord(command);
+      if (literal !== undefined && isCoMotionCommand(literal)) return true;
+      return !touchesProtectedPath(literal ?? command, this.protectedPaths);
+    }
+    return !touchesProtectedPath(collectStrings(params.toolCall.rawInput).join(" "), this.protectedPaths);
+  }
+
+  /** Where the presentation's real files live — see `protected-paths.ts`. */
+  private get protectedPaths(): ProtectedPaths {
+    return {
+      comotionHome: resolveCoMotionHome(),
+      agentWorkdir: this.workdirReal,
+      ...(this.sourcePath === undefined ? {} : { sourcePath: this.sourcePath }),
+    };
+  }
+
   private decidePermission(params: acp.RequestPermissionRequest): acp.RequestPermissionResponse {
-    const allow = isAllowedCommand(params);
+    const allow = this.isPermittedCommand(params);
+    if (!allow) {
+      const first = this.refusedToolCalls.size === 0;
+      this.refusedToolCalls.add(params.toolCall.toolCallId);
+      // What to use instead, decided here (where the refused command
+      // string is still in hand) and delivered in two directions: to the
+      // author with the blocked command, and to the agent itself once the
+      // turn ends (`deliverRefusalHints`).
+      const command = extractCommand(params.toolCall);
+      const hint = command === undefined ? undefined : hintForBlockedCommand(command, this.presentationId);
+      if (hint !== undefined) this.refusalHints.set(params.toolCall.toolCallId, hint);
+      // The refused command itself never reaches the timeline (it is not a
+      // `comotion` command, and `relayCommandStart` shows only those), so
+      // this one line is the whole of what the author sees: CoMotion acted,
+      // here is what it said. Once per turn — an agent that tries three
+      // spellings of the same forbidden thing is not three events.
+      if (first) this.emitTyped("chat-notice", { text: refusalNotice(hint) });
+    }
     const option = allow
       ? params.options.find((candidate) => candidate.kind === "allow_once")
-      : params.options.find((candidate) => candidate.kind === "reject_once") ??
-        params.options.find((candidate) => candidate.kind === "reject_always");
+      : this.findRejectOption(params.options);
     if (!option) {
       // Cannot express the decision through any offered option — including
       // the case where we mean to allow but the agent offered no
@@ -714,6 +1209,26 @@ export class AgentChatSession extends EventEmitter {
       return { outcome: { outcome: "cancelled" } };
     }
     return { outcome: { outcome: "selected", optionId: option.optionId } };
+  }
+
+  /**
+   * Picks the refusal that costs the turn the least. ACP says only "reject
+   * once" / "reject always", but `codex-acp` offers two different
+   * `reject_once` options behind those: `decline` ("No, continue without
+   * running it") lets the agent keep going and correct itself, while
+   * `cancel` ("No, and tell Codex what to do differently") is Codex's
+   * *abort* — it kills the whole turn, which is how a blocked command used
+   * to leave the author staring at a stopped conversation. So `decline` is
+   * taken by name when it is on offer; everything else falls back to the
+   * kinds ACP actually defines, and `cancel` remains the last resort
+   * (refusing is still better than allowing).
+   */
+  private findRejectOption(options: acp.PermissionOption[]): acp.PermissionOption | undefined {
+    return (
+      options.find((candidate) => candidate.kind === "reject_once" && candidate.optionId === "decline") ??
+      options.find((candidate) => candidate.kind === "reject_once") ??
+      options.find((candidate) => candidate.kind === "reject_always")
+    );
   }
 
   /**
@@ -778,12 +1293,15 @@ export class AgentChatSession extends EventEmitter {
     const onError: ChatEvents["chat-error"] = (payload) => send("chat-error", payload);
     const onCommand: ChatEvents["chat-command"] = (payload) => send("chat-command", payload);
     const onCommandUpdate: ChatEvents["chat-command-update"] = (payload) => send("chat-command-update", payload);
+    const onNotice: ChatEvents["chat-notice"] = (payload) => send("chat-notice", payload);
+    this.on("chat-notice", onNotice);
     this.on("chat-chunk", onChunk);
     this.on("chat-done", onDone);
     this.on("chat-error", onError);
     this.on("chat-command", onCommand);
     this.on("chat-command-update", onCommandUpdate);
     return () => {
+      this.off("chat-notice", onNotice);
       this.off("chat-chunk", onChunk);
       this.off("chat-done", onDone);
       this.off("chat-error", onError);
@@ -802,10 +1320,133 @@ export class AgentChatSession extends EventEmitter {
   }
 }
 
-/** Shared by `decidePermission` and the T5 freeze gate: would this request's command pass the allowlist? */
-function isAllowedCommand(params: acp.RequestPermissionRequest): boolean {
+function toChoice(info: acp.ModelInfo): AgentModelChoice {
+  // `claude-code-acp` names the unpinned default "Default (recommended)" and
+  // puts which models that actually resolves to in the description — so the
+  // description is kept, as the picker's tooltip.
+  return { id: info.modelId, name: info.name, ...(info.description ? { detail: info.description } : {}) };
+}
+
+/**
+ * True for an invocation of the `comotion` CLI itself. The T5 freeze gate
+ * uses this (and not the permission decision) because it is the CLI, and
+ * only the CLI, that writes to the presentation — a `curl` the policy now
+ * allows must not open a history group.
+ */
+function isCoMotionCliCommand(params: acp.RequestPermissionRequest): boolean {
   const command = extractCommand(params.toolCall);
-  return command !== undefined && isCoMotionCommand(command);
+  if (command === undefined) return false;
+  if (isCoMotionCommand(command)) return true;
+  // The strict grammar is no longer what decides whether a command runs,
+  // so the gate cannot depend on it either: `comotion undo X | head` is
+  // still the CLI writing to the presentation and still has to freeze.
+  if (namesCoMotionProgram(command)) return true;
+  // Second chance for a command that reached us shell-*quoted* rather than
+  // as the script itself (see `unquoteShellWord`). The allowlist itself is
+  // unchanged and still has the last word — this only decides which string
+  // it is asked about.
+  const literal = unquoteShellWord(command);
+  return literal !== undefined && isCoMotionCommand(literal);
+}
+
+/**
+ * Undoes one known encoder: `@agentclientprotocol/codex-acp` hands
+ * `session/request_permission` the shell-quoted *display* form of the
+ * command rather than the script itself, so a command carrying any
+ * quoting of its own arrives as e.g.
+ * `"comotion plan set abc outline '"'…'` where the `tool_call` update
+ * carried `comotion plan set abc outline '…'`. The allowlist refuses that
+ * on the leading `"` — which is why every writing command was blocked
+ * under this adapter while every read (which the sandbox runs without
+ * asking) went through.
+ *
+ * Returns the concatenated *literal* text of a word built from adjacent
+ * unquoted / single-quoted / double-quoted chunks, or undefined the moment
+ * anything falls outside that shape — an unterminated quote, a backslash
+ * outside double quotes, an escape other than `\"`/`\\`, or a `$`,
+ * backtick or `!` inside double quotes (all three still expand there, so a
+ * double-quoted chunk containing one is not literal text and this refuses
+ * to read it as such), or a word that does not start quoted at all.
+ *
+ * This is not the shell parser `command-allowlist.ts` warns against, and
+ * it must not grow into one: it decides nothing. Unquoting only ever
+ * *removes* quoting, so every character the shell would act on survives
+ * into the returned string and the allowlist judges it under rules 1–6
+ * unchanged — a `;` that was quoted comes out as a `;` and is refused.
+ * The original string is tried first, so no command that was allowed
+ * before now takes this path.
+ */
+function unquoteShellWord(command: string): string | undefined {
+  // Only a word an encoder quoted from its very first character — never a
+  // command the agent itself wrote, whose first token is the program name
+  // (rule 1) and which therefore keeps rule 3's outright refusal of double
+  // quotes anywhere in it.
+  if (!command.startsWith('"')) return undefined;
+  const chars = Array.from(command);
+  let literal = "";
+  let i = 0;
+  while (i < chars.length) {
+    const ch = chars[i];
+    if (ch === "'") {
+      i++;
+      let closed = false;
+      while (i < chars.length) {
+        if (chars[i] === "'") {
+          closed = true;
+          i++;
+          break;
+        }
+        literal += chars[i++];
+      }
+      if (!closed) return undefined;
+      continue;
+    }
+    if (ch === '"') {
+      i++;
+      let closed = false;
+      while (i < chars.length) {
+        const inner = chars[i];
+        if (inner === '"') {
+          closed = true;
+          i++;
+          break;
+        }
+        if (inner === "$" || inner === "`" || inner === "!") return undefined;
+        if (inner === "\\") {
+          const escaped = chars[i + 1];
+          if (escaped !== '"' && escaped !== "\\") return undefined;
+          literal += escaped;
+          i += 2;
+          continue;
+        }
+        literal += inner;
+        i++;
+      }
+      if (!closed) return undefined;
+      continue;
+    }
+    if (ch === "\\") return undefined;
+    literal += ch;
+    i++;
+  }
+  return literal;
+}
+
+/**
+ * Every string sitting anywhere in a raw input, so an unrecognised tool
+ * shape can still be checked for a protected path. Deliberately shallow in
+ * ambition: it looks at the values, not at what the fields mean.
+ */
+function collectStrings(value: unknown, depth = 0): string[] {
+  if (typeof value === "string") return [value];
+  if (depth > 4 || typeof value !== "object" || value === null) return [];
+  return Object.values(value as Record<string, unknown>).flatMap((child) => collectStrings(child, depth + 1));
+}
+
+/** True when the command's first word invokes `comotion`, whatever follows it. */
+function namesCoMotionProgram(command: string): boolean {
+  const first = command.trim().split(/\s+/)[0];
+  return first !== undefined && first.replace(/^['"]|['"]$/g, "").split("/").pop() === "comotion";
 }
 
 /** Recognizes Claude's command string and Codex's shell argv; unknown shapes fail closed. */
@@ -825,6 +1466,7 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
   return command[2];
 }
 
+
 /**
  * Pulls a failed command's own output out of a `tool_call_update`'s
  * content blocks (ticket #17). Only plain-text blocks are taken — an image
@@ -833,18 +1475,27 @@ function extractCommand(toolCall: { rawInput?: unknown }): string | undefined {
  * carries no `output` field rather than an empty string pretending to be
  * output.
  */
-function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined): string | undefined {
-  if (!content) return undefined;
+function extractCommandOutput(content: acp.ToolCallContent[] | null | undefined, rawOutput?: unknown): string | undefined {
   const texts: string[] = [];
-  for (const block of content) {
+  for (const block of content ?? []) {
     if (block.type === "content" && block.content.type === "text") {
       texts.push(block.content.text);
     }
   }
+  // `@agentclientprotocol/codex-acp` puts a command's output in
+  // `rawOutput.formatted_output` (its `content` is a terminal reference,
+  // not text); `claude-code-acp` puts it in text content blocks.
+  if (texts.length === 0 && typeof rawOutput === "object" && rawOutput !== null) {
+    const formatted = (rawOutput as Record<string, unknown>).formatted_output;
+    if (typeof formatted === "string" && formatted !== "") texts.push(formatted);
+  }
   if (texts.length === 0) return undefined;
-  const joined = texts.join("\n");
-  if (joined.length <= MAX_COMMAND_OUTPUT_CHARS) return joined;
-  return joined.slice(0, MAX_COMMAND_OUTPUT_CHARS) + COMMAND_OUTPUT_TRUNCATED_SUFFIX;
+  // Whole output, never a prefix. A truncated failure is the one kind of
+  // output that is useless: the part that says what went wrong is as
+  // likely to be at the end as at the start, and an author who cannot see
+  // it has to go and re-run the command in a terminal — which is the
+  // problem this relay exists to remove.
+  return texts.join("\n");
 }
 
 /**

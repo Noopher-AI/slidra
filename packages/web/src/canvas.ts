@@ -56,6 +56,7 @@
  * model. See docs on the postMessage protocol below (`SelectionMessage`).
  */
 import playerRuntimeSource from "./player-runtime.js?raw";
+import { slidePaintKey } from "./slide-paint-key.js";
 import selectionRuntimeSource from "./selection-runtime.js?raw";
 import type { EmbedProvider } from "./embed.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
@@ -76,6 +77,7 @@ import {
 } from "./geometry.js";
 import {
   parseSlide,
+  type BackgroundImage,
   type PageStyle,
   type SlideElement,
   type SlideModel,
@@ -230,6 +232,14 @@ export interface CanvasState {
    * null}` for that case (Style › Page is disabled entirely then, §4.6).
    */
   pageStyle: PageStyle | null;
+  /**
+   * #303 手動控制面板：the current slide's background image, straight off
+   * `currentSlideModel.backgroundImage` — `null` both when there is no
+   * current slide and when the current slide has no background image;
+   * callers distinguish the two the same way they already do for
+   * `pageStyle` (`currentIndex === -1`).
+   */
+  backgroundImage: BackgroundImage | null;
 }
 
 /**
@@ -362,6 +372,14 @@ export interface CanvasController {
    * `setStyle`. No-op (returns `false`) when there is no current slide.
    */
   setPageStyle: (update: { background?: string; accent?: string }) => Promise<boolean>;
+  /**
+   * 樣式面板 (#303)：Style › Page 的背景圖片區塊。送出 `slide background
+   * set`：給 `asset` 設定/替換背景圖，給 `none: true` 清除，`opacity` 調整
+   * 透明度（CLI 要求 `--asset`／`--none` 二選一，所以單獨調透明度時呼叫端
+   * 要一併帶上目前的 asset）。失敗時的行為與 `setStyle` 相同；沒有目前的
+   * slide 時回傳 `false`，不送出命令。
+   */
+  setBackgroundImage: (update: { asset?: string; none?: boolean; opacity?: number }) => Promise<boolean>;
   /**
    * 樣式面板 (#200 §4.3): Style › Page's Width/Height/preset/swap controls.
    * Sends `presentation canvas set` — never occupies an undo step (the
@@ -512,7 +530,7 @@ export interface CanvasController {
   copySelection: () => Promise<string | null>;
   /** ⌘X, or the ContextBar Cut button: sends `element cut` (replaces the former local-serialize + `element delete` pair) — awaited, since (計畫 §3.8/A0) there is no synchronous ClipboardEvent to race against a mutation here. `null` with no selection or on command failure. */
   cutSelection: () => Promise<string | null>;
-  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a co-motion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
+  /** ⌘V, or the ContextBar Paste button (計畫 §4.3): routes `text` — a comotion elements payload, or plain text with a cell range selected — to the matching command; silent no-op for anything else (including plain text with nothing selected). The window `paste` event's own image-file branch (App.tsx) is untouched and independent of this. */
   pasteFromText: (text: string) => Promise<void>;
   /**
    * The Text insert panel's Insert action (NOOP-65 §3.8/A11): sends
@@ -1127,6 +1145,25 @@ function cornerPoint(corner: "nw" | "ne" | "sw" | "se", box: Rect): { x: number;
   };
 }
 
+/**
+ * #303 背景圖片面板："選現有檔案" 下拉選單的資料來源 — `GET /api/assets`
+ * 回傳 `assets/` 底下目前有的檔案，供直接選用（不需要重新上傳）。與
+ * `CanvasController` 無關，不隨某個 slide 的載入/reload 生命週期走，所以
+ * 是獨立的頂層函式而非控制器方法。失敗時回傳空陣列而非拋出——下拉選單
+ * 空著仍可用（比如上傳新檔），不值得讓整個面板因此壞掉。
+ */
+export async function fetchAssetList(): Promise<string[]> {
+  try {
+    const response = await fetch("/api/assets");
+    if (!response.ok) return [];
+    const body = (await response.json().catch(() => null)) as { entries?: unknown } | null;
+    const entries = body?.entries;
+    return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function mountCanvas(container: HTMLElement): CanvasController {
   let destroyed = false;
   // The selected slide lives here, not in React (ADR-0001/ADR-0002): the
@@ -1150,6 +1187,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // comment.
   let exiting = false;
   let mode: CanvasMode = "view";
+  // #303: the paint key (`slidePaintKey`) of the slide the view-mode iframe
+  // currently shows, or null whenever `srcdoc` was last set by something
+  // other than `render()` (empty deck, play/preview, a rebuilt frame) —
+  // those never count as "already painted". `render()` compares against
+  // it to skip a repaint that would show the exact same picture.
+  let paintedView: { slidePath: string; key: string } | null = null;
+  // #303: the play-mode twin of `paintedView`. A live reload while playing
+  // (`reload()` → `renderPlay(…, playEnter=false)`) used to reassign
+  // `srcdoc` unconditionally, which restarts the play runtime — the step
+  // position jumps back to the start and the page blinks — even when the
+  // agent's command only touched `<metadata>`. Same key, same slide, same
+  // frame ⇒ keep the running document; the plan cache was already
+  // invalidated by reload(), so the next real navigation re-reads it.
+  let paintedPlay: { slidePath: string; key: string } | null = null;
   let playerHasFocus = false;
   let error: string | null = null;
   // [E2.T7]/D8: the selection Preview entered from, restored (top-level ids
@@ -2250,7 +2301,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const bytes = await file.arrayBuffer();
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Co-Motion-Asset-Name": encodeURIComponent(file.name) },
+        headers: { "X-Comotion-Asset-Name": encodeURIComponent(file.name) },
         body: bytes,
       });
       return parseAssetResponse(response);
@@ -2263,7 +2314,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     try {
       const response = await fetch("/api/asset", {
         method: "POST",
-        headers: { "X-Co-Motion-Asset-Url": encodeURIComponent(url) },
+        headers: { "X-Comotion-Asset-Url": encodeURIComponent(url) },
       });
       return parseAssetResponse(response);
     } catch (err) {
@@ -3274,6 +3325,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const hitIds: string[] = [];
     const hitNames: (string | null)[] = [];
     for (const element of currentSlideModel.elements) {
+      // A locked element is not selectable at all (ADR-0013). The click
+      // path already refuses it inside the runtime; the marquee resolves
+      // hits out here against reported bounds, which include every element
+      // with an id — so without this the full-bleed background image was
+      // caught by every single marquee.
+      if (element.locked) continue;
       const bounds = computeBounds(element.id);
       // An element the runtime never reported bounds for (jsdom in tests,
       // or a genuinely gone element) is simply not selectable by marquee —
@@ -3338,7 +3395,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // just race the next mount for no benefit.
     if (destroyed) return;
 
-    // [E4.T7]: an external change (an agent's command, another tab, `co-motion
+    // [E4.T7]: an external change (an agent's command, another tab, `comotion
     // effect *` from the CLI) may have touched any slide's effect list —
     // reload() has no way to know which, so invalidate every cached plan
     // rather than one. render()/renderPlay() below re-fetch as needed.
@@ -3372,6 +3429,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const project = await fetchJson<ProjectJson>("/api/presentation");
     if (destroyed || thisGeneration !== generation) return;
 
+    // Before any slide document is built from this load: the deck's own
+    // embedded faces (#305).
+    setPresentationFonts(project.fonts);
     slides = project.slides;
     // Live reload calls reload() on every external edit. Staying on the
     // slide the author is looking at is the whole point — jumping back to
@@ -3429,7 +3489,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
       badgeTargets = [];
       overlayBadges = [];
-      frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      paintedView = null;
+      frame.srcdoc = EMPTY_DECK_DOCUMENT;
       notifyChartWindow();
       return;
     }
@@ -3439,7 +3500,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || thisGeneration !== generation) return;
     currentSlideMarkup = svgMarkup;
 
-    currentSlideMarkup = svgMarkup;
+    // #303: a reload whose only difference is `<metadata>` (an effect, a
+    // note, a comment, a transition landed) paints the same picture — skip
+    // the `srcdoc` navigation, which would blank the stage for nothing.
+    // A pending post-load selection still forces a repaint: it waits on
+    // the frame's `load` event (`selectOnceLoaded`), which only a
+    // navigation fires.
+    const paintKey = slidePaintKey(svgMarkup);
+    const repaint =
+      selectAfterLoad !== null ||
+      paintedView === null ||
+      paintedView.slidePath !== slidePath ||
+      paintedView.key !== paintKey;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
     // A non-compliant slide (should not happen — every write path asserts
@@ -3455,8 +3527,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // never outlives the slide it measured. The fresh iframe self-reports
     // its own bounds once its script runs (selection-runtime.js's
     // `reportElementBounds`), same "runtime-ready" timing `overlayBadges`
-    // already relies on.
-    elementBoundsById = new Map();
+    // already relies on. Kept when the repaint is skipped (#303): the
+    // document — and therefore its bounds — is unchanged.
+    if (repaint) elementBoundsById = new Map();
 
     // [E2.T7]/[E4.T7]: a slide whose effect list fails to parse is treated
     // as having no animations at all in view mode (GUI table — the
@@ -3468,6 +3541,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
     }
     if (destroyed || thisGeneration !== generation) return;
+
+    if (!repaint) {
+      // #303: same picture, same document. reload() already dropped this
+      // side's selection — tell the live runtime so its selection box
+      // goes too — and re-measure the badges against the (possibly new)
+      // effect list, the job a fresh document's "runtime-ready" would do.
+      pushSelectionToRuntime([]);
+      requestBadgeMeasurement();
+      notifyChartWindow();
+      notify();
+      return;
+    }
 
     // [E2.T17]: the embed table is the parent's, not the iframe's — the
     // runtime is only told which ids to measure. Boxes are cleared here
@@ -3484,6 +3569,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       stageMediaFor(svgMarkup),
       Object.keys(embedEntries),
     );
+    paintedView = { slidePath, key: paintKey };
 
     // E2.T12: re-derive the open chart window's model off the just-loaded
     // markup so a committed edit's normalized result (formatSvgNumber
@@ -3600,13 +3686,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   ): Promise<void> {
     const captured = thisGeneration ?? generation;
     if (currentIndex === -1) {
-      frame.srcdoc = wrapSlideDocument("<p>此簡報沒有投影片</p>");
+      paintedView = null;
+      paintedPlay = null;
+      frame.srcdoc = EMPTY_DECK_DOCUMENT;
       return;
     }
 
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
     if (destroyed || captured !== generation) return;
+
+    // #303: only reload()'s background refresh (playEnter=false, no preview,
+    // startAt "first") may keep the running document; every arrival —
+    // page change, entering play, a Preview — paints anew.
+    const playKey = slidePaintKey(svgMarkup);
+    const keepRunningDocument =
+      !playEnter &&
+      previewEffectIndices === undefined &&
+      startAt === "first" &&
+      paintedPlay !== null &&
+      paintedPlay.slidePath === slidePath &&
+      paintedPlay.key === playKey;
 
     let planScript: string;
     let hideStyle: string;
@@ -3653,9 +3753,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // call leaving this (static) page does not act on stale data left
       // over from whichever slide was last painted successfully.
       currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
+      paintedView = null;
+      paintedPlay = null;
       frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
+
+    // #303: metadata-only change while playing — the plan above was
+    // re-read (so `currentPageTransition` and the effects cache are
+    // fresh) but the document on screen is the same picture: leave the
+    // runtime, and the author's step position, alone.
+    if (keepRunningDocument) return;
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
@@ -3663,12 +3771,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     embedBoxes = {};
     notifyEmbeds();
 
+    paintedView = null;
     frame.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       hideStyle,
       planScript,
     );
+    paintedPlay = { slidePath, key: playKey };
 
     const { effect, duration } = currentPageTransition.enter;
     if (playEnter && effect !== "none" && duration > 0) {
@@ -3957,6 +4067,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
     const old = frame;
+    paintedView = null; // #303: a new element has painted nothing yet.
+    paintedPlay = null;
     frame = buildFrame(sandbox);
     container.insertBefore(frame, old);
     old.remove();
@@ -4032,6 +4144,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return true;
   }
 
+  async function setBackgroundImage(update: {
+    asset?: string;
+    none?: boolean;
+    opacity?: number;
+  }): Promise<boolean> {
+    if (currentIndex < 0) return false;
+    const thisGeneration = generation;
+    const result = await postCommand("slide background set", {
+      slidePath: slides[currentIndex],
+      ...update,
+    });
+    if (destroyed || thisGeneration !== generation) return false;
+    if (!result.ok) {
+      error = result.message;
+      notify();
+      return false;
+    }
+    keepSelectionAcrossReload();
+    return true;
+  }
+
   async function setCanvasSize(width: number, height: number): Promise<boolean> {
     const thisGeneration = generation;
     const result = await postCommand("presentation canvas set", { width, height });
@@ -4063,6 +4196,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       },
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
+      backgroundImage: currentSlideModel?.backgroundImage ?? null,
     };
     for (const listener of listeners) listener(state);
   }
@@ -4083,6 +4217,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       },
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
+      backgroundImage: currentSlideModel?.backgroundImage ?? null,
     });
     return () => {
       listeners.delete(listener);
@@ -4114,6 +4249,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     setStyle,
     setTextAlign,
     setPageStyle,
+    setBackgroundImage,
     setCanvasSize,
     get frameElement() {
       return frame;
@@ -4269,8 +4405,50 @@ function buildFrame(sandbox: string): HTMLIFrameElement {
  * `Access-Control-Allow-Origin` header serve.ts adds to every `/api/raw/`
  * response for why that still works.
  */
-const PRESENTATION_FONT_FACE_STYLE =
+const DEFAULT_PRESENTATION_FONT_FACE_STYLE =
   '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
+
+/**
+ * The faces actually injected, rebuilt from `project.json` whenever the
+ * presentation loads (#305). This used to be the constant above, naming
+ * one family — so a deck that imported a second font (`comotion font
+ * import`, e.g. `Noto Serif TC` for its titles) rendered that font from
+ * whatever the host OS happened to have, on screen and in the PDF alike.
+ * The container ships the bytes; every document that shows a slide must
+ * declare them.
+ *
+ * Module-level rather than a parameter threaded through four wrap
+ * functions and their callers: it is one fact about the open
+ * presentation, exactly as the constant it replaces was one fact about
+ * every presentation.
+ */
+let presentationFontFaceStyle = DEFAULT_PRESENTATION_FONT_FACE_STYLE;
+
+/**
+ * Declares the presentation's own embedded fonts for every slide document
+ * created from here on. Callers that build slide documents outside this
+ * module's own load path (overview, export) call this after reading
+ * `/api/presentation`. An empty or missing list keeps the default face, so
+ * a deck whose `project.json` predates the `fonts` field still renders.
+ */
+/** The `<style>` block every slide document injects — see `setPresentationFonts`. */
+export function presentationFontFaces(): string {
+  return presentationFontFaceStyle;
+}
+
+export function setPresentationFonts(fonts: { file: string; family: string }[] | undefined): void {
+  if (fonts === undefined || fonts.length === 0) {
+    presentationFontFaceStyle = DEFAULT_PRESENTATION_FONT_FACE_STYLE;
+    return;
+  }
+  const faces = fonts
+    .map(
+      (font) =>
+        `@font-face{font-family:"${font.family.replace(/["\\]/g, "")}";src:url("/api/raw/${encodeURI(font.file)}") format("truetype");font-weight:400;font-style:normal;}`,
+    )
+    .join("");
+  presentationFontFaceStyle = `<style>${faces}</style>`;
+}
 
 /**
  * (F-01, NOOP-355 #287) An inline `<svg>` is a replacement element with a
@@ -4306,16 +4484,28 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
  * this and wrapPlayDocument/slideDirectory are exported.
  *
  * `background:#fff` on `<body>` (#120): a slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document fully transparent. This function's own callers only ever render
  * inside a black loading/error placeholder (the empty-deck message and
  * renderPlay()'s parse-error fallback, both painted over play.css's `.canvas`
  * `#000`), so a transparent document there reads as solid black instead of a
  * blank page.
  */
+/**
+ * 沒有任何投影片時塞進 iframe 的文件：完全空白、**背景透明**。
+ *
+ * 舊版走 `wrapSlideDocument`，於是一份還沒有投影片的簡報在舞台上是一張
+ * 16:9 的白紙（那個包裝函式的 body 寫死 `background:#fff`），看起來像「有
+ * 一頁空白投影片」——但實際上一頁都沒有。透明之後井底的深色直接透出來，
+ * 「現在沒有投影片」這句話改由父文件的 `.stage-empty` 用白字說（Stage.tsx），
+ * 字級與顏色才吃得到殼的 design token。
+ */
+const EMPTY_DECK_DOCUMENT =
+  '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:transparent"></body></html>';
+
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4396,7 +4586,7 @@ export function wrapSelectionDocument(
   // selection, so no qa/cases script or e2e test can catch a regression here.
   // Applied to this wrapper only: play mode is a separate document where
   // letting a viewer select text is a different decision.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__COMOT_SELECTION_COLORS__=${safeColorsJson};window.__COMOT_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__COMOT_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -4410,7 +4600,7 @@ export function wrapSelectionDocument(
  * `background:#fff` on `<body>` (#120): this is play mode's normal
  * rendering path (renderPlay()'s non-error branch), painted over play.css's
  * `.canvas` `#000` loading placeholder. A slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document transparent, so the black placeholder never gets covered — the
  * whole point of #000 there (avoid a flash of white before content paints)
  * regresses into the opposite failure: a flash of black that never clears.
@@ -4435,7 +4625,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

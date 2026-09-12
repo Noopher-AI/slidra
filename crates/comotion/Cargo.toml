@@ -1,0 +1,21 @@
+[package]
+name = "comotion"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+
+[lib]
+name = "comotion"
+path = "src/lib.rs"
+
+[[bin]]
+name = "comotion"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = "2"
+flate2 = "1.0"
+zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2"] }

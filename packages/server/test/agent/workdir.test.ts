@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,8 +10,8 @@ import {
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
 
-// NOOP-238: the product work directory `co-motion serve` deploys on every
-// startup (`packages/server/agent-workdir/` -> `<CO_MOTION_HOME>/agent`) and
+// NOOP-238: the product work directory `comotion serve` deploys on every
+// startup (`packages/server/agent-workdir/` -> `<COMOTION_HOME>/agent`) and
 // the agent session reads real files from, alongside the presentation's own
 // virtual tree. No server, no ACP subprocess — everything here is a plain
 // filesystem check.
@@ -19,12 +19,12 @@ import {
 let coMotionHome: string;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-home-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-workdir-home-"));
+  process.env.COMOTION_HOME = coMotionHome;
 });
 
 afterEach(async () => {
-  delete process.env.CO_MOTION_HOME;
+  delete process.env.COMOTION_HOME;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -55,10 +55,14 @@ describe("resolveAgentWorkdirSource", () => {
   });
 });
 
+/** Stands in for a presentation id everywhere one deploy is enough. */
+const PRESENTATION = "pres-1";
+
 describe("deployAgentWorkdir", () => {
-  it("deploys the source's files to <CO_MOTION_HOME>/agent, byte-for-byte (A1)", async () => {
-    const target = await deployAgentWorkdir();
-    expect(target).toBe(await realpath(agentWorkdirTarget()));
+  it("deploys the source's files to <COMOTION_HOME>/agent/<id>, byte-for-byte (A1)", async () => {
+    const target = await deployAgentWorkdir(PRESENTATION);
+    expect(target).toBe(await realpath(agentWorkdirTarget(PRESENTATION)));
+    expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(coMotionHome, "agent", PRESENTATION));
 
     const source = resolveAgentWorkdirSource();
     const sourceFiles = (await listFilesRecursively(source)).filter(
@@ -74,7 +78,7 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("copies .agents/skills into .claude/skills, relative paths and bytes identical (A2)", async () => {
-    const target = await deployAgentWorkdir();
+    const target = await deployAgentWorkdir(PRESENTATION);
     const agentsSkills = await listFilesRecursively(path.join(target, ".agents", "skills"));
     const claudeSkills = await listFilesRecursively(path.join(target, ".claude", "skills"));
     expect(claudeSkills).toEqual(agentsSkills);
@@ -88,13 +92,13 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge (A3)", async () => {
-    await deployAgentWorkdir();
-    const target = agentWorkdirTarget();
+    await deployAgentWorkdir(PRESENTATION);
+    const target = agentWorkdirTarget(PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "使用者亂改的內容");
     await mkdir(path.join(target, "多出來的目錄"), { recursive: true });
     await writeFile(path.join(target, "多出來的目錄", "多出來的檔案.md"), "不應該留下來");
 
-    await deployAgentWorkdir();
+    await deployAgentWorkdir(PRESENTATION);
 
     const sourceAgentsMd = await readFile(path.join(resolveAgentWorkdirSource(), "AGENTS.md"), "utf8");
     const deployedAgentsMd = await readFile(path.join(target, "AGENTS.md"), "utf8");
@@ -104,12 +108,76 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("is idempotent: deploying twice in a row leaves the same files behind", async () => {
-    const first = await deployAgentWorkdir();
+    const first = await deployAgentWorkdir(PRESENTATION);
     const firstFiles = await listFilesRecursively(first);
-    const second = await deployAgentWorkdir();
+    const second = await deployAgentWorkdir(PRESENTATION);
     const secondFiles = await listFilesRecursively(second);
     expect(second).toBe(first);
     expect(secondFiles).toEqual(firstFiles);
+  });
+
+  // The concurrency regressions (two `comotion serve` on one machine).
+  // `deployAgentWorkdir` used to `rm -rf` one shared `<HOME>/agent`, which
+  // unlinked the directory a running agent had as its `cwd`.
+
+  it("gives two presentations two directories, and deploying one leaves the other's inode untouched", async () => {
+    const a = await deployAgentWorkdir("pres-a");
+    const b = await deployAgentWorkdir("pres-b");
+    expect(a).not.toBe(b);
+
+    // A file only `pres-a` has: it must survive `pres-b`'s deploy, and it
+    // must still be reachable through the *same* directory handle `pres-a`'s
+    // agent would be holding.
+    await writeFile(path.join(a, "agent-a-wrote-this.txt"), "still here");
+    await deployAgentWorkdir("pres-b");
+
+    expect(await readFile(path.join(a, "agent-a-wrote-this.txt"), "utf8")).toBe("still here");
+    expect(await realpath(a)).toBe(a);
+  });
+
+  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading (B2)", async () => {
+    const first = await deployAgentWorkdir(PRESENTATION);
+    const firstInode = (await stat(first)).ino;
+
+    await deployAgentWorkdir(PRESENTATION);
+
+    // The old inode is still readable — it was renamed aside, not removed.
+    const agentDir = path.join(coMotionHome, "agent");
+    const retired = (await readdir(agentDir)).filter((name) => name.startsWith(`${PRESENTATION}.old-`));
+    expect(retired).toHaveLength(1);
+    const retiredDir = path.join(agentDir, retired[0]!);
+    expect((await stat(retiredDir)).ino).toBe(firstInode);
+    expect(await readFile(path.join(retiredDir, "AGENTS.md"), "utf8")).not.toBe("");
+  });
+
+  it("sweeps the retired generation on the deploy after next, so retired copies do not pile up", async () => {
+    await deployAgentWorkdir(PRESENTATION);
+    await deployAgentWorkdir(PRESENTATION);
+    await deployAgentWorkdir(PRESENTATION);
+
+    const retired = (await readdir(path.join(coMotionHome, "agent"))).filter((name) =>
+      name.startsWith(`${PRESENTATION}.old-`),
+    );
+    expect(retired).toHaveLength(1);
+  });
+
+  it("never sweeps another presentation's retired directory — it may still be that serve's live agent cwd", async () => {
+    await deployAgentWorkdir("pres-a");
+    await deployAgentWorkdir("pres-a"); // retires pres-a's first generation
+    const agentDir = path.join(coMotionHome, "agent");
+    const retiredA = (await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"));
+    expect(retiredA).toHaveLength(1);
+
+    await deployAgentWorkdir("pres-b");
+    await deployAgentWorkdir("pres-b");
+
+    expect((await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"))).toEqual(retiredA);
+  });
+
+  it("leaves no staging directory behind", async () => {
+    await deployAgentWorkdir(PRESENTATION);
+    const staging = (await readdir(coMotionHome)).filter((name) => name.startsWith("agent.tmp-"));
+    expect(staging).toEqual([]);
   });
 });
 
@@ -156,7 +224,7 @@ describe("readAgentWorkdirFile", () => {
   let workdirReal: string;
 
   beforeEach(async () => {
-    workdirReal = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-read-"));
+    workdirReal = await mkdtemp(path.join(tmpdir(), "comotion-workdir-read-"));
     await writeFile(path.join(workdirReal, "CLAUDE.md"), "@AGENTS.md\n");
     await mkdir(path.join(workdirReal, "reference"));
     await writeFile(path.join(workdirReal, "reference", "commands.md"), "# 命令參考\n");
@@ -184,7 +252,7 @@ describe("readAgentWorkdirFile", () => {
   });
 
   it("refuses a symlink that points outside the work directory — excluded structurally, never followed (A12)", async () => {
-    const outsideDir = await mkdtemp(path.join(tmpdir(), "co-motion-workdir-outside-"));
+    const outsideDir = await mkdtemp(path.join(tmpdir(), "comotion-workdir-outside-"));
     try {
       await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
       await symlink(path.join(outsideDir, "secret.txt"), path.join(workdirReal, "link.txt"));

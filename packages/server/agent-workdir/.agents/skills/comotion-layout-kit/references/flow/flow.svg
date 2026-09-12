@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="280" width="260" height="220" fill="#EDEDED" stroke="#BFBFBF"/><text x="210" y="400" font-size="26" fill="#777777" text-anchor="middle">Input</text><line x1="356" y1="390" x2="428" y2="390" stroke="#909090" stroke-width="4"/><path d="M426 379l20 11l-20 11z" fill="#909090"/><rect x="460" y="216" width="360" height="348" fill="#DCDCDC" stroke="#909090"/><text x="640" y="368" font-size="32" fill="#2E2E2E" font-weight="700" text-anchor="middle">Transform</text><text x="640" y="420" font-size="24" fill="#777777" text-anchor="middle">This is the point</text><line x1="838" y1="390" x2="910" y2="390" stroke="#909090" stroke-width="4"/><path d="M908 379l20 11l-20 11z" fill="#909090"/><rect x="940" y="280" width="260" height="220" fill="#EDEDED" stroke="#BFBFBF"/><text x="1070" y="400" font-size="26" fill="#777777" text-anchor="middle">Output</text>
+
+</svg>

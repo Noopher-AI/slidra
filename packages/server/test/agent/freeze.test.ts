@@ -12,7 +12,7 @@ import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { requireCliBuilt } from "./require-cli-built.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -51,19 +51,19 @@ let logPath: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-freeze-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-freeze-files-"));
-  logDir = await mkdtemp(path.join(tmpdir(), "co-motion-freeze-log-"));
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-freeze-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-freeze-files-"));
+  logDir = await mkdtemp(path.join(tmpdir(), "comotion-freeze-log-"));
   logPath = path.join(logDir, "fake-agent.log.jsonl");
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -75,13 +75,19 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018, #303): mint one page with one text
+  // box, and take the element id straight from `textbox add`'s own result.
   const id = opened.data!.id;
-  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(slide.ok).toBe(true);
-  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
-  const match = /<text id="(el-[^"]+)"/.exec(svgText);
-  if (!match) throw new Error("test fixture: title element id not found");
-  return { id, elementId: match[1] };
+  expect((await runCli(["slide", "add", id])).ok).toBe(true);
+  const added = await runCli<{ elementId: string }>([
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "標題",
+  ]);
+  expect(added.ok).toBe(true);
+  // These tests count undo entries, and the two setup commands above leave
+  // their own. Drop the history so the deck reaches each test exactly as it
+  // did when `new` still shipped a first slide: one page, empty undo stack.
+  await rm(path.join(coMotionHome, "history", id), { recursive: true, force: true });
+  return { id, elementId: added.data!.elementId };
 }
 
 function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
@@ -246,9 +252,9 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
     const commands = [
-      `co-motion text set ${id} slides/001.svg ${elementId} '第一次'`,
-      `co-motion text set ${id} slides/001.svg ${elementId} '第二次'`,
-      `co-motion text set ${id} slides/001.svg ${elementId} '第三次'`,
+      `comotion text set ${id} slides/001.svg ${elementId} '第一次'`,
+      `comotion text set ${id} slides/001.svg ${elementId} '第二次'`,
+      `comotion text set ${id} slides/001.svg ${elementId} '第三次'`,
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
@@ -275,8 +281,8 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC2-a: after the turn, stack.json has no open group and exactly one undo entry for it", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const commands = [
-      `co-motion text set ${id} slides/001.svg ${elementId} 'A'`,
-      `co-motion text set ${id} slides/001.svg ${elementId} 'B'`,
+      `comotion text set ${id} slides/001.svg ${elementId} 'A'`,
+      `comotion text set ${id} slides/001.svg ${elementId} 'B'`,
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
@@ -292,8 +298,8 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("two separate agent turns produce two separate undo groups", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const cmd1 = `co-motion text set ${id} slides/001.svg ${elementId} '回合一'`;
-    const cmd2 = `co-motion text set ${id} slides/001.svg ${elementId} '回合二'`;
+    const cmd1 = `comotion text set ${id} slides/001.svg ${elementId} '回合一'`;
+    const cmd2 = `comotion text set ${id} slides/001.svg ${elementId} '回合二'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[cmd1], [cmd2]] }), id);
 
     await postChat(server, "第一次請求");
@@ -328,7 +334,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("AC2-c: undo is refused (409) from the first command until the turn ends, then allowed", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改一次'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '改一次'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");
@@ -348,7 +354,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC4: the agent's first command waits for an in-progress human edit instead of failing", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '人放手後才改'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '人放手後才改'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     const beginResponse = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
@@ -374,7 +380,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("POST /api/editing/begin is refused with 409 while the agent holds the floor", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");
@@ -396,7 +402,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then actually execute once it releases", async () => {
     const { id, elementId, moveElementId, scaleElementId, rotateElementId, textboxElementId } =
       await openFreshPresentationForCommandExecution();
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const slidePath = "slides/001.svg";
 
@@ -468,7 +474,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("POST /api/asset: refused with 409 while the agent holds the floor, then actually runs once it releases", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
@@ -478,7 +484,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
     const frozenResponse = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Co-Motion-Asset-Name": "photo.png" },
+      headers: { "X-Comotion-Asset-Name": "photo.png" },
       body: pngBytes,
     });
     expect(frozenResponse.status).toBe(409);
@@ -490,7 +496,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
     const unfrozenResponse = await fetch(`${server.url}/api/asset`, {
       method: "POST",
-      headers: { "X-Co-Motion-Asset-Name": "photo.png" },
+      headers: { "X-Comotion-Asset-Name": "photo.png" },
       body: pngBytes,
     });
     expect(unfrozenResponse.status).toBe(200);
@@ -499,7 +505,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `co-motion text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `comotion text set ${id} slides/001.svg ${elementId} '改標題'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     await postChat(server, "改標題");

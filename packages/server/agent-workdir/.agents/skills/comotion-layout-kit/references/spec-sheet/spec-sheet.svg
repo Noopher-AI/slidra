@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="176" width="520" height="440" fill="#D5D5D5" stroke="#BFBFBF"/><text x="340" y="400" font-size="24" fill="#777777" text-anchor="middle">Product shot</text><text x="660" y="232" font-size="22" fill="#A0A0A0">Size</text><text x="960" y="232" font-size="26" fill="#2E2E2E">Value</text><line x1="660" y1="262" x2="1200" y2="262" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="340" font-size="22" fill="#A0A0A0">Weight</text><text x="960" y="340" font-size="26" fill="#2E2E2E">Value</text><line x1="660" y1="370" x2="1200" y2="370" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="448" font-size="22" fill="#A0A0A0">Material</text><text x="960" y="448" font-size="26" fill="#2E2E2E">Value</text><line x1="660" y1="478" x2="1200" y2="478" stroke="#E6E6E6" stroke-width="1"/><text x="660" y="556" font-size="22" fill="#A0A0A0">Price</text><text x="960" y="556" font-size="26" fill="#2E2E2E">Value</text><line x1="660" y1="586" x2="1200" y2="586" stroke="#E6E6E6" stroke-width="1"/>
+
+</svg>

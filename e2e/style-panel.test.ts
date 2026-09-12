@@ -27,7 +27,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const deckDir = path.join(e2eDir, "fixtures/style-panel-deck");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -68,11 +68,11 @@ interface TestServer {
 }
 
 async function startServerFor(): Promise<TestServer> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-style-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-style-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-style-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-style-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -100,8 +100,8 @@ async function startServerFor(): Promise<TestServer> {
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     },

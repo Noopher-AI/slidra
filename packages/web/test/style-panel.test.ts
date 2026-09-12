@@ -40,6 +40,7 @@ function stateFor(ids: string[]): CanvasState {
     selection: { ids, names: ids.map(() => null), groupPath: [], elements },
     dragSignal: 0,
     pageStyle: { background: null, accent: null },
+    backgroundImage: null,
   };
 }
 

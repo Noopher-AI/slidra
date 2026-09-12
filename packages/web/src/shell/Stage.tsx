@@ -318,6 +318,7 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
     transform: shellVisible ? `${centering} translate(${zoomPan.pan.x}px, ${zoomPan.pan.y}px) scale(${zoomPan.zoom})` : centering,
   };
   const wellCursor = dragging ? "grabbing" : isHandActive(hand) ? "grab" : undefined;
+  const deckEmpty = state.slides.length === 0;
 
   return (
     <div
@@ -332,8 +333,12 @@ export function Stage({ canvasRef, wellRef, canvasSize, state, dropOverlay, cont
       // that mousedown as "UI chrome".
       data-grab={isHandActive(hand) ? "true" : undefined}
     >
-      <div className="stage" style={stageStyle}>
+      <div className="stage" style={stageStyle} data-empty={deckEmpty ? "true" : undefined}>
         <div ref={canvasRef} className="canvas" />
+        {/* 一頁都還沒有的簡報：舞台上不該有一張白紙假裝那是空白投影片
+            （iframe 這時是透明的，見 canvas.ts 的 EMPTY_DECK_DOCUMENT），
+            井底直接透出來，只留這一行白字。 */}
+        {deckEmpty && <p className="stage-empty">No slides now</p>}
         {/* T3/NOOP-142: pointer-events stays "none" until App.tsx sets
             `active` true — otherwise this div would sit over the iframe at
             all times and swallow every click/drag NOOP-91's direct

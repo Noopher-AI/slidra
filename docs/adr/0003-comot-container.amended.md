@@ -11,7 +11,7 @@
 
 使用者期待簡報是「一個檔案」，可以複製、寄送、備份。但編輯期間維持壓縮狀態不可行——一份含影片的簡報，改一個字就要重壓幾十 MB。
 
-因此 `.comot` 是儲存與運輸格式（zip），`co-motion open` 將其解壓到 `~/.comotion/work/<id>/` 進行編輯，關閉或儲存時重新打包。這是 Keynote 與 LibreOffice 的模型。
+因此 `.comot` 是儲存與運輸格式（zip），`comotion open` 將其解壓到 `~/.comotion/work/<id>/` 進行編輯，關閉或儲存時重新打包。這是 Keynote 與 LibreOffice 的模型。
 
 工作目錄刻意放在使用者與 agent 都不會經過的位置，而不是與 `.comot` 同層——見 ADR-0004。
 

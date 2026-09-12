@@ -7,7 +7,7 @@ import { CoMotionError } from "../comotion/errors.js";
 export type ExportFormat = "pdf" | "pdf-frames";
 
 export interface RenderExportPdfOptions {
-  /** The origin (CLI's own `export/server.ts`, or an already-running `co-motion serve`) that serves `export.html` and the three read-only routes it needs. */
+  /** The origin (CLI's own `export/server.ts`, or an already-running `comotion serve`) that serves `export.html` and the three read-only routes it needs. */
   serverUrl: string;
   format: ExportFormat;
   /** Final destination — written atomically (temp file + rename), never left half-written on failure. */

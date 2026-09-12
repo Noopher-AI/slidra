@@ -6,7 +6,7 @@ import type { ProjectJson } from "./comotion/project-json.js";
 import { handleRawRequest } from "./raw.js";
 
 /**
- * The three read-only routes every co-motion HTTP server needs to render a
+ * The three read-only routes every comotion HTTP server needs to render a
  * presentation, extracted out of `serve.ts` (NOOP-93, §3.6) so the export
  * server (`export/server.ts`) can share them verbatim instead of keeping a
  * second, independently-drifting copy. In particular `/api/files/`'s "a
@@ -14,7 +14,7 @@ import { handleRawRequest } from "./raw.js";
  * kind of thing that silently stops doing `{{ slide_number }}` substitution
  * if it ever forks into two copies.
  *
- * [E4.T9]/F7: every read here now spawns the Rust `co-motion` binary
+ * [E4.T9]/F7: every read here now spawns the Rust `comotion` binary
  * (`comotion/reads.ts`) instead of dispatching against an in-process
  * `CommandRegistry` — the HTTP-facing behaviour is unchanged.
  */
@@ -40,6 +40,24 @@ function contentTypeFor(virtualPath: string): string {
 export async function handlePresentationRoute(presentationId: string, res: ServerResponse): Promise<void> {
   const project = await loadProject(presentationId);
   sendJson(res, 200, project);
+}
+
+/**
+ * `GET /api/assets` (#303 背景圖片面板): the `assets/` folder's entries, for
+ * the "選現有檔案" dropdown. A brand-new presentation has no `assets/`
+ * directory at all yet — that is not an error here, just an empty list.
+ */
+export async function handleAssetsRoute(presentationId: string, res: ServerResponse): Promise<void> {
+  try {
+    const entries = await listCommandEntries(presentationId, "assets");
+    sendJson(res, 200, { entries });
+  } catch (error) {
+    if (error instanceof CoMotionNotFoundError) {
+      sendJson(res, 200, { entries: [] });
+      return;
+    }
+    throw error;
+  }
 }
 
 /** `GET /api/files/<virtual path>`. `virtualPath` is already percent-decoded by the caller. */
@@ -99,7 +117,7 @@ export const EMPTY_EFFECT_PLAN = {
  * `GET /api/effects/<virtual path>` ([E4.T7], plan 4.3): the step plan the
  * player and step-by-step export now fetch instead of computing themselves
  * in the browser (`packages/web/src/player-plan.ts`'s former `deriveSteps`/
- * `parseEffects`). Spawns the Rust `co-motion effect list` command
+ * `parseEffects`). Spawns the Rust `comotion effect list` command
  * ([E4.T9]/F7) rather than dispatching against an in-process registry.
  *
  * Deliberately narrower than `effect list`'s own command-layer contract

@@ -25,7 +25,7 @@ CoMotion 想處理的是這段來回，以及它背後的三件事。
 
 偵測與修正都在機器這一邊，因此可以合成一個閉環——agent 改完自己量一次，沒過就再調，調完再量。人看的是收斂之後的結果。
 
-量測與幾何都已經在 `@co-motion/core` 裡：`elementBounds()`、`primitiveBounds()`、`measureTextWidth()`，以及對齊、分布與吸附，全部跑在 Node 端。把它們接成一條 `co-motion check` 是接下來的第一件事（見〈接下來〉）。
+量測與幾何都已經在 `@comotion/core` 裡：`elementBounds()`、`primitiveBounds()`、`measureTextWidth()`，以及對齊、分布與吸附，全部跑在 Node 端。把它們接成一條 `comotion check` 是接下來的第一件事（見〈接下來〉）。
 
 ## 二、人跟 agent 在同一份東西上工作
 
@@ -58,7 +58,7 @@ CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
 
 **一張投影片是一份 SVG，不是產生 SVG 的程式**（ADR-0001）。你拖的、agent 改的、瀏覽器畫的是同一份檔案，中間沒有編譯步驟，背後也沒有另一份更權威的表示法。座標是絕對的，所以「元素在哪裡」不必等瀏覽器算完才知道——這是第一件事的來源。每張投影片自成一體（ADR-0008）：圖形、識別碼、顯示名稱、效果清單全寫在那一張 SVG 裡，對調兩頁只是動 `slides` 陣列裡的兩個字串。
 
-**所有修改都經由語意化的 CLI 命令，人與 agent 走同一條路**（ADR-0002）。`co-motion serve` 是 CLI 的常駐模式，前端與 agent 派送到的是同一份命令註冊表——這是第二件事的來源。簡報內容對 agent 唯讀，透過虛擬檔案系統存取，`fs/write_text_file` 一律拒絕（ADR-0004）；樣式走白名單（ADR-0014）；資產匯入驗證真實媒體格式（ADR-0015）——這些是第三件事的來源。
+**所有修改都經由語意化的 CLI 命令，人與 agent 走同一條路**（ADR-0002）。`comotion serve` 是 CLI 的常駐模式，前端與 agent 派送到的是同一份命令註冊表——這是第二件事的來源。簡報內容對 agent 唯讀，透過虛擬檔案系統存取，`fs/write_text_file` 一律拒絕（ADR-0004）；樣式走白名單（ADR-0014）；資產匯入驗證真實媒體格式（ADR-0015）——這些是第三件事的來源。
 
 **簡報字型隨 `.comot` 一起打包**（ADR-0016）。Node 端的文字量測與瀏覽器渲染用的是同一顆字型，所以量出來的寬度就是畫出來的寬度，排版不會在編輯與播放之間跳動。離線且快取未命中時直接拋錯，不會靜默改用系統字型。
 
@@ -75,14 +75,14 @@ CoMotion 讓規範住在簡報裡，由編輯路徑本身維持：
 ```
 React 外殼（頂列／左側縮圖軌／舞台底部 Dock／右側 Chat·Style·Animate 分頁）＋ vanilla 畫布
     ↓
-co-motion serve          ← CLI 的常駐模式
+comotion serve          ← CLI 的常駐模式
     ↓
    CLI（Rust 二進位）     ← 唯一的操作語彙 ← 外部 agent 也走這裡
     ↓
  簡報內容
 ```
 
-- `co-motion` 是單一 Rust 執行檔；`serve`／`export` 由它 exec Node 執行 `@co-motion/server`，其餘所有命令都由 Rust 自己處理，不再有並存期的 Node 回退。
+- `comotion` 是單一 Rust 執行檔；`serve`／`export` 由它 exec Node 執行 `@comotion/server`，其餘所有命令都由 Rust 自己處理，不再有並存期的 Node 回退。
 - 一份 `.comot` 檔就是一份簡報，內含 `project.json`、`slides/00N.svg`、`assets/` 與 `fonts/`（簡報內嵌的字型，見 ADR-0016）。編輯期間解壓在工作目錄，儲存時重新打包（ADR-0003）。
 - 所有修改都經由語意化的 CLI 命令。前端不擁有 CLI 沒有的操作。
 - Agent 看得到簡報的完整內容，但只能經由命令修改。
@@ -117,7 +117,7 @@ co-motion serve          ← CLI 的常駐模式
 | 歷程 | `undo` `redo` |
 | 其他 | `convert` |
 
-常駐與輸出不走命令註冊表：`co-motion serve` 啟動編輯與播放的 web app，`co-motion export --format pdf｜pdf-frames` 以 headless Chromium 匯出。
+常駐與輸出不走命令註冊表：`comotion serve` 啟動編輯與播放的 web app，`comotion export --format pdf｜pdf-frames` 以 headless Chromium 匯出。
 
 ## 目標使用者
 
@@ -136,9 +136,9 @@ co-motion serve          ← CLI 的常駐模式
 | 用途 | 名稱 |
 | --- | --- |
 | 正式產品名稱 | `CoMotion` |
-| 專案資料夾與 GitHub repository | `co-motion` |
-| 未來 JavaScript/TypeScript 套件 scope | `@co-motion/*` |
-| CLI 執行檔 | `co-motion` |
+| 專案資料夾與 GitHub repository | `co-motion`（尚未搬遷，維持原名） |
+| npm 套件 scope | `@comotion/*` |
+| CLI 執行檔 | `comotion` |
 | 簡報檔副檔名 | `.comot` |
 | 文件與使用者可見文案 | `CoMotion` |
 
@@ -149,15 +149,15 @@ co-motion serve          ← CLI 的常駐模式
 - **Noto Sans TC**（`packages/web/src/assets/fonts/NotoSansTC-subset.woff2`、`NotoSansTC-subset-500.woff2`、`NotoSansTC-subset-700.woff2`）：Google 的開源中文字型，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC`），這裡收錄的是子集版本——只保留 UI 實際用到的字元，400/500/700 三個字重各自子集化，由 `scripts/build-font-subset.mjs` 產生（子集使用 [`subset-font`](https://github.com/papandreou/subset-font)，wasm 版 harfbuzz，不需要 Python 工具鏈）。
 - **Noto Sans TC — 簡報字型**（`assets/fonts/NotoSansTC-Presentation.ttf`，授權全文隨每份 `.comot` 一起打包在 `fonts/LICENSE-NotoSansTC.txt`）：與上一條同樣是 Google 的開源中文字型，授權同為 [SIL Open Font License 1.1](https://openfontlicense.org/)，但這是獨立的一份子集——每份新簡報建立時都會把這顆字型連同授權文字一起內嵌進 `.comot`，讓簡報在沒有安裝該字型的環境（包含沒有瀏覽器的 Node 端文字量測）也能算出、畫出一致的結果。子集範圍固定為 ASCII、Latin-1 補充、標點、CJK 符號／全形／半形與整個 CJK 統一表意文字區塊，格式是 sfnt（`.ttf`，不是 woff2），由 `scripts/build-presentation-font.mjs` 產生。
 
-- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文見其 [SIL Open Font License 1.1](https://openfontlicense.org/) 發佈頁——字型檔本身不進版控，repo 內沒有隨附的 `OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/co-motion/fonts/`（可用 `CO_MOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
+- **Noto Sans TC 完整版**（打包進 `.comot` 的 `assets/fonts/NotoSansTC-Regular.ttf`，授權全文見其 [SIL Open Font License 1.1](https://openfontlicense.org/) 發佈頁——字型檔本身不進版控，repo 內沒有隨附的 `OFL.txt`）：同一套字型的完整版本，授權為 [SIL Open Font License 1.1](https://openfontlicense.org/)。原始字體取自 Google Fonts（`https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400`），**字型檔本身不進版控**——第一次用到時才下載，並快取在 `~/.cache/comotion/fonts/`（可用 `COMOTION_FONT_CACHE` 指定）。打包進 `.comot` 的是完整字型而非子集，因為簡報的文字內容不可預先枚舉；`OFL.txt` 與字型檔一起進 `assets/fonts/`，授權全文因此隨著每一份 `.comot` 走。離線且快取未命中時會直接拋錯，不會偷偷改用系統字型。
 
 ## 接下來
 
 按重要性排序。第一條是上面第一件事的兌現點，其餘是已知的缺口。
 
-- **`co-motion check`**：把版面正確性串成一條命令——溢出、出界、重疊、跨頁對齊全部驗一次，回報哪一頁哪個元素差多少。量測與幾何都在 `@co-motion/core` 裡了，缺的是把它們接成 agent 跑得動的閉環。
+- **`comotion check`**：把版面正確性串成一條命令——溢出、出界、重疊、跨頁對齊全部驗一次，回報哪一頁哪個元素差多少。量測與幾何都在 `@comotion/core` 裡了，缺的是把它們接成 agent 跑得動的閉環。
 - **簡報者畫面**：第二視窗、下一頁預覽、備忘稿、計時器。目前播放只有全螢幕。
 - **一次退回整個回合**：agent 執行多條命令後，使用者要能一次退回，不是逐條 undo。
 - **匯出的其餘出口**：目前只有 PDF（`--format pdf｜pdf-frames`），HTML 尚未做。
-- 是否讓 agent 看得到渲染後的畫面（`co-motion screenshot`）。目前延後。
+- 是否讓 agent 看得到渲染後的畫面（`comotion screenshot`）。目前延後。
 - 即時多人協作、雲端服務、PPTX 匯入匯出：暫不預設要做。是否需要，等主要路徑穩定後再決定。

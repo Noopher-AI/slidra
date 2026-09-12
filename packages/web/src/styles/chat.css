@@ -92,6 +92,13 @@
   gap: var(--space-2);
 }
 
+/* 沒有狀態標記的命令（agent 自己的 shell 工作）：留在時間軸上，但退到背景，
+   讓帶標記的 CLI 命令是眼睛先找到的東西。 */
+.chat-command-untagged {
+  background: transparent;
+  color: var(--ink-500);
+}
+
 .chat-command-status {
   display: inline-flex;
   align-items: center;
@@ -117,6 +124,12 @@
 /* 結果不明（串流中斷，ticket #19）：跟「執行中」（紅）與「失敗」（深紅）
    都不同，維持在中性色。 */
 .chat-command-interrupted .chat-command-status {
+  background: var(--surface-2);
+  color: var(--ink-500);
+}
+/* 被白名單擋下：命令根本沒跑，也不是作者按了拒絕——用中性色跟真正的
+   「失敗」分開，別讓作者以為是 agent 執行出錯。 */
+.chat-command-blocked .chat-command-status {
   background: var(--surface-2);
   color: var(--ink-500);
 }
@@ -181,16 +194,6 @@
 .chat-empty-state-body code {
   font-family: var(--font-mono);
   color: var(--ink-700);
-}
-.chat-empty-state-button {
-  height: var(--control-h);
-  padding-inline: var(--space-6);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--brand-red);
-  color: var(--surface-white);
-  font-size: var(--text-sm);
-  font-weight: 700;
 }
 .chat-empty-state-button:hover {
   background: var(--brand-red-hover);
@@ -304,6 +307,12 @@
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3) var(--space-3) var(--space-4);
 }
+/* 送出／停止＋開新對話：黏成一組，中間沒有間隙。 */
+.chat-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
 .chat-input-hint {
   color: var(--ink-300);
   font-size: var(--text-xs-hint);
@@ -334,6 +343,204 @@
 .chat-input button:disabled {
   background: var(--surface-2);
   color: var(--ink-400);
+}
+/* #303: the Stop button takes the Send button's slot while a turn runs —
+   same size, neutral ink instead of brand red so it reads as "halt", not
+   "go"; wide enough for the two-character label. */
+.chat-input button.chat-stop {
+  background: var(--ink-900);
+}
+.chat-input button.chat-stop:not(:disabled):hover {
+  background: var(--ink-700);
+}
+
+/* 送出鍵右邊的「開新對話」：次要動作，所以不吃品牌紅——留白底、細框。
+   兩顆鍵是相連的一組：中間不留縫，只有最外側兩端有圓角（下面 :has 那組
+   規則），看起來是一個控制項的兩半，不是兩顆各自獨立的按鈕。 */
+.chat-input button.chat-new-session {
+  margin-left: -1px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-500);
+  font-weight: 600;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* 左半（送出或停止）把右側的圓角收掉，缺口交給右半補上。 */
+.chat-input button:not(.chat-new-session) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.chat-input button.chat-new-session:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--ink-900);
+}
+.chat-input button.chat-new-session:disabled {
+  background: transparent;
+  color: var(--ink-400);
+}
+
+/* 對話框下方的兩顆膠囊（agent、模型），各自往上彈一個小選單。膠囊淺灰底、
+   無邊框、全圓角，平時只寫「目前是誰」；`.agent-dot` 那顆燈的三態樣式仍在
+   shell.css，這裡只把它塞進膠囊。選單借 dock.css 的 `.floating-layer` 材質，
+   但貼齊膠囊左緣往上長，不像 Dock 那樣置中。 */
+.chat-status {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5) var(--space-3);
+}
+.chat-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* 選單以整個 .chat-status 為定位框、貼齊側欄左右內距，兩顆膠囊共用同一個
+   寬度——側欄只有 340px，掛在膠囊自己身上會從右側溢出。 */
+.chat-status {
+  position: relative;
+}
+.chat-chip-wrap {
+  position: static;
+}
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h-compact);
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-700);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.chat-chip .agent-dot {
+  color: inherit;
+  font-size: inherit;
+}
+.chat-chip:hover:not(:disabled),
+.chat-chip[aria-expanded="true"] {
+  background: var(--surface-2);
+  color: var(--ink-900);
+}
+.chat-chip:disabled {
+  color: var(--ink-400);
+  cursor: default;
+}
+.chat-chip-caret {
+  width: 0;
+  height: 0;
+  border-left: var(--space-1) solid transparent;
+  border-right: var(--space-1) solid transparent;
+  border-top: var(--space-1) solid currentColor;
+  opacity: 0.7;
+}
+.chat-chip-badge {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-xs-hint);
+  font-weight: 600;
+}
+.chat-chip-menu {
+  left: var(--space-5);
+  right: var(--space-5);
+  bottom: calc(100% - var(--space-2));
+  transform: none;
+  transform-origin: 0 100%;
+  /* 不沿用 .floating-layer 的進場動畫：那組 keyframes 帶 translateX(-50%)
+     （為 Dock 置中設計），動畫結束時 transform 回到 none 會讓選單先出現在
+     一個位置再跳到最後的位置。 */
+  animation: chat-chip-menu-in var(--dur-fast) var(--ease-out);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Codex 一次報十幾個模型：超過側欄一半高就在選單裡捲，不把整欄撐開。 */
+  max-height: 50vh;
+  overflow-y: auto;
+}
+@keyframes chat-chip-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-2));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.chat-chip-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-900);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.chat-chip-menu-item:hover:not(:disabled) {
+  background: var(--surface-1);
+}
+/* 打勾的那列是停用的（再按一次沒意義），但它是「現在的答案」，不能像
+   一般 disabled 那樣褪色。 */
+.chat-chip-menu-item:disabled {
+  cursor: default;
+  color: var(--ink-900);
+  opacity: 1;
+}
+.chat-chip-menu-item[aria-checked="true"] .chat-chip-menu-title {
+  color: var(--brand-red);
+}
+.chat-chip-menu-item[aria-checked="true"] .chat-chip-menu-title::after {
+  content: " ✓";
+}
+.chat-chip-menu-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.chat-chip-menu-detail {
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.chat-chip-menu-hint {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.chat-chip-menu-action {
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-top: 1px solid var(--surface-2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-500);
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-xs-hint);
+  cursor: pointer;
+}
+.chat-chip-menu-action:hover:not(:disabled) {
+  color: var(--ink-900);
+}
+.chat-status-error {
+  margin: 0;
+  font-size: var(--text-xs-hint);
+  color: var(--brand-red);
 }
 
 /* [E2.T8] Pinned context：整區只在有留言時渲染（§4.7）——「sent with your

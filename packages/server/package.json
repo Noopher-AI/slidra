@@ -1,5 +1,5 @@
 {
-  "name": "@co-motion/server",
+  "name": "@comotion/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "build": "tsc -b"
   },
   "dependencies": {
+    "@agentclientprotocol/codex-acp": "1.11.0",
     "@agentclientprotocol/sdk": "0.14.1",
     "@zed-industries/claude-code-acp": "0.16.2",
-    "@zed-industries/codex-acp": "0.16.0",
     "playwright": "^1.62.1"
   }
 }

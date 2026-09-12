@@ -15,7 +15,7 @@
 - 副檔名遺失或錯誤，但內容確實是支援的媒體：以偵測到的真實格式決定寫入檔案的副檔名，不採用來源的副檔名。
 - URL 回應的 `Content-Type` 與偵測到的位元組不一致：一律以位元組偵測結果為準；`Content-Type` 宣稱是媒體但位元組不是，一律拒絕。
 
-支援格式清單的單一來源是 `crates/co-motion/src/media_format.rs`（位元組簽章偵測，`asset import` 實際跑的地方）——`packages/server/src/media-types.ts` 是與它同步維護的副檔名／MIME 對照表，`packages/server/src/raw.ts` 提供給瀏覽器讀取 `/api/raw/` 資產時用的 Content-Type 表就是從這份對照表衍生的，不是另外維護的第三份。
+支援格式清單的單一來源是 `crates/comotion/src/media_format.rs`（位元組簽章偵測，`asset import` 實際跑的地方）——`packages/server/src/media-types.ts` 是與它同步維護的副檔名／MIME 對照表，`packages/server/src/raw.ts` 提供給瀏覽器讀取 `/api/raw/` 資產時用的 Content-Type 表就是從這份對照表衍生的，不是另外維護的第三份。
 
 | 副檔名 | MIME type | 種類 |
 |---|---|---|
@@ -43,4 +43,4 @@
 
 ### 復原（undo/redo）
 
-匯入是一個獨立的 undo 步驟：`co-motion undo` 會把剛匯入的檔案從 `assets/` 移除；`co-motion redo` 會把它的原始位元組原封不動地寫回來。跟其他任何寫入命令共用同一個 undo/redo 堆疊，沒有另外一套資產匯入專用的復原邏輯。
+匯入是一個獨立的 undo 步驟：`comotion undo` 會把剛匯入的檔案從 `assets/` 移除；`comotion redo` 會把它的原始位元組原封不動地寫回來。跟其他任何寫入命令共用同一個 undo/redo 堆疊，沒有另外一套資產匯入專用的復原邏輯。

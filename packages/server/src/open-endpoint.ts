@@ -4,7 +4,13 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { CoMotionError } from "./comotion/errors.js";
 import { runJsonCommand } from "./comotion/command.js";
-import { maxMtimeInDirectory, readProjectsRegistry, resolveCoMotionHome, writeProjectsRegistry } from "./comotion/home.js";
+import {
+  maxMtimeInDirectory,
+  readProjectsRegistry,
+  resolveCoMotionHome,
+  withProjectsRegistryLock,
+  writeProjectsRegistry,
+} from "./comotion/home.js";
 import { readSaveState } from "./comotion/save-state.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { broadcastSaveState } from "./save-state.js";
@@ -15,7 +21,7 @@ import { broadcastSaveState } from "./save-state.js";
  * path (§2 point 6, §7 decision 6), so this is the same "raw body + a
  * filename header" shape `POST /api/asset` already established.
  *
- * The uploaded bytes are staged under `<CO_MOTION_HOME>/opened/<opaque>/`
+ * The uploaded bytes are staged under `<COMOTION_HOME>/opened/<opaque>/`
  * and become the presentation's new `sourcePath` — Save from here on
  * writes back to that staged copy, never to wherever the file actually
  * lives on the author's own machine, because this server was never told
@@ -24,15 +30,18 @@ import { broadcastSaveState } from "./save-state.js";
  * [E4.T9]/F7: there is no CLI command that swaps an existing id's content
  * while keeping the id itself (every route, the change broadcaster, and
  * the agent chat session are all bound to the id `serve` started on).
- * `co-motion open <staged-file> --json` always mints a *new* id, so this
+ * `comotion open <staged-file> --json` always mints a *new* id, so this
  * module implements "reopen in place" itself (plan §3.8): open into a
  * throwaway id, then move that id's on-disk content into the real id's
  * work directory, then discard the throwaway id and the old undo history.
  */
 
-const FILE_NAME_HEADER = "x-co-motion-file-name";
-const DISCARD_UNSAVED_HEADER = "x-co-motion-discard-unsaved";
+const FILE_NAME_HEADER = "x-comotion-file-name";
+const DISCARD_UNSAVED_HEADER = "x-comotion-discard-unsaved";
 const UNNAMED_FALLBACK = "未命名.comot";
+/** The deck `POST /api/new` creates: no slides, and a name the author is meant to replace. */
+const NEW_DECK_NAME = "未命名";
+const NEW_DECK_FILE_NAME = `${NEW_DECK_NAME}.comot`;
 
 /** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.comot` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
 export const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
@@ -78,7 +87,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * Replaces presentation `id`'s work directory content in place with
  * `stagedPath`'s, without changing `id` itself — plan §3.8, ported from
  * `packages/core`'s `reopenPresentationInPlace`, with the actual unpack
- * moved into the Rust binary: `co-motion open <stagedPath> --json` does the
+ * moved into the Rust binary: `comotion open <stagedPath> --json` does the
  * zip decompression, `project.json` validation and formatVersion migration
  * (a fresh, throwaway id `id2`); this function only moves files around
  * afterwards.
@@ -120,13 +129,71 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
     stagedChildren.map((name) => rename(path.join(stagedEntry.workDir, name), path.join(entry.workDir, name))),
   );
 
-  const finalRegistry = await readProjectsRegistry();
-  finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt: await maxMtimeInDirectory(entry.workDir) });
-  finalRegistry.delete(id2);
-  await writeProjectsRegistry(finalRegistry);
+  // Read-modify-write under the lock, so a `comotion` process registering
+  // its own presentation at the same moment does not lose its entry to this
+  // write (or vice versa). Deliberately narrower than this whole function:
+  // the `open` above shells out to the CLI, which takes this same lock.
+  const savedAt = await maxMtimeInDirectory(entry.workDir);
+  await withProjectsRegistryLock(async () => {
+    const finalRegistry = await readProjectsRegistry();
+    finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt });
+    finalRegistry.delete(id2);
+    await writeProjectsRegistry(finalRegistry);
+  });
 
   await rm(stagedEntry.workDir, { recursive: true, force: true }).catch(() => {});
   await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
+}
+
+/**
+ * `POST /api/new` — the GUI's New action, the sibling of Open. Makes a
+ * brand-new presentation with no slides at all (`comotion new` writes
+ * `"slides": []`) and swaps it into this server's own id through the very
+ * same `reopenPresentationInPlace` Open uses: `serve` is bound to one id
+ * for its whole lifetime (routes, change broadcaster, agent session), so
+ * "new" can only ever mean "this id, emptied", never a second id.
+ *
+ * Takes no request body. The unsaved-changes gate is Open's, verbatim —
+ * discarding the author's work is exactly as destructive here.
+ */
+export async function handleNewPost(
+  presentationId: string,
+  changeBroadcaster: ChangeBroadcaster,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
+    const saveState = await readSaveState(presentationId);
+    if (saveState.known && saveState.dirty) {
+      sendJson(res, 409, { error: "目前的簡報有未儲存的變更" });
+      return;
+    }
+  }
+
+  const home = resolveCoMotionHome();
+  const opaqueId = randomBytes(9).toString("hex");
+  const stagedDir = path.join(home, "opened", opaqueId);
+  const stagedPath = path.join(stagedDir, NEW_DECK_FILE_NAME);
+  await mkdir(stagedDir, { recursive: true });
+
+  const created = await runJsonCommand<unknown>(["new", stagedPath, "--name", NEW_DECK_NAME]);
+  if (!created.ok) {
+    await rm(stagedDir, { recursive: true, force: true }).catch(() => {});
+    sendJson(res, 400, { error: created.message });
+    return;
+  }
+
+  try {
+    await reopenPresentationInPlace(presentationId, stagedPath);
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof CoMotionError ? error.message : "建立失敗" });
+    return;
+  }
+
+  sendJson(res, 200, { ok: true, fileName: NEW_DECK_FILE_NAME });
+  // Same pair of broadcasts, for the same reason, as handleOpenPost's.
+  changeBroadcaster.broadcast("presentation-changed", {});
+  await broadcastSaveState(changeBroadcaster, presentationId);
 }
 
 /**
@@ -187,7 +254,7 @@ export async function handleOpenPost(
     // Validates the uploaded bytes (a real zip, a valid project.json, a
     // supported formatVersion) before touching the live work directory —
     // see reopenPresentationInPlace's own comment. Its CoMotionError
-    // messages (relayed from `co-motion open`'s own JSON message) are
+    // messages (relayed from `comotion open`'s own JSON message) are
     // relayed verbatim, matching §4.1's table.
     await reopenPresentationInPlace(presentationId, stagedPath);
   } catch (error) {

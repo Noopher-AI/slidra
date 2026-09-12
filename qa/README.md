@@ -14,10 +14,10 @@ browser-use < qa/cases/smoke.py
 
 第一行跑完會印出 `browser-use --doctor` 的結果；離開碼 0 代表 daemon 已連上、目前的
 active page 就是 CoMotion。第二行把 `BU_CDP_URL`、`BH_AGENT_WORKSPACE`、
-`CO_MOTION_QA_URL`、`CO_MOTION_QA_PRESENTATION_ID`、`BH_RUNTIME_DIR`、`BH_TMP_DIR`
+`COMOTION_QA_URL`、`COMOTION_QA_PRESENTATION_ID`、`BH_RUNTIME_DIR`、`BH_TMP_DIR`
 匯入目前 shell；之後每一次獨立的 `browser-use` 呼叫都會接上同一個瀏覽器 tab。
 
-`BH_RUNTIME_DIR` 必須是短路徑（`--qa` 固定寫成 `/tmp/co-motion-qa-$(id -u)`），不是
+`BH_RUNTIME_DIR` 必須是短路徑（`--qa` 固定寫成 `/tmp/comotion-qa-$(id -u)`），不是
 `.quickstart/` 底下：daemon 的 IPC socket 走 `AF_UNIX`，這個 sandbox pod 的 repo 路徑
 （含 workspace 前綴）加上 socket 檔名會超過 Linux 108 bytes 的 `sun_path` 上限，直接
 `fatal: AF_UNIX path too long`，整個工具起不來。自己另外拼指令時千萬別把它改回
@@ -29,7 +29,7 @@ repo 內的路徑。
 ./quick_start.sh --qa-stop
 ```
 
-會把 `--qa` 留下的背景 `co-motion serve` 與 Chromium 一併收掉（兩者都是 `setsid` 起的
+會把 `--qa` 留下的背景 `comotion serve` 與 Chromium 一併收掉（兩者都是 `setsid` 起的
 獨立行程群組，`kill` 對整個 PGID 送信號，不是只殺 wrapper）。重跑 Review 是常態，
 `--qa` 偵測到既有的 QA 環境還活著時會自己先收再起，不必手動清。
 
@@ -112,13 +112,13 @@ F-15 的 B-2（「矩形涵蓋三行文字但不含標題」）在標題被搬�
 跑完會寫檔的案例之後，或任何時候懷疑結果不合理，先確認簡報是原始狀態：
 
 ```bash
-co-motion cat "$CO_MOTION_QA_PRESENTATION_ID" slides/003.svg | diff - demo/slides/003.svg
+comotion cat "$COMOTION_QA_PRESENTATION_ID" slides/003.svg | diff - demo/slides/003.svg
 ```
 
 不一致就重開一份再跑：
 
 ```bash
-ID=$(co-motion open .quickstart/demo.comot | grep -o '"id"[^,}]*' | sed 's/.*"\([^"]*\)"$/\1/')
+ID=$(comotion open .quickstart/demo.comot | grep -o '"id"[^,}]*' | sed 's/.*"\([^"]*\)"$/\1/')
 ```
 
 ## 4. 偶發缺陷的豁免寫法
@@ -173,6 +173,6 @@ PASS 就代表這些簽名沒有破壞性改動。
 - **`--qa` 的 Chromium 啟動旗標含 `--disable-dev-shm-usage` 等容器旗標**（NOOP-349
   round 5）：容器內 `/dev/shm` 常只有 64MB，不加這個旗標會讓 renderer 在高頻互動下
   變慢甚至卡死，症狀是 CDP 呼叫逾時或點擊送出但畫面沒反應。唯讀 CDP／JS 呼叫另外可
-  用 `CO_MOTION_QA_IPC_TIMEOUT`（秒，預設 20）調整逾時，非數字或非正數會直接報錯。
+  用 `COMOTION_QA_IPC_TIMEOUT`（秒，預設 20）調整逾時，非數字或非正數會直接報錯。
 - `browser-use --doctor` 一定會印一行 `[FAIL] Browser Use cloud auth — optional`；
   這是正常的，`--doctor` 本身仍以離開碼 `0` 結束，不代表 QA 環境沒起來。

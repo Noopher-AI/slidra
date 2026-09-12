@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<text x="140" y="420" font-size="96" fill="#2E2E2E" font-weight="700">128</text><text x="140" y="470" font-size="24" fill="#777777">Metric 1</text><line x1="470" y1="330" x2="470" y2="440" stroke="#E0E0E0" stroke-width="1"/><text x="540" y="420" font-size="96" fill="#2E2E2E" font-weight="700">94%</text><text x="540" y="470" font-size="24" fill="#777777">Metric 2</text><line x1="870" y1="330" x2="870" y2="440" stroke="#E0E0E0" stroke-width="1"/><text x="920" y="420" font-size="96" fill="#2E2E2E" font-weight="700">3.2x</text><text x="920" y="470" font-size="24" fill="#777777">Metric 3</text>
+
+</svg>

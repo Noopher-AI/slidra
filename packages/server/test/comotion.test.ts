@@ -191,13 +191,13 @@ describe("comotion/argv.ts: COMMAND_WHITELIST ⇔ ARGV_ENCODERS key set equality
   // variants (plan §6.1) — this is strictly stronger: it also proves every
   // whitelisted name actually encodes to a real argv, as a pure unit test
   // (no server, no subprocess).
-  it("COMMAND_WHITELIST and the encoder table name exactly the same 65 commands", () => {
+  it("COMMAND_WHITELIST and the encoder table name exactly the same 68 commands", () => {
     expect(new Set(Object.keys(ARGV_ENCODERS))).toEqual(new Set(COMMAND_WHITELIST));
   });
 
-  it("COMMAND_WHITELIST has exactly 65 entries, none of them repeated", () => {
-    expect(COMMAND_WHITELIST.length).toBe(65);
-    expect(new Set(COMMAND_WHITELIST).size).toBe(65);
+  it("COMMAND_WHITELIST has exactly 68 entries, none of them repeated", () => {
+    expect(COMMAND_WHITELIST.length).toBe(68);
+    expect(new Set(COMMAND_WHITELIST).size).toBe(68);
   });
 });
 
@@ -207,18 +207,18 @@ describe("comotion/command.ts: runJsonCommand (envelope parsing, exit-code-blind
   let previousBin: string | undefined;
 
   beforeEach(async () => {
-    fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-comotion-test-fakebin-"));
-    fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
-    previousBin = process.env.CO_MOTION_BIN;
+    fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-comotion-test-fakebin-"));
+    fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
+    previousBin = process.env.COMOTION_BIN;
   });
 
   afterEach(async () => {
-    if (previousBin === undefined) delete process.env.CO_MOTION_BIN;
-    else process.env.CO_MOTION_BIN = previousBin;
+    if (previousBin === undefined) delete process.env.COMOTION_BIN;
+    else process.env.COMOTION_BIN = previousBin;
     await rm(fakeBinDir, { recursive: true, force: true });
   });
 
-  /** Writes a fake `co-motion` binary that always prints `stdout` and exits with `exitCode`, and points `CO_MOTION_BIN` at it. */
+  /** Writes a fake `comotion` binary that always prints `stdout` and exits with `exitCode`, and points `COMOTION_BIN` at it. */
   async function installFakeBin(stdout: string, exitCode = 0, stderr = ""): Promise<void> {
     await writeFile(
       fakeBinPath,
@@ -230,7 +230,7 @@ describe("comotion/command.ts: runJsonCommand (envelope parsing, exit-code-blind
       ].join("\n"),
       { mode: 0o755 },
     );
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
   }
 
   it("ok:true envelope, exit 0 → {ok:true, data, message}", async () => {
@@ -287,7 +287,7 @@ describe("comotion/command.ts: runJsonCommand (envelope parsing, exit-code-blind
       ].join("\n"),
       { mode: 0o755 },
     );
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
     const result = await runJsonCommand<{ lastArg: string }>(["cat", "p1", "project.json"]);
     expect(result.data?.lastArg).toBe("--json");
   });
@@ -299,14 +299,14 @@ describe("comotion/reads.ts: read decoding", () => {
   let previousBin: string | undefined;
 
   beforeEach(async () => {
-    fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-reads-test-fakebin-"));
-    fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
-    previousBin = process.env.CO_MOTION_BIN;
+    fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-reads-test-fakebin-"));
+    fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
+    previousBin = process.env.COMOTION_BIN;
   });
 
   afterEach(async () => {
-    if (previousBin === undefined) delete process.env.CO_MOTION_BIN;
-    else process.env.CO_MOTION_BIN = previousBin;
+    if (previousBin === undefined) delete process.env.COMOTION_BIN;
+    else process.env.COMOTION_BIN = previousBin;
     await rm(fakeBinDir, { recursive: true, force: true });
   });
 
@@ -320,7 +320,7 @@ describe("comotion/reads.ts: read decoding", () => {
       ].join("\n"),
       { mode: 0o755 },
     );
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
   }
 
   async function installFakeSlideRender(base64Content: string): Promise<void> {
@@ -333,7 +333,7 @@ describe("comotion/reads.ts: read decoding", () => {
       ].join("\n"),
       { mode: 0o755 },
     );
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
   }
 
   it("readPresentationBytes decodes `cat --json`'s array-of-one shape from base64", async () => {
@@ -379,15 +379,15 @@ describe("comotion/save-state.ts: readSaveState 的整數毫秒比較", () => {
   let previousHome: string | undefined;
 
   beforeEach(async () => {
-    home = await mkdtemp(path.join(tmpdir(), "co-motion-comotion-test-home-"));
-    workDir = await mkdtemp(path.join(tmpdir(), "co-motion-comotion-test-workdir-"));
-    previousHome = process.env.CO_MOTION_HOME;
-    process.env.CO_MOTION_HOME = home;
+    home = await mkdtemp(path.join(tmpdir(), "comotion-comotion-test-home-"));
+    workDir = await mkdtemp(path.join(tmpdir(), "comotion-comotion-test-workdir-"));
+    previousHome = process.env.COMOTION_HOME;
+    process.env.COMOTION_HOME = home;
   });
 
   afterEach(async () => {
-    if (previousHome === undefined) delete process.env.CO_MOTION_HOME;
-    else process.env.CO_MOTION_HOME = previousHome;
+    if (previousHome === undefined) delete process.env.COMOTION_HOME;
+    else process.env.COMOTION_HOME = previousHome;
     await rm(home, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
   });

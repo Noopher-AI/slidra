@@ -3,8 +3,6 @@ import { Icon } from "../icons/index.js";
 import { ExportPanel, type ExportUiState } from "./ExportPanel.js";
 import type { ExportFormat } from "../live-reload.js";
 
-export type AgentConnection = "connecting" | "connected" | "disconnected";
-
 export interface TitleBarProps {
   /**
    * The name shown next to the brand mark. NOOP-93: once the save-state is
@@ -16,14 +14,12 @@ export interface TitleBarProps {
   deckName: string | null;
   /** "Saved" / "Unsaved changes" (NOOP-93 §4.2) — `null` when save-state is `known:false` or its request failed; no status text is shown then. */
   savedStatusText: string | null;
-  /** 真實的 /api/chat/stream 連線狀態，由 App 從 streamReady 推導。既有 e2e 契約（.agent-dot）延續自舊殼，此處保留同一個節點。 */
-  agentConnection: AgentConnection;
-  /** 目前選定的 agent 名稱（`GET /api/agent` 的 label），尚未取得或未選時為 null——此時只顯示連線狀態。 */
-  agentLabel: string | null;
   /** T5/NOOP-93/#110：agent 持有編輯鎖時，undo/redo 一律停用（不送請求）。 */
   editingFrozen: boolean;
   onUndo(): void;
   onRedo(): void;
+  /** `POST /api/new`：把目前的簡報換成一份全新的、完全沒有投影片的簡報。 */
+  onNew(): void;
   /** NOOP-93 §4.1: the browser only ever hands over bytes, never a path — App.tsx reads `file` and POSTs it. */
   onOpenFile(file: File): void;
   /** NOOP-93 §4.2: `POST /api/save`, always actually writes (see §4.2's table). */
@@ -42,22 +38,6 @@ export interface TitleBarProps {
   canPlay: boolean;
 }
 
-const AGENT_LABEL: Record<AgentConnection, string> = {
-  connecting: "Agent connecting…",
-  connected: "Agent connected",
-  disconnected: "Agent disconnected",
-};
-
-/**
- * 連上線之後，「Agent connected」這句話已經沒有新資訊了——真正想知道的是
- * 現在跑的是哪一個 agent，所以連上線時改顯示它的名稱。connecting／
- * disconnected 仍用原本的狀態文案（那時名稱不是重點，而且可能還沒取得）。
- */
-function agentStatusText(connection: AgentConnection, label: string | null): string {
-  if (connection === "connected" && label !== null) return label;
-  return AGENT_LABEL[connection];
-}
-
 /**
  * 標題列 (New v3)。版面依 02-DESIGN_DOC.md §3：品牌／undo-redo／檔名／
  * Open-Save-Export／Play。
@@ -71,11 +51,10 @@ function agentStatusText(connection: AgentConnection, label: string | null): str
 export function TitleBar({
   deckName,
   savedStatusText,
-  agentConnection,
-  agentLabel,
   editingFrozen,
   onUndo,
   onRedo,
+  onNew,
   onOpenFile,
   onSave,
   exportOpen,
@@ -137,10 +116,6 @@ export function TitleBar({
         </span>
       )}
       <span className="spacer" />
-      <span className={`agent-dot agent-dot-${agentConnection}`}>
-        <i />
-        {agentStatusText(agentConnection, agentLabel)}
-      </span>
       <div className="titlebar-actions">
         <input
           ref={fileInputRef}
@@ -151,6 +126,10 @@ export function TitleBar({
           tabIndex={-1}
           onChange={handleFileChange}
         />
+        <button type="button" className="titlebar-button" title="New" onClick={onNew}>
+          <Icon name="plus" size="inline" />
+          New
+        </button>
         <button
           type="button"
           className="titlebar-button"

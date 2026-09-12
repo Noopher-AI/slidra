@@ -9,7 +9,7 @@ import { startServe, type RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -57,18 +57,18 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-static-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-cmd-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-cmd-static-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -473,6 +473,34 @@ it("#200：slide style set 在 COMMAND_WHITELIST 內，會實際改到投影片"
   const slide = await readSlide(id);
   expect(slide).toContain("background-color:#202020");
   expect(slide).toContain("--comot-accent:#00ff00");
+});
+
+it("#303：slide background set 在 COMMAND_WHITELIST 內，會實際改到投影片", async () => {
+  const id = await openDeck("slide-background-set.comot");
+  const imported = await runCli<{ path: string }>([
+    "asset", "import", id, "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>', "--name", "bg.svg",
+  ]);
+  expect(imported.ok).toBe(true);
+  const server = await serve(id);
+
+  const set = await postCommand(server, {
+    name: "slide background set",
+    input: { slidePath: "slides/001.svg", asset: "assets/bg.svg", opacity: 0.5 },
+  });
+  expect(set.status).toBe(200);
+  expect(set.json.ok).toBe(true);
+  const slide = await readSlide(id);
+  expect(slide).toContain('data-comot-role="background"');
+  expect(slide).toContain('href="../assets/bg.svg"');
+  expect(slide).toContain('opacity="0.5"');
+
+  const cleared = await postCommand(server, {
+    name: "slide background set",
+    input: { slidePath: "slides/001.svg", none: true },
+  });
+  expect(cleared.status).toBe(200);
+  expect(cleared.json.ok).toBe(true);
+  expect(await readSlide(id)).not.toContain('data-comot-role="background"');
 });
 
 it("#200：presentation canvas set 在 COMMAND_WHITELIST 內，會實際改到 project.json 與投影片", async () => {

@@ -6,10 +6,10 @@ import { resolveCoMotionHome } from "../comotion/home.js";
 import type { AgentKind } from "./adapters.js";
 
 /**
- * User-level agent selection, persisted at `<CO_MOTION_HOME>/settings.json`
+ * User-level agent selection, persisted at `<COMOTION_HOME>/settings.json`
  * (F2/F1 — NOOP-230 §4.1). This is the only file this module touches;
  * `resolveCoMotionHome()` (never `homedir()` built by hand here) is the
- * single source of truth for where `CO_MOTION_HOME` actually is, shared
+ * single source of truth for where `COMOTION_HOME` actually is, shared
  * with every other module that reads/writes under it.
  *
  * The file may carry other keys in the future (F3/F4) — this module only
@@ -18,6 +18,8 @@ import type { AgentKind } from "./adapters.js";
  */
 export interface AgentSettings {
   agent: AgentKind | null;
+  /** The model the author last picked, per agent kind — applied to every new session of that kind. */
+  models: Partial<Record<AgentKind, string>>;
 }
 
 const SETTINGS_FILE_NAME = "settings.json";
@@ -45,7 +47,7 @@ export async function readAgentSettings(): Promise<AgentSettings> {
     raw = await readFile(filePath, "utf8");
   } catch (error) {
     if (isEnoent(error)) {
-      return { agent: null };
+      return { agent: null, models: {} };
     }
     throw error;
   }
@@ -60,26 +62,57 @@ export async function readAgentSettings(): Promise<AgentSettings> {
     throw new CoMotionError(`設定檔格式錯誤，最外層必須是一個物件：${filePath}`);
   }
 
+  const models = readModels((parsed as Record<string, unknown>).models, filePath);
   const value = (parsed as Record<string, unknown>).agent;
   if (value === undefined || value === null) {
-    return { agent: null };
+    return { agent: null, models };
   }
   if (value === "claude" || value === "codex") {
-    return { agent: value };
+    return { agent: value, models };
   }
   throw new CoMotionError(`設定檔的 agent 欄位值無效（必須是 claude、codex 或 null）：${filePath}`);
+}
+
+/** `models` is `{ claude?: string, codex?: string }`; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */
+function readModels(value: unknown, filePath: string): Partial<Record<AgentKind, string>> {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new CoMotionError(`設定檔的 models 欄位必須是物件：${filePath}`);
+  }
+  const models: Partial<Record<AgentKind, string>> = {};
+  for (const kind of ["claude", "codex"] as const) {
+    const id = (value as Record<string, unknown>)[kind];
+    if (id === undefined) continue;
+    if (typeof id !== "string" || id === "") {
+      throw new CoMotionError(`設定檔的 models.${kind} 必須是非空字串：${filePath}`);
+    }
+    models[kind] = id;
+  }
+  return models;
 }
 
 /**
  * Persists the user's agent selection. Preserves every other top-level key
  * already in the file (future F3/F4 settings) — only `agent` is overwritten.
- * `mkdir`s `CO_MOTION_HOME` if it does not exist yet, and writes through a
+ * `mkdir`s `COMOTION_HOME` if it does not exist yet, and writes through a
  * temp file + `rename` in the same directory so a crash or full disk
  * mid-write can never leave `settings.json` truncated or half-written —
  * the same discipline `workspace.ts`'s `writeRegistry` uses for
  * `projects.json`.
  */
 export async function writeAgentSelection(kind: AgentKind): Promise<void> {
+  await updateSettings((existing) => ({ ...existing, agent: kind }));
+}
+
+/** Persists the model picked for `kind`, keeping the other kind's pick and every other key. */
+export async function writeAgentModel(kind: AgentKind, modelId: string): Promise<void> {
+  await updateSettings((existing) => {
+    const models = typeof existing.models === "object" && existing.models !== null ? (existing.models as Record<string, unknown>) : {};
+    return { ...existing, models: { ...models, [kind]: modelId } };
+  });
+}
+
+async function updateSettings(patch: (existing: Record<string, unknown>) => Record<string, unknown>): Promise<void> {
   const home = resolveCoMotionHome();
   const finalPath = agentSettingsPath();
   await mkdir(home, { recursive: true });
@@ -102,7 +135,7 @@ export async function writeAgentSelection(kind: AgentKind): Promise<void> {
     }
   }
 
-  const next = { ...existing, agent: kind };
+  const next = patch(existing);
   const tempPath = path.join(home, `.${SETTINGS_FILE_NAME}.${randomBytes(6).toString("hex")}.tmp`);
   try {
     await writeFile(tempPath, `${JSON.stringify(next, null, 2)}\n`);

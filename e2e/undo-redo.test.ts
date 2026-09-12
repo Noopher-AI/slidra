@@ -12,7 +12,7 @@ import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type Star
 
 /**
  * NOOP-60/#197 驗收條件第 4 條：「Undo／Redo 按鈕與快捷鍵透過 CLI 生效，
- * agent 執行 `co-motion undo` 後 GUI 同步」。四個 case（Plan §6.2）：
+ * agent 執行 `comotion undo` 後 GUI 同步」。四個 case（Plan §6.2）：
  * 1. 按鈕；2. 快捷鍵；3. CLI→GUI 同步（不重新整理頁面，靠既有的 SSE
  * live-reload）；4. 凍結態（agent 持鎖時按鈕停用、快捷鍵不送請求）。
  *
@@ -29,7 +29,7 @@ import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type Star
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const demoDir = path.join(rootDir, "demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
@@ -137,14 +137,14 @@ it("快捷鍵：點過舞台元素（焦點在 iframe 內）後直接按 ⌘Z �
   }
 });
 
-it("CLI ↔ GUI 同步：agent 執行 co-motion undo（registry.dispatch(\"undo\")）後，不重新整理頁面 GUI 也自己變回原值", async () => {
+it("CLI ↔ GUI 同步：agent 執行 comotion undo（registry.dispatch(\"undo\")）後，不重新整理頁面 GUI 也自己變回原值", async () => {
   const { started, page } = await start("undo-redo-cli-sync");
   try {
     await expect.poll(() => iframeTitleText(page)).toBe(ORIGINAL_TEXT);
     await setTitle(started.registry, started.presentationId, NEW_TEXT);
     await expect.poll(() => iframeTitleText(page), { timeout: 10_000 }).toBe(NEW_TEXT);
 
-    // 模擬 agent 下 `co-motion undo`：直接呼叫 registry，不經過瀏覽器。
+    // 模擬 agent 下 `comotion undo`：直接呼叫 registry，不經過瀏覽器。
     const undo = await started.registry.dispatch("undo", { id: started.presentationId });
     expect(undo.ok).toBe(true);
 
@@ -159,11 +159,11 @@ it("CLI ↔ GUI 同步：agent 執行 co-motion undo（registry.dispatch(\"undo\
 // ── 凍結態：沿用 e2e/freeze.test.ts 的假 ACP agent fixture ──────────────
 
 async function startFrozenServer(): Promise<{ server: RunningServer; registry: CommandRegistry; presentationId: string; cleanup: () => Promise<void> }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-undoredo-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-undoredo-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-undoredo-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-undoredo-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "deck.comot");
@@ -192,8 +192,8 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     presentationId,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
     },

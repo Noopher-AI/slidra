@@ -23,7 +23,7 @@ import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
  */
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const deckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const fakeAgentFixture = path.join(rootDir, "packages/server/test/agent/fixtures/fake-acp-agent.mjs");
 const fakeAgent: AgentAdapterConfig = {
@@ -44,12 +44,12 @@ interface Harness {
 }
 
 async function startHarness(): Promise<Harness> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-files-"));
-  const staticDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-static-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-files-"));
+  const staticDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-static-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const comotPath = path.join(comotDir, "a.comot");
   await packDirectory(deckDir, comotPath);
@@ -64,8 +64,8 @@ async function startHarness(): Promise<Harness> {
 
 async function stopHarness(harness: Harness): Promise<void> {
   await harness.server.close();
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(harness.coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -104,7 +104,7 @@ afterEach(async () => {
 });
 
 describe("file round-trip via POST /api/save (#210 條件 1)", () => {
-  it("an edit saved through /api/save survives a reopen into a second CO_MOTION_HOME, byte-for-byte", async () => {
+  it("an edit saved through /api/save survives a reopen into a second COMOTION_HOME, byte-for-byte", async () => {
     harness = await startHarness();
     const { server, comotPath } = harness;
 
@@ -130,12 +130,12 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
     const firstFiles = await listFilesRecursive(firstWorkDir);
 
     // Re-open the just-saved `a.comot` into a completely separate
-    // CO_MOTION_HOME and compare every file byte-for-byte.
-    secondHome = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-home2-"));
-    const previousHome = process.env.CO_MOTION_HOME;
-    process.env.CO_MOTION_HOME = secondHome;
-    // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-    process.env.CO_MOTION_BIN = coMotionBin;
+    // COMOTION_HOME and compare every file byte-for-byte.
+    secondHome = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-home2-"));
+    const previousHome = process.env.COMOTION_HOME;
+    process.env.COMOTION_HOME = secondHome;
+    // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+    process.env.COMOTION_BIN = coMotionBin;
     try {
       const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: comotPath });
       const secondId = secondOpened.data!.id;
@@ -156,9 +156,9 @@ describe("file round-trip via POST /api/save (#210 條件 1)", () => {
       const editedSlide = await readFile(path.join(secondWorkDir, "slides/001.svg"), "utf-8");
       expect(editedSlide).toContain("roundtrip 已編輯");
     } finally {
-      process.env.CO_MOTION_HOME = previousHome;
-      // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-      process.env.CO_MOTION_BIN = coMotionBin;
+      process.env.COMOTION_HOME = previousHome;
+      // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+      process.env.COMOTION_BIN = coMotionBin;
     }
   });
 
@@ -187,7 +187,7 @@ describe("POST /api/open (#210 條件 1)", () => {
     const { server, presentationId } = harness;
 
     // Build a second, distinct .comot to open on top of the running server.
-    const otherDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-other-"));
+    const otherDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-other-"));
     try {
       const otherComotPath = path.join(otherDir, "other.comot");
       await packDirectory(path.join(rootDir, "demo"), otherComotPath);
@@ -197,7 +197,7 @@ describe("POST /api/open (#210 條件 1)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-co-motion-file-name": encodeURIComponent("other.comot"),
+          "x-comotion-file-name": encodeURIComponent("other.comot"),
         },
         body: otherBytes,
       });
@@ -240,7 +240,7 @@ describe("POST /api/open (#210 條件 1)", () => {
     });
     expect(setResponse.status).toBe(200);
 
-    const otherDir = await mkdtemp(path.join(tmpdir(), "co-motion-roundtrip-other2-"));
+    const otherDir = await mkdtemp(path.join(tmpdir(), "comotion-roundtrip-other2-"));
     try {
       const otherComotPath = path.join(otherDir, "other.comot");
       await packDirectory(path.join(rootDir, "demo"), otherComotPath);
@@ -250,7 +250,7 @@ describe("POST /api/open (#210 條件 1)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-co-motion-file-name": encodeURIComponent("other.comot"),
+          "x-comotion-file-name": encodeURIComponent("other.comot"),
         },
         body: otherBytes,
       });
@@ -260,8 +260,8 @@ describe("POST /api/open (#210 條件 1)", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-co-motion-file-name": encodeURIComponent("other.comot"),
-          "x-co-motion-discard-unsaved": "1",
+          "x-comotion-file-name": encodeURIComponent("other.comot"),
+          "x-comotion-discard-unsaved": "1",
         },
         body: otherBytes,
       });
@@ -278,7 +278,7 @@ describe("POST /api/open (#210 條件 1)", () => {
 
     const response = await fetch(`${server.url}/api/open`, {
       method: "POST",
-      headers: { "Content-Type": "application/octet-stream", "x-co-motion-file-name": "broken.comot" },
+      headers: { "Content-Type": "application/octet-stream", "x-comotion-file-name": "broken.comot" },
       body: Buffer.from("not a zip file"),
     });
     expect(response.status).toBe(400);

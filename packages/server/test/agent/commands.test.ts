@@ -24,7 +24,7 @@ import {
 // fake ACP agent, the same posture chat.test.ts uses.
 
 const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/fake-acp-agent.mjs");
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/comotion");
 const execFileAsync = promisify(execFile);
 
 interface CliEnvelope<T = unknown> {
@@ -75,7 +75,7 @@ describe("readSkillCommands", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "co-motion-skills-"));
+    dir = await mkdtemp(path.join(tmpdir(), "comotion-skills-"));
   });
 
   afterEach(async () => {
@@ -105,7 +105,7 @@ describe("readSkillCommands", () => {
   });
 
   it("a skill installed as a symlink to a directory elsewhere is picked up (how skillshare installs them)", async () => {
-    const elsewhere = await mkdtemp(path.join(tmpdir(), "co-motion-skill-src-"));
+    const elsewhere = await mkdtemp(path.join(tmpdir(), "comotion-skill-src-"));
     await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: 透過 symlink 安裝\n---\n");
     await symlink(path.join(elsewhere, "linked"), path.join(dir, "linked"));
 
@@ -160,8 +160,8 @@ describe("collectSlashCommands", () => {
   let userDir: string;
 
   beforeEach(async () => {
-    bundledDir = await mkdtemp(path.join(tmpdir(), "co-motion-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "co-motion-user-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "comotion-user-"));
   });
 
   afterEach(async () => {
@@ -237,19 +237,19 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   let servers: RunningServer[];
 
   beforeEach(async () => {
-    coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-home-"));
-    comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-files-"));
-    bundledDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-bundled-"));
-    userDir = await mkdtemp(path.join(tmpdir(), "co-motion-cmd-user-"));
-    process.env.CO_MOTION_HOME = coMotionHome;
-    process.env.CO_MOTION_BIN = coMotionBinPath;
+    coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-cmd-home-"));
+    comotDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-files-"));
+    bundledDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-bundled-"));
+    userDir = await mkdtemp(path.join(tmpdir(), "comotion-cmd-user-"));
+    process.env.COMOTION_HOME = coMotionHome;
+    process.env.COMOTION_BIN = coMotionBinPath;
     servers = [];
   });
 
   afterEach(async () => {
     await Promise.all(servers.map((server) => server.close()));
-    delete process.env.CO_MOTION_HOME;
-    delete process.env.CO_MOTION_BIN;
+    delete process.env.COMOTION_HOME;
+    delete process.env.COMOTION_BIN;
     await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     await rm(bundledDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -315,12 +315,12 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   it("before any message is sent, GET returns only what the skill directories contribute (agent has reported nothing yet)", async () => {
     // 出貨 skill 的目錄名本身就帶 `comotion-` 前綴（#248：名字要跟 agent
     // 註冊的一致），和 agent／使用者自己的 skill 區隔開來。
-    await mkSkill(bundledDir, "comotion-outline", "---\nname: comotion-outline\ndescription: 出貨版\n---\n");
-    const server = await serve(fakeAgent({ availableCommands: [{ name: "outline", description: "agent 版" }] }));
+    await mkSkill(bundledDir, "comotion-plan", "---\nname: comotion-plan\ndescription: 出貨版\n---\n");
+    const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent 版" }] }));
 
     const response = await fetch(`${server.url}/api/agent/commands`);
     const body = (await response.json()) as { commands: SlashCommand[] };
-    expect(body.commands).toEqual([{ name: "comotion-outline", description: "出貨版", source: "bundled" }]);
+    expect(body.commands).toEqual([{ name: "comotion-plan", description: "出貨版", source: "bundled" }]);
   });
 
   it("no agent report and no skill directories at all: GET returns 200 with an empty list, not an error", async () => {

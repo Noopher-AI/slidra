@@ -13,7 +13,7 @@ import { createChangeBroadcaster } from "../src/changes.js";
 import { workDirFor } from "../src/comotion/home.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -55,7 +55,7 @@ class FakeResponse extends EventEmitter {
 // fetch(), never open a browser. Always bind port 0 and read the assigned
 // port back — a hardcoded port collides with ticket #6's concurrently
 // running suite. Presentation state is only ever read through the real
-// `co-motion cat` binary — never a direct poke at the work directory's
+// `comotion cat` binary — never a direct poke at the work directory's
 // real path.
 
 let coMotionHome: string;
@@ -64,10 +64,10 @@ let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-changes-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-changes-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-changes-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-changes-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
   streams = [];
 });
@@ -78,8 +78,8 @@ afterEach(async () => {
   // socket.
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
@@ -96,15 +96,19 @@ async function openFreshPresentation(name = "測試簡報"): Promise<{ id: strin
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", comotPath]);
   expect(opened.ok).toBe(true);
+  // `new` creates no slides (ADR-0018, #303): the tests below edit
+  // slides/001.svg, so mint one page with one title text box.
   const id = opened.data!.id;
-  const slide = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(slide.ok).toBe(true);
-  const svgText = Buffer.from(slide.data![0]!.content, "base64").toString("utf-8");
-  const match = svgText.match(/<text id="([^"]+)"/);
-  if (!match) {
-    throw new Error("test fixture is missing the expected <text id=…> element");
+  expect((await runCli(["slide", "add", id])).ok).toBe(true);
+  const added = await runCli<{ elementId: string }>([
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", name,
+  ]);
+  expect(added.ok).toBe(true);
+  const elementId = added.data!.elementId;
+  if (typeof elementId !== "string" || elementId === "") {
+    throw new Error("textbox add did not report the new element's id");
   }
-  return { id, elementId: match[1] };
+  return { id, elementId };
 }
 
 /**
@@ -191,6 +195,36 @@ describe("GET /api/events", () => {
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
+  it("ignores the CLI's .comotion.lock, so a read command does not look like a change", async () => {
+    // #303 regression: the lock is created and removed around every CLI
+    // command, reads included, inside the watched work directory. Treating
+    // it as content made every live-reload trigger a re-read that took the
+    // lock again — an endless reload loop that dropped the author's
+    // selection the moment they clicked an element.
+    const { id, elementId } = await openFreshPresentation();
+    const server = await serve(id);
+    const frameReader = await connectEvents(server);
+
+    const lockPath = path.join(await workDirFor(id), ".comotion.lock");
+    for (let i = 0; i < 3; i++) {
+      await writeFile(lockPath, "");
+      await rm(lockPath);
+    }
+
+    // One read, raced twice: the reader may only be pulled once, or the
+    // losing promise swallows the frame the second assertion waits for.
+    const pending = frameReader.readFrame();
+    const timeout = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+
+    // Well past the watcher's 100ms debounce: nothing may have arrived.
+    expect(await Promise.race([pending, timeout(500)])).toBe(null);
+
+    // A real edit still gets through — the filter skips the lock, not the
+    // notification path itself.
+    await setText(id, elementId, "鎖檔不算改動");
+    expect(await pending).toBe("event: presentation-changed\ndata: {}\n\n");
+  });
+
   it("close() on the running server returns promptly even with a client still connected", async () => {
     const { id } = await openFreshPresentation();
     const server = await serve(id);
@@ -233,15 +267,15 @@ describe("GET /api/events", () => {
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
-    // [E4.T9]/F7: a fake CO_MOTION_BIN that answers `cat <id> project.json`
+    // [E4.T9]/F7: a fake COMOTION_BIN that answers `cat <id> project.json`
     // for ANY id, real or not (the equivalent stub-registry test in
     // serve.test.ts uses the same technique) — loadProject succeeds
     // through it, but `watchPresentation`'s `workDirFor` reads the REAL
-    // `CO_MOTION_HOME/projects.json` directly (comotion/home.ts, not the
+    // `COMOTION_HOME/projects.json` directly (comotion/home.ts, not the
     // CLI), which has no entry for this id at all. The failure must
     // surface as an explicit HTTP error, not a silently-opened stream.
-    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "co-motion-changes-fakebin-"));
-    const fakeBinPath = path.join(fakeBinDir, "co-motion-fake.mjs");
+    const fakeBinDir = await mkdtemp(path.join(tmpdir(), "comotion-changes-fakebin-"));
+    const fakeBinPath = path.join(fakeBinDir, "comotion-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
@@ -262,7 +296,7 @@ describe("GET /api/events", () => {
       { mode: 0o755 },
     );
 
-    process.env.CO_MOTION_BIN = fakeBinPath;
+    process.env.COMOTION_BIN = fakeBinPath;
     try {
       const server = await startServe({ presentationId: "unregistered-stub-id", port: 0 });
       servers.push(server);
@@ -273,7 +307,7 @@ describe("GET /api/events", () => {
       expect(response.status).toBe(500);
       expect(body.error).toMatch(/找不到識別碼對應的簡報/);
     } finally {
-      process.env.CO_MOTION_BIN = coMotionBinPath;
+      process.env.COMOTION_BIN = coMotionBinPath;
       await rm(fakeBinDir, { recursive: true, force: true });
     }
   });

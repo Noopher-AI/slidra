@@ -2,7 +2,7 @@
 
 ## 這份文件的地位
 
-這份文件是 `.comot` 容器格式與 `~/.comotion/`（`CO_MOTION_HOME`）工作區佈局的唯一規範性文件。TypeScript 引擎已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據；`formatVersion` 4 與 1→4 遷移規則已由 Rust 版落地。
+這份文件是 `.comot` 容器格式與 `~/.comotion/`（`COMOTION_HOME`）工作區佈局的唯一規範性文件。TypeScript 引擎已刪除（[E4.T12]）——Rust 是現在唯一的實作，本文件即它的唯一依據；`formatVersion` 4 與 1→4 遷移規則已由 Rust 版落地。
 
 `docs/adr/` 記錄的是決策史（為什麼當初這樣選），本文件記錄的是目前與未來的結構性事實。兩者衝突時以本文件為準。
 
@@ -17,7 +17,7 @@
 - `templates/`：可選。範本（`template add` 產生）與 `slides/` 同構，一份 `.svg` 一個範本，檔名不強制格式（現行實作用流水號，例如 `templates/001.svg`）。
 - `assets/data/`：`asset import --as csv` 的資料資產落點，與一般媒體共用 `assets/` 目錄但是子目錄，序號空間與 `assets/` 下的媒體檔互不干擾。
 
-解壓安全規則（`unpack_container`，`crates/co-motion/src/container.rs`）：**先全量驗證，再落地**。zip 裡的每一個 entry 路徑，只要是絕對路徑，或解析後會落在目標目錄之外（也就是含有能跳出目標目錄的 `..` 片段），整個壓縮檔就被拒收——不做部分解壓、不做路徑清洗、不嘗試修正。任何一步失敗（entry 路徑不合法、`project.json` 缺失或格式錯誤、`formatVersion` 太新），已經寫出的目標目錄會被整個刪除，不留下半成品。
+解壓安全規則（`unpack_container`，`crates/comotion/src/container.rs`）：**先全量驗證，再落地**。zip 裡的每一個 entry 路徑，只要是絕對路徑，或解析後會落在目標目錄之外（也就是含有能跳出目標目錄的 `..` 片段），整個壓縮檔就被拒收——不做部分解壓、不做路徑清洗、不嘗試修正。任何一步失敗（entry 路徑不合法、`project.json` 缺失或格式錯誤、`formatVersion` 太新），已經寫出的目標目錄會被整個刪除，不留下半成品。
 
 ## `project.json`
 
@@ -48,7 +48,7 @@
 - **元素 id 格式**：`el-` 前綴 + 12 個字元的 base64url（`generateOpaqueId()`：9 個隨機位元組 base64url 編碼後恰好 12 字元；`generateElementId()` 再加上 `el-` 前綴）。純亂數產生，id 本身不可解碼出任何路徑或語意（ADR-0004）。
 - **容器的兩個已知例外**（ADR-0012 amendment）：圖表容器與表格容器不是「包一或多個圖元的 `<g>`」，而是各自的資料元素 + 渲染結果組合，細節見下方「圖表容器」與「表格容器」兩節。
 
-`data-comot-*` 屬性總表（目前 repo 內實際出現的完整集合，`grep -rhoP 'data-comot-[a-zA-Z-]+' crates/co-motion/src`）：
+`data-comot-*` 屬性總表（目前 repo 內實際出現的完整集合，`grep -rhoP 'data-comot-[a-zA-Z-]+' crates/comotion/src`）：
 
 | 屬性 | 用在哪裡 | 意義 |
 |---|---|---|
@@ -66,7 +66,11 @@
 | `data-comot-type="table"`、`data-comot-cols`、`data-comot-rows`、`data-comot-header`、`data-comot-theme` | 表格容器 `<g>` | 見下方「表格容器」 |
 | `data-comot-cell`、`data-comot-span`、`data-comot-repeat`、`data-comot-generated`、`data-comot-align` | 表格儲存格 `<g>` | 見下方「表格容器」 |
 
-（此表以目前程式碼實際使用到的屬性為準，逐項精確驗證規則以對應的 `crates/co-motion/src` 模組——`element/text.rs`、`element/edit.rs`、`table/model.rs`、`chart/model.rs`——為權威來源；本表是總覽，不是每個屬性驗證規則的完整重述。）
+（此表以目前程式碼實際使用到的屬性為準，逐項精確驗證規則以對應的 `crates/comotion/src` 模組——`element/text.rs`、`element/edit.rs`、`table/model.rs`、`chart/model.rs`——為權威來源；本表是總覽，不是每個屬性驗證規則的完整重述。）
+
+### 背景圖元素（#303 §13）
+
+一張投影片最多有一個頂層容器帶 `data-comot-role="background"`：固定 `id="el-background"`、`data-comot-name="背景圖"`、`data-comot-lock="true"`，內容是一個滿版的 `<image href="../assets/…" x="0" y="0" width="畫布寬" height="畫布高" [opacity]>`，位置在 `<metadata>` 之後、所有其他元素之前（最底層）。由 `slide background set` 寫入／替換／移除；`slide add --svg`／`slide set --svg` 的內容若已含這個容器，原樣保留並補鎖。`validate` 不對它套用任何幾何、樣式、禁忌規則，只用它的存在決定是否檢查 `structure.scrim`。
 
 ## `<metadata>` 內的 `comot:*`
 
@@ -171,6 +175,14 @@ ADR-0012 amendment 的第二個例外形狀：一個 `data-comot-type="table"` �
 
 儲存格 `<g data-comot-cell="row,col">`：`row`/`col` 0-based；`data-comot-span="rowSpan,colSpan"` 選填（缺席等同 `1,1`）；`data-comot-repeat="row"` 標記這是綁定表格的模板列（永遠搭配 `display="none"`，一個表格最多一列是模板列）；`data-comot-generated="1"` 標記這格內容是 `table bind`/`table refresh` 從 CSV 自動產生；`data-comot-align` ∈ `left|center|right`（缺席預設 `left`）。文字內容在 `<text><tspan>...</tspan></text>` 裡；儲存格底色是 `<rect>` 的 `fill`（`none` 或 `#RRGGBB`）與可選 `fill-opacity`（0 到 1）；文字顏色是 `<text>` 的 `fill`（必須是 `#RRGGBB`）；字重是 `<text>` 的 `font-weight`（100 到 900 的整百）。**表格網格必須被儲存格完整覆蓋，不得有洞，合併範圍不得重疊**（`validateTableModel` 的結構不變式）。
 
+## `plan/`
+
+`plan/` 是簡報自己的計畫檔目錄（#303，ADR-0018），固定兩個檔名：`plan/outline.md`（狀態 `status: draft|confirmed`、敘事模式、逐頁 `pages`、要問作者的 `questions`、選填的 `animation`）與 `plan/design-spec.md`（`density`、六角色 `palette`、`type_scale`、選填的 `visual`）。每份檔案以一個 ```` ```json ```` 圍欄開頭——那是機器可讀段，`plan set` 寫入前解析並驗欄位——其後是給人與 agent 看的 markdown 正文。只能經 `plan set|list|delete` 寫、經 `cat` 讀；計畫不是投影片內容，不進 undo 歷史。目錄可以不存在。
+
+### 文字框宣告不是儲存格式
+
+`slide add --svg`／`slide set --svg` 接受一種**輸入形式**：直接放在根 `<svg>` 底下、帶 `data-comot-text-width` 的裸 `<text>`（內容以換行分段，可帶 `data-comot-list`、`data-comot-text-align`）。寫入時它一律被換成 `slides/` 一節描述的真正文字框結構（`<g data-comot-text-width data-comot-text-height transform>` 包 `<text>` 與 `<tspan>`）；`.comot` 裡永遠不會存到一個帶 `data-comot-text-width` 的裸 `<text>`。
+
 ## `fonts/`
 
 `project.json.fonts` 登記這份簡報內嵌了哪些字型，`FontEntry` 五欄位：`file`（容器內相對路徑，例如 `fonts/NotoSansTC-Presentation.ttf`，不得以 `/` 開頭或含 `..`）、`family`（SVG `font-family` 引用值，這份簡報裡的唯一鍵，不得重複）、`license`（人類可讀授權名稱）、`licenseFile`（授權全文的容器內相對路徑）、`source`（字型取得來源）。同一顆字型被多張投影片引用時共用同一筆 `FontEntry`，不重複打包字型檔本體；SVG 內只存 `font-family` 字串引用。
@@ -179,7 +191,7 @@ ADR-0012 amendment 的第二個例外形狀：一個 `data-comot-type="table"` �
 
 ## `formatVersion`
 
-`FORMAT_VERSION`（`crates/co-motion/src/presentation.rs`）是 **4**，本規格定案的值。`formatVersion` 大於目前建置支援的最大值時整份拒絕開啟。
+`FORMAT_VERSION`（`crates/comotion/src/presentation.rs`）是 **4**，本規格定案的值。`formatVersion` 大於目前建置支援的最大值時整份拒絕開啟。
 
 **v4 只改三項**（不得增減）：
 
@@ -201,12 +213,12 @@ ADR-0012 amendment 的第二個例外形狀：一個 `data-comot-type="table"` �
 
 **repo 現況**（供 Rust 開發時測試 fixture 參考）：目前 27 份 `project.json` fixture 全部是 `formatVersion: 1`；其中 24 份沒有 `fonts` 欄位（3→4 遷移的 `fonts: []` 補值路徑會覆蓋這 24 份）；只有一份有 `templates` 且已是物件形狀；**沒有任何一份帶有 `transition` 欄位**——也就是說 2→3 遷移的 `"fade"` 分支在現有 repo fixture 裡完全沒有被覆蓋到，Rust 實作 3→4 遷移鏈時，需要自己造一份帶 `transition: "fade"` 且投影片沒有 `<comot:transition>` 的測試檔，才能驗到這條分支。
 
-## `~/.comotion/`（`CO_MOTION_HOME`）
+## `~/.comotion/`（`COMOTION_HOME`）
 
-`resolveCoMotionHome()` 的解析規則：`process.env.CO_MOTION_HOME` 若設定就用它，否則預設 `~/.comotion`；**每次呼叫都重新讀取環境變數，不快取**（測試可以把它指到臨時目錄）。
+`resolveCoMotionHome()` 的解析規則：`process.env.COMOTION_HOME` 若設定就用它，否則預設 `~/.comotion`；**每次呼叫都重新讀取環境變數，不快取**（測試可以把它指到臨時目錄）。
 
 ```
-<CO_MOTION_HOME>/
+<COMOTION_HOME>/
 ├── projects.json              # 登記檔
 ├── work/<id>/                 # 解壓後的工作目錄（= .comot 的內容）
 ├── history/<id>/

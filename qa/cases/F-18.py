@@ -3,7 +3,7 @@
 
 依賴沙箱 QA 層（`quick_start.sh --qa` 起環境，`qa/agent_helpers.py` 提供
 `open_deck()`，`browser_harness.helpers` 提供 `js(expression,
-target_id=None)`）；CLI 呼叫直接 subprocess 到 `co-motion`（`--json` 取
+target_id=None)`）；CLI 呼叫直接 subprocess 到 `comotion`（`--json` 取
 結構化結果，格式見 docs/spec/cli.md「CommandResult」一節：
 `{"ok":bool,"data":...,"message":str,"failureKind"？:str}`）。
 
@@ -51,22 +51,22 @@ def check(label: str, ok: bool, actual: object) -> None:
 
 def co_motion(*args: str) -> dict:
     result = subprocess.run(
-        ["co-motion", *args, "--json"],
+        ["comotion", *args, "--json"],
         capture_output=True,
         text=True,
         timeout=30,
     )
     if result.returncode != 0 and not result.stdout.strip():
-        raise RuntimeError(f"co-motion {' '.join(args)} 失敗：exit={result.returncode} stderr={result.stderr!r}")
+        raise RuntimeError(f"comotion {' '.join(args)} 失敗：exit={result.returncode} stderr={result.stderr!r}")
     return json.loads(result.stdout)
 
 
 def main() -> int:  # noqa: PLR0915 - 單一線性流程，拆函式反而更難對照「造→量→還原→再量」四步
-    presentation_id = __import__("os").environ["CO_MOTION_QA_PRESENTATION_ID"]
+    presentation_id = __import__("os").environ["COMOTION_QA_PRESENTATION_ID"]
     slide_path = "slides/001.svg"
 
     original = subprocess.run(
-        ["co-motion", "cat", presentation_id, slide_path],
+        ["comotion", "cat", presentation_id, slide_path],
         capture_output=True,
         text=True,
         timeout=30,
@@ -150,7 +150,7 @@ def main() -> int:  # noqa: PLR0915 - 單一線性流程，拆函式反而更難
         co_motion("element", "delete", presentation_id, slide_path, element_id)
 
     restored = subprocess.run(
-        ["co-motion", "cat", presentation_id, slide_path],
+        ["comotion", "cat", presentation_id, slide_path],
         capture_output=True,
         text=True,
         timeout=30,
@@ -194,7 +194,7 @@ def main() -> int:  # noqa: PLR0915 - 單一線性流程，拆函式反而更難
         return 1
 
     href = js("document.querySelector('.export-status-done a').getAttribute('href')")  # noqa: F821
-    base_url = __import__("os").environ["CO_MOTION_QA_URL"].rstrip("/")
+    base_url = __import__("os").environ["COMOTION_QA_URL"].rstrip("/")
     download_url = href if href.startswith("http") else f"{base_url}{href if href.startswith('/') else '/' + href}"
     with urllib.request.urlopen(download_url, timeout=30) as response:  # noqa: S310 - 固定指向本機 QA server
         payload = response.read()

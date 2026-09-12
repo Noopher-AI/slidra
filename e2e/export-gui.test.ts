@@ -38,7 +38,7 @@ const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const exportDeckDir = path.join(rootDir, "e2e/fixtures/export-deck");
 const baselineDir = path.join(e2eDir, "__screenshots__/export");
-const coMotionBinPath = path.join(rootDir, "target/release/co-motion");
+const coMotionBinPath = path.join(rootDir, "target/release/comotion");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -59,7 +59,7 @@ afterEach(async () => {
 
 /** A deck with many slides, each with a couple of steps, purely to widen the render window for the "still in progress" screenshot below. */
 async function buildManyFrameDeck(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-export-gui-deck-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-export-gui-deck-"));
   await mkdir(path.join(dir, "slides"), { recursive: true });
   await mkdir(path.join(dir, "assets"), { recursive: true });
   const slideCount = 15;

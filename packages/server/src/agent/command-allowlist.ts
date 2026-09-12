@@ -1,13 +1,21 @@
 /**
- * Decides whether a shell command string is allowed to reach the shell at
- * all (ADR-0004, second layer).
+ * Recognises a `comotion` invocation written in a shape that is provably
+ * free of shell syntax.
+ *
+ * **Its role changed with ADR-0019.** This used to be the gate: a command
+ * that did not match was refused. It is now the fast path — a command that
+ * matches is the CLI and is allowed outright, and one that does not is
+ * judged by `protected-paths.ts` instead (refused only if it names the
+ * presentation's real files). Everything below is unchanged and must stay
+ * that way: it is still what lets a `comotion` command be allowed without
+ * looking at what its arguments contain.
  *
  * Earlier revisions of this module tried to *recognise danger*: tokenize
  * the string the way a POSIX shell would, and refuse anything that looked
  * like it could chain, pipe, substitute, or redirect. Each round found one
  * more shell construct the tokenizer had not modelled — quoting, then
  * command substitution, then backslash escapes changing where a quoted
- * region actually closes (`co-motion "foo\"bar"; printf PWNED \"` passed
+ * region actually closes (`comotion "foo\"bar"; printf PWNED \"` passed
  * the old tokenizer while bash treats the `;` as unquoted). That is not a
  * sequence of bugs to patch; it is proof that matching a POSIX shell's
  * grammar exactly is not a winnable game. The shell's grammar is large and
@@ -26,9 +34,9 @@
  * The accepted shape:
  *   1. The command is a sequence of arguments separated by plain spaces or
  *      tabs. The first argument must be exactly the literal word
- *      `co-motion` — the program being executed, not a prefix match
- *      (`co-motion-something-else` is refused) and not merely present
- *      somewhere in the string (`sh -c 'co-motion ls'` is refused, because
+ *      `comotion` — the program being executed, not a prefix match
+ *      (`comotion-something-else` is refused) and not merely present
+ *      somewhere in the string (`sh -c 'comotion ls'` is refused, because
  *      its first argument is `sh`).
  *   2. Every argument is *either*:
  *        - a bare token made only of ASCII letters, digits, and
@@ -54,7 +62,21 @@
  *      bash about where a quoted region ends. Refusing `\` outright,
  *      unconditionally, removes the entire question of escape handling
  *      instead of trying to get it right.
- *   5. Anything else — any other ASCII punctuation or operator character,
+ *   5. A single trailing `2>&1` — the one redirection the grammar accepts.
+ *      This is not a patched-in special case of the kind the paragraph
+ *      above warns against: it is a fixed four-character literal, stripped
+ *      off the end of the string *before* tokenizing, and it carries no
+ *      caller content at all. Justified from scratch: `2>&1` at the end of
+ *      a command sends stderr where stdout already goes and can start no
+ *      new command, name no new program, and expand nothing. Whatever
+ *      remains after stripping it still has to pass rules 1–4 unchanged,
+ *      so `comotion cat X 'abc 2>&1` (unterminated quote) and
+ *      `comotion cat X$(id) 2>&1` are still refused. Only one occurrence
+ *      is stripped — `comotion ls X 2>&1 2>&1` is refused. It is allowed
+ *      because agents append it by reflex to see stderr, and a refusal
+ *      reaches them as an opaque "the user rejected this", which they read
+ *      as a human saying no and stop on.
+ *   6. Anything else — any other ASCII punctuation or operator character,
  *      any control character, an unterminated quote, trailing characters
  *      after a closing quote — is refused.
  *
@@ -62,8 +84,20 @@
  * this allowlist is not.
  */
 export function isCoMotionCommand(command: string): boolean {
-  const tokens = tokenize(command);
-  return tokens !== undefined && tokens.length > 0 && tokens[0] === "co-motion";
+  const tokens = tokenize(stripTrailingStderrRedirect(command));
+  return tokens !== undefined && tokens.length > 0 && tokens[0] === "comotion";
+}
+
+/**
+ * Removes one trailing `2>&1` (rule 5), which must be preceded by
+ * whitespace so it is a redirection of its own and not the tail of some
+ * larger token. Everything before it is returned untouched for `tokenize`
+ * to judge on its own terms — this function never decides anything is
+ * allowed, it only takes the redirection out of the tokenizer's way.
+ */
+function stripTrailingStderrRedirect(command: string): string {
+  const match = /[ \t]2>&1[ \t]*$/.exec(command);
+  return match === null ? command : command.slice(0, match.index);
 }
 
 /** ASCII punctuation permitted in a bare (unquoted) token, besides letters/digits. */

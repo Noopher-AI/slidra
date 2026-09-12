@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="176" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="80" y="364" font-size="20" fill="#777777">Note 1</text><rect x="470" y="176" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="470" y="364" font-size="20" fill="#777777">Note 2</text><rect x="860" y="176" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="860" y="364" font-size="20" fill="#777777">Note 3</text><rect x="80" y="420" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="80" y="608" font-size="20" fill="#777777">Note 4</text><rect x="470" y="420" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="470" y="608" font-size="20" fill="#777777">Note 5</text><rect x="860" y="420" width="340" height="150" fill="#D5D5D5" stroke="#BFBFBF"/><text x="860" y="608" font-size="20" fill="#777777">Note 6</text>
+
+</svg>

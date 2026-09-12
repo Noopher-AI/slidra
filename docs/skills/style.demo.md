@@ -10,7 +10,7 @@
 
 ## 預期結果
 
-- `co-motion cat <id> slides/001.svg` 可看到 `el-title` 的 `font-size="72"`。
+- `comotion cat <id> slides/001.svg` 可看到 `el-title` 的 `font-size="72"`。
 - `el-title` 與 `el-subtitle` 的 `fill="#F4F6F8"`。
 - agent 的回報裡列出改動的 element id、屬性、新值。
 

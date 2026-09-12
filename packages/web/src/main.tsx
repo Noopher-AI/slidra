@@ -11,6 +11,7 @@ import "./styles/stage.css";
 import "./styles/stage-overlays.css";
 import "./styles/dock.css";
 import "./styles/rail.css";
+import "./styles/plan-gate.css";
 import "./styles/export-panel.css";
 import "./styles/notes.css";
 import "./styles/chat.css";
@@ -20,7 +21,6 @@ import "./styles/side-panel.css";
 import "./styles/animate.css";
 import "./styles/table.css";
 import "./styles/chart-window.css";
-import "./styles/settings.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

@@ -12,8 +12,9 @@
  * the one deliberate difference (the thumbnail-sizing `<style>` this
  * copy injects, see wrapSlideDocument below).
  */
-import type { CanvasController } from "./canvas.js";
+import { presentationFontFaces, setPresentationFonts, type CanvasController } from "./canvas.js";
 import { fetchSlideEffectPlan } from "./effects.js";
+import { slidePaintKey } from "./slide-paint-key.js";
 
 /**
  * [E2.T3]: the two behaviours that need a React tree to render into
@@ -135,8 +136,12 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   let aspectGeneration = 0;
   async function applyAspectRatio(): Promise<void> {
     const thisGeneration = ++aspectGeneration;
-    const project = await fetchJson<{ canvas: { width: number; height: number } }>("/api/presentation");
+    const project = await fetchJson<{
+      canvas: { width: number; height: number };
+      fonts?: { file: string; family: string }[];
+    }>("/api/presentation");
     if (aspectGeneration !== thisGeneration) return;
+    setPresentationFonts(project.fonts);
     const { width, height } = project.canvas ?? {};
     if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
       throw new Error("project.json 的 canvas 尺寸無效，無法決定縮圖長寬比");
@@ -169,6 +174,14 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   // once it lands, no matter which settles first. A per-index counter also
   // means a race on slide 3 never has to reason about slide 7's fetches.
   const generations: number[] = [];
+  // #303: the paint key (`slidePaintKey`) each materialised thumbnail last
+  // painted, per index. Live reload calls refresh() on every agent
+  // command, and a build issues dozens whose only change is `<metadata>`
+  // (effects, notes, comments) — reassigning every thumbnail's srcdoc for
+  // those blanked the whole rail for nothing. Same key ⇒ same picture ⇒
+  // the srcdoc is left alone. Reset together with `frames` in
+  // rebuildList(): a new list means new iframes that have painted nothing.
+  const paintedKeys: (string | undefined)[] = [];
 
   // [E5.T11] ✦ n 動畫數徽章（03-UI_RATIONALE.md §B）。One badge per slide,
   // populated independently of the lazy thumbnail load above — "does this
@@ -235,9 +248,13 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     try {
       const markup = await fetchText(`/api/files/${slidePath}`);
       if (generations[index] !== thisGeneration) return;
+      const key = slidePaintKey(markup);
+      if (paintedKeys[index] === key) return; // #303: metadata-only change, same picture.
       frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
+      paintedKeys[index] = key;
     } catch {
       if (generations[index] !== thisGeneration) return;
+      paintedKeys[index] = undefined;
       frame.srcdoc = wrapSlideDocument(`<p>Thumbnail failed to load</p>`);
     }
   }
@@ -321,6 +338,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     frames.length = 0;
     requested.length = 0;
     generations.length = 0;
+    paintedKeys.length = 0;
     effectBadges.length = 0;
     effectGenerations.length = 0;
     slides = nextSlides;
@@ -457,18 +475,14 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   };
 }
 
-/**
- * Mirrors canvas.ts's own `PRESENTATION_FONT_FACE_STYLE` (ticket #71 /
- * ADR-0016): the container's embedded font is only guaranteed correct inside
- * a CoMotion wrapper document, and a thumbnail's `srcdoc` is one — without
- * this, a slide's `font-family="Noto Sans TC"` falls back to whatever the
- * host OS happens to have, so a thumbnail could show visibly different text
- * layout than the canvas it is a preview of. `url()` is an absolute
- * `/api/raw/` path for the same cross-origin-srcdoc reason canvas.ts's copy
- * documents.
+/*
+ * The faces a thumbnail's `srcdoc` injects come from canvas.ts, which
+ * rebuilds them from `project.json` (#305). This used to be a second,
+ * hard-coded copy of that one-family constant — so a deck with an imported
+ * title font showed one typeface on the canvas and another in the rail.
+ * The container's embedded fonts are only guaranteed correct inside a
+ * CoMotion wrapper document, and a thumbnail is one.
  */
-const PRESENTATION_FONT_FACE_STYLE =
-  '<style>@font-face{font-family:"Noto Sans TC";src:url("/api/raw/fonts/NotoSansTC-Presentation.ttf") format("truetype");font-weight:400;font-style:normal;}</style>';
 
 /**
  * Mirrors canvas.ts's own wrapSlideDocument (module-private there; see file
@@ -480,7 +494,7 @@ const PRESENTATION_FONT_FACE_STYLE =
  * aspect ratio correct and the whole slide visible instead of cropped.
  *
  * `html,body{background:#fff}` (#120): a slide with no background rect of
- * its own (e.g. `co-motion new`'s blank title slide) otherwise leaves this
+ * its own (e.g. `comotion new`'s blank title slide) otherwise leaves this
  * document fully transparent, so `.overview-thumb`'s `#000` loading
  * placeholder (rail.css) never gets painted over — the thumbnail reads as
  * solid black instead of an empty page. A presentation's mental model is a
@@ -493,7 +507,7 @@ const PRESENTATION_FONT_FACE_STYLE =
  */
 export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${PRESENTATION_FONT_FACE_STYLE}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaces()}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /** Mirrors canvas.ts's own slideDirectory (module-private there; see file header). */

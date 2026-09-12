@@ -56,7 +56,6 @@ interface Harness {
   messages: ChatMessage[];
   working: boolean;
   streamReady: boolean;
-  error: string | null;
 }
 
 function start(): Harness {
@@ -65,7 +64,6 @@ function start(): Harness {
     messages: [] as ChatMessage[],
     working: false,
     streamReady: false,
-    error: null as string | null,
   } as Harness;
   harness.stream = startChatStream({
     updateMessages: (update) => {
@@ -76,9 +74,6 @@ function start(): Harness {
     },
     setStreamReady: (ready) => {
       harness.streamReady = ready;
-    },
-    setError: (message) => {
-      harness.error = message;
     },
     nextMessageId: () => nextId++,
     eventSourceFactory: (url) => {
@@ -120,6 +115,21 @@ describe("startChatStream", () => {
     expect(started.working).toBe(false);
   });
 
+  it("#303: a cancelled turn appends the 「已停止」 system line and marks unfinished commands interrupted", () => {
+    started = start();
+    started.fake.emit("chat-chunk", { text: "開始" });
+    started.fake.emit("chat-command", { toolCallId: "t1", command: "comotion slide add x", status: "in_progress" });
+
+    started.fake.emit("chat-done", { stopReason: "cancelled" });
+
+    expect(started.working).toBe(false);
+    expect(started.messages).toEqual([
+      { id: 0, role: "agent", text: "開始" },
+      { id: 1, role: "command", toolCallId: "t1", command: "comotion slide add x", status: "in_progress", cli: true, interrupted: true },
+      { id: 2, role: "system", text: "已停止" },
+    ]);
+  });
+
   it("clears working when the stream drops mid-turn, so the author is not left in a fake 「工作中」", () => {
     started = start();
     started.fake.emit("chat-chunk", { text: "好的" });
@@ -143,7 +153,7 @@ describe("startChatStream", () => {
 
   it("marks a command left unfinished by the drop as interrupted, never as failed", () => {
     started = start();
-    started.fake.emit("chat-command", { toolCallId: "call-1", command: "co-motion ls p1", status: "in_progress" });
+    started.fake.emit("chat-command", { toolCallId: "call-1", command: "comotion ls p1", status: "in_progress" });
 
     started.fake.emitTransientError();
 
@@ -151,8 +161,9 @@ describe("startChatStream", () => {
       {
         id: 0,
         role: "command",
+        cli: true,
         toolCallId: "call-1",
-        command: "co-motion ls p1",
+        command: "comotion ls p1",
         status: "in_progress",
         interrupted: true,
       },
@@ -217,7 +228,8 @@ describe("startChatStream", () => {
 
     started.fake.emit("chat-error", { message: "agent 掛了" });
 
-    expect(started.error).toBe("agent 掛了");
+    // The failure lands in the timeline after the partial reply, not in a banner.
+    expect(started.messages.at(-1)).toEqual({ id: 1, role: "error", text: "agent 掛了" });
     expect(started.working).toBe(false);
     // A reported failure is an outcome, not a lost turn — no interruption notice on top of it.
     expect(notices(started.messages)).toEqual([]);

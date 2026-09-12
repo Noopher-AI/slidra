@@ -36,6 +36,14 @@ export interface CommandMessage {
   /** Verbatim from ACP's `rawInput.command`. Never reassembled here. */
   command: string;
   status: CommandStatus;
+  /**
+   * True for a `comotion` invocation. Only those carry a status the author
+   * is meant to read: 執行中／完成／失敗 is a claim about the presentation,
+   * and the agent's own shell work (reading its references, grepping) has
+   * no outcome the author is being asked to act on. The command is still
+   * shown — just without a tag, and never updated.
+   */
+  cli: boolean;
   /** Present only when the command failed — its own output, shown to the author as-is. */
   output?: string;
   /**
@@ -48,6 +56,16 @@ export interface CommandMessage {
    * hearing — and leaves `status` at the last thing ACP really told us.
    */
   interrupted?: true;
+  /**
+   * The command never ran: CoMotion's own allowlist refused it (server:
+   * `BLOCKED_COMMAND_MESSAGE`). A separate field rather than another
+   * `CommandStatus` for the same reason as `interrupted` — `status` is
+   * ACP's vocabulary, and ACP has no word for "the client refused this".
+   * The distinction is worth drawing on screen: a failed command is the
+   * agent's problem to fix, a blocked one is a rule the author should be
+   * able to recognise as CoMotion's, not as something they clicked.
+   */
+  blocked?: true;
 }
 
 /**
@@ -79,7 +97,21 @@ export interface SystemMessage {
   text: string;
 }
 
-export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage | SystemMessage;
+/**
+ * Something that went wrong, said by nobody: the agent's turn failed, a
+ * request the panel made (send, stop, switch model) did not go through.
+ * A message rather than a banner for the same reason `NoticeMessage` is:
+ * *when* it happened is the point — it stays put at the moment it
+ * occurred while later turns are appended below it, instead of hanging at
+ * the bottom looking current long after the fact.
+ */
+export interface ErrorMessage {
+  id: number;
+  role: "error";
+  text: string;
+}
+
+export type ChatMessage = SpeechMessage | CommandMessage | NoticeMessage | SystemMessage | ErrorMessage;
 
 /** Appends a brand-new message (author or agent) with the given id. */
 export function appendMessage(
@@ -106,6 +138,11 @@ export function appendChunkToMessage(messages: ChatMessage[], id: number, text: 
 /** Appends a notice about the conversation itself — a lost turn, not speech. */
 export function appendNoticeMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
   return [...messages, { id, role: "notice", text }];
+}
+
+/** Appends an error at the moment it happened — a failed turn or a failed panel request. */
+export function appendErrorMessage(messages: ChatMessage[], id: number, text: string): ChatMessage[] {
+  return [...messages, { id, role: "error", text }];
 }
 
 /** Appends a system message — a routine fact about the conversation (e.g. an agent switch), not a lost turn. */
@@ -135,8 +172,9 @@ export function appendCommandMessage(
   toolCallId: string,
   command: string,
   status: CommandStatus,
+  cli: boolean,
 ): ChatMessage[] {
-  return [...messages, { id, role: "command", toolCallId, command, status }];
+  return [...messages, { id, role: "command", toolCallId, command, status, cli }];
 }
 
 /**
@@ -148,7 +186,7 @@ export function appendCommandMessage(
 export function updateCommandMessage(
   messages: ChatMessage[],
   toolCallId: string,
-  patch: { status: CommandStatus; output?: string },
+  patch: { status: CommandStatus; output?: string; blocked?: true },
 ): ChatMessage[] {
   return messages.map((message) =>
     message.role === "command" && message.toolCallId === toolCallId ? { ...message, ...patch } : message,

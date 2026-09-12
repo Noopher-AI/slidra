@@ -1,20 +1,20 @@
-# CLI 是唯一的操作語彙，`co-motion serve` 是它的常駐模式
+# CLI 是唯一的操作語彙，`comotion serve` 是它的常駐模式
 
 > **⚠️ 部分條款已失效。** 「命令必須是語意化的，不能是通用的低階屬性操作」這一條由 **ADR-0014** 撤銷：
 > 樣式改走一條通用的 `element style set`，屬性名直接用 SVG 屬性名，邊界由白名單守。
 > 連帶放棄的是「agent 不必精通 SVG」這個前提。
 >
-> **仍然成立的**：CLI 是唯一的操作語彙、`co-motion serve` 是它的常駐模式、前端不得擁有 CLI 沒有的操作、
+> **仍然成立的**：CLI 是唯一的操作語彙、`comotion serve` 是它的常駐模式、前端不得擁有 CLI 沒有的操作、
 > 一次操作＝一條命令＝一步 undo、不變式要靠結構而非紀律。那才是本 ADR 的核心。
 >
 > **第二則修訂（S7/#255）**：「Considered Options」列出的否決理由——server fork subprocess 呼叫 CLI，每條命令要付
-> 100–300ms 的 process 啟動成本——**不再成立**。取代它的條款是「**同一支二進位**」：`co-motion` 是唯一入口與唯一
+> 100–300ms 的 process 啟動成本——**不再成立**。取代它的條款是「**同一支二進位**」：`comotion` 是唯一入口與唯一
 > 寫入者；`serve`／`export` 由它 `exec` Node；Node 端需要再 spawn 命令時，一律用同一支二進位（見
-> `CO_MOTION_BIN`），不從 PATH 找。命令集的規範性定義見 `docs/spec/cli.md`。
+> `COMOTION_BIN`），不從 PATH 找。命令集的規範性定義見 `docs/spec/cli.md`。
 
 CoMotion 要同時服務兩種編輯者：透過視覺編輯器操作的人，與透過 shell 操作的 agent。若兩者各有一套介面，能力會漂移，人與 agent 就無法真正在同一份簡報上協作。
 
-因此所有能對簡報做的操作都由 CLI 命令定義，前端不得擁有 CLI 沒有的操作。Web 編輯器不是獨立的後端，而是 CLI 的一個子命令 `co-motion serve`——它與 one-shot 命令共用同一份 dispatch，所以「前端只能做 CLI 做得到的事」是結構保證，不是人為紀律。
+因此所有能對簡報做的操作都由 CLI 命令定義，前端不得擁有 CLI 沒有的操作。Web 編輯器不是獨立的後端，而是 CLI 的一個子命令 `comotion serve`——它與 one-shot 命令共用同一份 dispatch，所以「前端只能做 CLI 做得到的事」是結構保證，不是人為紀律。
 
 ## Considered Options
 

@@ -10,7 +10,7 @@ import { EventEmitter } from "node:events";
  *   - `human`  — a human editing gesture (e.g. a drag) is in progress.
  *   - `agent`  — the agent's current turn is running commands.
  *
- * This is in-memory, scoped to one `co-motion serve` process (one
+ * This is in-memory, scoped to one `comotion serve` process (one
  * presentation per process today — see AgentAdapterConfig's own docs) —
  * never written to disk, never a cross-process lockfile. A restart starts
  * from `idle`, which is correct: nothing was actually in flight across a
@@ -112,7 +112,7 @@ export class EditingLock extends EventEmitter {
       this.releaseWaiters();
     }, HUMAN_LEASE_MAX_MS);
     // Never keep the process alive on this alone — a test or a short-lived
-    // `co-motion serve` shutting down must not wait out this timer.
+    // `comotion serve` shutting down must not wait out this timer.
     this.leaseTimer.unref?.();
   }
 

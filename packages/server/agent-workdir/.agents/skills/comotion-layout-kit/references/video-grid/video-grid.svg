@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="80" y="104" font-size="40" fill="#2E2E2E" font-weight="700">Title</text>
+<rect x="80" y="200" width="540" height="300" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="350" cy="350" rx="36" ry="36" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M337 333l34 17l-34 17z" fill="#909090"/><text x="80" y="560" font-size="24" fill="#777777">Note 1: what this clip shows</text><rect x="660" y="200" width="540" height="300" fill="#D5D5D5" stroke="#BFBFBF"/><ellipse cx="930" cy="350" rx="36" ry="36" fill="#FFFFFF" stroke="#909090" stroke-width="3"/><path d="M917 333l34 17l-34 17z" fill="#909090"/><text x="660" y="560" font-size="24" fill="#777777">Note 2: what this clip shows</text>
+
+</svg>

@@ -4,7 +4,7 @@
 
 ### 逗號分隔語法
 
-結構化輸入（`CommandHandler` 的 `input`、未來的 `co-motion serve`）一律是一個真陣列：
+結構化輸入（`CommandHandler` 的 `input`、未來的 `comotion serve`）一律是一個真陣列：
 
 ```ts
 elementIds: string[] // 長度 ≥ 1，不可有重複 id
@@ -13,12 +13,12 @@ elementIds: string[] // 長度 ≥ 1，不可有重複 id
 CLI 的 argv 層把「元素識別碼」這個位置參數改成**逗號分隔、不含空白**的清單：
 
 ```bash
-co-motion element move <id> <slide-path> el-abc,el-def --dx 10 --dy -5
-co-motion element style set <id> <slide-path> el-abc fill "#c43e1c"
-co-motion element delete <id> <slide-path> el-abc,el-def,el-ghi
-co-motion element scale <id> <slide-path> el-abc --factor 2
-co-motion element rotate <id> <slide-path> el-abc,el-def --degrees 45
-co-motion element order <id> <slide-path> el-abc,el-def front
+comotion element move <id> <slide-path> el-abc,el-def --dx 10 --dy -5
+comotion element style set <id> <slide-path> el-abc fill "#c43e1c"
+comotion element delete <id> <slide-path> el-abc,el-def,el-ghi
+comotion element scale <id> <slide-path> el-abc --factor 2
+comotion element rotate <id> <slide-path> el-abc,el-def --degrees 45
+comotion element order <id> <slide-path> el-abc,el-def front
 ```
 
 單一元素就是長度 1 的清單，語法完全不變（`el-abc` 跟 `el-abc,el-def` 只差有沒有逗號）——這是刻意的：agent 不需要為「一個目標」和「多個目標」記兩套語法。

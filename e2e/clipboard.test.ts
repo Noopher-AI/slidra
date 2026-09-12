@@ -29,7 +29,7 @@ function parseSlideSvg(svg: string): Document {
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const deckDir = path.join(e2eDir, "fixtures/clipboard-deck");
-const cliBinPath = path.join(rootDir, "target/release/co-motion");
+const cliBinPath = path.join(rootDir, "target/release/comotion");
 
 let browser: Browser;
 let openPages: Page[] = [];
@@ -124,7 +124,7 @@ function parseCliData<T>(stdout: string): T {
 
 const slideFrame = (page: Page) => page.frameLocator("iframe.slide-frame");
 
-it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法的 co-motion 剪貼簿 SVG", async () => {
+it("A0：sandbox iframe 內的 ⌘C 能寫入系統剪貼簿，內容是合法的 comotion 剪貼簿 SVG", async () => {
   const started = await start();
   const page = await openWithClipboard(started);
 
@@ -256,7 +256,7 @@ it("A4：儲存格範圍複製貼上（CLI，[E2.T14] 軟依賴）— TSV 往返
   const { tsv } = parseCliData<{ tsv: string }>(copyResult.stdout);
   expect(tsv).toBe("A1\tB1\tC1");
 
-  const tsvFile = path.join(await mkdtemp(path.join(tmpdir(), "co-motion-e2e-clipboard-tsv-")), "cells.tsv");
+  const tsvFile = path.join(await mkdtemp(path.join(tmpdir(), "comotion-e2e-clipboard-tsv-")), "cells.tsv");
   await writeFile(tsvFile, tsv, "utf-8");
   const pasteResult = await runCli([
     "table", "cell", "paste", started.presentationId, "slides/001.svg", "tbl-1", "--at", "2,0", "--tsv-file", tsvFile,
@@ -303,7 +303,7 @@ it("A5：貼上後的檔案變更由 CLI element paste 可重現（GUI 與 agent
     )
     .toBe(false);
 
-  const svgFile = path.join(await mkdtemp(path.join(tmpdir(), "co-motion-e2e-clipboard-svg-")), "clip.svg");
+  const svgFile = path.join(await mkdtemp(path.join(tmpdir(), "comotion-e2e-clipboard-svg-")), "clip.svg");
   await writeFile(svgFile, clipboardSvg, "utf-8");
   const cliPaste = await runCli([
     "element", "paste", started.presentationId, "slides/001.svg", "--dx", "20", "--dy", "20", "--svg-file", svgFile,

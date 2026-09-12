@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `co-motion pack <presentation-id> <path>` packs an ALREADY-OPEN
+// `comotion pack <presentation-id> <path>` packs an ALREADY-OPEN
 // presentation, not an arbitrary directory (`docs/spec/cli.md`'s `pack`
 // entry) — there is no CLI command for "zip this directory into a
 // `.comot`" and this ticket deliberately does not add one (plan section

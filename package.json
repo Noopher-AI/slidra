@@ -1,5 +1,5 @@
 {
-  "name": "co-motion-monorepo",
+  "name": "comotion-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [

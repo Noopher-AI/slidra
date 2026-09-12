@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<text x="640" y="400" font-size="140" fill="#2E2E2E" font-weight="700" text-anchor="middle">2.5B</text><text x="640" y="480" font-size="28" fill="#777777" text-anchor="middle">What this number represents</text><text x="640" y="600" font-size="18" fill="#A0A0A0" text-anchor="middle">Source (optional)</text>
+
+</svg>

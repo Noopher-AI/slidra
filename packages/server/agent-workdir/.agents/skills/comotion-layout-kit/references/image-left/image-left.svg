@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect x="0" y="0" width="1280" height="720" fill="#F3F3F3" stroke="#CFCFCF"/>
+<rect x="0" y="0" width="560" height="720" fill="#D5D5D5"/><text x="280" y="370" font-size="24" fill="#777777" text-anchor="middle">Image (full-height bleed)</text><text x="640" y="120" font-size="40" fill="#2E2E2E" font-weight="700">Title</text><text x="640" y="240" font-size="24" fill="#777777">· Point 1: one key phrase</text><text x="640" y="330" font-size="24" fill="#777777">· Point 2: one key phrase</text><text x="640" y="420" font-size="24" fill="#777777">· Point 3: one key phrase</text><text x="640" y="510" font-size="24" fill="#777777">· Point 4: one key phrase</text>
+
+</svg>

@@ -65,7 +65,7 @@ function diffCommandNames(specNames: string[], documentHeadings: string[]): { un
   };
 }
 
-describe("[NOOP-238] reference/commands.md covers every co-motion binary command (A13)", () => {
+describe("[NOOP-238] reference/commands.md covers every comotion binary command (A13)", () => {
   it("has exactly one H2 section per docs/spec/cli.md command name, both directions", async () => {
     const headings = extractHeadings(await readCommandsReference());
     expect(diffCommandNames(specCommandNames, headings)).toEqual({ undocumented: [], stale: [] });
@@ -127,7 +127,7 @@ describe("[NOOP-238] 編輯規約 and reference/commands.md stay consistent (A16
 
   // [E3.T6] #236/#237: same guarantee as A16/A17 above, extended to the
   // work directory's own documentation — AGENTS.md and the shipped
-  // SKILL.md files reference `co-motion` commands too, and those mentions
+  // SKILL.md files reference `comotion` commands too, and those mentions
   // must stay real (in docs/spec/cli.md) and documented (in this same file).
   it("AGENTS.md and every shipped SKILL.md name only commands that exist in docs/spec/cli.md and are documented (A4)", async () => {
     const specNames = new Set(specCommandNames);

@@ -71,6 +71,10 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "template list",
   "template rename",
   "template delete",
+  // #303 的計畫確認視窗：「放棄」直接刪掉 plan/ 草稿，不經 agent；`plan list`
+  // 讓前端在沒有 SSE 事件時也能查目前有沒有草稿。讀計畫檔走 `/api/files/`。
+  "plan list",
+  "plan delete",
   // NOOP-90/T2 的舞台選取與直接操作加入這三條：四角把手送
   // `element resize`（新命令）；Delete/Backspace 與元素右鍵選單的 Delete
   // 送 `element delete`；⌘D 與右鍵選單的 Duplicate 送 `element
@@ -133,6 +137,8 @@ export const COMMAND_WHITELIST: readonly string[] = [
   "textbox align",
   "slide style set",
   "presentation canvas set",
+  // #303 背景圖片手動控制面板：上傳/選擇/清除背景圖片、調整透明度。
+  "slide background set",
 ];
 
 /**

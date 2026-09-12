@@ -1,10 +1,10 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import { CoMotionError } from "../comotion/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
-import { AgentChatSession, type AgentAdapterConfig, type ChatStreamSend } from "./session.js";
+import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
 import type { EditingLock } from "../editing-lock.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
-import { writeAgentSelection } from "./settings.js";
+import { writeAgentModel, writeAgentSelection } from "./settings.js";
 
 /** Where the currently-selected agent kind came from (NOOP-230 §4.3). */
 export type AgentSource = "cli" | "settings" | "none";
@@ -27,6 +27,24 @@ export interface AgentStatus {
   source: AgentSource;
   /** Always both agents, in `ADAPTER_SPECS`'s order — regardless of which is `current`. */
   agents: AgentCard[];
+  /**
+   * #303: true whenever there is something Stop can stop — a turn in
+   * flight, a message queued behind it, or an adapter handshake on its way
+   * to one. A tab loaded mid-turn shows Stop from this, not from the next
+   * `chat-chunk`. False with no session.
+   */
+  turnRunning: boolean;
+  /**
+   * The model the current session runs on, as the adapter reported it at
+   * `session/new` (`AgentChatSession.getModel`). Null when there is no
+   * session, or when the adapter reports no model state at all — the chat
+   * panel then simply shows nothing rather than guessing a name.
+   */
+  model: AgentModel | null;
+  /** `model`'s id, for the picker's selected row; null whenever `model` is. */
+  modelId: string | null;
+  /** Every model the current session can switch to (`POST /api/agent/model`); `[]` with no session or an adapter that reports none. */
+  models: readonly AgentModelChoice[];
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
@@ -55,6 +73,10 @@ export interface AgentManagerOptions {
   resolveAdapter?: (kind: AgentKind) => AgentAdapterConfig;
   /** Fired only when `select()` actually swaps to a different kind (§4.4's `agent-changed` event). */
   onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
+  /** Fired after `setModel()` actually switched the live session — rides the same SSE fan-out as `agent-changed`. */
+  onModelChanged?: (payload: { kind: AgentKind; modelId: string; name: string }) => void;
+  /** The models picked earlier (settings.json), applied to every new session of that kind. */
+  initialModels?: Partial<Record<AgentKind, string>>;
   /**
    * Skips the real login probe for these kinds — `status()`/`probe()`
    * always report them as logged in, without spawning anything.
@@ -90,6 +112,8 @@ export class AgentManager {
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
   private readonly onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
+  private readonly onModelChanged?: (payload: { kind: AgentKind; modelId: string; name: string }) => void;
+  private readonly preferredModels: Partial<Record<AgentKind, string>>;
   private readonly assumeLoggedIn: ReadonlySet<AgentKind>;
 
   private current: AgentKind | null;
@@ -115,6 +139,8 @@ export class AgentManager {
     this.runCommand = options.runCommand ?? spawnCommandRunner;
     this.resolveAdapter = options.resolveAdapter ?? resolveAdapterConfig;
     this.onAgentChanged = options.onAgentChanged;
+    this.onModelChanged = options.onModelChanged;
+    this.preferredModels = { ...options.initialModels };
     this.assumeLoggedIn = options.assumeLoggedIn ?? new Set();
 
     this.current = options.initial.kind;
@@ -128,7 +154,7 @@ export class AgentManager {
 
   private buildSession(kind: AgentKind): AgentChatSession {
     const config = this.resolveAdapter(kind);
-    return new AgentChatSession(config, this.presentationId, this.editingLock, this.workdir);
+    return new AgentChatSession(config, this.presentationId, this.editingLock, this.workdir, this.preferredModels[kind] ?? null);
   }
 
   /** Forwards one session's events to every currently attached `/api/chat/stream` listener. */
@@ -191,6 +217,10 @@ export class AgentManager {
     return {
       current: this.current,
       source: this.source,
+      turnRunning: this.session?.isBusy() ?? false,
+      model: this.session?.getModel() ?? null,
+      modelId: this.session?.getModelId() ?? null,
+      models: this.session?.getModelChoices() ?? [],
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
@@ -243,12 +273,78 @@ export class AgentManager {
     return this.status();
   }
 
+  /**
+   * Starts a fresh conversation with the same agent: tears the current ACP
+   * session down and builds a new one in its place. The adapter process,
+   * its `session/new`, and the 編輯規約 all happen again, so the agent
+   * begins with no memory of the previous turns — the server side of the
+   * chat panel's "new session" button.
+   *
+   * Refused while the agent holds the editing floor, for the same reason
+   * `select()` is: killing the adapter mid-edit would strand a half-written
+   * undo group.
+   */
+  async newSession(): Promise<AgentStatus> {
+    if (this.editingLock.getState() === "agent") {
+      throw new AgentSwitchLockedError();
+    }
+    if (this.current === null) {
+      throw new CoMotionError("尚未選擇 agent，沒有可以重開的對話");
+    }
+
+    const previousSession = this.session;
+    if (previousSession) {
+      await previousSession.dispose();
+    }
+    const nextSession = this.buildSession(this.current);
+    this.session = nextSession;
+    this.rewireSession(nextSession);
+
+    return this.status();
+  }
+
+  /** Establishes the current agent's session ahead of the first message (`POST /api/agent/session`), so `status().models` fills in. */
+  async warmSession(): Promise<AgentStatus> {
+    if (!this.session) {
+      throw new CoMotionError("尚未選擇 agent，無法建立對話");
+    }
+    await this.session.warm();
+    return this.status();
+  }
+
+  /**
+   * Switches the current session's model and remembers the pick for this
+   * kind (settings.json), so a later "new session", reconnect or restart
+   * comes back on the same model. Throws `CoMotionError` when no agent is
+   * selected, mid-turn, or for a model the adapter does not offer.
+   */
+  async setModel(modelId: string): Promise<AgentStatus> {
+    if (!this.session || this.current === null) {
+      throw new CoMotionError("尚未選擇 agent，無法切換模型");
+    }
+    const kind = this.current;
+    await this.session.setModel(modelId);
+    this.preferredModels[kind] = modelId;
+    await writeAgentModel(kind, modelId);
+    const name = this.session.getModel()?.name ?? modelId;
+    this.onModelChanged?.({ kind, modelId, name });
+    return this.status();
+  }
+
   /** Sends the author's message on the current session. Throws if no agent is selected — callers must gate with a 409 first (§4.4). */
   sendMessage(text: string): void {
     if (!this.session) {
       throw new CoMotionError("尚未選擇 agent，無法傳送訊息");
     }
     this.session.sendMessage(text);
+  }
+
+  /** #303: stops the current session — the turn in flight plus every message queued behind it (see `AgentChatSession.cancel`). Throws when no agent is selected or there is nothing to stop. */
+  async cancel(): Promise<void> {
+    if (!this.session) {
+      throw new CoMotionError("尚未選擇 agent，沒有可以停止的回合");
+    }
+    await this.session.cancel();
   }
 
   /** Attaches one SSE stream's `send` to whichever session is (or later becomes) current; returns a detach function. */

@@ -25,7 +25,7 @@ export interface SlashCommand {
 
 /**
  * The namespace every shipped skill's own directory name carries
- * (`.agents/skills/comotion-outline/`), so the name an author types is the
+ * (`.agents/skills/comotion-plan/`), so the name an author types is the
  * name the agent has registered — a prefix added here instead would be a
  * name no agent knows, and Claude Code's SDK silently drops an unknown
  * slash command without ever reaching the model (#248).
@@ -211,7 +211,7 @@ export async function collectSlashCommands(
   ]);
 
   // CoMotion's own shipped skills are namespaced by their directory names
-  // (`comotion-outline`, never a bare `outline`), which is also the name
+  // (`comotion-plan`, never a bare `plan`), which is also the name
   // the agent registers them under — so a bundled skill and a user skill
   // of the same subject are two separate entries here, not a shadowing
   // pair, and the name shown is one the agent will actually answer to.

@@ -20,7 +20,7 @@ import { compareScreenshot, settleForScreenshot } from "./helpers/screenshot.js"
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const demoDir = path.join(rootDir, "demo");
@@ -51,11 +51,11 @@ beforeAll(async () => {
   browser = await chromium.launch();
   console.log(`瀏覽器：Chromium ${browser.version()}`);
 
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-files-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-files-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(comotDir, "demo.comot");
@@ -81,8 +81,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await server?.close();
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   if (coMotionHome) await rm(coMotionHome, { recursive: true, force: true });
   if (comotDir) await rm(comotDir, { recursive: true, force: true });
 });
@@ -119,19 +119,19 @@ async function openApp(viewport = VIEWPORT, targetServer: RunningServer = server
  * from "silently uses the CSS fallback". A 4:3 canvas can.
  */
 async function startNonWidescreenServer(): Promise<{ server: RunningServer; cleanup: () => Promise<void> }> {
-  const deckDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-deck-"));
+  const deckDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-deck-"));
   await cp(demoDir, deckDir, { recursive: true });
   const projectPath = path.join(deckDir, "project.json");
   const project = JSON.parse(await readFile(projectPath, "utf-8"));
   project.canvas = { width: 4, height: 3 };
   await writeFile(projectPath, JSON.stringify(project, null, 2));
 
-  const savedHome = process.env.CO_MOTION_HOME;
-  const altHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-home-"));
-  const altFilesDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-stage-4x3-files-"));
-  process.env.CO_MOTION_HOME = altHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  const savedHome = process.env.COMOTION_HOME;
+  const altHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-home-"));
+  const altFilesDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-stage-4x3-files-"));
+  process.env.COMOTION_HOME = altHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   const registry: CommandRegistry = createDefaultRegistry();
   const comotPath = path.join(altFilesDir, "deck.comot");
@@ -157,9 +157,9 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     server: altServer,
     cleanup: async () => {
       await altServer.close();
-      process.env.CO_MOTION_HOME = savedHome;
-      // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-      process.env.CO_MOTION_BIN = coMotionBin;
+      process.env.COMOTION_HOME = savedHome;
+      // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+      process.env.COMOTION_BIN = coMotionBin;
       await rm(deckDir, { recursive: true, force: true });
       await rm(altHome, { recursive: true, force: true });
       await rm(altFilesDir, { recursive: true, force: true });

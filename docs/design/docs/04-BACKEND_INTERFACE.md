@@ -92,13 +92,13 @@ type ClientMsg =
 
 ## 5. Agent CLI（對應對話卡中的指令）
 ```
-co-motion textbox set slides/03.svg --id title --text "…"
-co-motion element move  slides/03.svg --id sub --box 8.4,45,44,7.5
-co-motion anim add      slides/03.svg --id chart --effect zoom --trigger click --duration .7
-co-motion table cell    slides/05.svg --id table --r 1 --c 2 --text "< 400 ms"
-co-motion chart data    slides/03.svg --id chart --csv data.csv
-co-motion deck draft    --from outline.md --after 03
-co-motion export        --format pdf-frames
+comotion textbox set slides/03.svg --id title --text "…"
+comotion element move  slides/03.svg --id sub --box 8.4,45,44,7.5
+comotion anim add      slides/03.svg --id chart --effect zoom --trigger click --duration .7
+comotion table cell    slides/05.svg --id table --r 1 --c 2 --text "< 400 ms"
+comotion chart data    slides/03.svg --id chart --csv data.csv
+comotion deck draft    --from outline.md --after 03
+comotion export        --format pdf-frames
 ```
 每個指令執行前發 `lock`，完成後 `slide.updated` + `unlock`；GUI 對應顯示 Running → Done。
 

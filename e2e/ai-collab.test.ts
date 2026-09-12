@@ -29,7 +29,7 @@ import { waitForAgentConnected } from "./helpers/launch.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const coMotionBin = path.join(rootDir, "target/release/co-motion");
+const coMotionBin = path.join(rootDir, "target/release/comotion");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
@@ -92,17 +92,17 @@ async function startServerFor(
   comotPath: string;
   cleanup: () => Promise<void>;
 }> {
-  const coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-home-"));
-  const comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-files-"));
-  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-deck-"));
+  const coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-home-"));
+  const comotDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-files-"));
+  const deckStagingDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-deck-"));
   // [E3.T3] #232/#236: never resolve against the real machine's
   // `~/.claude/skills` — a real skill directory happening to exist on
   // whatever machine runs this suite would silently leak into `/` list
   // assertions (Plan §6.3). Always temp dirs, populated per-test via
   // `skills.bundled`/`skills.user` (SKILL.md frontmatter text, keyed by
   // skill directory name) when a test needs a deterministic entry.
-  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-bundled-"));
-  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "co-motion-e2e-ai-collab-user-"));
+  const bundledSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-bundled-"));
+  const userSkillsDir = await mkdtemp(path.join(tmpdir(), "comotion-e2e-ai-collab-user-"));
   for (const [dir, entries] of [
     [bundledSkillsDir, skills.bundled] as const,
     [userSkillsDir, skills.user] as const,
@@ -113,9 +113,9 @@ async function startServerFor(
       await writeFile(path.join(skillDir, "SKILL.md"), frontmatter, "utf8");
     }
   }
-  process.env.CO_MOTION_HOME = coMotionHome;
-  // [E4.T9]/F7: co-motion serve now spawns the Rust binary for every read/write.
-  process.env.CO_MOTION_BIN = coMotionBin;
+  process.env.COMOTION_HOME = coMotionHome;
+  // [E4.T9]/F7: comotion serve now spawns the Rust binary for every read/write.
+  process.env.COMOTION_BIN = coMotionBin;
 
   await cp(deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
@@ -152,8 +152,8 @@ async function startServerFor(
     comotPath,
     cleanup: async () => {
       await server.close();
-      delete process.env.CO_MOTION_HOME;
-      delete process.env.CO_MOTION_BIN;
+      delete process.env.COMOTION_HOME;
+      delete process.env.COMOTION_BIN;
       await rm(coMotionHome, { recursive: true, force: true });
       await rm(comotDir, { recursive: true, force: true });
       await rm(deckStagingDir, { recursive: true, force: true });
@@ -406,52 +406,112 @@ it("Agent 編輯中（持鎖）：titlebar 凍結徽章截圖（AC5）", async (
   }
 });
 
-it("從大綱草擬：走真實 UI 入口，agent 真的插入新頁（AC2）＋ Running 指令卡截圖（AC6）", async () => {
-  const DRAFT_HOLD_MS = 1500;
-  const { server, registry, presentationId, cleanup } = await startServerFor({
-    E2E_DRAFT_HOLD_MS: String(DRAFT_HOLD_MS),
-  });
+it("#303：送出後 Send 鈕變成停止鍵，按下去這一輪以 cancelled 結束並顯示「已停止」", async () => {
+  // The 持鎖 branch holds for E2E_FREEZE_HOLD_MS before running its
+  // command — the observable window in which Stop has something to stop.
+  const { server, registry, presentationId, cleanup } = await startServerFor({ E2E_FREEZE_HOLD_MS: "8000" });
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    const before = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
+    await sendChatMessage(page, "持鎖");
+
+    const stop = page.locator(".chat-input .chat-stop");
+    await expect.poll(() => stop.isVisible(), { timeout: 10_000 }).toBe(true);
+    await stop.click();
+
+    const stopped = page.locator(".chat-system", { hasText: "已停止" });
+    await expect.poll(() => stopped.count(), { timeout: 10_000 }).toBe(1);
+    // Send is back, the turn is over, and the held command never ran.
+    await expect.poll(() => page.locator(".chat-input button[type=submit]").isVisible(), { timeout: 5000 }).toBe(true);
+    const after = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" });
+    expect(after.data!.content).toBe(before.data!.content);
+  } finally {
+    await cleanup();
+  }
+});
+
+/**
+ * #303: `From outline…` now goes 大綱 → `/comotion-plan` → `plan set`（假 agent）
+ * → 計畫閘門（`.plan-gate`，擋住式）→ 確認並建置 → `/comotion-build 【計畫確認】`
+ * → `slide add`（假 agent）。Running 指令卡的截圖（舊 AC6）不再在這裡驗：這條
+ * 路的第一條命令是一整份 `plan set '…'`，卡片文字與舊基準 `running-command-card`
+ * 完全不同；那張基準隨這次改動作廢。
+ */
+async function openOutlineAndSubmit(page: Page, outline: string): Promise<void> {
+  await page.getByRole("button", { name: "New" }).click();
+  const menu = page.locator('[data-menu="new"]');
+  await menu.getByRole("menuitem", { name: "From outline…" }).click();
+  await page.locator(".outline-modal-textarea").fill(outline);
+  await page.locator(".outline-modal-submit").click();
+}
+
+it("從大綱規劃：走真實 UI 入口，計畫閘門彈出、建議選項預選，確認後 agent 真的建置新頁（AC2）", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const page = await openApp(server, { waitForAgent: true });
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(2);
 
-    await page.getByRole("button", { name: "New" }).click();
-    const menu = page.locator('[data-menu="new"]');
-    await menu.getByRole("menuitem", { name: "From outline…" }).click();
-    await page.locator(".outline-modal-textarea").fill("第一步\n第二步");
-    await page.locator(".outline-modal-submit").click();
+    await openOutlineAndSubmit(page, "第一步\n第二步");
 
-    const commandCard = page.locator(".chat-command-in_progress");
-    await expect.poll(() => commandCard.isVisible(), { timeout: 30_000 }).toBe(true);
+    // 送出的是 /comotion-plan 加固定位置行（契約 §4），不是舊的 slide add 前綴。
+    const authored = page.locator(".chat-message-author").last();
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/comotion-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
 
-    // `co-motion slide add <presentationId> --at 1` 裡的 presentationId 是
-    // generateOpaqueId() 產生的隨機 12 字元，每次 open 都不同，會讓截圖逐像素
-    // 比對不穩定（計畫 §4.3）。截圖前先斷言真的顯示的是這條指令，再換成等長
-    // 固定佔位字串（等寬字，寬度不變），最後斷言替換確實生效。
-    const commandText = commandCard.locator(".chat-command-text");
-    expect(await commandText.textContent()).toBe(`co-motion slide add ${presentationId} --at 1`);
-    const placeholderId = "e2eFixedId00";
-    expect(placeholderId).toHaveLength(12);
-    expect(presentationId).toHaveLength(12);
-    await commandText.evaluate((el, ph) => {
-      el.textContent = el.textContent!.replace(ph.real, ph.placeholder);
-    }, { real: presentationId, placeholder: placeholderId });
-    expect(await commandText.textContent()).toBe(`co-motion slide add ${placeholderId} --at 1`);
+    // 假 agent 的 `plan set` 落地 → live reload → 閘門開；不用重新整理。
+    const gate = page.locator(".plan-gate");
+    await expect.poll(() => gate.isVisible(), { timeout: 30_000 }).toBe(true);
+    // 計畫表與題目都來自檔案；agent 的建議是預設值。
+    expect(await gate.locator(".plan-gate-table tbody tr").count()).toBe(1);
+    expect(await gate.locator(".plan-gate-table tbody td").nth(1).textContent()).toBe("封面");
+    const recommended = gate.locator('.plan-gate-question[data-question-id="mode"] input[value="pyramid"]');
+    expect(await recommended.isChecked()).toBe(true);
+    expect(await gate.locator(".plan-gate-recommended").count()).toBe(1);
 
-    await settleForScreenshot(page);
-    const box = snapClip(await settledBox(commandCard, "Running 指令卡"));
-    await compareScreenshot(page, { name: "running-command-card", baselineDir, clip: box });
+    // 擋住式：Esc 關不掉。
+    await page.keyboard.press("Escape");
+    expect(await gate.isVisible()).toBe(true);
 
-    // AC2：新頁真的被插入，不只是 UI 事件——縮圖列 +1、project.json 的
-    // slides 在原索引 +1 的位置多一個新路徑（[Fix.5]）。
+    // 換一個選項、填補充，確認並建置 → 送出的訊息一行一題（契約 §4）。
+    await gate.locator('.plan-gate-question[data-question-id="mode"] input[value="narrative"]').check();
+    await gate.locator(".plan-gate-free-text input").fill("用故事線");
+    await gate.locator(".plan-gate-overall textarea").fill("整體再精簡");
+    await gate.locator(".plan-gate-confirm").click();
+    await expect.poll(() => gate.count(), { timeout: 5000 }).toBe(0);
+    const confirmMessage = page.locator(".chat-message-author").last();
+    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/comotion-build 【計畫確認】");
+    expect(await confirmMessage.textContent()).toContain("mode=narrative");
+    expect(await confirmMessage.textContent()).toContain("mode.note=用故事線");
+    expect(await confirmMessage.textContent()).toContain("補充：整體再精簡");
+
+    // AC2：新頁真的被加上，不只是 UI 事件——縮圖列 +1、project.json 多一個路徑。
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(3);
     const project = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "project.json" });
-    const slides = (JSON.parse(project.data!.content).slides as string[]);
+    const slides = JSON.parse(project.data!.content).slides as string[];
     expect(slides).toHaveLength(3);
-    expect(slides[0]).toBe("slides/001.svg");
-    expect(slides[2]).toBe("slides/002.svg");
-    expect(slides[1]).not.toBe("slides/001.svg");
-    expect(slides[1]).not.toBe("slides/002.svg");
+    // 同一份草稿不會在後續 presentation-changed 時再彈一次（agent 還沒把它改成 confirmed）。
+    expect(await gate.count()).toBe(0);
+  } finally {
+    await cleanup();
+  }
+});
+
+it("從大綱規劃：閘門的「放棄」直接刪掉 plan/，閘門消失、agent 不介入", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+    await openOutlineAndSubmit(page, "只有一行");
+    const gate = page.locator(".plan-gate");
+    await expect.poll(() => gate.isVisible(), { timeout: 30_000 }).toBe(true);
+
+    await gate.locator(".plan-gate-discard").click();
+    await expect.poll(() => gate.count(), { timeout: 10_000 }).toBe(0);
+
+    const outlineFile = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "plan/outline.md" });
+    expect(outlineFile.ok).toBe(false);
+    // 沒有送任何聊天訊息：最後一則作者訊息仍是原本的 /comotion-plan。
+    const authored = page.locator(".chat-message-author").last();
+    expect(await authored.textContent()).toContain("/comotion-plan");
+    expect(await page.locator(".overview-item").count()).toBe(2);
   } finally {
     await cleanup();
   }
@@ -581,23 +641,23 @@ it("斜線命令：清單、↑↓ 選取、Enter 補全、Esc 關閉、回報�
 it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與輸入完全相同", async () => {
   const { server, cleanup } = await startServerFor(
     {},
-    { bundled: { "comotion-outline": "---\nname: comotion-outline\ndescription: 從大綱建立投影片\n---\n" } },
+    { bundled: { "comotion-plan": "---\nname: comotion-plan\ndescription: 從大綱規劃投影片\n---\n" } },
   );
   try {
     const page = await openApp(server, { waitForAgent: true });
     const input = page.locator(".chat-input textarea");
 
-    // "comotion-outline" comes from the bundled skill directory, which is
+    // "comotion-plan" comes from the bundled skill directory, which is
     // populated before the server ever starts — no need to wait for the
     // agent's own report (which does not exist yet, see the test above) to
     // complete this one. A shipped skill's directory name carries the
     // `comotion-` namespace itself, so what the author types is exactly
     // what the agent has registered (#248).
-    await input.fill("/comotion-out");
+    await input.fill("/comotion-pl");
     await expect.poll(() => page.locator(".slash-menu-item").count(), { timeout: 5000 }).toBe(1);
     await input.press("Enter");
     const completed = await input.inputValue();
-    expect(completed).toBe("/comotion-outline ");
+    expect(completed).toBe("/comotion-plan ");
 
     // 繼續打參數——補全後的文字原封不動，只是後面接著使用者自己打的字。
     await input.fill(`${completed}這是參數`);
@@ -605,7 +665,7 @@ it("斜線命令：送出 /xxx 參數 時，假 agent 收到的 prompt 文字與
     await page.locator(".chat-input button:not([disabled])").click();
 
     const reply = page.locator(".chat-message-agent").last();
-    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-outline 這是參數");
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/comotion-plan 這是參數");
   } finally {
     await cleanup();
   }

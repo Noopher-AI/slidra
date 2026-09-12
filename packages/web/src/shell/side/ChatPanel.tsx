@@ -1,22 +1,36 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { AgentUiStatus } from "../../agent-status.js";
+import { AgentPicker, type AgentPickerProps } from "./AgentPicker.js";
 import type { ChatMessage, CommandStatus } from "../../chat-messages.js";
 import type { NumberedComment } from "../../comments.js";
 import { completeDraft, filterCommands, moveSelection, slashQuery, type SlashCommandOption } from "../../slash-commands.js";
 import { SlashMenu } from "./SlashMenu.js";
+import { Icon } from "../../icons/index.js";
 
 export interface ChatPanelProps {
   messages: ChatMessage[];
   working: boolean;
   streamReady: boolean;
-  error: string | null;
   draft: string;
   onDraftChange(value: string): void;
   onSubmit(): void;
+  /**
+   * #303: while `working` the Send button becomes a Stop button
+   * (`.chat-stop`) that asks the server to cancel the agent's turn; Esc
+   * in the textarea does the same. `stopping` disables it while the
+   * cancel request is in flight.
+   */
+  onStop(): void;
+  stopping: boolean;
+  /**
+   * 送出鍵右邊的「開新對話」：丟掉目前的 ACP session、清空訊息列表，
+   * 下一則訊息從零開始（`POST /api/chat/new`）。簡報本身不受影響。
+   */
+  onNewSession(): void;
+  /** 對話框下方的 agent／模型膠囊列（AgentPicker）的全部 props；App.tsx 擁有它們背後的 HTTP 呼叫。 */
+  picker: Omit<AgentPickerProps, "agent">;
   /** [E3.T5] Plan §4.7: drives the empty state and the input's disabled/placeholder rows below `messages`. `loading`/`error` deliberately show no empty state and leave the input exactly as `streamReady` alone already decided (Plan §4.7's table, and its own note: "還不知道" is not "知道不行"). */
   agent: AgentUiStatus;
-  /** The empty state's "開啟設定" button — same path the titlebar gear takes (Plan §4.7). */
-  onOpenSettings(): void;
   /**
    * [E2.T8] §4.7: every pinned comment, deck-wide, sorted/numbered by
    * `sortComments`. Rendered as "Pinned context <n>" — empty means the
@@ -50,12 +64,14 @@ export function ChatPanel({
   messages,
   working,
   streamReady,
-  error,
   draft,
   onDraftChange,
   onSubmit,
+  onStop,
+  stopping,
+  onNewSession,
+  picker,
   agent,
-  onOpenSettings,
   comments,
   onPinnedClick,
   onPinnedRemove,
@@ -95,6 +111,26 @@ export function ChatPanel({
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [draft]);
+
+  // Auto-scroll: keep the newest line visible as the agent streams, but
+  // only while the author is already reading the bottom. Someone who
+  // scrolled up to re-read an earlier command must not be yanked back
+  // down by the next chunk — so the panel stops following the moment they
+  // leave the bottom, and resumes when they return to it.
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followBottomRef = useRef(true);
+  function handleMessagesScroll(): void {
+    const el = messagesRef.current;
+    if (!el) return;
+    followBottomRef.current = isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
+  }
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el || !followBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+    // `working` is in the deps because the "agent is working…" line below
+    // the messages changes the scroll height on its own.
+  }, [messages, working]);
 
   const query = slashQuery(draft);
   // Esc's dismissal is scoped to "the trigger span currently in progress"
@@ -172,15 +208,27 @@ export function ChatPanel({
       handleDraftKeyDown(event);
       return;
     }
+    // #303: Esc stops a running turn — unless the slash menu is open, in
+    // which case Esc keeps its existing meaning (dismiss the menu) and the
+    // author presses it once more to stop.
+    if (event.key === "Escape" && working && !showMenu) {
+      event.preventDefault();
+      if (!stopping) onStop();
+      return;
+    }
     handleSlashKeyDown(event);
   }
 
   return (
     <aside className="chat-sidebar">
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesRef} onScroll={handleMessagesScroll}>
         {messages.length === 0 && <p className="chat-placeholder">Tell the agent how to change this deck.</p>}
         {messages.map((message) =>
-          message.role === "notice" ? (
+          message.role === "error" ? (
+            <p key={message.id} className="chat-error" role="alert">
+              {message.text}
+            </p>
+          ) : message.role === "notice" ? (
             <p key={message.id} className="chat-notice" role="alert">
               {message.text}
             </p>
@@ -191,13 +239,29 @@ export function ChatPanel({
           ) : message.role === "command" ? (
             <div
               key={message.id}
-              className={`chat-command chat-command-${message.interrupted ? "interrupted" : message.status}`}
-              role={message.status === "failed" ? "alert" : undefined}
+              className={`chat-command chat-command-${
+                !message.cli
+                  ? "untagged"
+                  : message.interrupted
+                    ? "interrupted"
+                    : message.blocked
+                      ? "blocked"
+                      : message.status
+              }`}
+              role={message.cli && message.status === "failed" ? "alert" : undefined}
             >
               <p className="chat-command-line">
-                <span className="chat-command-status">
-                  {message.interrupted ? COMMAND_INTERRUPTED_LABEL : COMMAND_STATUS_LABEL[message.status]}
-                </span>
+                {/* 只有 CLI 命令帶狀態標記：agent 自己的 shell 工作照樣顯示，
+                    但它的成敗不是作者要讀的東西（見 relayCommandStart）。 */}
+                {message.cli && (
+                  <span className="chat-command-status">
+                    {message.interrupted
+                      ? COMMAND_INTERRUPTED_LABEL
+                      : message.blocked
+                        ? COMMAND_BLOCKED_LABEL
+                        : COMMAND_STATUS_LABEL[message.status]}
+                  </span>
+                )}
                 <code className="chat-command-text">{message.command}</code>
               </p>
               {message.output !== undefined && <pre className="chat-command-output">{message.output}</pre>}
@@ -211,26 +275,19 @@ export function ChatPanel({
         {agent.kind === "unset" && (
           <div className="chat-empty-state">
             <p className="chat-empty-state-title">尚未選擇 agent</p>
-            <p className="chat-empty-state-body">請先選擇要用哪一個 agent 來改這份簡報</p>
-            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
-              開啟設定
-            </button>
+            <p className="chat-empty-state-body">按下方的 agent 膠囊，選要用哪一個來改這份簡報</p>
           </div>
         )}
         {agent.kind === "unauthenticated" && (
           <div className="chat-empty-state">
             <p className="chat-empty-state-title">{agent.label} 尚未登入</p>
             <p className="chat-empty-state-body">
-              請在終端機執行 <code>{agent.loginCommand}</code>
+              請在終端機執行 <code>{agent.loginCommand}</code>，完成後在下方的 agent 膠囊選單裡按「重新偵測登入狀態」，或改選另一個 agent
             </p>
-            <button type="button" className="chat-empty-state-button" onClick={onOpenSettings}>
-              開啟設定
-            </button>
           </div>
         )}
         {working && <p className="chat-working">agent is working…</p>}
         {!streamReady && <p className="chat-connecting">Connecting to chat…</p>}
-        {error && <p className="chat-error">{error}</p>}
       </div>
       {hasComments && (
         <div className="chat-pinned">
@@ -284,14 +341,60 @@ export function ChatPanel({
         <div className="chat-input-footer">
           {hasComments && <span className="chat-input-pinned">{comments.length} pinned</span>}
           <span className="chat-input-hint">⌘↵ to send</span>
-          <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
-            ↑
-          </button>
+          {/* 送出（或停止）與開新對話是相連的一組：footer 本身是
+              space-between，兩顆鍵若各自當直接子節點就會被推到兩端。 */}
+          <span className="chat-input-actions">
+            {working ? (
+              <button
+                type="button"
+                className="chat-stop"
+                aria-label="Stop"
+                title="停止 (Esc)"
+                disabled={stopping}
+                onClick={onStop}
+              >
+                <Icon name="stop" size="inline" />
+              </button>
+            ) : (
+              <button type="submit" aria-label="Send" title="Send (⌘↵)" disabled={sendDisabled}>
+                ↑
+              </button>
+            )}
+            <button
+              type="button"
+              className="chat-new-session"
+              aria-label="New session"
+              title="開新對話（清空這段對話，簡報不受影響）"
+              disabled={working || stopping}
+              onClick={onNewSession}
+            >
+              ＋
+            </button>
+          </span>
         </div>
       </form>
+      <AgentPicker agent={agent} {...picker} />
     </aside>
   );
 }
+
+/** 命令被 CoMotion 的白名單擋下時顯示的字——不是命令自己失敗，也不是作者按了拒絕。 */
+const COMMAND_BLOCKED_LABEL = "Blocked";
+
+/**
+ * Whether the chat log is scrolled close enough to the bottom to keep
+ * following new messages. Pure so the threshold is testable without a
+ * layout engine (jsdom reports every scroll metric as 0).
+ *
+ * The slack exists because "at the bottom" is never exact — a fractional
+ * device-pixel row height leaves a pixel or two behind, and a message that
+ * grows while it streams can outrun the scroll by a line.
+ */
+export function isNearBottom(scrollHeight: number, scrollTop: number, clientHeight: number): boolean {
+  return scrollHeight - scrollTop - clientHeight <= BOTTOM_SLACK_PX;
+}
+
+const BOTTOM_SLACK_PX = 48;
 
 /** ACP tool-call 狀態 → 使用者看到的字——逐字搬自 App.tsx。 */
 const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
@@ -303,3 +406,5 @@ const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
 
 /** 串流中斷、結果不明時顯示的字（不是 CommandStatus 的一員：真的不知道成功與否，不編一個答案）。 */
 const COMMAND_INTERRUPTED_LABEL = "Unknown";
+
+

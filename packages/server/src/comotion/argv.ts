@@ -49,7 +49,7 @@ function idsToken(ids: unknown): string {
 
 /** Writes `content` to a fresh temp file, for the two commands whose argv only accepts a file path (§3.9). */
 async function stageTempFile(basename: string, content: string): Promise<{ filePath: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "co-motion-argv-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "comotion-argv-"));
   const filePath = path.join(dir, basename);
   await writeFile(filePath, content, "utf-8");
   return { filePath, cleanup: () => rm(dir, { recursive: true, force: true }) };
@@ -172,6 +172,10 @@ export const ARGV_ENCODERS: Record<string, ArgvEncoder> = {
   "template rename": (i) => plain(["template", "rename", str(i.id), str(i.templatePath), str(i.newName)]),
 
   "template delete": (i) => plain(["template", "delete", str(i.id), str(i.templatePath)]),
+
+  "plan list": (i) => plain(["plan", "list", str(i.id)]),
+
+  "plan delete": (i) => plain(["plan", "delete", str(i.id), ...(i.name === undefined ? [] : [str(i.name)])]),
 
   "element resize": (i) =>
     plain([
@@ -357,6 +361,12 @@ export const ARGV_ENCODERS: Record<string, ArgvEncoder> = {
 
   "slide style set": (i) =>
     plain(["slide", "style", "set", str(i.id), str(i.slidePath), ...optFlag("--background", i.background), ...optFlag("--accent", i.accent)]),
+
+  "slide background set": (i) =>
+    plain([
+      "slide", "background", "set", str(i.id), str(i.slidePath),
+      ...optFlag("--asset", i.asset), ...boolFlag("--none", i.none), ...optFlag("--opacity", i.opacity),
+    ]),
 
   "presentation canvas set": (i) =>
     plain(["presentation", "canvas", "set", str(i.id), ...optFlag("--width", i.width), ...optFlag("--height", i.height)]),

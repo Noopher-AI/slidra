@@ -4,13 +4,13 @@ import type { AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
 
 /**
- * Entry point for `co-motion serve <presentation-id>`.
+ * Entry point for `comotion serve <presentation-id>`.
  *
- * This is invoked from `packages/cli/bin/co-motion.js` (plain JS, not part
+ * This is invoked from `packages/cli/bin/comotion.js` (plain JS, not part
  * of the compiled `packages/cli` sources) via a runtime-only dynamic
- * import. [E4.T9]/F7: `@co-motion/server` no longer depends on
+ * import. [E4.T9]/F7: `@comotion/server` no longer depends on
  * `packages/cli` at all — every command it needs now spawns the Rust
- * `co-motion` binary (`comotion/`) instead of dispatching against an
+ * `comotion` binary (`comotion/`) instead of dispatching against an
  * in-process registry.
  *
  * NOOP-230: serve now always starts, whether or not an agent is selected —
@@ -32,8 +32,11 @@ export async function runServeCli(argv: string[]): Promise<number> {
   // division of labor: settings.ts reports honestly, cli.ts is the one
   // place allowed to catch that and continue with `agent: null`).
   let settingsAgent: AgentKind | null = null;
+  let settingsModels: Partial<Record<AgentKind, string>> = {};
   try {
-    settingsAgent = (await readAgentSettings()).agent;
+    const settings = await readAgentSettings();
+    settingsAgent = settings.agent;
+    settingsModels = settings.models;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   }
@@ -47,6 +50,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
       presentationId: parsed.presentationId,
       port: parsed.port,
       initialAgent: { kind, source },
+      initialModels: settingsModels,
     });
   } catch (error) {
     // Unrelated to agent selection — a missing presentation, a bound port,

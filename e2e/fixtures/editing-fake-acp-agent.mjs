@@ -14,11 +14,11 @@
 //     original "改標題"): unchanged since #16/#8 —
 //     1. reads `slides/001.svg` through the ACP client's fs/read_text_file,
 //        the same way a real agent discovers the element id;
-//     2. asks for permission to run a `co-motion text set` shell command,
+//     2. asks for permission to run a `comotion text set` shell command,
 //        so the server's allowlist is really exercised;
 //     3. if permission is granted, runs that command through `sh -c`,
-//        resolving `co-motion` from PATH — the exact step that was broken
-//        during #8's manual acceptance (`command not found: co-motion`);
+//        resolving `comotion` from PATH — the exact step that was broken
+//        during #8's manual acceptance (`command not found: comotion`);
 //     4. streams one reply chunk back.
 //   - "兩步": same read/permission/hold dance, then TWO `text set` commands
 //     in the same turn (second one appends "（第二步）") — exercises one
@@ -105,7 +105,7 @@ class EditingFakeAgent {
 
     const titles = authorText.includes("兩步") ? [newTitle, `${newTitle}（第二步）`] : [newTitle];
     for (const title of titles) {
-      const command = `co-motion text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
+      const command = `comotion text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
       const permission = await this.connection.requestPermission({
         sessionId: params.sessionId,
         toolCall: { toolCallId: "e2e-text-set", title: "修改標題文字", rawInput: { command } },
@@ -150,7 +150,7 @@ function extractTextElementId(svg) {
 
 function runShellCommand(command, cwd) {
   return new Promise((resolve, reject) => {
-    // `sh -c` with `co-motion` resolved from PATH, exactly as a real agent
+    // `sh -c` with `comotion` resolved from PATH, exactly as a real agent
     // would run it — so a PATH that cannot reach the CLI fails here loudly.
     execFile("/bin/sh", ["-c", command], { cwd }, (error, stdout, stderr) => {
       if (error) {

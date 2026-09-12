@@ -18,10 +18,11 @@ import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleCommandPost } from "./command-endpoint.js";
 import { handleAssetPost } from "./asset-upload.js";
-import { handleOpenPost } from "./open-endpoint.js";
+import { handleNewPost, handleOpenPost } from "./open-endpoint.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
+  handleAssetsRoute,
   handleEffectsRoute,
   handleFilesRoute,
   handlePresentationRoute,
@@ -33,14 +34,14 @@ import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 
 /**
- * `co-motion serve` is a mode of the CLI, not a second backend (ADR-0002):
- * every read of presentation content spawns the real `co-motion` binary
+ * `comotion serve` is a mode of the CLI, not a second backend (ADR-0002):
+ * every read of presentation content spawns the real `comotion` binary
  * ([E4.T9]/F7 — `comotion/`), the exact same program one-shot
- * `co-motion cat`/`ls` runs. This module never opens a presentation file
+ * `comotion cat`/`ls` runs. This module never opens a presentation file
  * directly.
  */
 export interface ServeOptions {
-  /** Opaque id of an already-opened presentation (see `co-motion open`). */
+  /** Opaque id of an already-opened presentation (see `comotion open`). */
   presentationId: string;
   /**
    * Port to bind. Defaults to 5173. Tests must always pass 0 (let the OS
@@ -72,6 +73,8 @@ export interface ServeOptions {
    * works as usual.
    */
   initialAgent?: { kind: AgentKind | null; source: AgentSource };
+  /** The models picked earlier per agent kind (cli.ts reads them from settings.json); omitted in tests. */
+  initialModels?: Partial<Record<AgentKind, string>>;
   /**
    * Test-only injection seams for `AgentManager`'s login probe and adapter
    * resolution (`probe.ts`/`adapters.ts`). Production code (`cli.ts`) never
@@ -116,19 +119,18 @@ const DEFAULT_HOST = "127.0.0.1";
 
 /**
  * Validates the presentation and starts the HTTP server. Validation
- * (unknown id, no slides) happens before the socket is ever bound, so a
- * bad startup fails loudly without a half-started server left behind.
+ * (unknown id) happens before the socket is ever bound, so a bad startup
+ * fails loudly without a half-started server left behind. A presentation
+ * with no slides is valid (ADR-0018: `new` creates none) — the editor
+ * shows "此簡報沒有投影片" and the first page is made from there.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
   const { presentationId } = options;
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
-  const project = await loadProject(presentationId);
-  if (project.slides.length === 0) {
-    throw new CoMotionError("簡報沒有投影片");
-  }
-  const agentWorkdir = await deployAgentWorkdir();
+  await loadProject(presentationId);
+  const agentWorkdir = await deployAgentWorkdir(presentationId);
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -171,6 +173,8 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     runCommand: options.agentManager?.runCommand,
     resolveAdapter,
     onAgentChanged: (payload) => changeBroadcaster.broadcast("agent-changed", payload),
+    onModelChanged: (payload) => changeBroadcaster.broadcast("agent-model-changed", payload),
+    initialModels: options.initialModels,
     // Back-compat (see `agent`'s own docstring above and AgentManagerOptions.
     // assumeLoggedIn's docstring): a directly-given `agent` has no real
     // "logged in" concept to probe, so its kind is exempted from the real
@@ -364,6 +368,14 @@ async function handleRequest(
         await handleChatPost(manager, req, res);
         return;
       }
+      if (url.pathname === "/api/chat/cancel") {
+        await handleChatCancelPost(manager, res);
+        return;
+      }
+      if (url.pathname === "/api/chat/new") {
+        await handleChatNewPost(manager, res);
+        return;
+      }
       if (url.pathname === "/api/agent/probe") {
         // NOOP-230 §4.4: same shape as GET /api/agent, but always reruns
         // both login probes rather than reading the cache (§7.7).
@@ -373,6 +385,25 @@ async function handleRequest(
       }
       if (url.pathname === "/api/agent/select") {
         await handleAgentSelectPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/model") {
+        await handleAgentModelPost(manager, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/session") {
+        // The chat panel's "選擇模型…": brings the ACP session up before
+        // the first message so the model list exists to pick from. Same
+        // handshake the first message would run; no author turn happens.
+        try {
+          sendJson(res, 200, await manager.warmSession());
+        } catch (error) {
+          if (error instanceof CoMotionError) {
+            sendJson(res, 409, { error: error.message });
+            return;
+          }
+          sendJson(res, 500, { error: error instanceof Error ? error.message : "建立對話失敗" });
+        }
         return;
       }
       if (url.pathname === "/api/command") {
@@ -393,7 +424,7 @@ async function handleRequest(
         // T3/NOOP-142: the same "agent holds the floor" 409 gate as
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
-        // lock just because it does not spawn the co-motion binary.
+        // lock just because it does not spawn the comotion binary.
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
@@ -410,6 +441,16 @@ async function handleRequest(
           return;
         }
         await handleOpenPost(presentationId, changeBroadcaster, req, res);
+        return;
+      }
+      if (url.pathname === "/api/new") {
+        // Replaces this id's whole content, so it sits behind the same
+        // "agent holds the floor" gate /api/open does.
+        if (editingLock.getState() === "agent") {
+          sendJson(res, 409, { error: new EditingLockConflictError().message });
+          return;
+        }
+        await handleNewPost(presentationId, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/save") {
@@ -509,6 +550,11 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/assets") {
+      await handleAssetsRoute(presentationId, res);
+      return;
+    }
+
     if (url.pathname.startsWith("/api/files/")) {
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
       await handleFilesRoute(presentationId, virtualPath, res);
@@ -537,7 +583,7 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/raw/")) {
       // Deliberately NOT `POST /api/command`'s whitelist, unlike every
       // other read in this file. Every whitelisted command is reachable by
-      // the agent (ADR-0004's permission hook allows `co-motion *`). A
+      // the agent (ADR-0004's permission hook allows `comotion *`). A
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,
@@ -612,8 +658,55 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
     sendJson(res, 400, { error: "訊息內容不可為空" });
     return;
   }
+  // #303: one line per author message so a turn that starts unexpectedly
+  // (e.g. right after a cancel) can be traced to the request that caused it.
+  console.log(`[chat] ${new Date().toISOString()} message ${JSON.stringify(text.slice(0, 60))}${text.length > 60 ? "…" : ""}`);
   manager.sendMessage(text);
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/chat/cancel` (#303) — the chat panel's Stop button. Sends ACP
+ * `session/cancel` for the turn in flight; the turn then ends through the
+ * normal path with a `chat-done` whose `stopReason` is `cancelled` on
+ * `/api/chat/stream`. No body. 202 once the cancel notification is on its
+ * way; 409 when nothing is running (no agent selected, or the agent is
+ * idle) — the author pressed Stop on a turn that had already ended.
+ *
+ * What stopping does NOT do: a `comotion` command the agent had already
+ * launched keeps running to completion (each command is atomic), and
+ * nothing already written to the presentation is rolled back — the
+ * author's undo is the tool for that.
+ */
+async function handleChatCancelPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+  try {
+    console.log(`[chat] ${new Date().toISOString()} cancel requested`);
+    await manager.cancel();
+  } catch (error) {
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "目前沒有進行中的回合可以停止" });
+    return;
+  }
+  sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `POST /api/chat/new` — the chat panel's "new session" button. Throws the
+ * current ACP session away and starts a fresh one with the same agent, so
+ * the next message arrives in a conversation with no history. No body.
+ * 409 while the agent holds the editing floor, or with no agent selected.
+ *
+ * The presentation itself is untouched: this clears the conversation, not
+ * the deck.
+ */
+async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+  try {
+    console.log(`[chat] ${new Date().toISOString()} new session requested`);
+    await manager.newSession();
+  } catch (error) {
+    sendJson(res, 409, { error: error instanceof Error ? error.message : "無法重開對話" });
+    return;
+  }
+  sendJson(res, 200, { ok: true });
 }
 
 /**
@@ -644,6 +737,39 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
       return;
     }
     sendJson(res, 500, { error: error instanceof Error ? error.message : "選擇 agent 失敗" });
+  }
+}
+
+/**
+ * `POST /api/agent/model` — the chat panel's model picker. `modelId` must be
+ * one of `GET /api/agent`'s `models[].id`; the switch goes to the live ACP
+ * session (establishing one first if no message has been sent yet) and is
+ * persisted per agent kind. A `CoMotionError` (mid-turn, unknown model, no
+ * agent) is the author's problem to read, so it comes back as 409 with its
+ * own wording rather than a generic 500.
+ */
+async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "請求內容不是有效的 JSON" });
+    return;
+  }
+  const modelId = (body as { modelId?: unknown } | null)?.modelId;
+  if (typeof modelId !== "string" || modelId === "") {
+    sendJson(res, 400, { error: "modelId 必須是非空字串" });
+    return;
+  }
+  try {
+    const status = await manager.setModel(modelId);
+    sendJson(res, 200, { ok: true, modelId: status.modelId, model: status.model });
+  } catch (error) {
+    if (error instanceof CoMotionError) {
+      sendJson(res, 409, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "切換模型失敗" });
   }
 }
 
@@ -791,7 +917,7 @@ async function savePresentation(presentationId: string): Promise<{ fileName: str
     throw new CoMotionError(`找不到識別碼對應的簡報：${presentationId}`);
   }
   if (entry.sourcePath === undefined) {
-    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 co-motion pack 指定路徑");
+    throw new CoMotionInvalidRequestError("這份簡報沒有可寫回的檔案路徑，請用 comotion pack 指定路徑");
   }
   const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
   if (!result.ok) {
@@ -944,7 +1070,7 @@ function resolveWebDist(): string {
  * disk rather than through `packages/core` ([E4.T9]/F7 — the server no
  * longer imports that package). Repo-root `assets/fonts/` is the same
  * physical file the Rust binary's own `include_bytes!` embeds
- * (`crates/co-motion/src/presentation.rs`) — both moved together off
+ * (`crates/comotion/src/presentation.rs`) — both moved together off
  * `packages/core/src/assets/fonts/` when that package was deleted
  * ([E4.T12]).
  */

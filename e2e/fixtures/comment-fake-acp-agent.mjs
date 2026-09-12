@@ -6,16 +6,22 @@
 //
 // What it does on the author's first real message (index 1; index 0 is the
 // 編輯規約) depends on the message text:
-//   - contains "【從大綱草擬新頁】" (Draft with agent's fixed prefix, §4.8 of
-//     the [E2.T8] plan): requests permission for `co-motion slide add
-//     --at <N>` (N parsed straight out of the prefix's own "第 N 頁" — this
-//     fixture never invents a number the prompt didn't actually carry),
-//     holds for E2E_DRAFT_HOLD_MS (so the Running command card has an
-//     observable window, AC6), then actually runs it — reports `completed`
-//     only if the command succeeds, `failed` (with stdout/stderr) if it
-//     doesn't. This fixture never reports success it didn't observe.
+//   - contains "【從大綱規劃】" (the position line Plan with agent puts
+//     after `/comotion-plan`, #303 contract §4): requests permission for,
+//     then actually runs, `comotion plan set <id> outline '…'` and
+//     `plan set <id> design-spec '…'` — a minimal but valid draft plan
+//     with one page and one question (contract §1) — and replies
+//     「計畫已寫好」. The editor's plan gate opens off that file write
+//     (ai-collab.test.ts asserts on `.plan-gate`), not off this reply.
+//   - contains "【計畫確認】" (what the gate's 確認並建置 sends, any author
+//     message index — it is always the *second* author turn): requests
+//     permission for `comotion slide add <id>` (append), holds for
+//     E2E_DRAFT_HOLD_MS, then actually runs it and replies 「已建置」 —
+//     reports `completed` only if the command succeeds, `failed` (with
+//     stdout/stderr) if it doesn't. This fixture never reports success it
+//     didn't observe.
 //   - contains "寫留言": requests permission for, then actually runs,
-//     `co-motion comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
+//     `comotion comment add … page '<E2E_AGENT_COMMENT>'` (a single-file
 //     write, unaffected by the defect above) — AC8(b) needs the write to
 //     really land, not just a UI event.
 //   - contains "持鎖": reads slides/001.svg to find its `<text id=…>`, then
@@ -114,24 +120,49 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    if (index === AUTHOR_PROMPT_INDEX && authorText.includes("【從大綱草擬新頁】")) {
-      const match = /在第 (\d+) 頁/.exec(authorText);
-      if (!match) throw new Error("prompt 裡找不到「在第 N 頁」——固定前綴的格式變了嗎？");
-      const at = match[1];
-      const command = `co-motion slide add ${presentationId} --at ${at}`;
+    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("【從大綱規劃】")) {
+      // Contract §1 shapes, kept minimal. Single-quoted for the CLI's argv
+      // rules (no `'` inside; JSON's double quotes are fine).
+      const outlineFile = "```json\n" + JSON.stringify({
+        status: "draft",
+        mode: "pyramid",
+        pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "e2e 計畫封面" }],
+        questions: [{
+          id: "mode",
+          question: "敘事骨架",
+          note: "e2e 假 agent 的建議",
+          recommended: "pyramid",
+          options: [{ value: "pyramid", label: "結論先行" }, { value: "narrative", label: "故事線" }],
+          free_text: true,
+        }],
+      }) + "\n```\n\n## 第 1 頁\ne2e 假 agent 寫的計畫正文\n";
+      const specFile = "```json\n" + JSON.stringify({
+        density: "presentation",
+        palette: { background: "#FFFFFF", secondary_bg: "#F3F4F6", primary: "#1F3A93", accent: "#E4572E", secondary_accent: "#2A9D8F", text: "#1F1A1A", muted: "#6B7280" },
+        type_scale: { cover: 64, section: 56, number: 140, claim: 48, title: 40, subtitle: 28, body: 24, column: 22, caption: 18 },
+      }) + "\n```\n";
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "寫入計畫", `comotion plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "寫入設計規格", `comotion plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
+      await this.connection.sessionUpdate({
+        sessionId,
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "計畫已寫好" } },
+      });
+      return { stopReason: "end_turn" };
+    }
+
+    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("【計畫確認】")) {
+      const command = `comotion slide add ${presentationId}`;
       const toolCallId = "e2e-slide-add";
 
-      await requestPermissionFor(this.connection, sessionId, toolCallId, "從大綱插入新頁", command);
+      await requestPermissionFor(this.connection, sessionId, toolCallId, "依計畫建置", command);
 
       // A real agent reports its own tool-call lifecycle over
       // `session/update`, independently of `session/request_permission`
       // above (the server's own allowlist gate) — this is what actually
-      // drives the Running command card (`chat-command-in_progress`,
-      // AC6). `editing-fake-acp-agent.mjs` never needed this: every test
-      // that fixture serves asserts on the editing lock, not on this card.
+      // drives the Running command card (`chat-command-in_progress`).
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "tool_call", toolCallId, title: "從大綱插入新頁", kind: "execute", status: "pending", rawInput: { command } },
+        update: { sessionUpdate: "tool_call", toolCallId, title: "依計畫建置", kind: "execute", status: "pending", rawInput: { command } },
       });
       await this.connection.sessionUpdate({
         sessionId,
@@ -163,13 +194,13 @@ class CommentFakeAgent {
       });
       await this.connection.sessionUpdate({
         sessionId,
-        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "新頁已插入" } },
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已建置" } },
       });
       return { stopReason: "end_turn" };
     }
 
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("寫留言")) {
-      const command = `co-motion comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
+      const command = `comotion comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
       await requestAndRun(this.connection, sessionId, "e2e-comment-add", "新增留言", command, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
@@ -181,8 +212,9 @@ class CommentFakeAgent {
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("持鎖")) {
       const slide = await this.connection.readTextFile({ sessionId, path: SLIDE_PATH, line: null, limit: null });
       const elementId = extractTextElementId(slide.content);
-      const command = `co-motion text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
-      await requestAndRun(this.connection, sessionId, "e2e-text-set", "修改標題文字", command, this.sessionCwd, freezeHoldMs);
+      const command = `comotion text set ${presentationId} ${SLIDE_PATH} ${elementId} '持鎖測試改過的文字'`;
+      const ran = await requestAndRun(this.connection, sessionId, "e2e-text-set", "修改標題文字", command, this.sessionCwd, freezeHoldMs);
+      if (!ran) return { stopReason: "cancelled" };
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "已鎖定並修改" } },
@@ -205,7 +237,11 @@ class CommentFakeAgent {
     return { stopReason: "end_turn" };
   }
 
-  async cancel() {}
+  async cancel() {
+    // #303: releases whatever hold is pending; the held branch then ends
+    // its turn with `cancelled` (see `holdOrCancel`).
+    releaseHold?.();
+  }
 }
 
 async function requestPermissionFor(connection, sessionId, toolCallId, title, command) {
@@ -222,12 +258,35 @@ async function requestPermissionFor(connection, sessionId, toolCallId, title, co
   }
 }
 
+/**
+ * #303: a cancellable hold. Resolves `false` after `holdMs`, or `true` the
+ * moment `session/cancel` arrives (`FakeAgent.cancel` calls `releaseHold`).
+ */
+let releaseHold;
+function holdOrCancel(holdMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      releaseHold = undefined;
+      resolve(false);
+    }, holdMs);
+    releaseHold = () => {
+      clearTimeout(timer);
+      releaseHold = undefined;
+      resolve(true);
+    };
+  });
+}
+
 async function requestAndRun(connection, sessionId, toolCallId, title, command, cwd, holdMs) {
   await requestPermissionFor(connection, sessionId, toolCallId, title, command);
   if (holdMs > 0) {
-    await new Promise((resolve) => setTimeout(resolve, holdMs));
+    // #303: the hold is cancellable — `session/cancel` releases it and the
+    // turn answers `cancelled` instead of running the command.
+    const cancelled = await holdOrCancel(holdMs);
+    if (cancelled) return false;
   }
   await runShellCommand(command, cwd);
+  return true;
 }
 
 function extractPromptText(prompt) {

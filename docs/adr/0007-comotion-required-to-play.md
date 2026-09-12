@@ -1,8 +1,8 @@
 # 播放 `.comot` 需要安裝 CoMotion
 
-ADR-0005 曾要求動畫 runtime 不得依賴 server，理由是讓 `co-motion export --html` 幾乎免費，並讓上台簡報時不必在每台電腦安裝 CoMotion。這個要求現在撤銷。
+ADR-0005 曾要求動畫 runtime 不得依賴 server，理由是讓 `comotion export --html` 幾乎免費，並讓上台簡報時不必在每台電腦安裝 CoMotion。這個要求現在撤銷。
 
-CoMotion 是一個 server：`co-motion serve` 啟動後用瀏覽器操作，未來包成 Mac app 也只是把同一個 server 藏進去。播放與編輯是同一個 web app 的兩個模式，因此 runtime 可以、也應該取用 server。
+CoMotion 是一個 server：`comotion serve` 啟動後用瀏覽器操作，未來包成 Mac app 也只是把同一個 server 藏進去。播放與編輯是同一個 web app 的兩個模式，因此 runtime 可以、也應該取用 server。
 
 代價不是「簡報無法分享」。分享的途徑是**匯出成別的格式**（HTML、PDF 等），那是 CoMotion server 端的功能，要做的時候再做。`.comot` 本身是工作格式，只在 CoMotion 裡跑。
 

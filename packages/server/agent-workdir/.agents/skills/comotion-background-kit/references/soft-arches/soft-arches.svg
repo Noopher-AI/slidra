@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+<rect width="1280" height="720" fill="var(--background, #FAF6F0)"/>
+<path d="M700 720V190.0 a420 420 0 0 1 840 0V720Z" fill="var(--primary, #7B2D26)" opacity="0.14"/><path d="M680 720V250.0 a300 300 0 0 1 600 0V720Z" fill="var(--primary, #7B2D26)" opacity="0.22"/><path d="M680 720V310.0 a180 180 0 0 1 360 0V720Z" fill="var(--primary, #7B2D26)" opacity="0.34"/><path d="M680 720V310 a180 180 0 0 1 360 0V720" fill="none" stroke="var(--accent, #C8651B)" stroke-width="3" opacity="0.75"/>
+</svg>

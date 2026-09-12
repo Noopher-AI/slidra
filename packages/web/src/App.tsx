@@ -1,23 +1,24 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, type AgentUiStatus } from "./agent-status.js";
+import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
-import { appendMessage, appendSystemMessage, type ChatMessage } from "./chat-messages.js";
+import { appendMessage, appendSystemMessage, type ChatMessage, appendErrorMessage } from "./chat-messages.js";
 import { startChatStream } from "./chat-stream.js";
 import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent, type SaveState } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
-import { TitleBar, type AgentConnection } from "./shell/TitleBar.js";
+import { TitleBar } from "./shell/TitleBar.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
-import { SettingsDialog } from "./shell/settings/SettingsDialog.js";
 import { Stage } from "./shell/Stage.js";
 import { Notes } from "./shell/Notes.js";
 import { StatusBar } from "./shell/StatusBar.js";
 import { SidePanel, type SideId, type SubId } from "./shell/side/SidePanel.js";
 import { ChatPanel } from "./shell/side/ChatPanel.js";
 import { PlayChrome } from "./shell/PlayChrome.js";
+import { PlanGateModal } from "./shell/PlanGateModal.js";
+import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 
 /**
@@ -97,6 +98,18 @@ export function App() {
   // event (an agent's own `comment add`/`edit`/`delete` reaches here the
   // same way a GUI-originated write does, both go through the same file).
   const [comments, setComments] = useState<NumberedComment[]>([]);
+  // #303: the plan-confirmation gate's input — `plan/outline.md`'s parsed
+  // head, reloaded on mount and on every presentation-changed event the
+  // same way `comments` is (the agent's `plan set` is just another file
+  // write under the work dir, which changes.ts's recursive watcher
+  // already reports). `null` = no plan file, or one the parser rejected.
+  const [planOutline, setPlanOutline] = useState<PlanOutline | null>(null);
+  // The fence text of the draft the author last answered. The agent only
+  // rewrites the file (as `confirmed`, or as a new draft) some time after
+  // 確認/重做 is sent, so the very same draft would re-open the gate on the
+  // next unrelated presentation-changed event without this. A *different*
+  // draft (new fence text) is a new question and does re-open it.
+  const [answeredPlanFence, setAnsweredPlanFence] = useState<string | null>(null);
   // Read inside handlers registered from an effect that doesn't re-run on
   // every render (the overview-mount effect below, keyed on play-mode
   // only) — same "latest ref" reasoning as `canvasStateRef`'s own comment.
@@ -123,6 +136,7 @@ export function App() {
     selection: { ids: [], names: [], groupPath: [], elements: [] },
     dragSignal: 0,
     pageStyle: null,
+    backgroundImage: null,
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -211,23 +225,9 @@ export function App() {
   // request's own error strip (409 editing / 400 / 500 / network).
   const [agentSwitchingKind, setAgentSwitchingKind] = useState<AgentKind | null>(null);
   const [agentActionError, setAgentActionError] = useState<string | null>(null);
-  // 標題列 agent 名稱：unset 時回退成 null（沿用既有「Agent connected」泛用
-  // 文案，Plan §4.9），loading/error 也還沒有名字可顯示；ready/unauthenticated
-  // 都有已知的 label（未登入不代表不知道是哪個 agent）。
-  const agentLabel =
-    agentStatus.kind === "ready" || agentStatus.kind === "unauthenticated" ? agentStatus.label : null;
-  // [E3.T5]: the settings dialog's own open/closed state (Plan §4.2). Toggled
-  // by the titlebar gear, force-opened by the chat empty state's "開啟設定"
-  // button, closed by the dialog itself (Esc/mask/close button).
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  // Plan §3.6: only the mutual-exclusion obligation this ticket owns —
-  // opening settings must close the Export dropdown (Dock/Rail menus stay
-  // untouched, per the plan's own note: the mask already swallows their
-  // mousedown, so they simply become unreachable underneath it).
-  useEffect(() => {
-    if (settingsOpen) setExportOpen(false);
-  }, [settingsOpen]);
-
+  // 可切換的模型清單與目前的 id，同樣來自 `GET /api/agent`；空清單＝沒得選。
+  const [agentModelOptions, setAgentModelOptions] = useState<readonly AgentModelOption[]>([]);
+  const [agentModelId, setAgentModelId] = useState<string | null>(null);
   // 全螢幕開關 (ticket #29): mirrors document.fullscreenElement, never
   // assumed from "the promise resolved". Synced only from fullscreenchange
   // (+ the WebKit-prefixed spelling) so Esc, browser chrome, and the toggle
@@ -436,12 +436,22 @@ export function App() {
         // here the same way any other file write does — this is what
         // makes Pinned context update itself without a page refresh.
         void refreshComments();
+        // #303: `comotion-plan`'s `plan set` lands here too — this is what
+        // opens the plan-confirmation gate without a page refresh.
+        void refreshPlan();
       },
       onError: setLiveReloadError,
       onFrozenChange: setEditingFrozen,
       onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
-      onCommandsChange: setCommands,
+      onCommandsChange: (next) => {
+        setCommands(next);
+        // `agent-commands` 只會在一個 ACP session 剛建立、agent 報出它的命令
+        // 清單時送來——那也正是模型名稱第一次可讀的時刻（session/new 的回
+        // 應）。借同一個訊號回頭補一次 GET /api/agent，對話框下面的模型才
+        // 不用等到下一次重新整理才出現。
+        void refreshAgentStatus();
+      },
       // [E3.T5] NOOP-230 §4.4/Plan §4.6: the only place a system message is
       // ever inserted for a switch — POST /api/agent/select's own 200
       // response never inserts one (Plan §4.5 step 6), including when this
@@ -450,6 +460,11 @@ export function App() {
       // no-replay event on this stream.
       onAgentChanged: (event) => {
         setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
+        void refreshAgentStatus();
+      },
+      // 換模型不值得一則系統訊息：膠囊本身就顯示現在是哪個。這裡只是讓
+      // 別的分頁（或發起切換的這一頁）把膠囊更新過來。
+      onAgentModelChanged: () => {
         void refreshAgentStatus();
       },
     });
@@ -480,6 +495,7 @@ export function App() {
     presentationLoaderRef.current?.load();
     void refreshSaveState();
     void refreshComments();
+    void refreshPlan();
     return () => {
       liveReload.stop();
       unsubscribe();
@@ -892,10 +908,51 @@ export function App() {
       const data: unknown = await response.json();
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
+      const models = modelOptionsFrom(data);
+      setAgentModelOptions(models.options);
+      setAgentModelId(models.current);
+      // #303: a turn already in flight (started before this tab loaded, or
+      // from another client) shows Stop right away.
+      setWorking(turnRunningFrom(data));
     } catch {
       setAgentStatus({ kind: "error", message: "無法取得 agent 狀態：連線已中斷" });
     } finally {
       setAgentProbing(false);
+    }
+  }
+
+  /** `POST /api/agent/model`：對話框下方的模型選單。失敗（回合進行中、模型不存在、連線斷了）走聊天的錯誤列，狀態維持舊值。 */
+  async function selectAgentModel(modelId: string): Promise<void> {
+    if (modelId === "" || modelId === agentModelId) return;
+    try {
+      const response = await fetch("/api/agent/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        pushChatError(body.error ?? "切換模型失敗");
+        return;
+      }
+      await refreshAgentStatus();
+    } catch {
+      pushChatError("切換模型失敗：連線已中斷");
+    }
+  }
+
+  /** `POST /api/agent/session`：「選擇模型…」——先建 session，清單才會有東西。 */
+  async function loadAgentModels(): Promise<void> {
+    try {
+      const response = await fetch("/api/agent/session", { method: "POST" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        pushChatError(body.error ?? "無法取得模型清單");
+        return;
+      }
+      await refreshAgentStatus();
+    } catch {
+      pushChatError("無法取得模型清單：連線已中斷");
     }
   }
 
@@ -946,16 +1003,6 @@ export function App() {
     setAgentSwitchingKind(null);
   }
 
-  /** Titlebar gear — a toggle, same as Export's own button (Plan §4.2). */
-  function toggleSettings(): void {
-    setSettingsOpen((open) => !open);
-  }
-
-  /** ChatPanel empty state's "開啟設定" — always opens, never toggles (Plan §4.7: "與齒輪走同一條路" means the same destination, not the same click semantics). */
-  function openSettings(): void {
-    setSettingsOpen(true);
-  }
-
   /** `GET /api/save-state` (NOOP-93 §4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("維持既有 deckName 行為，不顯示狀態文字" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
   async function refreshSaveState(): Promise<void> {
     try {
@@ -971,7 +1018,7 @@ export function App() {
 
   /**
    * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
-   * same file with `x-co-motion-discard-unsaved: 1` after the author
+   * same file with `x-comotion-discard-unsaved: 1` after the author
    * confirms losing the current unsaved changes — the one round-trip the
    * table's 409 row describes.
    */
@@ -984,8 +1031,8 @@ export function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/octet-stream",
-          "x-co-motion-file-name": encodeURIComponent(file.name),
-          ...(discardUnsaved ? { "x-co-motion-discard-unsaved": "1" } : {}),
+          "x-comotion-file-name": encodeURIComponent(file.name),
+          ...(discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {}),
         },
         body: bytes,
       });
@@ -1007,6 +1054,34 @@ export function App() {
     // success (open-endpoint.ts) — this tab's own live-reload subscription
     // picks both up the same way an external edit would. No extra refetch
     // needed here.
+  }
+
+  /**
+   * `POST /api/new` — New 按鈕。跟 Open 走同一條路：同樣的 409 未存檔確認、
+   * 同樣不在成功後自己 refetch（伺服器已經廣播 presentation-changed 與
+   * save-state，這個分頁的 live-reload 會收到）。
+   */
+  async function handleNew(discardUnsaved = false): Promise<void> {
+    setOpenError(null);
+    let response: Response;
+    try {
+      response = await fetch("/api/new", {
+        method: "POST",
+        headers: discardUnsaved ? { "x-comotion-discard-unsaved": "1" } : {},
+      });
+    } catch {
+      setOpenError("建立新簡報失敗：連線已中斷");
+      return;
+    }
+    if (response.status === 409 && !discardUnsaved) {
+      const proceed = window.confirm("目前的簡報有未儲存的變更，確定要放棄並建立新簡報嗎？");
+      if (proceed) await handleNew(true);
+      return;
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      setOpenError(body.error ?? "建立新簡報失敗");
+    }
   }
 
   /** `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this one path. Frozen guard matches runUndoRedo's: no request, no 409 to report, same as undo/redo. */
@@ -1205,7 +1280,10 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  /** 錯誤進時間軸：發生在哪一則之後就留在那裡，不是一條掛在最下面、事過境遷還在的橫條。 */
+  function pushChatError(text: string): void {
+    setMessages((prev) => appendErrorMessage(prev, nextMessageIdRef.current++, text));
+  }
   // True once the EventSource connection is open and can actually receive
   // a reply. A message sent while this is false (initial connect, or
   // mid-reconnect after a drop) would be answered with no listener
@@ -1226,7 +1304,6 @@ export function App() {
       updateMessages: setMessages,
       setWorking,
       setStreamReady,
-      setError,
       nextMessageId: () => nextMessageIdRef.current++,
     });
     return () => stream.stop();
@@ -1257,12 +1334,11 @@ export function App() {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
       // with no trace.
-      setError("聊天連線尚未就緒，請稍候再試一次");
+      pushChatError("聊天連線尚未就緒，請稍候再試一次");
       return;
     }
     const id = nextMessageIdRef.current++;
     setMessages((prev) => appendMessage(prev, id, "author", displayText ?? text));
-    setError(null);
     // The turn starts here, not at its first SSE event: an agent that
     // reads and thinks for a while before saying anything would otherwise
     // leave the author looking at a screen with no sign it is working.
@@ -1278,7 +1354,7 @@ export function App() {
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
         setWorking(false);
-        setError(body.error ?? "傳送訊息失敗");
+        pushChatError(body.error ?? "傳送訊息失敗");
         // NOOP-230 §4.4/Plan §4.8: a `reason`-carrying 409 means the server's
         // own agent state disagrees with what this tab last knew (unset/
         // unauthenticated) — re-GET so the empty state appears immediately,
@@ -1297,7 +1373,7 @@ export function App() {
       // the same `error` state the non-OK branch above uses, naming the
       // message so it is clear which one failed.
       setWorking(false);
-      setError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
+      pushChatError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
     }
   }
 
@@ -1316,17 +1392,69 @@ export function App() {
   }
 
   /**
-   * [E2.T8] §4.8: `OutlineModal`'s `Draft with agent` — a plain chat
-   * message with a fixed prefix naming the current page and the insertion
-   * point, sent through the exact same path a hand-typed message takes
-   * (architecture 拍板: no separate API, no client-side outline parsing).
+   * [E2.T8] §4.8 / #303: `OutlineModal`'s `Draft with agent` — a plain chat
+   * message invoking the shipped `/comotion-plan` skill (the same text an
+   * author would type by hand, so the skill really triggers — #248), with
+   * a fixed position line (contract §4), sent through the exact same path
+   * a hand-typed message takes (architecture 拍板: no separate API, no
+   * client-side outline parsing). The skill writes `plan/outline.md`,
+   * which opens `<PlanGateModal>` below; building only starts from that
+   * gate's 確認並建置. A presentation with no slides yet (ADR-0018: `new`
+   * creates none) is a real request too — not a no-op.
    */
   async function draftWithAgent(outline: string): Promise<void> {
-    const index = canvasState.currentIndex;
-    const slidePath = canvasState.slides[index];
-    if (slidePath === undefined) return; // No current slide to insert after — nothing this can mean.
-    const prefix = `【從大綱草擬新頁】請依下面的大綱，用 co-motion slide add 在第 ${index + 1} 頁（${slidePath}）之後依序插入新頁，每一行大綱一頁；縮排的行是上一行那一頁的副標。插入後請用 textbox add 把文字放進新頁。`;
-    await sendChatText(`${prefix}\n\n${outline}`);
+    const count = canvasState.slides.length;
+    const position =
+      count === 0
+        ? "【從大綱規劃】這份簡報還沒有任何投影片。"
+        : `【從大綱規劃】目前有 ${count} 頁，新頁接在最後。`;
+    await sendChatText(`/comotion-plan ${position}\n\n${outline}`);
+  }
+
+  /**
+   * #303: the chat panel's Stop button — `POST /api/chat/cancel`. The
+   * turn's actual end still arrives over the stream (`chat-done` with
+   * `stopReason: "cancelled"`, which chat-stream.ts turns into the 「已停止」
+   * line); this only asks. A 409 means the turn had already ended by the
+   * time the author pressed Stop — nothing to show beyond clearing the
+   * in-flight state, since the stream's own ending already did the rest.
+   */
+  const [stopping, setStopping] = useState(false);
+  async function stopChatTurn(): Promise<void> {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      const response = await fetch("/api/chat/cancel", { method: "POST" });
+      if (!response.ok && response.status !== 409) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        pushChatError(body.error ?? "停止失敗");
+      }
+    } catch {
+      pushChatError("停止失敗：連線已中斷");
+    } finally {
+      setStopping(false);
+    }
+  }
+
+  /**
+   * 送出鍵右邊的「開新對話」——`POST /api/chat/new`。伺服器把目前的 ACP
+   * session 丟掉、用同一個 agent 重開一個；這裡同時把訊息列表清空，因為那
+   * 段對話已經不存在於 agent 那一側了，留在畫面上只會讓人以為它還記得。
+   * 簡報本身完全不動。
+   */
+  async function startNewChatSession(): Promise<void> {
+    try {
+      const response = await fetch("/api/chat/new", { method: "POST" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        pushChatError(body.error ?? "無法重開對話");
+        return;
+      }
+    } catch {
+      pushChatError("無法重開對話：連線已中斷");
+      return;
+    }
+    setMessages([]);
   }
 
   /** slidePath = the current slide's virtual path. */
@@ -1382,6 +1510,45 @@ export function App() {
     );
     overviewControllerRef.current?.setSlidesWithComments(withComments);
     if (errors.length > 0) controllerRef.current?.reportError(errors[0]);
+  }
+
+  /**
+   * #303: re-reads `plan/outline.md` through the same `/api/files/` route
+   * every other virtual path uses (it goes through `cat`, so a missing
+   * file is an honest 404 → no plan). A parse failure is logged by
+   * `parsePlanOutline` and treated as no plan — never thrown into render.
+   */
+  async function refreshPlan(): Promise<void> {
+    try {
+      const response = await fetch("/api/files/plan/outline.md");
+      if (response.status === 404) {
+        setPlanOutline(null);
+        return;
+      }
+      if (!response.ok) {
+        console.warn(`讀取 plan/outline.md 失敗：HTTP ${response.status}`);
+        return;
+      }
+      setPlanOutline(parsePlanOutline(await response.text()));
+    } catch (error) {
+      console.warn(`讀取 plan/outline.md 失敗：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** The gate's two agent-bound exits (contract §4) — remember the draft so the same file cannot re-open the gate while the agent works. */
+  function answerPlan(text: string): void {
+    if (planOutline) setAnsweredPlanFence(planOutline.fenceText);
+    void sendChatText(text);
+  }
+
+  /** 放棄: the one exit that needs no agent — deletes the whole `plan/`; the gate closes when the refetch finds nothing. */
+  async function discardPlan(): Promise<void> {
+    const result = await runCanvasCommand("plan delete", {});
+    if (result && !result.ok) {
+      controllerRef.current?.reportError(result.message);
+      return;
+    }
+    await refreshPlan();
   }
 
   function findComment(slidePath: string, target: string): NumberedComment | undefined {
@@ -1484,15 +1651,21 @@ export function App() {
 
   return (
     <div className="app" data-mode={canvasState.mode}>
+      {shellVisible &&
+        planOutline !== null &&
+        planOutline.status === "draft" &&
+        planOutline.questions.length > 0 &&
+        planOutline.fenceText !== answeredPlanFence && (
+          <PlanGateModal key={planOutline.fenceText} outline={planOutline} onSend={answerPlan} onDiscard={() => void discardPlan()} />
+        )}
       {shellVisible && (
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
           savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
-          agentConnection={agentConnection}
-          agentLabel={agentLabel}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
+          onNew={() => void handleNew()}
           onOpenFile={(file) => void handleOpenFile(file)}
           onSave={() => void handleSave()}
           exportOpen={exportOpen}
@@ -1509,18 +1682,6 @@ export function App() {
             })();
           }}
           canPlay={hasSlides}
-        />
-      )}
-      {shellVisible && settingsOpen && (
-        <SettingsDialog
-          onClose={() => setSettingsOpen(false)}
-          status={agentStatus}
-          probing={agentProbing}
-          editingFrozen={editingFrozen}
-          switchingKind={agentSwitchingKind}
-          switchError={agentActionError}
-          onSelect={(kind) => void handleSelectAgent(kind)}
-          onProbe={() => void handleProbeAgent()}
         />
       )}
       {shellVisible && (
@@ -1623,10 +1784,26 @@ export function App() {
                 messages={messages}
                 working={working}
                 streamReady={streamReady}
-                error={error}
                 draft={draft}
                 onDraftChange={setDraft}
                 onSubmit={() => void sendMessage()}
+                onStop={() => void stopChatTurn()}
+                stopping={stopping}
+                onNewSession={() => void startNewChatSession()}
+                picker={{
+                  agentConnection,
+                  probing: agentProbing,
+                  editingFrozen,
+                  switchingKind: agentSwitchingKind,
+                  actionError: agentActionError,
+                  onSelectAgent: (kind) => void handleSelectAgent(kind),
+                  onProbe: () => void handleProbeAgent(),
+                  modelOptions: agentModelOptions,
+                  modelId: agentModelId,
+                  modelsLocked: working || stopping,
+                  onSelectModel: (modelId) => void selectAgentModel(modelId),
+                  onLoadModels: () => void loadAgentModels(),
+                }}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}
                 onPinnedRemove={(commentId) => {
@@ -1635,13 +1812,12 @@ export function App() {
                 }}
                 commands={commands}
                 agent={agentStatus}
-                onOpenSettings={openSettings}
               />
             }
           />
         )}
       </div>
-      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} settingsOpen={settingsOpen} onOpenSettings={toggleSettings} />}
+      {shellVisible && <StatusBar state={canvasState} controller={controllerRef.current} />}
     </div>
   );
 }

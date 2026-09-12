@@ -3,10 +3,17 @@ import type { AgentKind } from "./live-reload.js";
 /**
  * [E3.T5] NOOP-230 §4.4's `GET /api/agent` / `POST /api/agent/probe`
  * response, restated here as the exact shape this module parses (never
- * imported from `@co-motion/server` — the browser bundle must never depend
+ * imported from `@comotion/server` — the browser bundle must never depend
  * on a Node-only package, same rule `ExportFormat`/`AgentKind` in
  * live-reload.ts already follow).
  */
+/**
+ * 對話框下方那顆狀態燈的三態，從 `/api/chat/stream` 的 `streamReady` 推導
+ * （App.tsx）。以前住在 TitleBar，`.agent-dot` 搬到對話框下面之後，型別跟
+ * 著搬到這裡——它描述的是 agent 狀態，不是標題列。
+ */
+export type AgentConnection = "connecting" | "connected" | "disconnected";
+
 export type AgentSource = "cli" | "settings" | "none";
 export type AgentAvailability = "available" | "unauthenticated";
 
@@ -25,7 +32,7 @@ export interface AgentResponse {
 }
 
 /**
- * One agent card, translated for `AgentTab` (Plan §4.4's table drives off
+ * One agent card, translated for the chat panel's `AgentPicker` (its menu drives off
  * this, plus the two external booleans `probing`/`editingFrozen` that this
  * module knows nothing about). `inUse` is derived here (`kind ===
  * response.current`) so callers never recompute it.
@@ -94,6 +101,67 @@ function isValidCard(value: unknown): value is AgentResponseCard {
  * keeps its previous value rather than this function fabricating one
  * (errors over fallbacks, same rule `live-reload.ts`'s own parsers follow).
  */
+/**
+ * #303: `GET /api/agent`'s `turnRunning` — whether the agent is inside an
+ * author turn right now. A tab opened or reloaded mid-turn sets `working`
+ * from this so Stop shows immediately, instead of waiting for the next
+ * `chat-chunk`. A missing or non-boolean field reads as "not running".
+ */
+/** 對話框下方顯示的模型；`detail` 是 adapter 自己的說明，掛在 tooltip 上。 */
+export interface AgentModelView {
+  name: string;
+  detail?: string;
+}
+
+/**
+ * `GET /api/agent`'s `model` — the model the live ACP session runs on, as
+ * the adapter named it. Null until a session exists (it is established on
+ * the first message) and for any adapter that reports no model at all;
+ * the chat panel then shows no model rather than a guessed one.
+ */
+export function modelFrom(data: unknown): AgentModelView | null {
+  if (typeof data !== "object" || data === null) return null;
+  const model = (data as Record<string, unknown>).model;
+  if (typeof model !== "object" || model === null) return null;
+  const { name, detail } = model as Record<string, unknown>;
+  if (typeof name !== "string" || name === "") return null;
+  return typeof detail === "string" && detail !== "" ? { name, detail } : { name };
+}
+
+/** 對話框下方模型選單的一列：`GET /api/agent` 的 `models[]`。 */
+export interface AgentModelOption {
+  id: string;
+  name: string;
+  detail?: string;
+}
+
+/**
+ * `GET /api/agent`'s `models` + `modelId` — every model the live session can
+ * switch to and which one it is on. `options` is empty until a session
+ * exists or when the adapter offers no choice; the chat panel then shows the
+ * plain model name (or nothing) instead of a picker.
+ */
+export function modelOptionsFrom(data: unknown): { current: string | null; options: AgentModelOption[] } {
+  if (typeof data !== "object" || data === null) return { current: null, options: [] };
+  const { models, modelId } = data as Record<string, unknown>;
+  const options: AgentModelOption[] = [];
+  if (Array.isArray(models)) {
+    for (const entry of models) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const { id, name, detail } = entry as Record<string, unknown>;
+      if (typeof id !== "string" || id === "" || typeof name !== "string" || name === "") continue;
+      options.push(typeof detail === "string" && detail !== "" ? { id, name, detail } : { id, name });
+    }
+  }
+  const current = typeof modelId === "string" && options.some((option) => option.id === modelId) ? modelId : null;
+  return { current, options };
+}
+
+export function turnRunningFrom(data: unknown): boolean {
+  if (typeof data !== "object" || data === null) return false;
+  return (data as Record<string, unknown>).turnRunning === true;
+}
+
 export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const { current, source, agents } = data as Record<string, unknown>;

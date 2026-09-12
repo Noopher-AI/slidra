@@ -4,7 +4,7 @@ import type { SlashCommandOption } from "./slash-commands.js";
 export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
 
 /**
- * NOOP-93 §4.4 — restated here rather than imported: `@co-motion/server`'s
+ * NOOP-93 §4.4 — restated here rather than imported: `@comotion/server`'s
  * `export/job.ts` owns the canonical shape, but it is a Node-only package
  * (Playwright, `node:*`) the browser bundle must never depend on. Same
  * pattern `presentation.ts`'s `TemplateInfo` already uses for core's
@@ -12,13 +12,19 @@ export type SaveState = { known: true; dirty: boolean; fileName: string } | { kn
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@co-motion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
+/** [E3.T5] NOOP-230: the two adapters `AgentManager` ever reports — restated here (not imported from `@comotion/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
 export type AgentKind = "claude" | "codex";
 
 /** [E3.T5] NOOP-230 §4.4: the `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
 export interface AgentChangedEvent {
   kind: AgentKind;
   label: string;
+}
+/** `agent-model-changed`：`POST /api/agent/model` 真的切換了模型之後，server 對每個分頁廣播。 */
+export interface AgentModelChangedEvent {
+  kind: AgentKind;
+  modelId: string;
+  name: string;
 }
 export type ExportSseEvent =
   | { jobId: string; format: ExportFormat; state: "queued" }
@@ -100,6 +106,7 @@ const AGENT_COMMANDS_EVENT = "agent-commands";
 // contract as the other events on this stream (`GET /api/agent` is the
 // caller's own initial fetch).
 const AGENT_CHANGED_EVENT = "agent-changed";
+const AGENT_MODEL_CHANGED_EVENT = "agent-model-changed";
 const EVENTS_PATH = "/api/events";
 const DEFAULT_ERROR_MESSAGE = "即時預覽已中斷";
 
@@ -146,6 +153,8 @@ export function startLiveReload(options: {
   onCommandsChange?: (commands: SlashCommandOption[]) => void;
   /** [E3.T5] NOOP-230 §4.4: fired whenever `AgentManager.select()` actually swaps to a different agent kind. A malformed payload is dropped, nothing fired — same as `onCommandsChange`. */
   onAgentChanged?: (event: AgentChangedEvent) => void;
+  /** Fired when the live session's model was switched (by this tab or another). A malformed payload is dropped. */
+  onAgentModelChanged?: (event: AgentModelChangedEvent) => void;
   eventSourceFactory?: (url: string) => EventSource;
 }): LiveReload {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
@@ -188,6 +197,11 @@ export function startLiveReload(options: {
   source.addEventListener(AGENT_CHANGED_EVENT, (event) => {
     const parsed = parseAgentChangedEventData(event);
     if (parsed) options.onAgentChanged?.(parsed);
+  });
+
+  source.addEventListener(AGENT_MODEL_CHANGED_EVENT, (event) => {
+    const parsed = parseAgentModelChangedEventData(event);
+    if (parsed) options.onAgentModelChanged?.(parsed);
   });
 
   source.addEventListener(WATCH_ERROR_EVENT, (event) => {
@@ -286,6 +300,22 @@ function parseAgentChangedEventData(event: Event): AgentChangedEvent | undefined
   if (kind !== "claude" && kind !== "codex") return undefined;
   if (typeof label !== "string") return undefined;
   return { kind, label };
+}
+
+function parseAgentModelChangedEventData(event: Event): AgentModelChangedEvent | undefined {
+  const data = (event as MessageEvent).data;
+  if (typeof data !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const { kind, modelId, name } = parsed as { kind?: unknown; modelId?: unknown; name?: unknown };
+  if (kind !== "claude" && kind !== "codex") return undefined;
+  if (typeof modelId !== "string" || typeof name !== "string") return undefined;
+  return { kind, modelId, name };
 }
 
 /** Parses an `export` SSE payload — same shape `export/job.ts`'s `ExportEvent` sends. An unparseable/malformed payload (or an unrecognised `state`) is dropped, never fabricated (errors over fallbacks). */

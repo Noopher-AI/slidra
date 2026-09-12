@@ -11,7 +11,7 @@ import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
-const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/co-motion");
+const coMotionBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/comotion");
 
 interface CliEnvelope<T = unknown> {
   ok: boolean;
@@ -77,18 +77,18 @@ let staticRoot: string;
 let servers: RunningServer[];
 
 beforeEach(async () => {
-  coMotionHome = await mkdtemp(path.join(tmpdir(), "co-motion-serve-close-home-"));
-  comotDir = await mkdtemp(path.join(tmpdir(), "co-motion-serve-close-files-"));
-  staticRoot = await mkdtemp(path.join(tmpdir(), "co-motion-serve-close-static-"));
-  process.env.CO_MOTION_HOME = coMotionHome;
-  process.env.CO_MOTION_BIN = coMotionBinPath;
+  coMotionHome = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-home-"));
+  comotDir = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-files-"));
+  staticRoot = await mkdtemp(path.join(tmpdir(), "comotion-serve-close-static-"));
+  process.env.COMOTION_HOME = coMotionHome;
+  process.env.COMOTION_BIN = coMotionBinPath;
   servers = [];
 });
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
-  delete process.env.CO_MOTION_HOME;
-  delete process.env.CO_MOTION_BIN;
+  delete process.env.COMOTION_HOME;
+  delete process.env.COMOTION_BIN;
   await rm(coMotionHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(comotDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
