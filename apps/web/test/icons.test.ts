@@ -77,7 +77,7 @@ describe("Icon", () => {
 
   it("an unknown icon name throws", () => {
     expect(() => renderToStaticMarkup(createElement(Icon, { name: "not-a-real-icon" as IconName }))).toThrow(
-      "未知的圖示名稱",
+      "Unknown icon name",
     );
   });
 });

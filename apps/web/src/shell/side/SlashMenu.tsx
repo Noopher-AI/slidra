@@ -15,7 +15,7 @@ export interface SlashMenuProps {
 }
 
 /** Exact copy required: shown when the agent reports nothing at all and neither skill directory exists. */
-const NO_COMMANDS_HINT = "這個 agent 沒有回報可用的斜線命令";
+const NO_COMMANDS_HINT = "This agent has not reported any slash commands";
 
 /**
  * Pure, stateless — no state, no fetch (plan §1's file table). Selection,

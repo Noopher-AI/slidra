@@ -30,11 +30,11 @@ function withoutComments(css: string): string {
  * `\b` word-boundary character, so a plain `\bease\b` would incorrectly
  * match the "ease" inside "--ease-panel"). */
 const FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }> = [
-  { name: "hex 色碼", pattern: /#[0-9a-fA-F]{3,8}\b/g },
+  { name: "hex color code", pattern: /#[0-9a-fA-F]{3,8}\b/g },
   { name: "rgb()/rgba()", pattern: /\brgba?\(/g },
-  { name: "字面 duration（ms/s）", pattern: /[0-9]+(?:\.[0-9]+)?(?:ms|s)\b/g },
+  { name: "literal duration (ms/s)", pattern: /[0-9]+(?:\.[0-9]+)?(?:ms|s)\b/g },
   {
-    name: "字面 easing 關鍵字",
+    name: "literal easing keyword",
     pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g,
   },
   { name: "cubic-bezier()", pattern: /cubic-bezier\(/g },

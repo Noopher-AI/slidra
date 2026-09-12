@@ -45,11 +45,11 @@ export async function fetchDeckComments(slides: readonly string[]): Promise<Deck
     try {
       response = await fetch(`/api/raw/${slidePath}`);
     } catch (error) {
-      errors.push(`無法讀取 ${slidePath} 的留言：${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`failed to read ${slidePath}'s comments: ${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
     if (!response.ok) {
-      errors.push(`無法讀取 ${slidePath} 的留言（HTTP ${response.status}）`);
+      errors.push(`failed to read ${slidePath}'s comments (HTTP ${response.status})`);
       continue;
     }
     const markup = await response.text();
@@ -58,7 +58,7 @@ export async function fetchDeckComments(slides: readonly string[]): Promise<Deck
         comments.push({ ...comment, slidePath });
       }
     } catch (error) {
-      errors.push(`無法解析 ${slidePath} 的留言：${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`failed to parse ${slidePath}'s comments: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

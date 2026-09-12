@@ -20,9 +20,9 @@ describe("readSlideNotes", () => {
   it("has <slidra:notes>: reads out the content", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一版備忘稿</slidra:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Speaker notes v1</slidra:notes></metadata>' +
       "</svg>";
-    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "第一版備忘稿" });
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "Speaker notes v1" });
   });
 
   it("notes with escaped characters: restores the original characters", () => {
@@ -36,17 +36,17 @@ describe("readSlideNotes", () => {
   it("notes with a newline: preserved as-is", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">第一行\n第二行</slidra:notes></metadata>' +
+      '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Line one\nLine two</slidra:notes></metadata>' +
       "</svg>";
-    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "第一行\n第二行" });
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "Line one\nLine two" });
   });
 
   it("a legacy file (no xmlns): DOMParser considers it malformed, but readSlideNotes can still read it back", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
-      "<metadata><slidra:notes>舊版備忘稿，沒有繫結命名空間</slidra:notes></metadata>" +
+      "<metadata><slidra:notes>Legacy speaker notes, no bound namespace</slidra:notes></metadata>" +
       "</svg>";
-    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "舊版備忘稿，沒有繫結命名空間" });
+    expect(readSlideNotes(svg)).toEqual({ ok: true, text: "Legacy speaker notes, no bound namespace" });
   });
 
   it("markup with no readable <svg> root: reports an explicit error, not an empty string", () => {

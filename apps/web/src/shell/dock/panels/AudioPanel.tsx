@@ -112,7 +112,7 @@ export function AudioPanel({ onClose, controller, canvasSize, slidePath }: Audio
       <input
         className="media-panel-url"
         type="text"
-        placeholder="或貼上音訊網址"
+        placeholder="Or paste an audio URL"
         value={url}
         onChange={(event) => handleUrlChange(event.target.value)}
       />

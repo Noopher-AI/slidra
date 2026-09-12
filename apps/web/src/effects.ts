@@ -114,7 +114,7 @@ async function fetchFresh(slidePath: string): Promise<SlideEffectPlan> {
   const response = await fetch(`/api/effects/${slidePath}`);
   const body = (await response.json()) as Partial<WirePlan> & { error?: string };
   if (!response.ok) {
-    throw new Error(body.error ?? `載入效果清單失敗：${slidePath}`);
+    throw new Error(body.error ?? `Failed to load effect list: ${slidePath}`);
   }
   const wire = body as WirePlan;
   return {

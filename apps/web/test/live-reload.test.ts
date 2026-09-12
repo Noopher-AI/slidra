@@ -253,7 +253,7 @@ describe("startLiveReload", () => {
       fileName: "deck.pdf",
       downloadPath: "/api/export/j1/file",
     });
-    fake!.emit("export", { jobId: "j2", format: "pdf-frames", state: "error", message: "模擬失敗" });
+    fake!.emit("export", { jobId: "j2", format: "pdf-frames", state: "error", message: "Simulated failure" });
 
     expect(onExportEvent).toHaveBeenNthCalledWith(1, { jobId: "j1", format: "pdf", state: "queued" });
     expect(onExportEvent).toHaveBeenNthCalledWith(2, {
@@ -280,7 +280,7 @@ describe("startLiveReload", () => {
       fileName: "deck.pdf",
       downloadPath: "/api/export/j1/file",
     });
-    expect(onExportEvent).toHaveBeenNthCalledWith(5, { jobId: "j2", format: "pdf-frames", state: "error", message: "模擬失敗" });
+    expect(onExportEvent).toHaveBeenNthCalledWith(5, { jobId: "j2", format: "pdf-frames", state: "error", message: "Simulated failure" });
   });
 
   it("drops a malformed export payload instead of fabricating a state", () => {
@@ -316,13 +316,13 @@ describe("startLiveReload", () => {
 
     fake!.emit("agent-commands", {
       commands: [
-        { name: "outline", description: "從大綱建立投影片", source: "bundled" },
+        { name: "outline", description: "Create slides from outline", source: "bundled" },
         { name: "review", description: "", source: "agent" },
       ],
     });
 
     expect(onCommandsChange).toHaveBeenNthCalledWith(1, [
-      { name: "outline", description: "從大綱建立投影片" },
+      { name: "outline", description: "Create slides from outline" },
       { name: "review", description: "" },
     ]);
   });
@@ -462,9 +462,9 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("presentation-watch-error", { message: "監看簡報檔案時發生錯誤" });
+    fake!.emit("presentation-watch-error", { message: "Error watching presentation file" });
 
-    expect(onError).toHaveBeenCalledWith("監看簡報檔案時發生錯誤");
+    expect(onError).toHaveBeenCalledWith("Error watching presentation file");
   });
 
   it("closes the connection once the watcher has died, instead of retrying against a server that will only ever refuse", () => {
@@ -478,7 +478,7 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("presentation-watch-error", { message: "監看簡報檔案時發生錯誤" });
+    fake!.emit("presentation-watch-error", { message: "Error watching presentation file" });
 
     expect(fake?.closed).toBe(true);
   });

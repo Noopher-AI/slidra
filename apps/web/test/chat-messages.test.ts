@@ -18,23 +18,23 @@ describe("chat-messages: identity, not position", () => {
     // next chunk must still land on the agent's message (id 1), not
     // overwrite the author's.
     const afterFirstChunk: ChatMessage[] = [
-      { id: 0, role: "author", text: "第一則訊息" },
+      { id: 0, role: "author", text: "the first message" },
       { id: 1, role: "agent", text: "Q3" },
     ];
-    const afterAuthorInterrupts = appendMessage(afterFirstChunk, 2, "author", "還有一件事");
+    const afterAuthorInterrupts = appendMessage(afterFirstChunk, 2, "author", "one more thing");
 
-    const afterSecondChunk = appendChunkToMessage(afterAuthorInterrupts, 1, " 財報");
+    const afterSecondChunk = appendChunkToMessage(afterAuthorInterrupts, 1, " earnings report");
 
     expect(afterSecondChunk).toEqual([
-      { id: 0, role: "author", text: "第一則訊息" },
-      { id: 1, role: "agent", text: "Q3 財報" },
-      { id: 2, role: "author", text: "還有一件事" },
+      { id: 0, role: "author", text: "the first message" },
+      { id: 1, role: "agent", text: "Q3 earnings report" },
+      { id: 2, role: "author", text: "one more thing" },
     ]);
     // The author's own words survive untouched — this is exactly the bug
     // this fix addresses: an unconditional "append to last item" would have
-    // deleted "還有一件事" and glued " 財報" onto it instead.
+    // deleted "one more thing" and glued " earnings report" onto it instead.
     const authorMessage = afterSecondChunk.find((message) => message.id === 2);
-    expect(authorMessage?.text).toBe("還有一件事");
+    expect(authorMessage?.text).toBe("one more thing");
   });
 
   it("appendMessage assigns the given id and never reuses or recomputes it from position", () => {
@@ -57,15 +57,15 @@ describe("chat-messages: a command is its own kind of message", () => {
   });
 
   it("updateCommandMessage finds the command by toolCallId even when it is no longer last", () => {
-    const started = appendCommandMessage([{ id: 0, role: "author", text: "改標題" }], 1, "call-1", "slidra ls p1", "pending", true);
-    const withLaterReply = appendMessage(started, 2, "agent", "改好了");
+    const started = appendCommandMessage([{ id: 0, role: "author", text: "change the title" }], 1, "call-1", "slidra ls p1", "pending", true);
+    const withLaterReply = appendMessage(started, 2, "agent", "changed it");
 
     const finished = updateCommandMessage(withLaterReply, "call-1", { status: "completed" });
 
     expect(finished).toEqual([
-      { id: 0, role: "author", text: "改標題" },
+      { id: 0, role: "author", text: "change the title" },
       { id: 1, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "completed", cli: true },
-      { id: 2, role: "agent", text: "改好了" },
+      { id: 2, role: "agent", text: "changed it" },
     ]);
   });
 
@@ -96,9 +96,9 @@ describe("chat-messages: a command is its own kind of message", () => {
   });
 
   it("appendChunkToMessage never writes reply text into a command message that shares nothing but a neighbourhood", () => {
-    const messages = appendCommandMessage([{ id: 0, role: "agent", text: "現在來修改文字：" }], 1, "call-1", "slidra ls p1", "pending", true);
+    const messages = appendCommandMessage([{ id: 0, role: "agent", text: "now let's edit the text: " }], 1, "call-1", "slidra ls p1", "pending", true);
 
-    expect(appendChunkToMessage(messages, 1, "不該出現")).toEqual(messages);
+    expect(appendChunkToMessage(messages, 1, "should not appear")).toEqual(messages);
   });
 });
 
@@ -125,17 +125,17 @@ describe("chat-messages: a stream interruption is its own fact", () => {
   });
 
   it("leaves speech messages alone", () => {
-    const messages: ChatMessage[] = appendMessage([], 0, "agent", "改好了");
+    const messages: ChatMessage[] = appendMessage([], 0, "agent", "changed it");
 
     expect(markUnfinishedCommandsInterrupted(messages)).toEqual(messages);
   });
 
   it("appendNoticeMessage records a notice nobody said, with its own id", () => {
-    const messages = appendMessage([], 0, "author", "改標題");
+    const messages = appendMessage([], 0, "author", "change the title");
 
-    expect(appendNoticeMessage(messages, 1, "連線中斷")).toEqual([
-      { id: 0, role: "author", text: "改標題" },
-      { id: 1, role: "notice", text: "連線中斷" },
+    expect(appendNoticeMessage(messages, 1, "connection lost")).toEqual([
+      { id: 0, role: "author", text: "change the title" },
+      { id: 1, role: "notice", text: "connection lost" },
     ]);
   });
 });
@@ -146,11 +146,11 @@ describe("chat-messages: a stream interruption is its own fact", () => {
 // role="status" and must stay distinguishable from a lost-turn notice.
 describe("chat-messages: a system message is neither speech nor a lost-turn notice (D3)", () => {
   it("appendSystemMessage records a system event, with its own id", () => {
-    const messages = appendMessage([], 0, "author", "改標題");
+    const messages = appendMessage([], 0, "author", "change the title");
 
-    expect(appendSystemMessage(messages, 1, "已切換到 Codex，接下來的訊息由它處理")).toEqual([
-      { id: 0, role: "author", text: "改標題" },
-      { id: 1, role: "system", text: "已切換到 Codex，接下來的訊息由它處理" },
+    expect(appendSystemMessage(messages, 1, "Switched to Codex. It will handle messages from here.")).toEqual([
+      { id: 0, role: "author", text: "change the title" },
+      { id: 1, role: "system", text: "Switched to Codex. It will handle messages from here." },
     ]);
   });
 });

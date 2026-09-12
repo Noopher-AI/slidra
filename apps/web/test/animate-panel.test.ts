@@ -28,13 +28,13 @@ describe("buildCards / cardLabel", () => {
   });
 
   it("a plain element: shows the name when targetInfo has data-slidra-name", () => {
-    const info = new Map<string, TargetInfo>([["el-a", { name: "標題", groupMemberCount: null }]]);
+    const info = new Map<string, TargetInfo>([["el-a", { name: "Title", groupMemberCount: null }]]);
     const cards = buildCards([effect()], info);
-    expect(cardLabel(cards[0], 1)).toBe("標題");
+    expect(cardLabel(cards[0], 1)).toBe("Title");
   });
 
   it("shows \"Group N (n)\" when the target is a group, where n is the member count, not the name", () => {
-    const info = new Map<string, TargetInfo>([["el-group", { name: "群組", groupMemberCount: 3 }]]);
+    const info = new Map<string, TargetInfo>([["el-group", { name: "Group", groupMemberCount: 3 }]]);
     const cards = buildCards([effect({ target: "el-group" })], info);
     expect(cardLabel(cards[0], 2)).toBe("Group 2 (3)");
   });

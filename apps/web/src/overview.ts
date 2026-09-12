@@ -145,7 +145,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     setPresentationFonts(project.fonts);
     const { width, height } = project.canvas ?? {};
     if (!(typeof width === "number" && width > 0 && typeof height === "number" && height > 0)) {
-      throw new Error("project.json 的 canvas 尺寸無效，無法決定縮圖長寬比");
+      throw new Error("project.json's canvas size is invalid, cannot determine thumbnail aspect ratio");
     }
     list.style.setProperty("--overview-aspect-ratio", `${width} / ${height}`);
   }
@@ -528,7 +528,7 @@ function escapeAttribute(value: string): string {
 async function fetchText(path: string): Promise<string> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(`載入失敗：${path}`);
+    throw new Error(`failed to load: ${path}`);
   }
   return response.text();
 }
@@ -536,7 +536,7 @@ async function fetchText(path: string): Promise<string> {
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(`載入失敗：${path}`);
+    throw new Error(`failed to load: ${path}`);
   }
   return (await response.json()) as T;
 }

@@ -21,11 +21,11 @@ export interface PlanGateModalProps {
  * feature. `slidra-plan` writes `plan/outline.md` with `status: draft`
  * and its `questions`; this dialog shows the page plan read-only, one block
  * per question with the agent's recommendation preselected, and three
- * exits (contract §4): "確認並建置" (Confirm and build) →
- * `/slidra-build 【計畫確認】…`, "重新規劃" (Redo) →
- * `/slidra-plan 【重做】…` (a reason is required), "放棄" (Discard) →
+ * exits (contract §4): "Confirm and build" →
+ * `/slidra-build 【計畫確認】…`, "Redo" →
+ * `/slidra-plan 【重做】…` (a reason is required), "Discard" →
  * `plan delete`. Deliberately blocking: no close button, Esc does nothing,
- * focus stays inside — a plan must be answered, not dismissed; "放棄" is
+ * focus stays inside — a plan must be answered, not dismissed; "Discard" is
  * the one exit that needs no agent.
  */
 export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps) {
@@ -93,27 +93,27 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="確認計畫"
+        aria-label="Confirm plan"
         className="plan-gate"
         onSubmit={onConfirm}
       >
         <header className="plan-gate-header">
-          <h2 className="plan-gate-title">確認簡報計畫</h2>
+          <h2 className="plan-gate-title">Confirm Presentation Plan</h2>
           <p className="plan-gate-subtitle">
-            agent 依大綱擬好了逐頁計畫（敘事骨架：{outline.mode}）。看過下面的頁面與問題，確認後才會開始建置。
+            The agent drafted a page-by-page plan from your outline (narrative mode: {outline.mode}). Review the pages and questions below, then confirm to start building.
           </p>
         </header>
 
         <div className="plan-gate-body">
           <div className="plan-gate-table-wrap">
-            <table className="plan-gate-table" aria-label="逐頁計畫">
+            <table className="plan-gate-table" aria-label="Page-by-page plan">
               <thead>
                 <tr>
-                  <th>頁碼</th>
-                  <th>關係</th>
-                  <th>頁型</th>
-                  <th>節奏</th>
-                  <th>主張</th>
+                  <th>Page</th>
+                  <th>Relationship</th>
+                  <th>Type</th>
+                  <th>Rhythm</th>
+                  <th>Claim</th>
                 </tr>
               </thead>
               <tbody>
@@ -148,13 +148,13 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
                       onChange={() => setChoices((prev) => ({ ...prev, [question.id]: option.value }))}
                     />
                     <span>{option.label}</span>
-                    {option.value === question.recommended && <span className="plan-gate-recommended">建議</span>}
+                    {option.value === question.recommended && <span className="plan-gate-recommended">Recommended</span>}
                   </label>
                 ))}
               </div>
               {question.free_text && (
                 <label className="plan-gate-free-text">
-                  <span>補充</span>
+                  <span>Notes</span>
                   <input
                     type="text"
                     value={notes[question.id] ?? ""}
@@ -166,19 +166,19 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
           ))}
 
           <label className="plan-gate-overall">
-            <span>整體補充（可空）</span>
+            <span>Overall notes (optional)</span>
             <textarea value={overall} onChange={(event) => setOverall(event.target.value)} rows={2} />
           </label>
 
           {redoOpen && (
             <label className="plan-gate-redo">
-              <span>要 agent 怎麼重做（必填）</span>
+              <span>What should the agent redo? (required)</span>
               <textarea
                 value={redoReason}
                 onChange={(event) => setRedoReason(event.target.value)}
                 rows={3}
                 autoFocus
-                placeholder="例如：頁數太多，合併成六頁；第 3 頁改成對照頁"
+                placeholder="e.g. too many pages, merge into six; change page 3 to a compare page"
               />
             </label>
           )}
@@ -186,19 +186,19 @@ export function PlanGateModal({ outline, onSend, onDiscard }: PlanGateModalProps
 
         <footer className="plan-gate-actions">
           <button type="button" className="plan-gate-discard" onClick={onDiscard}>
-            放棄
+            Discard
           </button>
           {redoOpen ? (
             <button type="button" className="plan-gate-redo-submit" disabled={redoReason.trim() === ""} onClick={onRedo}>
-              送出重做
+              Submit Redo
             </button>
           ) : (
             <button type="button" className="plan-gate-redo-open" onClick={() => setRedoOpen(true)}>
-              重新規劃
+              Redo
             </button>
           )}
           <button type="submit" className="plan-gate-confirm">
-            確認並建置
+            Confirm and Build
           </button>
         </footer>
       </form>

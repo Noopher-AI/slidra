@@ -53,10 +53,10 @@ const STREAM_PATH = "/api/chat/stream";
 // anything else means it is still retrying.
 const READY_STATE_CLOSED = 2;
 
-const RECONNECTING_NOTICE = "連線中斷，正在重新連線；這一輪後續的內容可能沒有收到";
-const CLOSED_NOTICE = "連線中斷且無法自動恢復；這一輪後續的內容沒有收到，請重新整理頁面";
+const RECONNECTING_NOTICE = "Connection dropped, reconnecting; the rest of this turn may have been missed";
+const CLOSED_NOTICE = "Connection dropped and could not recover; the rest of this turn was not received, please refresh the page";
 /** #303: shown when the author pressed Stop and the agent answered the turn with `cancelled`. */
-export const STOPPED_NOTICE = "已停止";
+export const STOPPED_NOTICE = "Stopped";
 
 export function startChatStream(options: ChatStreamOptions): ChatStream {
   const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));

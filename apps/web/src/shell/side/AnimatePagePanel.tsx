@@ -22,7 +22,7 @@ export function AnimatePagePanel({ state, controller }: AnimatePagePanelProps) {
   const slidePath = state.currentIndex >= 0 ? state.slides[state.currentIndex] : null;
 
   if (!slidePath || transition === null) {
-    return <div className="animate-page-panel" role="tabpanel" aria-label="動畫 · Page" />;
+    return <div className="animate-page-panel" role="tabpanel" aria-label="Animate · Page" />;
   }
 
   async function runTransitionCommand(input: Record<string, unknown>): Promise<void> {

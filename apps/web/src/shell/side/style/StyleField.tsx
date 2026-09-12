@@ -36,8 +36,8 @@ function displayValueOf(result: StyleReadResult): string {
 }
 
 function placeholderOf(result: StyleReadResult): string | undefined {
-  if (result.kind === "unset") return "未設定";
-  if (result.kind === "mixed") return "不一致";
+  if (result.kind === "unset") return "Unset";
+  if (result.kind === "mixed") return "Mixed";
   return undefined;
 }
 
@@ -85,7 +85,7 @@ export function StyleField({ attr, label, control, options, min, max, disabled, 
             void commit(value);
           }}
         >
-          {showPlaceholder && <option value="">{current.kind === "unset" ? "未設定" : "不一致"}</option>}
+          {showPlaceholder && <option value="">{current.kind === "unset" ? "Unset" : "Mixed"}</option>}
           {(options ?? []).map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}

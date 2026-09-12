@@ -250,7 +250,7 @@ describe("computePlayerPlan", () => {
     // still does not implement" (exit is now real, D4) — same role the old
     // fixture's "exit" used to play.
     const svg = slide('<slidra:effect target="el-a" family="build" effect="fade" start="on-click"/>');
-    mockEffectsRouteError("第 1 項（target 為 el-a） 的 family 值「build」尚未實作。");
+    mockEffectsRouteError("item 1 (target is el-a)'s family value \"build\" not yet implemented.");
     await expect(computePlayerPlan(svg, SLIDE_PATH)).rejects.toThrow(/family.*build/);
   });
 });

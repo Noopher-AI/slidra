@@ -56,11 +56,11 @@ describe("AgentPicker: chips (menu closed)", () => {
 
   it("connecting / no agent selected / switching: the chip text updates accordingly; an unauthenticated state carries a badge", () => {
     expect(chip(markup({ agentConnection: "connecting" }), "agent")).toContain("Agent connecting…");
-    expect(chip(markup({ agent: { kind: "unset", agents: [{ ...claude, inUse: false }, codex] } }), "agent")).toContain("選擇 agent");
-    expect(chip(markup({ switchingKind: "codex" }), "agent")).toContain("切換中…");
+    expect(chip(markup({ agent: { kind: "unset", agents: [{ ...claude, inUse: false }, codex] } }), "agent")).toContain("Select agent");
+    expect(chip(markup({ switchingKind: "codex" }), "agent")).toContain("Switching…");
     const unauthenticated: AgentUiStatus = { kind: "unauthenticated", current: "codex", label: "Codex", loginCommand: "codex login", source: "settings", agents: [{ ...claude, inUse: false }, { ...codex, inUse: true }] };
     const html = markup({ agent: unauthenticated });
-    expect(chip(html, "agent")).toContain("未登入");
+    expect(chip(html, "agent")).toContain("Not signed in");
     // Unauthenticated means there is no session at all: the model chip does not appear.
     expect(html).not.toContain('data-chip="model"');
   });
@@ -68,7 +68,7 @@ describe("AgentPicker: chips (menu closed)", () => {
   it("modelsLocked disables the model chip; the agent chip is disabled while loading; actionError renders as an error row", () => {
     expect(chip(markup({ modelOptions: models, modelId: "sonnet", modelsLocked: true }), "model")).toContain("disabled");
     expect(chip(markup({ agent: { kind: "loading" } }), "agent")).toContain("disabled");
-    expect(markup({ actionError: "切換 agent 失敗：連線已中斷" })).toContain('class="chat-status-error"');
+    expect(markup({ actionError: "Failed to switch agent: connection lost" })).toContain('class="chat-status-error"');
   });
 });
 
@@ -78,20 +78,20 @@ describe("AgentPicker: agent menu", () => {
     const claudeItem = item(html, 'data-kind="claude"');
     expect(claudeItem).toContain('aria-checked="true"');
     expect(claudeItem).toContain("disabled");
-    expect(claudeItem).toContain("使用中");
+    expect(claudeItem).toContain("In use");
     const codexItem = item(html, 'data-kind="codex"');
     expect(codexItem).toContain('aria-checked="false"');
     expect(codexItem).not.toContain("disabled");
-    expect(codexItem).toContain("未登入 · codex login");
-    expect(html).toContain("重新偵測登入狀態");
+    expect(codexItem).toContain("Not signed in · codex login");
+    expect(html).toContain("Re-check sign-in status");
   });
 
   it("editingFrozen disables every row and shows a hint; while probing, every row reads \"detecting…\"; a cli source shows an extra explanatory line", () => {
     const frozen = markup({ defaultOpen: "agent", editingFrozen: true });
     expect(item(frozen, 'data-kind="codex"')).toContain("disabled");
-    expect(frozen).toContain("agent 正在編輯中，切換請稍候");
-    expect(markup({ defaultOpen: "agent", probing: true })).toContain("偵測中…");
-    expect(markup({ defaultOpen: "agent", agent: { ...ready, source: "cli" } })).toContain("本次由命令列指定");
+    expect(frozen).toContain("The agent is editing — switching will have to wait");
+    expect(markup({ defaultOpen: "agent", probing: true })).toContain("Checking…");
+    expect(markup({ defaultOpen: "agent", agent: { ...ready, source: "cli" } })).toContain("Set via the command line for this session");
   });
 });
 
@@ -104,6 +104,6 @@ describe("AgentPicker: model menu", () => {
   });
 
   it("shows a loading state before the list has loaded", () => {
-    expect(markup({ defaultOpen: "model" })).toContain("載入模型清單…");
+    expect(markup({ defaultOpen: "model" })).toContain("Loading models…");
   });
 });

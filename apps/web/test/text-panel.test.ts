@@ -23,9 +23,9 @@ describe("textPanelInsertInput", () => {
   });
 
   it("title/center: non-empty text passes through unchanged, centered position computed from 50% - width/2 (per the prototype's title spec)", () => {
-    const input = textPanelInsertInput("title", "center", "我的標題", { width: 1000, height: 1000 }, null);
+    const input = textPanelInsertInput("title", "center", "My Title", { width: 1000, height: 1000 }, null);
     expect(input).toEqual({
-      text: "我的標題", // non-empty text passes through unchanged
+      text: "My Title", // non-empty text passes through unchanged
       x: 200, // center align: lPercent = 50 - 60/2 = 20% of width 1000
       y: 420,
       width: 600, // spec.width 60% of 1000

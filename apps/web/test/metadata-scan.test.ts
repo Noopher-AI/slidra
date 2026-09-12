@@ -16,11 +16,11 @@ describe("scanDocument / readSlideComments (F8)", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       '<metadata><slidra:comments xmlns:slidra="https://slidra.app/ns/2026">' +
-      '<slidra:comment id="c1" target="page" author="Ada" created="2026-01-01T00:00:00Z">第一則留言</slidra:comment>' +
+      '<slidra:comment id="c1" target="page" author="Ada" created="2026-01-01T00:00:00Z">First comment</slidra:comment>' +
       "</slidra:comments></metadata>" +
       "</svg>";
     expect(readSlideComments(svg)).toEqual([
-      { id: "c1", target: "page", author: "Ada", created: "2026-01-01T00:00:00Z", text: "第一則留言" },
+      { id: "c1", target: "page", author: "Ada", created: "2026-01-01T00:00:00Z", text: "First comment" },
     ]);
   });
 
@@ -28,14 +28,14 @@ describe("scanDocument / readSlideComments (F8)", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">' +
       "<metadata><slidra:comments>" +
-      '<slidra:comment id="c1" target="el-a" author="Bob" created="2025-06-01T00:00:00Z">舊版留言，沒有繫結命名空間</slidra:comment>' +
+      '<slidra:comment id="c1" target="el-a" author="Bob" created="2025-06-01T00:00:00Z">Legacy comment, no bound namespace</slidra:comment>' +
       "</slidra:comments></metadata>" +
       "</svg>";
     // Sanity check on the premise: DOMParser really does reject this.
     expect(new DOMParser().parseFromString(svg, "image/svg+xml").getElementsByTagName("parsererror").length).toBeGreaterThan(0);
 
     expect(readSlideComments(svg)).toEqual([
-      { id: "c1", target: "el-a", author: "Bob", created: "2025-06-01T00:00:00Z", text: "舊版留言，沒有繫結命名空間" },
+      { id: "c1", target: "el-a", author: "Bob", created: "2025-06-01T00:00:00Z", text: "Legacy comment, no bound namespace" },
     ]);
   });
 

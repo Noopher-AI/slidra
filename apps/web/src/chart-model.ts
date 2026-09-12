@@ -54,7 +54,7 @@ export interface ChartModel {
 
 function requireEnum<T extends string>(value: string, domain: readonly T[], label: string): T {
   if (!(domain as readonly string[]).includes(value)) {
-    throw new Error(`${label} 必須是下列其中之一：${domain.join("、")}（收到：${value}）`);
+    throw new Error(`${label} must be one of the following: ${domain.join(", ")} (received: ${value})`);
   }
   return value as T;
 }
@@ -75,29 +75,29 @@ function findChartContainer(root: Element, id: string): Element | null {
 
 function requireChartContainer(doc: Document, elementId: string): Element {
   const svgRoot = doc.documentElement;
-  if (!svgRoot || localName(svgRoot) !== "svg") throw new Error("投影片的根節點不是 <svg>");
+  if (!svgRoot || localName(svgRoot) !== "svg") throw new Error("root node of the slide is not <svg>");
   const found = findChartContainer(svgRoot, elementId);
-  if (!found) throw new Error(`找不到元素：${elementId}`);
-  if (found.getAttribute("data-slidra-type") !== "chart") throw new Error(`元素 ${elementId} 不是圖表`);
+  if (!found) throw new Error(`element not found: ${elementId}`);
+  if (found.getAttribute("data-slidra-type") !== "chart") throw new Error(`element ${elementId} is not a chart`);
   return found;
 }
 
 function requireDataNode(container: Element, elementId: string): Element {
   const chartNode = Array.from(container.children).find((child) => localName(child) === "chart");
-  if (!chartNode) throw new Error(`元素 ${elementId} 缺少 <slidra:chart>`);
+  if (!chartNode) throw new Error(`element ${elementId} is missing <slidra:chart>`);
   return chartNode;
 }
 
 function readRequiredAttr(node: Element, name: string, elementId: string): string {
   const raw = node.getAttribute(name);
-  if (raw === null) throw new Error(`元素 ${elementId} 的 <slidra:chart> 缺少屬性：${name}`);
+  if (raw === null) throw new Error(`element ${elementId}'s <slidra:chart> is missing attribute: ${name}`);
   return raw;
 }
 
 function readNumberAttr(node: Element, name: string, elementId: string): number {
   const raw = readRequiredAttr(node, name, elementId);
   const value = Number(raw);
-  if (!Number.isFinite(value)) throw new Error(`元素 ${elementId} 的 <slidra:chart> 屬性 ${name} 不是有限數字：${raw}`);
+  if (!Number.isFinite(value)) throw new Error(`element ${elementId}'s <slidra:chart> attribute ${name} is not a finite number: ${raw}`);
   return value;
 }
 
@@ -105,7 +105,7 @@ function parseValues(raw: string, elementId: string, seriesName: string): number
   return raw.split(",").map((token, index) => {
     const value = Number(token);
     if (token.trim() === "" || !Number.isFinite(value)) {
-      throw new Error(`元素 ${elementId} 的系列「${seriesName}」第 ${index + 1} 個值不是有限數字：${token}`);
+      throw new Error(`element ${elementId}'s series "${seriesName}" value #${index + 1} is not a finite number: ${token}`);
     }
     return value;
   });
@@ -122,7 +122,7 @@ function parseValues(raw: string, elementId: string, seriesName: string): number
 export function readChartModel(svgContent: string, elementId: string): ChartModel {
   const doc = new DOMParser().parseFromString(svgContent, "image/svg+xml");
   if (doc.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("投影片的 SVG 標記無法解析");
+    throw new Error("SVG markup of the slide could not be parsed");
   }
   const container = requireChartContainer(doc, elementId);
   const chartNode = requireDataNode(container, elementId);
@@ -130,15 +130,15 @@ export function readChartModel(svgContent: string, elementId: string): ChartMode
   const type = requireEnum(readRequiredAttr(chartNode, "type", elementId), CHART_TYPES, "type");
   const stackedRaw = readRequiredAttr(chartNode, "stacked", elementId);
   if (stackedRaw !== "true" && stackedRaw !== "false") {
-    throw new Error(`元素 ${elementId} 的 stacked 必須是 true 或 false：${stackedRaw}`);
+    throw new Error(`element ${elementId}'s stacked must be true or false: ${stackedRaw}`);
   }
   const axes = requireEnum(readRequiredAttr(chartNode, "axes", elementId), ["single", "dual"] as const, "axes");
   const palette = requireEnum(readRequiredAttr(chartNode, "palette", elementId), CHART_PALETTES, "palette");
   const legend = requireEnum(readRequiredAttr(chartNode, "legend", elementId), CHART_LEGENDS, "legend");
   const gridRaw = readRequiredAttr(chartNode, "grid", elementId);
   const labelsRaw = readRequiredAttr(chartNode, "labels", elementId);
-  if (gridRaw !== "true" && gridRaw !== "false") throw new Error(`元素 ${elementId} 的 grid 必須是 true 或 false：${gridRaw}`);
-  if (labelsRaw !== "true" && labelsRaw !== "false") throw new Error(`元素 ${elementId} 的 labels 必須是 true 或 false：${labelsRaw}`);
+  if (gridRaw !== "true" && gridRaw !== "false") throw new Error(`element ${elementId}'s grid must be true or false: ${gridRaw}`);
+  if (labelsRaw !== "true" && labelsRaw !== "false") throw new Error(`element ${elementId}'s labels must be true or false: ${labelsRaw}`);
   const xTitle = chartNode.getAttribute("x-title") ?? "";
   const yTitle = chartNode.getAttribute("y-title") ?? "";
   const width = readNumberAttr(chartNode, "width", elementId);
@@ -147,19 +147,19 @@ export function readChartModel(svgContent: string, elementId: string): ChartMode
   const children = Array.from(chartNode.children);
   const seriesNodes = children.filter((child) => localName(child) === "series");
   const categoriesNodes = children.filter((child) => localName(child) === "categories");
-  if (seriesNodes.length === 0) throw new Error(`元素 ${elementId} 的圖表沒有任何 <slidra:series>`);
-  if (categoriesNodes.length !== 1) throw new Error(`元素 ${elementId} 的圖表必須恰好有一個 <slidra:categories>`);
+  if (seriesNodes.length === 0) throw new Error(`element ${elementId}'s chart has no <slidra:series>`);
+  if (categoriesNodes.length !== 1) throw new Error(`element ${elementId}'s chart must have exactly one <slidra:categories>`);
 
   const categories = readRequiredAttr(categoriesNodes[0], "values", elementId).split(",");
   if (categories.some((category) => category === "")) {
-    throw new Error(`元素 ${elementId} 的類別清單不可含空字串`);
+    throw new Error(`element ${elementId}'s category list must not contain empty strings`);
   }
 
   const series: ChartSeries[] = seriesNodes.map((node) => {
     const name = readRequiredAttr(node, "name", elementId);
     const values = parseValues(readRequiredAttr(node, "values", elementId), elementId, name);
     const axisRaw = node.getAttribute("axis") ?? "left";
-    const axis = requireEnum(axisRaw, ["left", "right"] as const, `系列「${name}」的 axis`);
+    const axis = requireEnum(axisRaw, ["left", "right"] as const, `series "${name}"'s axis`);
     const color = node.getAttribute("color");
     return { name, values, axis, color };
   });

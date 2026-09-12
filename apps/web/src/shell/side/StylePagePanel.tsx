@@ -52,7 +52,7 @@ export function StylePagePanel({ pageStyle, backgroundImage, canvasSize, control
   if (pageStyle === null || canvasSize === null) {
     return (
       <div className="style-page-panel" role="tabpanel" aria-label="Style · Page">
-        <p className="style-panel-empty">沒有可編輯的投影片</p>
+        <p className="style-panel-empty">No slide to edit</p>
       </div>
     );
   }
@@ -135,7 +135,7 @@ export function StylePagePanel({ pageStyle, backgroundImage, canvasSize, control
         <label className="style-field" data-attr="background-image-select">
           <span className="style-field-label">From assets</span>
           <select value={backgroundImage?.asset ?? ""} onChange={handleAssetSelect}>
-            <option value="">未選擇</option>
+            <option value="">None selected</option>
             {assetList.map((asset) => (
               <option key={asset} value={`assets/${asset}`}>
                 {asset}

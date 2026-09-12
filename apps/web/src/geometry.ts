@@ -63,7 +63,7 @@ export function applyMatrixToPoint(m: Matrix, p: Point): Point {
 export function invertMatrix(m: Matrix): Matrix {
   const det = m.a * m.d - m.b * m.c;
   if (det === 0) {
-    throw new Error("transform 無法反轉：矩陣的行列式為 0");
+    throw new Error("transform cannot be inverted: matrix determinant is 0");
   }
   return {
     a: m.d / det,
@@ -95,12 +95,12 @@ export function decomposeMatrix(m: Matrix): TransformParts {
   const scaleX = Math.hypot(m.a, m.b);
   const determinant = m.a * m.d - m.b * m.c;
   if (scaleX === 0 || determinant === 0) {
-    throw new Error("transform 無法拆解：矩陣已退化（縮放為 0）");
+    throw new Error("transform cannot be decomposed: matrix is degenerate (scale is 0)");
   }
   const scaleYRaw = Math.hypot(m.c, m.d);
   const dot = m.a * m.c + m.b * m.d;
   if (Math.abs(dot) > 1e-9 * scaleX * scaleYRaw) {
-    throw new Error("transform 無法拆解：矩陣含有傾斜（skew），這個模型沒有傾斜的語意");
+    throw new Error("transform cannot be decomposed: matrix contains skew, this model has no semantics for skew");
   }
   return {
     translateX: m.e,
@@ -189,7 +189,7 @@ export interface SnapResult {
 
 function assertFinite(value: number, what: string): void {
   if (!Number.isFinite(value)) {
-    throw new Error(`貼齊計算收到非有限數字：${what}`);
+    throw new Error(`snap calculation received a non-finite number: ${what}`);
   }
 }
 
@@ -240,7 +240,7 @@ function bestOnAxis(
 export function snapTranslation(input: SnapInput): SnapResult {
   const { moving, candidates, canvas, threshold } = input;
   if (!Number.isFinite(threshold) || threshold <= 0) {
-    throw new Error(`貼齊半徑必須是大於 0 的有限數字：${threshold}`);
+    throw new Error(`snap radius must be a finite number greater than 0: ${threshold}`);
   }
   assertRect(moving, "moving");
   assertFinite(canvas.width, "canvas.width");

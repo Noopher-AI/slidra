@@ -30,7 +30,7 @@ const SIZE_TOKEN: Record<IconSize, string> = {
  */
 export function Icon({ name, size = "command", className }: IconProps) {
   const content = ICON_REGISTRY[name];
-  if (!content) throw new Error(`未知的圖示名稱：${name}`);
+  if (!content) throw new Error(`Unknown icon name: ${name}`);
 
   const dimension = SIZE_TOKEN[size];
   const style: CSSProperties = {

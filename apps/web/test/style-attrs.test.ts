@@ -26,7 +26,7 @@ const wrap = (body: string): string =>
 function elementOf(svgBody: string, id: string): SlideElement {
   const model = parseSlide(wrap(svgBody));
   const found = model.elements.find((element) => element.id === id);
-  if (!found) throw new Error(`fixture 裡沒有 id=${id} 的元素`);
+  if (!found) throw new Error(`fixture has no element with id=${id}`);
   return found;
 }
 

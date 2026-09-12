@@ -91,7 +91,7 @@ export function PageTransitionView({
   onApplyAll,
 }: PageTransitionViewProps) {
   return (
-    <div className="animate-page-panel" role="tabpanel" aria-label="動畫 · Page">
+    <div className="animate-page-panel" role="tabpanel" aria-label="Animate · Page">
       <EdgeSection
         title="Enter"
         labels={ENTER_LABELS}

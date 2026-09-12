@@ -92,9 +92,9 @@ export function ChatPanel({
   const sendDisabled = !streamReady || agentBlocksInput;
   const inputPlaceholder =
     agent.kind === "unset"
-      ? "請先在設定中選擇 agent"
+      ? "Select an agent first"
       : agent.kind === "unauthenticated"
-        ? `${agent.label} 尚未登入`
+        ? `${agent.label} is not signed in`
         : streamReady
           ? "Tell the agent how to change this deck…"
           : "Connecting to chat, please wait…";
@@ -280,15 +280,16 @@ export function ChatPanel({
         )}
         {agent.kind === "unset" && (
           <div className="chat-empty-state">
-            <p className="chat-empty-state-title">尚未選擇 agent</p>
-            <p className="chat-empty-state-body">按下方的 agent 膠囊，選要用哪一個來改這份簡報</p>
+            <p className="chat-empty-state-title">No agent selected</p>
+            <p className="chat-empty-state-body">Click the agent chip below to choose which agent edits this deck</p>
           </div>
         )}
         {agent.kind === "unauthenticated" && (
           <div className="chat-empty-state">
-            <p className="chat-empty-state-title">{agent.label} 尚未登入</p>
+            <p className="chat-empty-state-title">{agent.label} is not signed in</p>
             <p className="chat-empty-state-body">
-              請在終端機執行 <code>{agent.loginCommand}</code>，完成後在下方的 agent 膠囊選單裡按「重新偵測登入狀態」，或改選另一個 agent
+              Run <code>{agent.loginCommand}</code> in your terminal, then click "Re-check sign-in status" in the
+              agent chip menu below, or choose a different agent
             </p>
           </div>
         )}
@@ -356,7 +357,7 @@ export function ChatPanel({
                 type="button"
                 className="chat-stop"
                 aria-label="Stop"
-                title="停止 (Esc)"
+                title="Stop (Esc)"
                 disabled={stopping}
                 onClick={onStop}
               >
@@ -371,7 +372,7 @@ export function ChatPanel({
               type="button"
               className="chat-new-session"
               aria-label="New session"
-              title="開新對話（清空這段對話，簡報不受影響）"
+              title="New session (clears this conversation; the deck is unaffected)"
               disabled={working || stopping}
               onClick={onNewSession}
             >

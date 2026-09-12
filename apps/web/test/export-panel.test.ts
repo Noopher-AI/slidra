@@ -19,19 +19,19 @@ describe("ExportPanel progress text", () => {
   it("renders the completedFrames/totalFrames given via props while busy, not a fixed value", () => {
     for (const [completedFrames, totalFrames] of [[0, 45], [17, 45], [45, 45]] as const) {
       const markup = markupFor({ kind: "busy", format: "pdf-frames", completedFrames, totalFrames });
-      expect(markup).toContain(`匯出中… ${completedFrames}/${totalFrames}`);
+      expect(markup).toContain(`Exporting… ${completedFrames}/${totalFrames}`);
     }
   });
 
   it("renders the exporting-status text without numbers when totalFrames is 0 (queued, no frame count yet)", () => {
     const markup = markupFor({ kind: "busy", format: "pdf", completedFrames: 0, totalFrames: 0 });
-    expect(markup).toContain(`<div class="export-status" role="status">匯出中…</div>`);
+    expect(markup).toContain(`<div class="export-status" role="status">Exporting…</div>`);
     expect(markup).not.toContain("0/0");
   });
 
   it("renders a download link when done, text formatted the same way e2e asserts on it", () => {
-    const markup = markupFor({ kind: "done", fileName: "簡報-frames.pdf", pageCount: 45, downloadPath: "/api/export/abc/file" });
-    expect(markup).toContain("下載 簡報-frames.pdf（45 頁）");
+    const markup = markupFor({ kind: "done", fileName: "deck-frames.pdf", pageCount: 45, downloadPath: "/api/export/abc/file" });
+    expect(markup).toContain("Download deck-frames.pdf (45 pages)");
     expect(markup).toContain('href="/api/export/abc/file"');
   });
 });

@@ -1475,7 +1475,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
     if (message.event === "error") {
-      error = message.message ?? "播放時發生未知錯誤";
+      error = message.message ?? "unknown error during playback";
       notify();
       return;
     }
@@ -2204,11 +2204,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         | { ok?: boolean; message?: string; error?: string; data?: unknown }
         | null;
       if (!response.ok) {
-        return { ok: false, message: (body && typeof body.error === "string" && body.error) || `命令失敗（HTTP ${response.status}）` };
+        return { ok: false, message: (body && typeof body.error === "string" && body.error) || `command failed (HTTP ${response.status})` };
       }
       return { ok: true, message: (body && typeof body.message === "string" && body.message) || "", data: body?.data };
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : "命令送出失敗" };
+      return { ok: false, message: err instanceof Error ? err.message : "failed to submit command" };
     }
   }
 
@@ -2310,7 +2310,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       });
       return parseAssetResponse(response);
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : "匯入失敗" };
+      return { ok: false, message: err instanceof Error ? err.message : "import failed" };
     }
   }
 
@@ -2322,7 +2322,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       });
       return parseAssetResponse(response);
     } catch (err) {
-      return { ok: false, message: err instanceof Error ? err.message : "匯入失敗" };
+      return { ok: false, message: err instanceof Error ? err.message : "import failed" };
     }
   }
 
@@ -2331,7 +2331,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       | { ok?: boolean; message?: string; error?: string; data?: ImportedAsset }
       | null;
     if (!response.ok || !body?.data) {
-      return { ok: false, message: (body && typeof body.error === "string" && body.error) || `匯入失敗（HTTP ${response.status}）` };
+      return { ok: false, message: (body && typeof body.error === "string" && body.error) || `import failed (HTTP ${response.status})` };
     }
     return { ok: true, message: typeof body.message === "string" ? body.message : "", data: body.data };
   }
@@ -3003,7 +3003,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const factor = computeScaleFactor(gesture, point);
     if (!(factor > 0) || !Number.isFinite(factor)) {
       revertScalePreview(gesture);
-      error = "縮放比例必須是正數（拖過了原點）";
+      error = "scale factor must be positive (dragged past the origin)";
       notify();
       return;
     }
@@ -3185,7 +3185,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const width = computeTextboxWidth(gesture, point);
     if (!(width > 0) || roundsToZero(width)) {
       previewTextboxWidth(gesture.id, gesture.originalWidth);
-      error = "文字框寬度必須大於 0";
+      error = "text box width must be greater than 0";
       notify();
       return;
     }
@@ -3753,7 +3753,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // Surfaced, never silently swallowed (design doc). Play the static
       // slide with no runtime rather than leaving the frame blank — the
       // author still sees the slide, plus the reason nothing animates.
-      error = planError instanceof Error ? planError.message : "效果清單無法解析";
+      error = planError instanceof Error ? planError.message : "effect list could not be parsed";
       notify();
       // A broken page has no transition to play on the way out either —
       // reset to the all-"none" default so a later playExitTransition()
@@ -3870,7 +3870,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
     if (destroyed) return;
     if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
-      throw new Error(`投影片索引超出範圍：${index}`);
+      throw new Error(`slide index out of range: ${index}`);
     }
 
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
@@ -4657,7 +4657,7 @@ function escapeAttribute(value: string): string {
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(`載入失敗：${path}`);
+    throw new Error(`failed to load: ${path}`);
   }
   return (await response.json()) as T;
 }
@@ -4665,7 +4665,7 @@ async function fetchJson<T>(path: string): Promise<T> {
 async function fetchText(path: string): Promise<string> {
   const response = await fetch(path);
   if (!response.ok) {
-    throw new Error(`載入失敗：${path}`);
+    throw new Error(`failed to load: ${path}`);
   }
   return response.text();
 }

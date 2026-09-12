@@ -73,29 +73,29 @@ const RELATIONSHIPS: ReadonlySet<string> = new Set([
 ]);
 
 export const PAGE_TYPE_LABELS: Readonly<Record<PlanPageType, string>> = {
-  cover: "封面",
-  section: "章節頁",
-  bullets: "要點頁",
-  compare: "對照頁",
-  number: "大數字頁",
-  closing: "結語頁",
+  cover: "Cover",
+  section: "Section",
+  bullets: "Bullets",
+  compare: "Compare",
+  number: "Big Number",
+  closing: "Closing",
 };
 
 /** #303 §A': what the page's content is, in the author's words. */
 export const RELATIONSHIP_LABELS: Readonly<Record<PlanRelationship, string>> = {
-  order: "順序",
-  link: "關聯",
-  parent: "統轄",
-  membership: "並列",
-  contrast: "對比",
-  overlap: "交集",
-  none: "單一主張",
+  order: "Order",
+  link: "Link",
+  parent: "Parent",
+  membership: "Membership",
+  contrast: "Contrast",
+  overlap: "Overlap",
+  none: "Single Claim",
 };
 
 export const RHYTHM_LABELS: Readonly<Record<PlanRhythm, string>> = {
-  anchor: "錨點",
-  dense: "密集",
-  breathing: "喘息",
+  anchor: "Anchor",
+  dense: "Dense",
+  breathing: "Breathing",
 };
 
 /** Extracts the text inside the leading ```json … ``` fence, or null when the file does not start with one. */
@@ -172,37 +172,37 @@ function parseQuestions(raw: unknown): PlanQuestion[] | null {
 export function parsePlanOutline(text: string): PlanOutline | null {
   const fenceText = extractJsonFence(text);
   if (fenceText === null) {
-    console.warn("plan/outline.md 開頭沒有 ```json 圍欄，忽略這份計畫");
+    console.warn("plan/outline.md has no leading ```json fence, ignoring this plan");
     return null;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(fenceText);
   } catch (error) {
-    console.warn(`plan/outline.md 的 JSON 段解析失敗，忽略這份計畫：${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`plan/outline.md's JSON section failed to parse, ignoring this plan: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
   if (!isRecord(parsed)) {
-    console.warn("plan/outline.md 的 JSON 段不是物件，忽略這份計畫");
+    console.warn("plan/outline.md's JSON section is not an object, ignoring this plan");
     return null;
   }
   const { status, mode } = parsed;
   if (status !== "draft" && status !== "confirmed") {
-    console.warn("plan/outline.md 的 status 不是 draft 或 confirmed，忽略這份計畫");
+    console.warn("plan/outline.md's status is neither draft nor confirmed, ignoring this plan");
     return null;
   }
   if (typeof mode !== "string") {
-    console.warn("plan/outline.md 缺少 mode，忽略這份計畫");
+    console.warn("plan/outline.md is missing mode, ignoring this plan");
     return null;
   }
   const pages = parsePages(parsed.pages);
   if (pages === null) {
-    console.warn("plan/outline.md 的 pages 格式不對（非空、n 從 1 連續、relationship／rhythm 在清單內、type 若有也要在清單內），忽略這份計畫");
+    console.warn("plan/outline.md's pages are malformed (must be non-empty, n numbered from 1, relationship/rhythm in the known set, type in the known set if present), ignoring this plan");
     return null;
   }
   const questions = parseQuestions(parsed.questions);
   if (questions === null) {
-    console.warn("plan/outline.md 的 questions 格式不對，忽略這份計畫");
+    console.warn("plan/outline.md's questions are malformed, ignoring this plan");
     return null;
   }
   return { status, mode, pages, questions, fenceText };

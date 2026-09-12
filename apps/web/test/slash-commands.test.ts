@@ -38,9 +38,9 @@ describe("slashQuery", () => {
 
 describe("filterCommands", () => {
   const commands: SlashCommandOption[] = [
-    { name: "outline", description: "從大綱建立投影片" },
+    { name: "outline", description: "Create slides from an outline" },
     { name: "outreach", description: "" },
-    { name: "review", description: "檢查投影片" },
+    { name: "review", description: "Review the slides" },
   ];
 
   it("prefix match, case-insensitive, never fuzzy", () => {
@@ -81,22 +81,22 @@ describe("SlashMenu", () => {
     const markup = renderToStaticMarkup(
       createElement(SlashMenu, {
         commands: [
-          { name: "outline", description: "從大綱建立投影片" },
-          { name: "review", description: "檢查投影片" },
+          { name: "outline", description: "Create slides from an outline" },
+          { name: "review", description: "Review the slides" },
         ],
         selectedIndex: 0,
         onSelect: () => {},
       }),
     );
     expect(markup).toContain("/outline");
-    expect(markup).toContain("從大綱建立投影片");
+    expect(markup).toContain("Create slides from an outline");
     expect(markup).toContain("/review");
-    expect(markup).toContain("檢查投影片");
+    expect(markup).toContain("Review the slides");
   });
 
   it("an empty command list shows the fixed hint text (AC4)", () => {
     const markup = renderToStaticMarkup(createElement(SlashMenu, { commands: [], selectedIndex: 0, onSelect: () => {} }));
-    expect(markup).toContain("這個 agent 沒有回報可用的斜線命令");
+    expect(markup).toContain("This agent has not reported any slash commands");
   });
 
   it("marks the selected item's aria-selected, not any other", () => {

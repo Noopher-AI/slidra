@@ -9,8 +9,8 @@ import { slidePaintKey } from "../src/slide-paint-key.js";
 // it for nothing — the flicker authors saw during generation. The stage
 // must repaint only when the picture itself changes.
 
-const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">講稿</slidra:notes></metadata>';
-const deck = { name: "測試簡報", slides: ["slides/001.svg", "slides/002.svg"] };
+const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Speaker notes</slidra:notes></metadata>';
+const deck = { name: "Test Deck", slides: ["slides/001.svg", "slides/002.svg"] };
 let markup: Record<string, string>;
 let container: HTMLElement;
 let controller: CanvasController | undefined;
@@ -84,7 +84,7 @@ describe("mountCanvas only repaints when the picture actually changes", () => {
   });
 
   it("always repaints once the first real slide appears after a zero-slide deck's blank transparent page", async () => {
-    const empty = { name: "空", slides: [] as string[] };
+    const empty = { name: "Empty", slides: [] as string[] };
     let project: { name: string; slides: string[] } = empty;
     vi.stubGlobal(
       "fetch",

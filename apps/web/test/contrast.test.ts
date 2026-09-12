@@ -26,7 +26,7 @@ const tokensCss = readFileSync(path.join(webSrcDir, "styles", "tokens.css"), "ut
 
 function declaredRootTokens(): Map<string, string> {
   const rootBlockMatch = tokensCss.match(/:root\s*{([\s\S]*?)^}/m);
-  if (!rootBlockMatch) throw new Error("tokens.css 沒有 :root 區塊");
+  if (!rootBlockMatch) throw new Error("tokens.css has no :root block");
   const values = new Map<string, string>();
   for (const match of rootBlockMatch[1].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
     values.set(match[1], match[2].trim());
@@ -41,10 +41,10 @@ function resolveTokenValue(name: string): string {
   const seen = new Set<string>();
   let current = name;
   for (;;) {
-    if (seen.has(current)) throw new Error(`resolveTokenValue：${name} 的 var() 鏈出現循環參照`);
+    if (seen.has(current)) throw new Error(`resolveTokenValue: ${name}'s var() chain has a circular reference`);
     seen.add(current);
     if (!declared.has(current)) {
-      throw new Error(`resolveTokenValue：token ${current}（解析 ${name} 時）在 tokens.css 不存在，可能被改名了`);
+      throw new Error(`resolveTokenValue: token ${current} (while resolving ${name}) does not exist in tokens.css, it may have been renamed`);
     }
     const raw = declared.get(current)!;
     const varMatch = raw.match(/^var\((--[a-z0-9-]+)\)$/);
@@ -59,7 +59,7 @@ function resolveTokenRgb(name: string): { r: number; g: number; b: number } {
   const rgb = parseColor(literal);
   if (rgb.a !== undefined) {
     throw new Error(
-      `resolveTokenRgb：${name} 解析為 ${literal}，帶有 alpha 通道——對比矩陣不支援半透明前景，請改指定實際疊色後的值或把這一對移出清單`,
+      `resolveTokenRgb: ${name} resolves to ${literal}, which has an alpha channel — the contrast matrix does not support a semi-transparent foreground, specify the actual composited value instead or remove this pair from the list`,
     );
   }
   return rgb;
@@ -134,11 +134,11 @@ describe("contrast.test.ts — token contrast matrix", () => {
     });
 
     it("raises a clear error when a listed token doesn't exist in tokens.css", () => {
-      expect(() => resolveTokenValue("--does-not-exist")).toThrow(/token --does-not-exist.*不存在/);
+      expect(() => resolveTokenValue("--does-not-exist")).toThrow(/token --does-not-exist.*does not exist/);
     });
 
     it("raises a clear error when a token's value carries alpha (rgba), instead of silently assuming alpha=1", () => {
-      expect(() => resolveTokenRgb("--brand-red-glow")).toThrow(/帶有 alpha 通道/);
+      expect(() => resolveTokenRgb("--brand-red-glow")).toThrow(/has an alpha channel/);
     });
 
     it("boundary value: passes when the ratio is exactly equal to the threshold (>=)", () => {

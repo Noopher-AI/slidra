@@ -42,7 +42,7 @@ export function initialZoomPan(): ZoomPanState {
  */
 export function setZoom(state: ZoomPanState, z: number): ZoomPanState {
   if (typeof z !== "number" || !Number.isFinite(z)) {
-    throw new Error(`setZoom: 收到非合法數值 zoom=${String(z)}`);
+    throw new Error(`setZoom: received an invalid value zoom=${String(z)}`);
   }
   const nz = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
   return { zoom: nz, pan: state.pan };

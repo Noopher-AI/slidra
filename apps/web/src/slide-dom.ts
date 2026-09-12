@@ -157,11 +157,11 @@ function parseTransform(value: string | null): Matrix {
     const nameStart = i;
     while (i < text.length && /[A-Za-z]/.test(text[i])) i++;
     const name = text.slice(nameStart, i);
-    if (!name) throw new Error(`transform 語法錯誤：無法解析函式名稱（${text}）`);
+    if (!name) throw new Error(`transform syntax error: cannot parse function name (${text})`);
     while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] !== "(") throw new Error(`transform 語法錯誤：${name} 後面缺少 (`);
+    if (text[i] !== "(") throw new Error(`transform syntax error: ${name} missing ( after it`);
     const close = text.indexOf(")", i);
-    if (close === -1) throw new Error(`transform 語法錯誤：${name} 的括號未封閉`);
+    if (close === -1) throw new Error(`transform syntax error: ${name}'s parenthesis not closed`);
     const args = parseTransformArgs(name, text.slice(i + 1, close));
     i = close + 1;
     result = multiplyMatrix(result, transformFunctionToMatrix(name, args));
@@ -171,16 +171,16 @@ function parseTransform(value: string | null): Matrix {
 
 function parseTransformArgs(name: string, argsText: string): number[] {
   const arity = ARITY[name];
-  if (!arity) throw new Error(`不支援的 transform 函式：${name}`);
+  if (!arity) throw new Error(`unsupported transform function: ${name}`);
   const tokens = argsText.split(/[\s,]+/).filter((token) => token.length > 0);
   const values = tokens.map((token) => {
     if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(token)) {
-      throw new Error(`transform 語法錯誤：${name} 的參數不是數字（${token}）`);
+      throw new Error(`transform syntax error: ${name}'s argument is not a number (${token})`);
     }
     return Number(token);
   });
   if (!arity.includes(values.length)) {
-    throw new Error(`transform 語法錯誤：${name} 收到 ${values.length} 個參數，應為 ${arity.join(" 或 ")} 個`);
+    throw new Error(`transform syntax error: ${name} received ${values.length} arguments, expected ${arity.join(" or ")}`);
   }
   return values;
 }
@@ -210,7 +210,7 @@ function transformFunctionToMatrix(name: string, args: number[]): Matrix {
     case "skewY":
       return { a: 1, b: Math.tan(args[0] * DEG_TO_RAD), c: 0, d: 1, e: 0, f: 0 };
     default:
-      throw new Error(`不支援的 transform 函式：${name}`);
+      throw new Error(`unsupported transform function: ${name}`);
   }
 }
 
@@ -226,7 +226,7 @@ function readTextAlign(container: Element): "left" | "center" | "right" {
   const raw = container.getAttribute(TEXT_ALIGN_ATTRIBUTE);
   if (raw === null) return "left";
   if (raw !== "left" && raw !== "center" && raw !== "right") {
-    throw new Error(`元素 ${container.getAttribute("id")} 的 ${TEXT_ALIGN_ATTRIBUTE} 不是合法值：${raw}`);
+    throw new Error(`element ${container.getAttribute("id")}'s ${TEXT_ALIGN_ATTRIBUTE} is not a valid value (left, center or right): ${raw}`);
   }
   return raw;
 }
@@ -314,7 +314,7 @@ function toElement(el: Element): SlideElement {
 
 function requireEnum<T extends string>(value: string, domain: readonly T[], label: string): T {
   if (!(domain as readonly string[]).includes(value)) {
-    throw new Error(`${label} 必須是下列其中之一：${domain.join("、")}（收到：${value}）`);
+    throw new Error(`${label} must be one of the following: ${domain.join(", ")} (received: ${value})`);
   }
   return value as T;
 }
@@ -325,7 +325,7 @@ function parseNumberList(raw: string, elementId: string, attr: string): number[]
     .filter((token) => token.length > 0)
     .map((token) => {
       const value = Number(token);
-      if (!Number.isFinite(value)) throw new Error(`元素 ${elementId} 的 ${attr} 含非數字：${token}`);
+      if (!Number.isFinite(value)) throw new Error(`element ${elementId}'s ${attr} contains a non-number: ${token}`);
       return value;
     });
 }
@@ -345,12 +345,12 @@ function readTableModel(container: Element): TableModel {
   const id = container.getAttribute("id") ?? "";
   const colsRaw = container.getAttribute("data-slidra-cols");
   const rowsRaw = container.getAttribute("data-slidra-rows");
-  if (!colsRaw || !rowsRaw) throw new Error(`元素 ${id} 缺少 data-slidra-cols 或 data-slidra-rows`);
+  if (!colsRaw || !rowsRaw) throw new Error(`element ${id} is missing data-slidra-cols or data-slidra-rows`);
   const cols = parseNumberList(colsRaw, id, "data-slidra-cols");
   const rows = parseNumberList(rowsRaw, id, "data-slidra-rows");
 
   const header = container.getAttribute("data-slidra-header") === "1";
-  const theme = requireEnum(container.getAttribute("data-slidra-theme") ?? "dark", TABLE_THEMES, `元素 ${id} 的 data-slidra-theme`);
+  const theme = requireEnum(container.getAttribute("data-slidra-theme") ?? "dark", TABLE_THEMES, `element ${id}'s data-slidra-theme`);
 
   const sourceEl = childElements(container).find((child) => localName(child) === TABLE_SOURCE_TAG);
   const source = sourceEl?.getAttribute("src") ?? null;
@@ -358,7 +358,7 @@ function readTableModel(container: Element): TableModel {
   const cellEls = childElements(container).filter((child) => child.hasAttribute("data-slidra-cell"));
   const cells: TableCell[] = cellEls.map((cellEl) => {
     const address = /^(\d+),(\d+)$/.exec(cellEl.getAttribute("data-slidra-cell")!);
-    if (!address) throw new Error(`元素 ${id} 的儲存格位址格式錯誤：${cellEl.getAttribute("data-slidra-cell")}`);
+    if (!address) throw new Error(`element ${id}'s cell address has invalid format: ${cellEl.getAttribute("data-slidra-cell")}`);
     const row = Number(address[1]);
     const col = Number(address[2]);
 
@@ -367,7 +367,7 @@ function readTableModel(container: Element): TableModel {
     let colSpan = 1;
     if (spanRaw !== null) {
       const match = /^(\d+),(\d+)$/.exec(spanRaw);
-      if (!match) throw new Error(`元素 ${id} 的 data-slidra-span 格式錯誤：${spanRaw}`);
+      if (!match) throw new Error(`element ${id}'s data-slidra-span has invalid format: ${spanRaw}`);
       rowSpan = Number(match[1]);
       colSpan = Number(match[2]);
     }
@@ -378,7 +378,7 @@ function readTableModel(container: Element): TableModel {
     const fillOpacityRaw = rectEl?.getAttribute("fill-opacity") ?? null;
     const textFill = textEl?.getAttribute("fill") ?? "#000000";
     const fontWeightRaw = textEl?.getAttribute("font-weight") ?? null;
-    const align = requireEnum(cellEl.getAttribute("data-slidra-align") ?? "left", ["left", "center", "right"] as const, `儲存格 (${row},${col}) 的 data-slidra-align`);
+    const align = requireEnum(cellEl.getAttribute("data-slidra-align") ?? "left", ["left", "center", "right"] as const, `cell (${row},${col})'s data-slidra-align`);
 
     return {
       row,
@@ -459,22 +459,22 @@ export function readBackgroundImage(svgRoot: Element): BackgroundImage | null {
 export function parseSlide(svgMarkup: string): SlideModel {
   const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
   if (doc.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("投影片的 SVG 標記無法解析");
+    throw new Error("SVG markup of the slide could not be parsed");
   }
   const svgRoot = doc.documentElement;
   if (!svgRoot || localName(svgRoot) !== "svg") {
-    throw new Error("投影片的根節點不是 <svg>");
+    throw new Error("root node of the slide is not <svg>");
   }
   const viewBoxText = svgRoot.getAttribute("viewBox");
   if (!viewBoxText) {
-    throw new Error("投影片的根節點 <svg> 沒有 viewBox");
+    throw new Error("root node <svg> of the slide has no viewBox");
   }
   const parts = viewBoxText
     .split(/[\s,]+/)
     .filter((token) => token.length > 0)
     .map(Number);
   if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))) {
-    throw new Error(`投影片的 viewBox 不是四個數字：${viewBoxText}`);
+    throw new Error(`viewBox of the slide is not four numbers: ${viewBoxText}`);
   }
   const [x, y, width, height] = parts;
 

@@ -25,7 +25,7 @@ const SVG =
 function elementOf(id: string): SlideElement {
   const model = parseSlide(SVG);
   const found = model.elements.find((element) => element.id === id);
-  if (!found) throw new Error(`fixture 裡沒有 id=${id} 的元素`);
+  if (!found) throw new Error(`fixture has no element with id=${id}`);
   return found;
 }
 
@@ -51,13 +51,13 @@ function render(state: CanvasState): string {
 describe("StyleObjectPanel", () => {
   it("empty selection: shows the empty-state hint, renders no fields", () => {
     const markup = render(stateFor([]));
-    expect(markup).toContain("選取元素以檢視樣式");
+    expect(markup).toContain("Select an element to view its style");
     expect(markup).not.toContain("style-field");
   });
 
   it("a group is selected: all fields disabled, shows the group hint, doesn't render the Text/Shape sections", () => {
     const markup = render(stateFor(["el-group"]));
-    expect(markup).toContain("群組沒有可套用樣式的圖元");
+    expect(markup).toContain("Groups have no elements to apply style to");
     expect(markup).not.toContain('data-section="text"');
     expect(markup).not.toContain('data-section="shape"');
     // Appearance is always shown, but its fields must be disabled.
@@ -68,17 +68,17 @@ describe("StyleObjectPanel", () => {
   it("a shape element: every field in the Shape section is unset (stroke never set), data-state and placeholder agree", () => {
     const markup = render(stateFor(["el-a"]));
     expect(markup).toContain('data-section="shape"');
-    expect(markup).toMatch(/data-attr="stroke" data-state="unset"[^>]*placeholder="未設定"/);
+    expect(markup).toMatch(/data-attr="stroke" data-state="unset"[^>]*placeholder="Unset"/);
   });
 
   it("two shapes with different fill: mixed, data-state and placeholder agree", () => {
     const markup = render(stateFor(["el-a", "el-b"]));
-    expect(markup).toMatch(/data-attr="fill" data-state="mixed"[^>]*placeholder="不一致"/);
+    expect(markup).toMatch(/data-attr="fill" data-state="mixed"[^>]*placeholder="Mixed"/);
   });
 
   it("a mixed-type selection (text + shape): shows only Appearance and the skeleton sections with a hint, hides Text/Shape", () => {
     const markup = render(stateFor(["el-text", "el-a"]));
-    expect(markup).toContain("選取包含多種元素型別，只顯示共同屬性");
+    expect(markup).toContain("Selection mixes multiple element types; only shared properties are shown");
     expect(markup).not.toContain('data-section="text"');
     expect(markup).not.toContain('data-section="shape"');
     expect(markup).toContain('data-section="appearance"');

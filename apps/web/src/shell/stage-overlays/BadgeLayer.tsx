@@ -31,8 +31,8 @@ export function BadgeLayer({ badges, onSelect }: BadgeLayerProps) {
           type="button"
           className="animation-badge"
           style={{ left: badge.rect.x, top: badge.rect.y }}
-          title={`動畫 ${badge.n}`}
-          aria-label={`動畫編號 ${badge.n}`}
+          title={`Animation ${badge.n}`}
+          aria-label={`Animation number ${badge.n}`}
           onClick={() => onSelect(badge.target)}
         >
           {badge.n}

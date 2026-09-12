@@ -105,34 +105,34 @@ describe("startChatStream", () => {
 
   it("collects a turn's chunks into one agent message and stops working on chat-done", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
-    started.fake.emit("chat-chunk", { text: "，改好了" });
+    started.fake.emit("chat-chunk", { text: "OK" });
+    started.fake.emit("chat-chunk", { text: ", changed it" });
     expect(started.working).toBe(true);
 
     started.fake.emit("chat-done");
 
-    expect(started.messages).toEqual([{ id: 0, role: "agent", text: "好的，改好了" }]);
+    expect(started.messages).toEqual([{ id: 0, role: "agent", text: "OK, changed it" }]);
     expect(started.working).toBe(false);
   });
 
-  it("a cancelled turn appends the 「已停止」 system line and marks unfinished commands interrupted", () => {
+  it("a cancelled turn appends the 「Stopped」 system line and marks unfinished commands interrupted", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "開始" });
+    started.fake.emit("chat-chunk", { text: "starting" });
     started.fake.emit("chat-command", { toolCallId: "t1", command: "slidra slide add x", status: "in_progress" });
 
     started.fake.emit("chat-done", { stopReason: "cancelled" });
 
     expect(started.working).toBe(false);
     expect(started.messages).toEqual([
-      { id: 0, role: "agent", text: "開始" },
+      { id: 0, role: "agent", text: "starting" },
       { id: 1, role: "command", toolCallId: "t1", command: "slidra slide add x", status: "in_progress", cli: true, interrupted: true },
-      { id: 2, role: "system", text: "已停止" },
+      { id: 2, role: "system", text: "Stopped" },
     ]);
   });
 
-  it("clears working when the stream drops mid-turn, so the author is not left in a fake 「工作中」", () => {
+  it('clears working when the stream drops mid-turn, so the author is not left in a fake "working"', () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
+    started.fake.emit("chat-chunk", { text: "OK" });
 
     started.fake.emitTransientError();
 
@@ -141,14 +141,14 @@ describe("startChatStream", () => {
 
   it("starts a new message after a mid-turn drop instead of gluing the next turn onto the interrupted one", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "上一輪" });
+    started.fake.emit("chat-chunk", { text: "previous turn" });
 
     started.fake.emitTransientError();
     started.fake.emit("open");
-    started.fake.emit("chat-chunk", { text: "下一輪" });
+    started.fake.emit("chat-chunk", { text: "next turn" });
 
     const texts = started.messages.filter((m) => m.role === "agent").map((m) => (m as { text: string }).text);
-    expect(texts).toEqual(["上一輪", "下一輪"]);
+    expect(texts).toEqual(["previous turn", "next turn"]);
   });
 
   it("marks a command left unfinished by the drop as interrupted, never as failed", () => {
@@ -172,21 +172,21 @@ describe("startChatStream", () => {
 
   it("tells the author this turn may be incomplete, while EventSource is still reconnecting", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
+    started.fake.emit("chat-chunk", { text: "OK" });
 
     started.fake.emitTransientError();
 
     expect(notices(started.messages)).toHaveLength(1);
-    expect(notices(started.messages)[0]).toContain("重新連線");
+    expect(notices(started.messages)[0]).toContain("reconnecting");
   });
 
   it("says the connection is gone for good when EventSource has given up", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
+    started.fake.emit("chat-chunk", { text: "OK" });
 
     started.fake.emitPermanentError();
 
-    expect(notices(started.messages)[0]).toContain("無法自動恢復");
+    expect(notices(started.messages)[0]).toContain("could not recover");
   });
 
   it("stays silent for a reconnect blip while no turn is in flight", () => {
@@ -202,7 +202,7 @@ describe("startChatStream", () => {
 
   it("does not repeat the notice for each error of the same interrupted turn", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
+    started.fake.emit("chat-chunk", { text: "OK" });
 
     started.fake.emitTransientError();
     started.fake.emitTransientError();
@@ -224,12 +224,12 @@ describe("startChatStream", () => {
 
   it("reports chat-error to the author and ends the turn", () => {
     started = start();
-    started.fake.emit("chat-chunk", { text: "好的" });
+    started.fake.emit("chat-chunk", { text: "OK" });
 
-    started.fake.emit("chat-error", { message: "agent 掛了" });
+    started.fake.emit("chat-error", { message: "agent crashed" });
 
     // The failure lands in the timeline after the partial reply, not in a banner.
-    expect(started.messages.at(-1)).toEqual({ id: 1, role: "error", text: "agent 掛了" });
+    expect(started.messages.at(-1)).toEqual({ id: 1, role: "error", text: "agent crashed" });
     expect(started.working).toBe(false);
     // A reported failure is an outcome, not a lost turn — no interruption notice on top of it.
     expect(notices(started.messages)).toEqual([]);

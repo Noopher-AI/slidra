@@ -28,13 +28,13 @@ const chartRenderRs = readFileSync(chartRenderRsPath, "utf8");
 /** `CHART_PALETTE_HEX_<PALETTE>: [&str; 6] = [ "#...", ... ];` → the six hex strings, in order. */
 function chartPaletteHex(palette: "BRAND" | "COOL" | "WARM"): string[] {
   const match = chartRenderRs.match(new RegExp(`CHART_PALETTE_HEX_${palette}:[^=]*=\\s*\\[([^\\]]+)\\]`));
-  if (!match) throw new Error(`render.rs 找不到 CHART_PALETTE_HEX_${palette}`);
+  if (!match) throw new Error(`render.rs is missing CHART_PALETTE_HEX_${palette}`);
   return [...match[1].matchAll(/#[0-9a-fA-F]{6}/g)].map((m) => m[0]);
 }
 
 function declaredRootTokenNames(): Set<string> {
   const rootBlockMatch = tokensCss.match(/:root\s*{([\s\S]*?)^}/m);
-  if (!rootBlockMatch) throw new Error("tokens.css 沒有 :root 區塊");
+  if (!rootBlockMatch) throw new Error("tokens.css has no :root block");
   const names = new Set<string>();
   for (const match of rootBlockMatch[1].matchAll(/(--[a-z0-9-]+)\s*:/g)) {
     names.add(match[1]);
@@ -45,7 +45,7 @@ function declaredRootTokenNames(): Set<string> {
 function declaredRootTokenValue(name: string): string {
   const rootBlockMatch = tokensCss.match(/:root\s*{([\s\S]*?)^}/m)![1];
   const match = rootBlockMatch.match(new RegExp(`${name}:\\s*([^;]+);`));
-  if (!match) throw new Error(`tokens.css 的 :root 沒有找到 ${name}`);
+  if (!match) throw new Error(`tokens.css's :root does not declare ${name}`);
   return match[1].trim();
 }
 
@@ -256,7 +256,7 @@ describe("tokens.css against docs/design/docs/01-DESIGN_TOKENS.md (design packag
         if (!numMatch) continue; // this split-out value isn't a plain number + unit (e.g. --space-gutter is a compound value)
         const actual = Number(numMatch[1]);
         if (actual < low || actual > high) {
-          outOfRange.push(`${cssVar}（${tokenPath} 的範圍是 ${low}–${high}，實際是 ${actual}）`);
+          outOfRange.push(`${cssVar} (${tokenPath}'s range is ${low}–${high}, actual is ${actual})`);
         }
       }
     }
@@ -265,9 +265,9 @@ describe("tokens.css against docs/design/docs/01-DESIGN_TOKENS.md (design packag
 
   it("--control-h-compact matches the compact-variant value the design package doc states explicitly", () => {
     const docToken = designTokens.find((t) => t.path === "control.h");
-    if (!docToken) throw new Error("設計包文件找不到 control.h");
+    if (!docToken) throw new Error("design package doc is missing control.h");
     const compactMatch = docToken.valueCell.match(/(\d+(?:\.\d+)?)\s*px compact variant/);
-    if (!compactMatch) throw new Error("control.h 的值欄位找不到「compact variant」數值——文件格式可能變了");
+    if (!compactMatch) throw new Error("control.h's value cell has no \"compact variant\" number — the doc format may have changed");
     expect(declaredRootTokenValue("--control-h-compact")).toBe(`${compactMatch[1]}px`);
   });
 
@@ -304,9 +304,9 @@ describe("tokens.css — fonts", () => {
       const familyMatch = block.match(/font-family:\s*"([^"]+)"/);
       const weightMatch = block.match(/font-weight:\s*(\d+)/);
       const srcMatch = block.match(/url\("\.\.\/assets\/fonts\/([^"]+\.woff2)"\)/);
-      if (!familyMatch) throw new Error("一個 @font-face 區塊沒有 font-family");
-      if (!weightMatch) throw new Error("一個 @font-face 區塊沒有 font-weight");
-      if (!srcMatch) throw new Error("一個 @font-face 區塊沒有指向 ../assets/fonts/*.woff2 的 src");
+      if (!familyMatch) throw new Error("an @font-face block is missing font-family");
+      if (!weightMatch) throw new Error("an @font-face block is missing font-weight");
+      if (!srcMatch) throw new Error("an @font-face block has no src pointing at ../assets/fonts/*.woff2");
       return { family: familyMatch[1], weight: Number(weightMatch[1]), fileName: srcMatch[1] };
     });
 
@@ -335,7 +335,7 @@ describe("tokens.css — fonts", () => {
         .map((part) => part.trim().replace(/^['"]|['"]$/g, ""));
     }
     const docToken = designTokens.find((t) => t.path === "font.ui");
-    if (!docToken) throw new Error("設計包文件找不到 font.ui");
+    if (!docToken) throw new Error("design package doc is missing font.ui");
     const docValue = docToken.valueCell.trim().replace(/^`|`$/g, "");
     expect(fontNames(declaredRootTokenValue("--font-ui"))).toEqual(fontNames(docValue));
   });
@@ -348,7 +348,7 @@ describe("tokens.css — fonts", () => {
 describe("tokens.css — prefers-reduced-motion", () => {
   it("the prefers-reduced-motion block overrides both --dur-fast and --dur-base to 0ms and disables looping animations", () => {
     const mediaMatch = tokensCss.match(/@media \(prefers-reduced-motion: reduce\)\s*{([\s\S]*)}\s*$/);
-    if (!mediaMatch) throw new Error("tokens.css 沒有 prefers-reduced-motion 區塊");
+    if (!mediaMatch) throw new Error("tokens.css has no prefers-reduced-motion block");
     const block = mediaMatch[1];
     expect(block).toMatch(/--dur-fast:\s*0ms/);
     expect(block).toMatch(/--dur-base:\s*0ms/);

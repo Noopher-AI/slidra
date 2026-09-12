@@ -35,7 +35,7 @@ export function useTemplateList(runCommand: RunCommand): TemplateListState {
         const templates = Array.isArray(data?.templates) ? (data.templates as TemplateEntry[]) : [];
         setState({ status: "ready", templates });
       } else {
-        setState({ status: "error", message: result?.message ?? "無法載入範本清單" });
+        setState({ status: "error", message: result?.message ?? "Failed to load template list" });
       }
     });
     return () => {

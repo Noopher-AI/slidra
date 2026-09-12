@@ -13,7 +13,7 @@ import type { CanvasController } from "../src/canvas.js";
 // There is no zoom feature anywhere in this codebase yet, so only scroll
 // position is checked here.
 
-const project = { name: "測試簡報", slides: ["slides/001.svg"] };
+const project = { name: "Test Deck", slides: ["slides/001.svg"] };
 const slideMarkup = '<svg data-testid="slide"><circle r="1"/></svg>';
 
 let container: HTMLElement;

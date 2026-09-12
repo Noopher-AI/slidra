@@ -123,7 +123,7 @@ export function VideoPanel({ onClose, controller, canvasSize, slidePath }: Video
       <input
         className="media-panel-url"
         type="text"
-        placeholder="或貼上影片網址"
+        placeholder="Or paste a video URL"
         value={url}
         onChange={(event) => handleUrlChange(event.target.value)}
       />

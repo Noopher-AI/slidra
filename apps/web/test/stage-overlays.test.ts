@@ -129,10 +129,10 @@ describe("SelectionOverlay: name / group / drill-in path label (05-INTERACTIONS.
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
-        label: { text: "方塊 A", path: [] },
+        label: { text: "Box A", path: [] },
       }),
     );
-    expect(markup).toContain(">方塊 A<");
+    expect(markup).toContain(">Box A<");
     expect(markup).not.toContain("›");
   });
 
@@ -140,17 +140,17 @@ describe("SelectionOverlay: name / group / drill-in path label (05-INTERACTIONS.
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
-        label: { text: "群組子元素", path: ["群組 2", "群組 1"] },
+        label: { text: "Group Child", path: ["Group 2", "Group 1"] },
       }),
     );
-    expect(markup).toContain(">群組 2 › 群組 1 › 群組子元素<");
+    expect(markup).toContain(">Group 2 › Group 1 › Group Child<");
   });
 
   it("label is positioned at the selection box's top-left corner, offset up 22px (left=union.x, top=union.y-22)", () => {
     const markup = renderToStaticMarkup(
       createElement(SelectionOverlay, {
         union: { x: 100, y: 100, width: 160, height: 100 },
-        label: { text: "方塊 A", path: [] },
+        label: { text: "Box A", path: [] },
       }),
     );
     expect(markup).toContain("left:100px");

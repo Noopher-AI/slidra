@@ -55,14 +55,14 @@ export function loadYouTubeApi(): Promise<YouTubeApi> {
     win.onYouTubeIframeAPIReady = () => {
       previous?.();
       if (win.YT?.Player) resolve(win.YT);
-      else reject(new Error("YouTube IFrame API 載入後仍找不到 YT.Player"));
+      else reject(new Error("YT.Player still not found after YouTube IFrame API loaded"));
     };
 
     if (document.querySelector(`script[src="${API_SRC}"]`)) return;
     const script = document.createElement("script");
     script.src = API_SRC;
     script.async = true;
-    script.addEventListener("error", () => reject(new Error("YouTube IFrame API 載入失敗")));
+    script.addEventListener("error", () => reject(new Error("YouTube IFrame API failed to load")));
     document.head.appendChild(script);
   });
   return apiPromise;

@@ -53,7 +53,7 @@ function positionAt(svg: string, offset: number): { line: number; column: number
 
 function describe(svg: string, offset: number): string {
   const { line, column } = positionAt(svg, offset);
-  return `第 ${line} 行第 ${column} 欄`;
+  return `line ${line}, column ${column}`;
 }
 
 const XML_WHITESPACE = /[\t\n\r ]/;
@@ -93,20 +93,20 @@ function scanAttributes(svg: string, from: number, to: number): ScannedAttribute
     const nameStart = i;
     while (i < to && !XML_WHITESPACE.test(svg[i]) && svg[i] !== "=") i++;
     const name = svg.slice(nameStart, i);
-    if (!name) throw new Error("屬性語法錯誤：無法解析屬性名稱");
+    if (!name) throw new Error("attribute syntax error: cannot parse attribute name");
 
     while (i < to && XML_WHITESPACE.test(svg[i])) i++;
-    if (svg[i] !== "=") throw new Error(`屬性語法錯誤：屬性 ${name} 缺少 =`);
+    if (svg[i] !== "=") throw new Error(`attribute syntax error: attribute ${name} is missing =`);
     i++;
 
     while (i < to && XML_WHITESPACE.test(svg[i])) i++;
     const quote = svg[i];
-    if (quote !== '"' && quote !== "'") throw new Error(`屬性語法錯誤：屬性 ${name} 的值未以引號括住`);
+    if (quote !== '"' && quote !== "'") throw new Error(`attribute syntax error: value of attribute ${name} is not quoted`);
     i++;
 
     const valueStart = i;
     while (i < to && svg[i] !== quote) i++;
-    if (i >= to) throw new Error(`屬性語法錯誤：屬性 ${name} 的引號未封閉`);
+    if (i >= to) throw new Error(`attribute syntax error: quote of attribute ${name} is not closed`);
     attributes.push({ name, value: svg.slice(valueStart, i), start: nameStart, end: i + 1 });
     i++;
   }
@@ -124,7 +124,7 @@ function readOpenTag(svg: string, start: number): OpenTag {
   let j = start + 1;
   while (j < svg.length && /[\w:.-]/.test(svg[j])) j++;
   const tag = svg.slice(start + 1, j);
-  if (!tag) throw new Error(`標記語法錯誤：${describe(svg, start)} 不是合法的標籤`);
+  if (!tag) throw new Error(`markup syntax error: ${describe(svg, start)} is not a valid tag`);
 
   let k = j;
   let quote: string | null = null;
@@ -139,7 +139,7 @@ function readOpenTag(svg: string, start: number): OpenTag {
     }
     k++;
   }
-  if (k >= svg.length) throw new Error(`標記語法錯誤：${describe(svg, start)} 的 <${tag}> 標籤沒有結尾的 >`);
+  if (k >= svg.length) throw new Error(`markup syntax error: ${describe(svg, start)}'s <${tag}> tag has no closing >`);
 
   const selfClosing = svg[k - 1] === "/";
   const attributes = scanAttributes(svg, j, selfClosing ? k - 1 : k);
@@ -150,7 +150,7 @@ function readOpenTag(svg: string, start: number): OpenTag {
 export function scanDocument(svg: string): ScannedNode[] {
   const { nodes, next } = scanNodes(svg, 0, null);
   if (next < svg.length) {
-    throw new Error(`標記語法錯誤：${describe(svg, next)} 出現多餘的結束標籤`);
+    throw new Error(`markup syntax error: ${describe(svg, next)} has an extra closing tag`);
   }
   return nodes;
 }
@@ -166,17 +166,17 @@ function scanNodes(
     const marker = svg[i + 1];
     if (marker === "!" || marker === "?") {
       const next = skipNonElementConstruct(svg, i);
-      if (next === -1) throw new Error(`標記語法錯誤：${describe(svg, i)} 的註解或宣告沒有結尾`);
+      if (next === -1) throw new Error(`markup syntax error: comment or declaration in ${describe(svg, i)} has no end`);
       i = svg.indexOf("<", next);
       continue;
     }
     if (marker === "/") {
       const closeEnd = svg.indexOf(">", i);
-      if (closeEnd === -1) throw new Error(`標記語法錯誤：${describe(svg, i)} 的結束標籤沒有結尾的 >`);
+      if (closeEnd === -1) throw new Error(`markup syntax error: closing tag in ${describe(svg, i)} has no closing >`);
       const closingName = svg.slice(i + 2, closeEnd).trim();
       if (parentTag === null) return { nodes, next: i, closeStart: i };
       if (closingName !== parentTag) {
-        throw new Error(`標記語法錯誤：${describe(svg, i)} 的結束標籤是 </${closingName}>，但目前開啟的是 <${parentTag}>`);
+        throw new Error(`markup syntax error: closing tag in ${describe(svg, i)} is </${closingName}>, but the currently open tag is <${parentTag}>`);
       }
       return { nodes, next: closeEnd + 1, closeStart: i };
     }
@@ -211,7 +211,7 @@ function scanNodes(
     i = svg.indexOf("<", inner.next);
   }
 
-  if (parentTag !== null) throw new Error(`標記語法錯誤：<${parentTag}> 沒有對應的結束標籤`);
+  if (parentTag !== null) throw new Error(`markup syntax error: <${parentTag}> has no matching closing tag`);
   return { nodes, next: svg.length, closeStart: svg.length };
 }
 
@@ -246,7 +246,7 @@ function readComment(node: ScannedNode, svgContent: string): SlideComment {
   const author = attributeValue(node, "author");
   const created = attributeValue(node, "created");
   if (id === null || target === null || author === null || created === null) {
-    throw new Error("留言缺少必要屬性");
+    throw new Error("comment missing required attribute");
   }
   const raw = svgContent.slice(node.contentStart, node.contentEnd);
   return { id, target, author, created, text: unescapeXmlText(raw) };
@@ -256,7 +256,7 @@ function readComment(node: ScannedNode, svgContent: string): SlideComment {
 export function readSlideComments(svgContent: string): SlideComment[] {
   const roots = scanDocument(svgContent);
   const svgRoot = roots.find((node) => node.tag === "svg");
-  if (!svgRoot) throw new Error("投影片的根節點不是 <svg>");
+  if (!svgRoot) throw new Error("root node of the slide is not <svg>");
   const list = findCommentsList(svgRoot);
   if (!list) return [];
   return list.children.filter((child) => child.tag === COMMENT_TAG).map((child) => readComment(child, svgContent));

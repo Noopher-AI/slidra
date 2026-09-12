@@ -108,7 +108,7 @@ const AGENT_COMMANDS_EVENT = "agent-commands";
 const AGENT_CHANGED_EVENT = "agent-changed";
 const AGENT_MODEL_CHANGED_EVENT = "agent-model-changed";
 const EVENTS_PATH = "/api/events";
-const DEFAULT_ERROR_MESSAGE = "即時預覽已中斷";
+const DEFAULT_ERROR_MESSAGE = "Live preview stopped";
 
 // The numeric value of the standard `EventSource.CLOSED` readyState (2).
 // Read as a plain number, not the `EventSource` global's static constant,

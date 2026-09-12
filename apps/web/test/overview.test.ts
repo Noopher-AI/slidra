@@ -92,7 +92,7 @@ class FakeIntersectionObserver {
 // rejects unhandled in tests that are about something else.
 function presentationResponse(): Response {
   return new Response(
-    JSON.stringify({ formatVersion: 1, name: "測試", canvas: { width: 1280, height: 720 }, slides: [] }),
+    JSON.stringify({ formatVersion: 1, name: "Test", canvas: { width: 1280, height: 720 }, slides: [] }),
     { status: 200 },
   );
 }
@@ -161,7 +161,7 @@ describe("mountOverview", () => {
         const url = String(input);
         if (url === "/api/presentation") {
           return new Response(
-            JSON.stringify({ formatVersion: 1, name: "測試", canvas: { width: 1024, height: 768 }, slides: [] }),
+            JSON.stringify({ formatVersion: 1, name: "Test", canvas: { width: 1024, height: 768 }, slides: [] }),
             { status: 200 },
           );
         }
@@ -189,7 +189,7 @@ describe("mountOverview", () => {
         const url = String(input);
         if (url === "/api/presentation") {
           return new Response(
-            JSON.stringify({ formatVersion: 1, name: "測試", canvas: canvasSize, slides: [] }),
+            JSON.stringify({ formatVersion: 1, name: "Test", canvas: canvasSize, slides: [] }),
             { status: 200 },
           );
         }
@@ -785,7 +785,7 @@ describe("mountOverview", () => {
 
 describe("a thumbnail only repaints when the visible picture actually changed", () => {
   it("refresh() does not reset srcdoc for a slide where only <metadata> changed; it resets only when the visible content changes", async () => {
-    const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">講稿</slidra:notes></metadata>';
+    const NOTES = '<metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Speaker notes</slidra:notes></metadata>';
     let s1 = '<svg data-testid="s1"><circle r="1"/></svg>';
     vi.stubGlobal(
       "fetch",

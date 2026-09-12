@@ -49,7 +49,7 @@ export function readSlideNotes(svgMarkup: string): SlideNotesRead {
 
   const svgRoot = roots.find((node) => node.tag === "svg");
   if (!svgRoot) {
-    return { ok: false, error: "投影片的根節點不是 <svg>" };
+    return { ok: false, error: "root node of the slide is not <svg>" };
   }
 
   const metadata = findChild(svgRoot, METADATA_TAG);
@@ -80,7 +80,7 @@ export async function fetchSlideNotes(slidePath: string): Promise<SlideNotesRead
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
   if (!response.ok) {
-    return { ok: false, error: `載入失敗：/api/files/${slidePath}` };
+    return { ok: false, error: `failed to load: /api/files/${slidePath}` };
   }
   const markup = await response.text();
   return readSlideNotes(markup);

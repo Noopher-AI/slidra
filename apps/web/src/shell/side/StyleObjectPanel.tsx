@@ -65,7 +65,7 @@ export function StyleObjectPanel({ state, controller }: StyleObjectPanelProps) {
   if (elements.length === 0) {
     return (
       <div className="style-object-panel" role="tabpanel" aria-label="Style · Object">
-        <p className="style-panel-empty">選取元素以檢視樣式</p>
+        <p className="style-panel-empty">Select an element to view its style</p>
       </div>
     );
   }
@@ -142,7 +142,7 @@ export function StyleObjectPanel({ state, controller }: StyleObjectPanelProps) {
           control="select"
           options={ALIGN_OPTIONS}
           disabled={hasGroup || alignUnavailable}
-          note={alignUnavailable ? "選取包含文字框與一般文字，對齊暫不可用" : null}
+          note={alignUnavailable ? "Selection mixes text boxes and plain text; alignment is unavailable" : null}
           current={alignCurrent}
           resetKey={`${selectionKey}:align`}
           onCommit={commitAlign}
@@ -190,8 +190,8 @@ export function StyleObjectPanel({ state, controller }: StyleObjectPanelProps) {
 
   return (
     <div className="style-object-panel" role="tabpanel" aria-label="Style · Object">
-      {hasGroup && <p className="style-panel-note">群組沒有可套用樣式的圖元</p>}
-      {mixedTypes && <p className="style-panel-note">選取包含多種元素型別，只顯示共同屬性</p>}
+      {hasGroup && <p className="style-panel-note">Groups have no elements to apply style to</p>}
+      {mixedTypes && <p className="style-panel-note">Selection mixes multiple element types; only shared properties are shown</p>}
       {renderTextSection()}
       {renderShapeSection()}
       <fieldset className="style-section" data-section="appearance">

@@ -80,21 +80,21 @@ export function ExportPanel({ open, onToggle, onClose, onPick, canExport, state,
       )}
       {state.kind === "busy" && (
         <div className="export-status" role="status">
-          {state.totalFrames > 0 ? `匯出中… ${state.completedFrames}/${state.totalFrames}` : "匯出中…"}
+          {state.totalFrames > 0 ? `Exporting… ${state.completedFrames}/${state.totalFrames}` : "Exporting…"}
         </div>
       )}
       {state.kind === "done" && (
         <div className="export-status export-status-done">
           <a href={state.downloadPath} download onClick={onDismiss}>
-            下載 {state.fileName}（{state.pageCount} 頁）
+            Download {state.fileName} ({state.pageCount} pages)
           </a>
-          <button type="button" className="export-status-dismiss" aria-label="關閉" onClick={onDismiss} />
+          <button type="button" className="export-status-dismiss" aria-label="Close" onClick={onDismiss} />
         </div>
       )}
       {state.kind === "error" && (
         <div className="export-status export-status-error" role="alert">
           {state.message}
-          <button type="button" className="export-status-dismiss" aria-label="關閉" onClick={onDismiss} />
+          <button type="button" className="export-status-dismiss" aria-label="Close" onClick={onDismiss} />
         </div>
       )}
     </div>

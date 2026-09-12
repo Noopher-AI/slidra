@@ -31,14 +31,14 @@ describe("toExportUiState", () => {
       completedFrames: 45,
       totalFrames: 45,
       pageCount: 45,
-      fileName: "簡報-frames.pdf",
+      fileName: "deck-frames.pdf",
       downloadPath: "/api/export/j/file",
     };
-    expect(toExportUiState(event)).toEqual({ kind: "done", fileName: "簡報-frames.pdf", pageCount: 45, downloadPath: "/api/export/j/file" });
+    expect(toExportUiState(event)).toEqual({ kind: "done", fileName: "deck-frames.pdf", pageCount: 45, downloadPath: "/api/export/j/file" });
   });
 
   it("an error event converts into an error message", () => {
-    const event: ExportSseEvent = { jobId: "j", format: "pdf", state: "error", message: "渲染失敗" };
-    expect(toExportUiState(event)).toEqual({ kind: "error", message: "渲染失敗" });
+    const event: ExportSseEvent = { jobId: "j", format: "pdf", state: "error", message: "Render failed" };
+    expect(toExportUiState(event)).toEqual({ kind: "error", message: "Render failed" });
   });
 });

@@ -102,7 +102,7 @@ export function ImagePanel({ onClose, controller, canvasSize, slidePath }: Image
       <input
         className="media-panel-url"
         type="text"
-        placeholder="或貼上圖片網址"
+        placeholder="Or paste an image URL"
         value={url}
         onChange={(event) => handleUrlChange(event.target.value)}
       />

@@ -37,7 +37,7 @@ export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProp
   }, [state.mode, controller]);
 
   if (!slidePath || effects === null) {
-    return <div className="animate-object-panel" role="tabpanel" aria-label="動畫 · Object" />;
+    return <div className="animate-object-panel" role="tabpanel" aria-label="Animate · Object" />;
   }
 
   const cards = buildCards(effects, targetInfo);
@@ -71,7 +71,7 @@ export function AnimateObjectPanel({ state, controller }: AnimateObjectPanelProp
   }
 
   return (
-    <div className="animate-object-panel" role="tabpanel" aria-label="動畫 · Object">
+    <div className="animate-object-panel" role="tabpanel" aria-label="Animate · Object">
       <div className="animate-object-toolbar">
         <button
           type="button"

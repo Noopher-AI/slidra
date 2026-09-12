@@ -383,7 +383,7 @@ export function App() {
     // unrelated, not an error (§4.2 table).
     if (files.length === 0) return;
     if (files.length > 1) {
-      controllerRef.current?.reportError("一次只能匯入一個檔案");
+      controllerRef.current?.reportError("Only one file can be imported at a time");
       return;
     }
     void importFile(files[0]);
@@ -462,7 +462,7 @@ export function App() {
       // that tab hears about its own change too, same as every other
       // no-replay event on this stream.
       onAgentChanged: (event) => {
-        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `已切換到 ${event.label}，接下來的訊息由它處理`));
+        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `Switched to ${event.label}. It will handle messages from here.`));
         void refreshAgentStatus();
       },
       // Switching models doesn't warrant a system message: the pill itself
@@ -928,7 +928,7 @@ export function App() {
       // from another client) shows Stop right away.
       setWorking(turnRunningFrom(data));
     } catch {
-      setAgentStatus({ kind: "error", message: "無法取得 agent 狀態：連線已中斷" });
+      setAgentStatus({ kind: "error", message: "Could not get agent status: connection lost" });
     } finally {
       setAgentProbing(false);
     }
@@ -945,12 +945,12 @@ export function App() {
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        pushChatError(body.error ?? "切換模型失敗");
+        pushChatError(body.error ?? "Failed to switch model");
         return;
       }
       await refreshAgentStatus();
     } catch {
-      pushChatError("切換模型失敗：連線已中斷");
+      pushChatError("Failed to switch model: connection lost");
     }
   }
 
@@ -960,12 +960,12 @@ export function App() {
       const response = await fetch("/api/agent/session", { method: "POST" });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        pushChatError(body.error ?? "無法取得模型清單");
+        pushChatError(body.error ?? "Could not get model list");
         return;
       }
       await refreshAgentStatus();
     } catch {
-      pushChatError("無法取得模型清單：連線已中斷");
+      pushChatError("Could not get model list: connection lost");
     }
   }
 
@@ -979,7 +979,7 @@ export function App() {
       const parsed = fromAgentResponse(data);
       if (parsed) setAgentStatus(parsed);
     } catch {
-      setAgentActionError("重新偵測失敗：連線已中斷");
+      setAgentActionError("Re-detect failed: connection lost");
     } finally {
       setAgentProbing(false);
     }
@@ -1002,7 +1002,7 @@ export function App() {
         body: JSON.stringify({ kind }),
       });
     } catch {
-      setAgentActionError("切換 agent 失敗：連線已中斷");
+      setAgentActionError("Failed to switch agent: connection lost");
       setAgentSwitchingKind(null);
       return;
     }
@@ -1012,7 +1012,7 @@ export function App() {
       return;
     }
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    setAgentActionError(body.error ?? "切換 agent 失敗");
+    setAgentActionError(body.error ?? "Failed to switch agent");
     setAgentSwitchingKind(null);
   }
 
@@ -1050,17 +1050,17 @@ export function App() {
         body: bytes,
       });
     } catch {
-      setOpenError(`「${file.name}」開啟失敗：連線已中斷`);
+      setOpenError(`"${file.name}" failed to open: connection lost`);
       return;
     }
     if (response.status === 409 && !discardUnsaved) {
-      const proceed = window.confirm("目前的簡報有未儲存的變更，確定要放棄並開啟新檔案嗎？");
+      const proceed = window.confirm("The current presentation has unsaved changes. Discard them and open a new file?");
       if (proceed) await handleOpenFile(file, true);
       return;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "開啟失敗");
+      setOpenError(body.error ?? "Failed to open");
       return;
     }
     // /api/open already broadcasts presentation-changed + save-state on
@@ -1085,17 +1085,17 @@ export function App() {
         headers: discardUnsaved ? { "x-slidra-discard-unsaved": "1" } : {},
       });
     } catch {
-      setOpenError("建立新簡報失敗：連線已中斷");
+      setOpenError("Failed to create new presentation: connection lost");
       return;
     }
     if (response.status === 409 && !discardUnsaved) {
-      const proceed = window.confirm("目前的簡報有未儲存的變更，確定要放棄並建立新簡報嗎？");
+      const proceed = window.confirm("The current presentation has unsaved changes. Discard them and create a new presentation?");
       if (proceed) await handleNew(true);
       return;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "建立新簡報失敗");
+      setOpenError(body.error ?? "Failed to create new presentation");
     }
   }
 
@@ -1107,12 +1107,12 @@ export function App() {
     try {
       response = await fetch("/api/save", { method: "POST" });
     } catch {
-      setOpenError("儲存失敗：連線已中斷");
+      setOpenError("Failed to save: connection lost");
       return;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "儲存失敗");
+      setOpenError(body.error ?? "Failed to save");
       return;
     }
     // The server broadcasts save-state itself (serve.ts's handleSavePost) —
@@ -1139,12 +1139,12 @@ export function App() {
         body: JSON.stringify({ format }),
       });
     } catch {
-      setExportState({ kind: "error", message: "匯出失敗：連線已中斷" });
+      setExportState({ kind: "error", message: "Export failed: connection lost" });
       return;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setExportState({ kind: "error", message: body.error ?? "匯出失敗" });
+      setExportState({ kind: "error", message: body.error ?? "Export failed" });
     }
   }
 
@@ -1208,7 +1208,7 @@ export function App() {
         await exitPromise;
       } catch (error) {
         // Surfaced, never swallowed (behaviour contract row 1).
-        setFullscreenError(error instanceof Error ? error.message : "退出全螢幕失敗");
+        setFullscreenError(error instanceof Error ? error.message : "Failed to exit fullscreen");
       } finally {
         if (fullscreenRequestRef.current === exitPromise) fullscreenRequestRef.current = null;
       }
@@ -1224,7 +1224,7 @@ export function App() {
     const webkitContainer = container as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
     const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
     if (!request) {
-      setFullscreenError("這個瀏覽器不支援全螢幕");
+      setFullscreenError("This browser doesn't support fullscreen");
       // P2 (review gate round 2): this early-return path used to skip
       // focusPlayer() — the click that got here already moved DOM focus
       // onto this button, so without this call the arrow keys silently die
@@ -1245,7 +1245,7 @@ export function App() {
     try {
       await requestPromise;
     } catch (error) {
-      setFullscreenError(error instanceof Error ? error.message : "進入全螢幕失敗");
+      setFullscreenError(error instanceof Error ? error.message : "Failed to enter fullscreen");
     } finally {
       // Only clear the ref if it still points at *this* call's own promise
       // (same guard the exit branch above already uses). Two clicks in
@@ -1349,7 +1349,7 @@ export function App() {
       // Honest refusal, not a silent drop or a silent queue: the author
       // can see the chat is not ready yet instead of losing the message
       // with no trace.
-      pushChatError("聊天連線尚未就緒，請稍候再試一次");
+      pushChatError("Chat connection isn't ready yet. Please wait and try again.");
       return;
     }
     const id = nextMessageIdRef.current++;
@@ -1369,7 +1369,7 @@ export function App() {
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
         setWorking(false);
-        pushChatError(body.error ?? "傳送訊息失敗");
+        pushChatError(body.error ?? "Failed to send message");
         // NOOP-230 §4.4/Plan §4.8: a `reason`-carrying 409 means the server's
         // own agent state disagrees with what this tab last knew (unset/
         // unauthenticated) — re-GET so the empty state appears immediately,
@@ -1388,7 +1388,7 @@ export function App() {
       // the same `error` state the non-OK branch above uses, naming the
       // message so it is clear which one failed.
       setWorking(false);
-      pushChatError(`「${text}」傳送失敗：連線已中斷，此訊息尚未送出`);
+      pushChatError(`"${text}" failed to send: connection lost. This message was not sent.`);
     }
   }
 
@@ -1403,7 +1403,7 @@ export function App() {
     const text = draft.trim();
     if (!text && comments.length === 0) return;
     setDraft("");
-    await sendChatText(text, text ? undefined : `（未輸入訊息，只送出 ${comments.length} 則釘選留言）`);
+    await sendChatText(text, text ? undefined : `(No message entered — sending ${comments.length} pinned comment(s) only)`);
   }
 
   /**
@@ -1442,10 +1442,10 @@ export function App() {
       const response = await fetch("/api/chat/cancel", { method: "POST" });
       if (!response.ok && response.status !== 409) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        pushChatError(body.error ?? "停止失敗");
+        pushChatError(body.error ?? "Failed to stop");
       }
     } catch {
-      pushChatError("停止失敗：連線已中斷");
+      pushChatError("Failed to stop: connection lost");
     } finally {
       setStopping(false);
     }
@@ -1464,11 +1464,11 @@ export function App() {
       const response = await fetch("/api/chat/new", { method: "POST" });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        pushChatError(body.error ?? "無法重開對話");
+        pushChatError(body.error ?? "Could not start a new conversation");
         return;
       }
     } catch {
-      pushChatError("無法重開對話：連線已中斷");
+      pushChatError("Could not start a new conversation: connection lost");
       return;
     }
     setMessages([]);
@@ -1543,12 +1543,12 @@ export function App() {
         return;
       }
       if (!response.ok) {
-        console.warn(`讀取 plan/outline.md 失敗：HTTP ${response.status}`);
+        console.warn(`Failed to read plan/outline.md: HTTP ${response.status}`);
         return;
       }
       setPlanOutline(parsePlanOutline(await response.text()));
     } catch (error) {
-      console.warn(`讀取 plan/outline.md 失敗：${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`Failed to read plan/outline.md: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

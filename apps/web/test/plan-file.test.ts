@@ -5,31 +5,31 @@ const VALID_FENCE = JSON.stringify({
   status: "draft",
   mode: "pyramid",
   pages: [
-    { n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "封面" },
+    { n: 1, relationship: "none", type: "cover", rhythm: "anchor", title: "Cover" },
     // Most pages carry no `type` — the planner only names the relationship
     // and the build decides the layout.
-    { n: 2, relationship: "membership", rhythm: "dense", title: "三個重點" },
+    { n: 2, relationship: "membership", rhythm: "dense", title: "Three key points" },
   ],
   questions: [
     {
       id: "mode",
-      question: "敘事骨架",
-      note: "結論先行最省時間",
+      question: "Narrative mode",
+      note: "Conclusion-first saves the most time",
       recommended: "pyramid",
       options: [
-        { value: "pyramid", label: "結論先行" },
-        { value: "narrative", label: "故事線" },
+        { value: "pyramid", label: "Conclusion first" },
+        { value: "narrative", label: "Story arc" },
       ],
       free_text: true,
     },
   ],
 });
-const VALID_FILE = "```json\n" + VALID_FENCE + "\n```\n\n## 第 1 頁\n主張……\n";
+const VALID_FILE = "```json\n" + VALID_FENCE + "\n```\n\n## Page 1\nClaim……\n";
 
 describe("plan/outline.md's JSON fence", () => {
   it("extracts the leading fence and leaves the markdown body alone", () => {
     expect(extractJsonFence(VALID_FILE)).toBe(VALID_FENCE);
-    expect(extractJsonFence("# 沒有圍欄\n```json\n{}\n```")).toBeNull();
+    expect(extractJsonFence("# No fence\n```json\n{}\n```")).toBeNull();
   });
 
   it("parses a well-formed outline", () => {
@@ -75,11 +75,11 @@ describe("plan/outline.md's JSON fence", () => {
       status: "draft",
       mode: "briefing",
       pages: [
-        { n: 1, relationship: "none", rhythm: "anchor", title: "封面" },
-        { n: 2, relationship: "order", rhythm: "dense", title: "三個步驟" },
+        { n: 1, relationship: "none", rhythm: "anchor", title: "Cover" },
+        { n: 2, relationship: "order", rhythm: "dense", title: "Three steps" },
       ],
       questions: [
-        { id: "palette", question: "配色", recommended: "A", options: [{ value: "A", label: "深色" }, { value: "B", label: "淺色" }] },
+        { id: "palette", question: "Palette", recommended: "A", options: [{ value: "A", label: "Dark" }, { value: "B", label: "Light" }] },
       ],
     };
     const outline = parsePlanOutline("```json\n" + JSON.stringify(noTypes) + "\n```");
@@ -116,13 +116,13 @@ describe("gate messages (contract §4)", () => {
   it("builds the 【計畫確認】 message one answer per line, notes only when given", () => {
     const text = buildConfirmMessage({
       choices: { mode: "pyramid", "page-5": "number" },
-      notes: { mode: "  ", "page-5": "數字要大一點" },
-      overall: "整體再精簡",
+      notes: { mode: "  ", "page-5": "Make the number bigger" },
+      overall: "Trim the whole thing down",
     });
-    expect(text).toBe("/slidra-build 【計畫確認】\nmode=pyramid\npage-5=number\npage-5.note=數字要大一點\n補充：整體再精簡");
+    expect(text).toBe("/slidra-build 【計畫確認】\nmode=pyramid\npage-5=number\npage-5.note=Make the number bigger\n補充：Trim the whole thing down");
   });
 
   it("builds the 【重做】 message", () => {
-    expect(buildRedoMessage(" 太多頁了 ")).toBe("/slidra-plan 【重做】太多頁了");
+    expect(buildRedoMessage(" too many pages ")).toBe("/slidra-plan 【重做】too many pages");
   });
 });

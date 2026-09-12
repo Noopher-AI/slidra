@@ -48,9 +48,9 @@ describe("StatusBar selection chip text", () => {
   });
 
   it("a single element is selected and has data-slidra-name: the chip shows that name, not the id", () => {
-    const markup = markupWithSelection(["el-a"], ["標題"]);
+    const markup = markupWithSelection(["el-a"], ["Title"]);
     expect(markup).toContain("Selected:");
-    expect(markup).toContain("標題");
+    expect(markup).toContain("Title");
     expect(markup).not.toContain("el-a");
   });
 
@@ -61,7 +61,7 @@ describe("StatusBar selection chip text", () => {
   });
 
   it("multi-select (3 elements): the chip shows \"Selected: 3 elements\", the exact string an e2e test asserts on", () => {
-    const markup = markupWithSelection(["el-a", "el-b", "el-c"], ["標題", null, "副標"]);
+    const markup = markupWithSelection(["el-a", "el-b", "el-c"], ["Title", null, "Subtitle"]);
     expect(markup).toContain("Selected:");
     expect(markup).toContain("3 elements");
   });

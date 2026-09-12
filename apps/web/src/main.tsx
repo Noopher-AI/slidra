@@ -24,7 +24,7 @@ import "./styles/chart-window.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
-  throw new Error("找不到掛載節點：#root");
+  throw new Error("Mount node not found: #root");
 }
 
 createRoot(rootElement).render(

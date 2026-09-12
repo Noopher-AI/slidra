@@ -54,14 +54,14 @@ const CSS_LITERAL_ALLOWLIST: ReadonlySet<string> = new Set(["1px", "50%", "100%"
  * nothing to do with tokens.css. Percentages are only meaningful (and only checked) inside
  * border-radius/box-shadow, where the dedicated patterns below already look at every value token. */
 const CSS_FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }> = [
-  { name: "hex 色碼", pattern: /#[0-9a-fA-F]{3,8}\b/g },
+  { name: "hex color code", pattern: /#[0-9a-fA-F]{3,8}\b/g },
   { name: "rgb()/rgba()", pattern: /\brgba?\(/g },
-  { name: "字面 duration（ms/s）", pattern: /[0-9]+(?:\.[0-9]+)?(?:ms|s)\b/g },
-  { name: "字面 easing 關鍵字", pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g },
+  { name: "literal duration (ms/s)", pattern: /[0-9]+(?:\.[0-9]+)?(?:ms|s)\b/g },
+  { name: "literal easing keyword", pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g },
   { name: "cubic-bezier()", pattern: /cubic-bezier\(/g },
-  { name: "字面 px/rem 數值", pattern: /(?<![\w.#-])[0-9]+(?:\.[0-9]+)?(?:px|rem)\b/g },
-  { name: "字面 border-radius 值", pattern: /border-radius\s*:\s*([^;]+)/g },
-  { name: "字面 box-shadow 值", pattern: /box-shadow\s*:\s*([^;]+)/g },
+  { name: "literal px/rem value", pattern: /(?<![\w.#-])[0-9]+(?:\.[0-9]+)?(?:px|rem)\b/g },
+  { name: "literal border-radius value", pattern: /border-radius\s*:\s*([^;]+)/g },
+  { name: "literal box-shadow value", pattern: /box-shadow\s*:\s*([^;]+)/g },
 ];
 
 /** True when `matchedText` (the full regex match for `patternName`) should NOT be reported —
@@ -69,7 +69,7 @@ const CSS_FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pa
  * box-shadow, whose pattern captures the entire value — every token that remains once all
  * `var(--x)` references are stripped out is itself on the allowlist (or there's nothing left). */
 function isAllowedLiteral(patternName: string, matchedText: string): boolean {
-  if (patternName === "字面 border-radius 值" || patternName === "字面 box-shadow 值") {
+  if (patternName === "literal border-radius value" || patternName === "literal box-shadow value") {
     const value = matchedText.slice(matchedText.indexOf(":") + 1);
     const withoutVars = value.replace(/var\(--[a-z0-9-]+\)/g, " ").trim();
     if (withoutVars === "") return true;
@@ -137,8 +137,8 @@ interface InlineStyleException {
 
 /** The only hits in packages/web/src today (Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
-  { file: "canvas.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
-  { file: "overview.ts", allowed: ["#fff"], reason: "生成的忠實渲染文件，#fff 是投影片紙張本色，不是產品 UI" },
+  { file: "canvas.ts", allowed: ["#fff"], reason: "Generated faithful-rendering document; #fff is the slide's own paper color, not product UI" },
+  { file: "overview.ts", allowed: ["#fff"], reason: "Generated faithful-rendering document; #fff is the slide's own paper color, not product UI" },
   // Same category the ms-only duration pattern below already
   // structurally excuses this file for (see CODE_FORBIDDEN_PATTERNS'
   // comment) — these "ease"/"linear" strings are WAAPI `easing` option
@@ -152,7 +152,7 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   {
     file: "player-runtime.js",
     allowed: ["ease", "linear"],
-    reason: "el.animate() 的 easing 參數，沙盒 iframe 執行期輸出，不是產品 UI",
+    reason: "el.animate()'s easing parameter, runtime output inside the sandboxed iframe, not product UI",
   },
   // F8: slide-dom.ts's own copy of core's table/model.ts
   // readTableModel — "#000000" is the SAME fallback core's TableCell.textFill
@@ -161,7 +161,7 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   {
     file: "slide-dom.ts",
     allowed: ["#000000"],
-    reason: "表格儲存格 text-fill 讀不到值時的資料預設值，與 core 的 readTableModel 同一個預設，不是產品 UI",
+    reason: "The data default when a table cell's text-fill can't be read, the same default as core's readTableModel, not a product UI value",
   },
   // Decision 7: the contrast fill/stroke colors for inserted elements without
   // an accent are two concrete values specified by the decision itself, plus
@@ -171,16 +171,16 @@ const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
   {
     file: "contrast-fill.ts",
     allowed: ["#1f1a1a", "#f4f6f8", "#ffffff"],
-    reason: "拍板決定 7（父票 NOOP-353／#279）指定的對比色常值與「無背景時當白」預設，不是產品 UI 樣式 token",
+    reason: "Ruling 7 (parent ticket NOOP-353/#279)'s contrast-color literals plus the 'treat as white with no background' default, not a swappable product UI style token",
   },
 ];
 
 /** ms-only (not bare seconds) — deliberately narrower than the CSS scan's duration pattern. Runtime scripts injected into the presentation iframe (player-runtime.js, selection-runtime.js) write CSS transition strings like `"opacity 0.4s"`; those are rendered output, not product-UI source, so this pattern does not reach into `s`-only durations at all (Plan §4.2's contract table names `\d+ms` explicitly). */
 const CODE_FORBIDDEN_PATTERNS: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }> = [
-  { name: "hex 色碼", pattern: /#[0-9a-fA-F]{3,8}\b/g },
+  { name: "hex color code", pattern: /#[0-9a-fA-F]{3,8}\b/g },
   { name: "rgb()/rgba()", pattern: /\brgba?\(/g },
-  { name: "字面 duration（ms）", pattern: /\b[0-9]+(?:\.[0-9]+)?ms\b/g },
-  { name: "字面 easing 關鍵字", pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g },
+  { name: "literal duration (ms)", pattern: /\b[0-9]+(?:\.[0-9]+)?ms\b/g },
+  { name: "literal easing keyword", pattern: /(?<![\w-])(?:ease-in-out|ease-in|ease-out|ease|linear)(?![\w-])/g },
   { name: "cubic-bezier()", pattern: /cubic-bezier\(/g },
 ];
 
@@ -218,9 +218,9 @@ function scanCode(filePath: string): Offense[] {
 describe("design-contract.test.ts — inline styles must not hardcode color values / durations / easing (Plan §4.2)", () => {
   it("every exception-list entry has file / allowed (non-empty) / reason fields", () => {
     for (const entry of INLINE_STYLE_EXCEPTIONS) {
-      expect(entry.file, "file 欄位").toBeTruthy();
-      expect(entry.allowed.length, `${entry.file} 的 allowed 欄位`).toBeGreaterThan(0);
-      expect(entry.reason, `${entry.file} 的 reason 欄位`).toBeTruthy();
+      expect(entry.file, "file field").toBeTruthy();
+      expect(entry.allowed.length, `${entry.file}'s allowed field`).toBeGreaterThan(0);
+      expect(entry.reason, `${entry.file}'s reason field`).toBeTruthy();
     }
   });
 
@@ -238,12 +238,12 @@ describe("design-contract.test.ts — inline styles must not hardcode color valu
     for (const [file, offenses] of byFile) {
       const exception = exceptionByFile.get(file);
       if (!exception) {
-        for (const o of offenses) problems.push(`${file}:${o.line} ${o.name}: ${o.text}（不在例外清單中，未涵蓋的新命中）`);
+        for (const o of offenses) problems.push(`${file}:${o.line} ${o.name}: ${o.text} (not in the exception list, uncovered new hit)`);
         continue;
       }
       for (const o of offenses) {
         if (!exception.allowed.includes(o.text)) {
-          problems.push(`${file}:${o.line} ${o.name}: ${o.text}（例外清單允許的值是 [${exception.allowed.join(", ")}]，不含這個命中）`);
+          problems.push(`${file}:${o.line} ${o.name}: ${o.text} (exception list only allows [${exception.allowed.join(", ")}], which doesn't include this hit)`);
         }
       }
     }
@@ -252,7 +252,7 @@ describe("design-contract.test.ts — inline styles must not hardcode color valu
       const actualTexts = new Set((byFile.get(exception.file) ?? []).map((o) => o.text));
       for (const allowedValue of exception.allowed) {
         if (!actualTexts.has(allowedValue)) {
-          problems.push(`${exception.file} 的例外清單值 ${allowedValue} 已無對應命中，請刪掉這一條`);
+          problems.push(`${exception.file}'s exception-list value ${allowedValue} no longer has a matching hit — remove this entry`);
         }
       }
     }

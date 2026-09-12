@@ -168,7 +168,7 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
       // ADR-0009: every effect points at an element, and a media effect's
       // element must carry data-slidra-media (ADR-0005) — its absence is a
       // damaged presentation, not a silently-skipped effect.
-      throw new Error(`元素「${target}」的效果是 family="media"，但沒有 data-slidra-media，簡報已損毀。`);
+      throw new Error(`Element "${target}"'s effect has family="media" but no data-slidra-media; the presentation is corrupted.`);
     }
     media[target] = { src, kind: mediaKindFor(src, target) };
   }
@@ -182,7 +182,7 @@ function mediaKindFor(src: string, target: string): "video" | "audio" {
   if (VIDEO_EXTENSIONS.includes(extension)) return "video";
   if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
   throw new Error(
-    `元素「${target}」的 data-slidra-media「${src}」副檔名「${extension}」不是支援的媒體格式。音訊請用 .oga，影片請用 .ogv。`,
+    `Element "${target}"'s data-slidra-media "${src}" has extension "${extension}", which is not a supported media format. Use .oga for audio and .ogv for video.`,
   );
 }
 

@@ -38,13 +38,13 @@ const READY_TIMEOUT_MS = 120_000;
 
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
-  if (!response.ok) throw new Error(`載入失敗：${path}`);
+  if (!response.ok) throw new Error(`Failed to load: ${path}`);
   return (await response.json()) as T;
 }
 
 async function fetchText(path: string): Promise<string> {
   const response = await fetch(path);
-  if (!response.ok) throw new Error(`載入失敗：${path}`);
+  if (!response.ok) throw new Error(`Failed to load: ${path}`);
   return response.text();
 }
 
@@ -92,7 +92,7 @@ function waitForAllReady(getCompleted: () => number, total: number): Promise<voi
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       clearInterval(poll);
-      reject(new Error("簡報過大，請改用 CLI 分批"));
+      reject(new Error("Deck too large, use the CLI to export in batches instead"));
     }, READY_TIMEOUT_MS);
     const poll = setInterval(() => {
       if (getCompleted() >= total) {
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const format = params.get("format");
   if (format !== "pdf" && format !== "pdf-frames") {
-    throw new Error(`format 必須是 pdf 或 pdf-frames，收到：${format}`);
+    throw new Error(`format must be "pdf" or "pdf-frames", got: ${format}`);
   }
 
   const presentation = await fetchJson<{
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
   // PDF prints it in a host system font.
   setPresentationFonts(presentation.fonts);
   if (presentation.slides.length === 0) {
-    throw new Error("簡報沒有投影片");
+    throw new Error("Presentation has no slides");
   }
   applyPageLayout(presentation.canvas.width, presentation.canvas.height);
   // §4.6: the export wait condition must include `document.fonts.ready`.

@@ -59,7 +59,7 @@ describe("fetchDeckComments", () => {
       vi.fn(async (url: string) => {
         if (url === "/api/raw/slides/001.svg") {
           return new Response(
-            '<svg xmlns="http://www.w3.org/2000/svg"><metadata><slidra:comments xmlns:slidra="https://slidra.app/ns/2026"><slidra:comment id="c-1" target="page" author="agent" created="t1">第一頁</slidra:comment></slidra:comments></metadata></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg"><metadata><slidra:comments xmlns:slidra="https://slidra.app/ns/2026"><slidra:comment id="c-1" target="page" author="agent" created="t1">First page</slidra:comment></slidra:comments></metadata></svg>',
             { status: 200 },
           );
         }
@@ -70,7 +70,7 @@ describe("fetchDeckComments", () => {
     const result = await fetchDeckComments(SLIDES);
     expect(result.errors).toEqual([]);
     expect(result.comments).toEqual([
-      { id: "c-1", slidePath: "slides/001.svg", target: "page", author: "agent", created: "t1", text: "第一頁" },
+      { id: "c-1", slidePath: "slides/001.svg", target: "page", author: "agent", created: "t1", text: "First page" },
     ]);
   });
 

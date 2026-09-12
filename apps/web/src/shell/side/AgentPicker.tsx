@@ -52,9 +52,9 @@ function connectionText(connection: AgentConnection, label: string | null): stri
 }
 
 function cardDetail(card: AgentCardView, probing: boolean): string {
-  if (probing) return "偵測中…";
-  if (card.status === "unauthenticated") return card.detail ? `偵測失敗：${card.detail}` : `未登入 · ${card.loginCommand}`;
-  return card.inUse ? "使用中" : "可用";
+  if (probing) return "Checking…";
+  if (card.status === "unauthenticated") return card.detail ? `Check failed: ${card.detail}` : `Not signed in · ${card.loginCommand}`;
+  return card.inUse ? "In use" : "Available";
 }
 
 /**
@@ -119,9 +119,9 @@ export function AgentPicker({
                 text to detect connection completion). */}
             <span className={`agent-dot agent-dot-${agentConnection}`}>
               <i />
-              {switchingKind !== null ? "切換中…" : agent.kind === "unset" ? "選擇 agent" : connectionText(agentConnection, label)}
+              {switchingKind !== null ? "Switching…" : agent.kind === "unset" ? "Select agent" : connectionText(agentConnection, label)}
             </span>
-            {agent.kind === "unauthenticated" && <span className="chat-chip-badge">未登入</span>}
+            {agent.kind === "unauthenticated" && <span className="chat-chip-badge">Not signed in</span>}
             <span className="chat-chip-caret" aria-hidden="true" />
           </button>
           {open === "agent" && (
@@ -144,10 +144,10 @@ export function AgentPicker({
                   <span className="chat-chip-menu-detail">{cardDetail(card, probing)}</span>
                 </button>
               ))}
-              {editingFrozen && <p className="chat-chip-menu-hint">agent 正在編輯中，切換請稍候</p>}
-              {agent.kind === "ready" && agent.source === "cli" && <p className="chat-chip-menu-hint">本次由命令列指定</p>}
+              {editingFrozen && <p className="chat-chip-menu-hint">The agent is editing — switching will have to wait</p>}
+              {agent.kind === "ready" && agent.source === "cli" && <p className="chat-chip-menu-hint">Set via the command line for this session</p>}
               <button type="button" className="chat-chip-menu-action" disabled={probing} onClick={onProbe}>
-                {probing ? "偵測中…" : "重新偵測登入狀態"}
+                {probing ? "Checking…" : "Re-check sign-in status"}
               </button>
             </div>
           )}
@@ -164,13 +164,13 @@ export function AgentPicker({
               disabled={modelsLocked}
               onClick={() => toggle("model")}
             >
-              {currentModel?.name ?? "模型"}
+              {currentModel?.name ?? "Model"}
               <span className="chat-chip-caret" aria-hidden="true" />
             </button>
             {open === "model" && (
-              <div className="floating-layer chat-chip-menu" role="menu" aria-label="模型">
+              <div className="floating-layer chat-chip-menu" role="menu" aria-label="Model">
                 {modelOptions.length === 0 ? (
-                  <p className="chat-chip-menu-hint">載入模型清單…</p>
+                  <p className="chat-chip-menu-hint">Loading models…</p>
                 ) : (
                   modelOptions.map((option) => (
                     <button

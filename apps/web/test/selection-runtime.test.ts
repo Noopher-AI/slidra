@@ -174,13 +174,13 @@ function visibleGroupFrames(doc: Document): HTMLElement[] {
 
 describe("selection-runtime.js", () => {
   it("reports select with the id and data-slidra-name of a clicked element with an id", async () => {
-    const { doc } = boot('<svg><rect id="el-a" data-slidra-name="標題"/></svg>');
+    const { doc } = boot('<svg><rect id="el-a" data-slidra-name="Title"/></svg>');
     const { messages, stop } = collectMessages();
 
     click(doc, doc.getElementById("el-a")!);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(messages).toEqual([{ source: "slidra-selection", event: "select", id: "el-a", name: "標題", additive: false }]);
+    expect(messages).toEqual([{ source: "slidra-selection", event: "select", id: "el-a", name: "Title", additive: false }]);
     stop();
   });
 
@@ -758,7 +758,7 @@ describe("selection-runtime.js — stage-hover relay (hover pass-through for the
 describe("selection-runtime.js — bounds event", () => {
   it("reports each selected element's ancestor chain, outermost first; union is the union of all selected elements", async () => {
     const { win } = boot(
-      '<svg><g id="el-outer" data-slidra-name="外層"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
+      '<svg><g id="el-outer" data-slidra-name="Outer"><g id="el-inner"><rect id="el-leaf"/></g></g></svg>',
     );
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
@@ -773,7 +773,7 @@ describe("selection-runtime.js — bounds event", () => {
         id: "el-leaf",
         rect: { x: 0, y: 0, width: 0, height: 0 },
         ancestors: [
-          { id: "el-outer", name: "外層" },
+          { id: "el-outer", name: "Outer" },
           { id: "el-inner", name: null },
         ],
       },
@@ -892,7 +892,7 @@ describe("selection-runtime.js — multi-select draws a single dashed union box"
 
 describe("selection-runtime.js — right-click on an element (its context menu was removed, its items folded into the parent document's context bar)", () => {
   it("right-clicking an unselected element selects it, suppresses the browser's native menu, and no longer reports a contextmenu event", async () => {
-    const { win, doc } = boot('<svg><rect id="el-a" data-slidra-name="矩形"/></svg>');
+    const { win, doc } = boot('<svg><rect id="el-a" data-slidra-name="Rectangle"/></svg>');
     const messages: { event?: string }[] = [];
     const handler = (event: MessageEvent) => messages.push(event.data as { event?: string });
     window.addEventListener("message", handler);
@@ -904,7 +904,7 @@ describe("selection-runtime.js — right-click on an element (its context menu w
 
     window.removeEventListener("message", handler);
     expect(event.defaultPrevented).toBe(true);
-    expect(messages).toContainEqual({ source: "slidra-selection", event: "select", id: "el-a", name: "矩形", additive: false });
+    expect(messages).toContainEqual({ source: "slidra-selection", event: "select", id: "el-a", name: "Rectangle", additive: false });
     expect(messages.some((m) => m.event === "contextmenu")).toBe(false);
   });
 
@@ -1043,7 +1043,7 @@ describe("selection-runtime.js text box in-place edit repaint (F8)", () => {
   it("after begin-text-edit, <text>'s direct tspan count equals text.split(\"\\n\").length", async () => {
     const { doc, win } = boot('<svg><g id="el-text" data-slidra-text-width="400"><text>Hi</text></g></svg>');
 
-    await beginTextEdit(win, "el-text", "第一行\n第二行\n第三行");
+    await beginTextEdit(win, "el-text", "Line one\nLine two\nLine three");
 
     expect(tspanCount(doc, "el-text")).toBe(3);
     const tspans = doc.getElementById("el-text")!.querySelectorAll("text > tspan");
@@ -1051,11 +1051,11 @@ describe("selection-runtime.js text box in-place edit repaint (F8)", () => {
     // own contract) — every line except the last one, not every line
     // except the first (the visual y/dy split is the opposite: only the
     // FIRST line gets an explicit y, the rest get a relative dy).
-    expect(tspans[0].textContent).toBe("第一行");
+    expect(tspans[0].textContent).toBe("Line one");
     expect(tspans[0].getAttribute("data-slidra-break")).toBe("1");
-    expect(tspans[1].textContent).toBe("第二行");
+    expect(tspans[1].textContent).toBe("Line two");
     expect(tspans[1].getAttribute("data-slidra-break")).toBe("1");
-    expect(tspans[2].textContent).toBe("第三行");
+    expect(tspans[2].textContent).toBe("Line three");
     expect(tspans[2].getAttribute("data-slidra-break")).toBeNull();
   });
 
@@ -1078,15 +1078,15 @@ describe("selection-runtime.js text box in-place edit repaint (F8)", () => {
 
     win.dispatchEvent(
       new MessageEventCtor("message", {
-        data: { source: "slidra-host", command: "begin-text-edit", id: "el-text", text: "真正的內容", markup: "<tspan>不該出現</tspan>", width: 999 },
+        data: { source: "slidra-host", command: "begin-text-edit", id: "el-text", text: "Real content", markup: "<tspan>Should not appear</tspan>", width: 999 },
         source: win.parent as unknown as MessageEventSource,
       }),
     );
     await tick();
 
     const html = contentTextOuterHtml(doc, "el-text");
-    expect(html).toContain("真正的內容");
-    expect(html).not.toContain("不該出現");
+    expect(html).toContain("Real content");
+    expect(html).not.toContain("Should not appear");
   });
 
   // F-04: a plain `<text>` (no data-slidra-text-width — e.g. a slide title)

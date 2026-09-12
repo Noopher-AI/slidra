@@ -7,7 +7,7 @@ import type { CanvasController, CanvasState, OverlayState } from "../src/canvas.
 // The invariant under test is the sandbox token list itself — assert it
 // directly rather than trusting the implementation comment.
 
-const project = { name: "測試簡報", slides: ["slides/001.svg"] };
+const project = { name: "Test Deck", slides: ["slides/001.svg"] };
 const slideMarkup = '<svg data-testid="slide"><circle r="1"/></svg>';
 
 let container: HTMLElement;
@@ -213,7 +213,7 @@ describe("mountCanvas", () => {
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(JSON.stringify({ name: "空簡報", slides: [] }), { status: 200 });
+          return new Response(JSON.stringify({ name: "Empty Deck", slides: [] }), { status: 200 });
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -235,7 +235,7 @@ describe("mountCanvas", () => {
 // (ADR-0001/ADR-0002). These tests drive a three-slide presentation.
 
 const deck = {
-  name: "三頁簡報",
+  name: "Three-Slide Deck",
   slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"],
 };
 const deckMarkup: Record<string, string> = {
@@ -346,7 +346,7 @@ describe("mountCanvas multi-slide navigation", () => {
     await controller.reload();
     await controller.showSlide(2);
 
-    stubDeck({ name: "變短的簡報", slides: ["slides/001.svg", "slides/002.svg"] });
+    stubDeck({ name: "Shortened Deck", slides: ["slides/001.svg", "slides/002.svg"] });
     await controller.reload();
     expect(srcdoc()).toContain('data-testid="s2"');
   });
@@ -382,7 +382,7 @@ describe("mountCanvas multi-slide navigation", () => {
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(JSON.stringify({ name: "空簡報", slides: [] }), { status: 200 });
+          return new Response(JSON.stringify({ name: "Empty Deck", slides: [] }), { status: 200 });
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -449,7 +449,7 @@ describe("mountCanvas multi-slide navigation", () => {
 // postMessage events the runtime would send.
 
 const NS = 'xmlns:slidra="https://slidra.app/ns/2026"';
-const playDeck = { name: "播放測試簡報", slides: ["slides/001.svg", "slides/002.svg"] };
+const playDeck = { name: "Play Test Deck", slides: ["slides/001.svg", "slides/002.svg"] };
 const playDeckMarkup: Record<string, string> = {
   "slides/001.svg": `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
@@ -595,7 +595,7 @@ describe("mountCanvas play mode", () => {
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(JSON.stringify({ name: "壞掉的簡報", slides: ["slides/001.svg"] }), {
+          return new Response(JSON.stringify({ name: "Broken Deck", slides: ["slides/001.svg"] }), {
             status: 200,
           });
         }
@@ -610,7 +610,7 @@ describe("mountCanvas play mode", () => {
         }
         if (url.endsWith("/api/effects/slides/001.svg")) {
           return new Response(
-            JSON.stringify({ error: "第 1 項（target 為 el-a） 的 family 值「build」尚未實作。" }),
+            JSON.stringify({ error: "item 1 (target is el-a)'s family value \"build\" not yet implemented." }),
             { status: 500 },
           );
         }
@@ -773,7 +773,7 @@ describe("mountCanvas play mode", () => {
   // steps.length - 1 === -1, its static look — same code path, no special
   // case.
   it("startStep is -1 when retreating to a previous slide with no effects", async () => {
-    const noEffectDeck = { name: "無效果上一頁", slides: ["slides/001.svg", "slides/002.svg"] };
+    const noEffectDeck = { name: "No-Effect Previous Slide", slides: ["slides/001.svg", "slides/002.svg"] };
     const noEffectMarkup: Record<string, string> = {
       "slides/001.svg": '<svg data-testid="s1"><rect id="el-a"/></svg>',
       "slides/002.svg": `<svg xmlns="http://www.w3.org/2000/svg">
@@ -831,7 +831,7 @@ describe("mountCanvas play mode", () => {
   // reverse: a superseded retreat's slower render must not paint over what
   // a later, faster navigation already applied.
   it("a slower, superseded retreat-past-start must not overwrite the newer slide", async () => {
-    const raceDeck = { name: "三頁倒退測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
+    const raceDeck = { name: "Three-Slide Rewind Test", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
     let resolveSlide2!: () => void;
     const slide2Gate = new Promise<void>((resolve) => {
       resolveSlide2 = resolve;
@@ -1020,7 +1020,7 @@ describe("mountCanvas play mode", () => {
   // author is actually supposed to be on — the earlier call's slow slide 2
   // could paint over the later call's already-current slide 3.
   it("receiving two advance-past-end in a row: a slower, older page change must not overwrite the newer slide", async () => {
-    const raceDeck = { name: "三頁播放測試", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
+    const raceDeck = { name: "Three-Slide Play Test", slides: ["slides/001.svg", "slides/002.svg", "slides/003.svg"] };
     let resolveSlide2!: () => void;
     const slide2Gate = new Promise<void>((resolve) => {
       resolveSlide2 = resolve;
@@ -1092,7 +1092,7 @@ describe("mountCanvas play mode", () => {
   // once the author moves to a slide that plays fine — `error = null`
   // being assigned is not enough if nothing tells React about it.
   it("clears the previous error and notifies subscribers when moving to a slide with a valid effect list", async () => {
-    const brokenThenFineDeck = { name: "先壞後好", slides: ["slides/001.svg", "slides/002.svg"] };
+    const brokenThenFineDeck = { name: "Broken Then Fixed", slides: ["slides/001.svg", "slides/002.svg"] };
     const brokenMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
       <metadata><slidra:effects ${NS}><slidra:effect target="el-a" family="build" effect="fade" start="on-click"/></slidra:effects></metadata>
       <rect id="el-a"/>
@@ -1110,7 +1110,7 @@ describe("mountCanvas play mode", () => {
         if (url.endsWith("/api/files/slides/002.svg")) return new Response(fineMarkup, { status: 200 });
         if (url.endsWith("/api/effects/slides/001.svg")) {
           return new Response(
-            JSON.stringify({ error: "第 1 項（target 為 el-a） 的 family 值「build」尚未實作。" }),
+            JSON.stringify({ error: "item 1 (target is el-a)'s family value \"build\" not yet implemented." }),
             { status: 500 },
           );
         }
@@ -1211,7 +1211,7 @@ describe("mountCanvas animation", () => {
       vi.fn(async (input: string | URL) => {
         const url = String(input);
         if (url.endsWith("/api/presentation")) {
-          return new Response(JSON.stringify({ name: "preview 測試", slides: ["slides/001.svg"] }), { status: 200 });
+          return new Response(JSON.stringify({ name: "preview Test", slides: ["slides/001.svg"] }), { status: 200 });
         }
         if (url.endsWith("/api/files/slides/001.svg")) {
           return new Response(
@@ -1481,7 +1481,7 @@ describe("mountCanvas slide enter/exit transitions", () => {
 describe("mountCanvas play mode: escaping when embedding the plan", () => {
   it("when target contains <!--<script>, the plan's <script> tag doesn't swallow the runtime that follows it", async () => {
     const hostileId = "el-<!--<script>";
-    const hostileDeck = { name: "跳脫測試簡報", slides: ["slides/001.svg"] };
+    const hostileDeck = { name: "Escape Test Deck", slides: ["slides/001.svg"] };
     const hostileMarkup = `<svg xmlns="http://www.w3.org/2000/svg">
   <metadata>
     <slidra:effects ${NS}>
@@ -1572,12 +1572,12 @@ describe("mountCanvas selection", () => {
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { source: "slidra-selection", event: "select", id: "el-a", name: "標題", additive: false },
+        data: { source: "slidra-selection", event: "select", id: "el-a", name: "Title", additive: false },
         source: controller.frameElement.contentWindow as unknown as Window,
       }),
     );
 
-    expect(state?.selection).toEqual({ ids: ["el-a"], names: ["標題"], groupPath: [], elements: [null] });
+    expect(state?.selection).toEqual({ ids: ["el-a"], names: ["Title"], groupPath: [], elements: [null] });
   });
 
   it("selection.name is null when the select message has no data-slidra-name", async () => {
@@ -1736,13 +1736,13 @@ describe("mountCanvas selection", () => {
 describe("mountCanvas selection: feedback after element paste", () => {
   const slideWithTwoElements =
     '<svg viewBox="0 0 1280 720">' +
-    '<g id="el-src" data-slidra-name="來源"><rect width="10" height="10"/></g>' +
+    '<g id="el-src" data-slidra-name="Source"><rect width="10" height="10"/></g>' +
     "</svg>";
   const slideAfterPaste =
     '<svg viewBox="0 0 1280 720">' +
-    '<g id="el-src" data-slidra-name="來源"><rect width="10" height="10"/></g>' +
-    '<g id="el-new1" data-slidra-name="複本一"><rect width="10" height="10"/></g>' +
-    '<g id="el-new2" data-slidra-name="複本二"><rect width="10" height="10"/></g>' +
+    '<g id="el-src" data-slidra-name="Source"><rect width="10" height="10"/></g>' +
+    '<g id="el-new1" data-slidra-name="Copy 1"><rect width="10" height="10"/></g>' +
+    '<g id="el-new2" data-slidra-name="Copy 2"><rect width="10" height="10"/></g>' +
     "</svg>";
 
   function stubPasteCommand(elementIds: string[]): void {
@@ -1798,7 +1798,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
     dispatchFrameLoad();
 
     expect(state?.selection.ids).toEqual(["el-new1", "el-new2"]);
-    expect(state?.selection.names).toEqual(["複本一", "複本二"]);
+    expect(state?.selection.names).toEqual(["Copy 1", "Copy 2"]);
   });
 
   it("a failed paste (ok:false) leaves the selection unchanged, with no pending id to select", async () => {
@@ -1813,7 +1813,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
           return new Response(slideWithTwoElements, { status: 200 });
         }
         if (url.endsWith("/api/command")) {
-          return new Response(JSON.stringify({ ok: false, error: "剪貼簿是空的" }), { status: 400 });
+          return new Response(JSON.stringify({ ok: false, error: "clipboard is empty" }), { status: 400 });
         }
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -1852,7 +1852,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
   it("textbox add / element insert's single-elementId selection behavior isn't regressed by this change", async () => {
     let inserted = false;
     const slideAfterInsert =
-      '<svg viewBox="0 0 1280 720"><g id="el-shape" data-slidra-name="矩形"><rect width="10" height="10"/></g></svg>';
+      '<svg viewBox="0 0 1280 720"><g id="el-shape" data-slidra-name="Rectangle"><rect width="10" height="10"/></g></svg>';
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -2409,7 +2409,7 @@ describe("mountCanvas clipboard: copySelection / cutSelection", () => {
           commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
           const body = commandResult.ok
             ? { ok: true, message: commandResult.message ?? "", data: commandResult.data }
-            : { ok: false, error: commandResult.message ?? "失敗" };
+            : { ok: false, error: commandResult.message ?? "failed" };
           return new Response(JSON.stringify(body), { status: commandResult.ok ? 200 : 500 });
         }
         throw new Error(`unexpected fetch: ${url}`);
@@ -2462,7 +2462,7 @@ describe("mountCanvas clipboard: copySelection / cutSelection", () => {
 
   it("both copySelection and cutSelection return null when the command fails, so the caller never writes to the system clipboard", async () => {
     const commandCalls: { name: string; input: Record<string, unknown> }[] = [];
-    stubFetch(commandCalls, { ok: false, message: "命令失敗" });
+    stubFetch(commandCalls, { ok: false, message: "command failed" });
     controller = mountCanvas(container);
     await controller.reload();
     await selectElA();
@@ -2548,11 +2548,11 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
       latest = state;
     });
 
-    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "Box A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
     send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
 
-    expect(latest?.label).toEqual({ text: "方塊 A", path: [] });
+    expect(latest?.label).toEqual({ text: "Box A", path: [] });
     expect(latest?.boxes).toEqual([rect]);
     expect(latest?.union).toEqual(rect);
   });
@@ -2565,7 +2565,7 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
       latest = state;
     });
 
-    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "Box A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
     send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
     // jsdom: frame rect is all zeros / offsetWidth 0 → identity conversion.
@@ -2594,7 +2594,7 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
       source: "slidra-selection",
       event: "select",
       id: "el-group-child",
-      name: "群組子元素",
+      name: "Group Child",
       additive: false,
       groupPath: ["el-group"],
     });
@@ -2607,7 +2607,7 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
           id: "el-group-child",
           rect,
           ancestors: [
-            { id: "el-group", name: "群組" },
+            { id: "el-group", name: "Group" },
             { id: "el-group-2", name: null },
           ],
         },
@@ -2617,7 +2617,7 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
 
     // Outermost ancestor first; a nameless ancestor falls back to its id
     // (computeOverlayLabel's own doc comment).
-    expect(latest?.label).toEqual({ text: "群組子元素", path: ["群組", "el-group-2"] });
+    expect(latest?.label).toEqual({ text: "Group Child", path: ["Group", "el-group-2"] });
   });
 
   it("multi-select: label shows 'N elements' with no path (ignored even if bounds reports an ancestor chain)", async () => {
@@ -2628,15 +2628,15 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
       latest = state;
     });
 
-    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
-    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-b", name: "方塊 B", additive: true });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "Box A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-b", name: "Box B", additive: true });
     const rectA = { x: 0, y: 0, width: 10, height: 10 };
     const rectB = { x: 20, y: 20, width: 10, height: 10 };
     send(controller.frameElement, {
       source: "slidra-selection",
       event: "bounds",
       items: [
-        { id: "el-a", rect: rectA, ancestors: [{ id: "should-be-ignored", name: "多選時忽略祖先鏈" }] },
+        { id: "el-a", rect: rectA, ancestors: [{ id: "should-be-ignored", name: "Ignored during multi-select" }] },
         { id: "el-b", rect: rectB, ancestors: [] },
       ],
       union: { x: 0, y: 0, width: 30, height: 30 },
@@ -2654,7 +2654,7 @@ describe("subscribeOverlay: label/union/boxes coordinate and ancestor-chain comp
       latest = state;
     });
 
-    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "方塊 A", additive: false });
+    send(controller.frameElement, { source: "slidra-selection", event: "select", id: "el-a", name: "Box A", additive: false });
     const rect = { x: 10, y: 20, width: 30, height: 40 };
     send(controller.frameElement, { source: "slidra-selection", event: "bounds", items: [{ id: "el-a", rect, ancestors: [] }], union: rect });
     expect(latest?.label).not.toBeNull();
