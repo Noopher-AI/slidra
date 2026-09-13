@@ -6,7 +6,7 @@ This directory contains the deployment-specific implementation for the public Sl
 
 - `container/`: Builds the self-hosted Slidra service, including headless Chromium for PDF export.
 - `vercel/`: Authenticates demo visitors and injects the private origin credential into authenticated API requests.
-- `../vercel.json`: Vercel requires this small project entrypoint at the repository root. It points to the middleware in this directory and rewrites `/api/*` to the self-hosted origin.
+- `../vercel.json`: Vercel requires this small project entrypoint at the repository root. It deploys the Next.js static export, points to the middleware in this directory, and rewrites `/api/*` to the self-hosted origin.
 - `.dockerignore`: Docker requires the ignore file at the build-context root, so it also remains at the repository root.
 
 The Kubernetes resources are maintained in the infrastructure repository under `k8s/slidra-demo/`.
@@ -14,7 +14,7 @@ The Kubernetes resources are maintained in the infrastructure repository under `
 ## Architecture
 
 1. A visitor opens the Vercel URL with a one-time URL parameter: `/?key=<DEMO_ACCESS_KEY>`.
-2. Vercel Routing Middleware validates the key, issues an eight-hour `HttpOnly`, `Secure`, `SameSite=Strict` session cookie, and redirects to a clean URL without the key.
+2. Vercel Routing Middleware validates the key, issues an eight-hour `HttpOnly`, `Secure`, `SameSite=Strict` session cookie, and redirects to a clean URL without the key. The Vercel framework preset remains `Other` because the Next.js preset cannot be combined with this project-level Routing Middleware; the frontend itself is still built by Next.js as a static export.
 3. Authenticated `/api/*` requests are rewritten to the Cloudflare Tunnel origin. Middleware overwrites the private origin and client-ID headers before forwarding.
 4. An nginx sidecar in Kubernetes rejects requests without the private origin token, enforces request-size and rate limits, and proxies accepted traffic to the single Slidra container.
 

@@ -14,6 +14,7 @@ dist/
 
 # Dependencies and build caches
 node_modules/
+.next/
 *.tsbuildinfo
 
 # Rust build artifacts (Cargo.lock is committed; the crate is a binary crate)

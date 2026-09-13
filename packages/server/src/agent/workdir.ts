@@ -155,7 +155,7 @@ export async function readAgentWorkdirFile(workdirReal: string, relativePath: st
  * `resolveWebDist()` uses for `apps/web/dist`, which works unmodified
  * from both `src/` and `dist/` because both sit one directory level under
  * `packages/server/`. `agent-workdir/` is *not* copied into `dist/` by any
- * build step (unlike `apps/web/dist`, which vite itself produces) — it
+ * build step (unlike `apps/web/dist`, which Next.js itself produces) — it
  * stays at the package root, where this path resolves to it from either
  * location.
  */
