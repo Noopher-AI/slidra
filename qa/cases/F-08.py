@@ -1,7 +1,7 @@
 """F-08: text/rectangle/ellipse/line elements inserted from the Insert panel
 should use a contrast color when the page has no accent set, instead of
 falling back to the SVG default or the `--brand-red` design token
-(documented in docs/visual-qa.md).
+(documented in qa/visual-qa.md).
 
 Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the following fixed primitives):

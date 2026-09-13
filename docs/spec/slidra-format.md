@@ -122,6 +122,8 @@ When Slidra writes `project.json`, it serializes with 2-space indentation and ap
 
 There is **no migration chain**. If `formatVersion` is not `1`, the file is rejected immediately with an error. No automatic upgrade, conversion, or partial read is attempted.
 
+Legacy CoMotion files are rejected outright, even though they can also carry `formatVersion: 1`. A slide containing `xmlns:comot` or `co-motion.dev/ns` is recognized as legacy content and the entire archive is rejected; Slidra never migrates or partially reads it.
+
 ---
 
 ## 3. Slides
@@ -592,3 +594,13 @@ my-presentation.slidra  (ZIP archive)
 4. **SVG is the format**: Slides are SVG. The format does not layer a proprietary intermediate on top of SVG; the SVG *is* the artifact.
 5. **Forward compatibility**: Unknown fields in `project.json` are preserved. Unknown `data-slidra-*` attributes on elements are preserved.
 6. **No silent migration**: Format violations are rejected, not silently corrected.
+
+---
+
+## 19. Known implementation gaps
+
+These are known current behaviors, not additional format requirements:
+
+- `xmlns:slidra` is declared on each `slidra:*` metadata block rather than once on the SVG root.
+- A slide may contain multiple `<metadata>` blocks; the reader and writer handle them, but this is not a deliberately designed format rule.
+- A historical CoMotion clipboard namespace correction no longer applies: any legacy namespace marker is rejected under §2.7, never rewritten in place.

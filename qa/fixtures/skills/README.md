@@ -5,12 +5,13 @@
 ## 怎麼把 deck 打包並開啟
 
 ```bash
+npm run build
 mkdir -p .scratch && export SLIDRA_HOME="$PWD/.scratch/home"
-node -e "import('./packages/core/dist/index.js').then(m=>m.packDirectory('fixtures/skills/check-deck','.scratch/check.slidra'))"
-node packages/cli/bin/slidra.js open ./.scratch/check.slidra     # 記下回傳的識別碼
-node packages/cli/bin/slidra.js ls <識別碼> slides
-node packages/cli/bin/slidra.js comment list <識別碼>
-node packages/cli/bin/slidra.js cat <識別碼> slides/001.svg
+node scripts/pack-directory.mjs qa/fixtures/skills/check-deck .scratch/check.slidra
+./target/release/slidra open ./.scratch/check.slidra     # 記下回傳的識別碼
+./target/release/slidra ls <識別碼> slides
+./target/release/slidra comment list <識別碼>
+./target/release/slidra cat <識別碼> slides/001.svg
 ```
 
 把 `check-deck` 換成 `outline-deck` 或 `reshape-deck` 就能打包開啟其他兩份。
@@ -25,4 +26,4 @@ node packages/cli/bin/slidra.js cat <識別碼> slides/001.svg
 
 ## 驗收紀錄放哪
 
-真實 agent（Claude Code、Codex）實際跑過某個 (agent, skill) 組合之後，把對話紀錄與結果 deck 存到 `fixtures/skills/records/<claude|codex>-<skill>/`（例如 `fixtures/skills/records/claude-outline/`）。**沒有真的跑過就不要建立這個目錄**——空的或手寫的紀錄檔等於假證據。
+真實 agent（Claude Code、Codex）實際跑過某個 (agent, skill) 組合之後，把對話紀錄與結果 deck 存到 `qa/fixtures/skills/records/<claude|codex>-<skill>/`（例如 `qa/fixtures/skills/records/claude-outline/`）。**沒有真的跑過就不要建立這個目錄**——空的或手寫的紀錄檔等於假證據。

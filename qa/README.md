@@ -150,11 +150,11 @@ the double-click, `window.getSelection().toString()` is empty": turning the
 uncertainty of "will it happen" into the stably verifiable statement "if it does
 happen, it must not leak into a visibly broken state."
 
-## 5. Round-3 exploratory reports (reusing `docs/visual-qa.md`)
+## 5. Round-3 exploratory reports (reusing `qa/visual-qa.md`)
 
 Round-3 exploratory reports (no corresponding case script, just looking at
 screenshots for problems) reuse the criteria and format in
-[`docs/visual-qa.md`](../docs/visual-qa.md) rather than redefining them here:
+[`visual-qa.md`](visual-qa.md) rather than redefining them here:
 
 - **Five criteria categories**: insufficient foreground/background contrast,
   insufficient state-indicator contrast, no visual feedback after completing an
