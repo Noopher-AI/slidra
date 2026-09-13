@@ -13,7 +13,7 @@ import type { AgentCardView, AgentUiStatus } from "../src/agent-status.js";
 
 const claude: AgentCardView = { kind: "claude", label: "Claude Code", status: "available", loginCommand: "claude auth login", inUse: true };
 const codex: AgentCardView = { kind: "codex", label: "Codex", status: "unauthenticated", loginCommand: "codex login", inUse: false };
-const pi: AgentCardView = { kind: "pi", label: "Pi (OpenRouter)", status: "available", loginCommand: "export OPENROUTER_API_KEY=<your-key>", inUse: false };
+const pi: AgentCardView = { kind: "pi", label: "Pi (Local Qwen)", status: "available", loginCommand: "ollama run qwen2.5-coder:7b", inUse: false };
 const ready: AgentUiStatus = { kind: "ready", current: "claude", label: "Claude Code", source: "settings", agents: [claude, codex, pi] };
 const models = [{ id: "default", name: "Default (recommended)", detail: "Opus 4.6" }, { id: "sonnet", name: "Sonnet" }];
 
@@ -88,7 +88,7 @@ describe("AgentPicker: agent menu", () => {
     expect(codexItem).not.toContain("disabled");
     expect(codexItem).toContain("Not signed in · codex login");
     const piItem = item(html, 'data-kind="pi"');
-    expect(piItem).toContain("Pi (OpenRouter)");
+    expect(piItem).toContain("Pi (Local Qwen)");
     expect(piItem).toContain("Available");
     expect(html).toContain("Re-check sign-in status");
   });

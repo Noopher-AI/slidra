@@ -97,7 +97,7 @@ async function openFreshPresentation(): Promise<string> {
 
 /** A single-command fake ACP adapter config, shared log across kinds so spawn order across a switch can be observed. */
 function fixtureAdapter(kind: AgentKind, fixture: string, scenario: Record<string, unknown> = {}): AgentAdapterConfig {
-  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (OpenRouter)";
+  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (Local Qwen)";
   return {
     kind,
     label,
@@ -452,7 +452,7 @@ describe("GET /api/agent", () => {
     expect(codexCard.status).toBe("unauthenticated");
     expect(codexCard.loginCommand).toBe("codex login");
     expect(piCard.status).toBe("available");
-    expect(piCard.loginCommand).toBe("export OPENROUTER_API_KEY=<your-key>");
+    expect(piCard.loginCommand).toBe("ollama run qwen2.5-coder:7b");
   });
 
   it("a genuine probe failure (spawn error) surfaces as unauthenticated with a detail string", async () => {

@@ -361,9 +361,9 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("agent-changed", { kind: "pi", label: "Pi (OpenRouter)" });
+    fake!.emit("agent-changed", { kind: "pi", label: "Pi (Local Qwen)" });
 
-    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "pi", label: "Pi (OpenRouter)" });
+    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "pi", label: "Pi (Local Qwen)" });
   });
 
   it("calls onAgentModelChanged with the parsed agent-model-changed payload, dropping malformed ones", () => {

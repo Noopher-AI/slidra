@@ -23,11 +23,11 @@ describe("Pi ACP adapter", () => {
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it("completes a real ACP handshake and exposes only OpenRouter models", async () => {
+  it("completes a real ACP handshake and exposes only the configured local Qwen model", async () => {
     const config = resolveAdapterConfig("pi");
     const child = spawn(config.command, config.args ?? [], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...config.env, OPENROUTER_API_KEY: "test-key-not-used" },
+      env: { ...process.env, ...config.env },
     });
     let stderr = "";
     child.stderr!.setEncoding("utf8");
@@ -60,9 +60,8 @@ describe("Pi ACP adapter", () => {
       const model = session.configOptions?.find((option) => option.id === "model");
       expect(model?.type).toBe("select");
       if (model?.type !== "select") throw new Error(`Pi did not report a model picker: ${stderr}`);
-      expect(model.options.length).toBeGreaterThan(0);
-      expect(model.options.every((option) => option.value.startsWith("openrouter/"))).toBe(true);
-      expect(model.currentValue.startsWith("openrouter/")).toBe(true);
+      expect(model.options.map((option) => option.value)).toEqual(["local-qwen/qwen2.5-coder:7b"]);
+      expect(model.currentValue).toBe("local-qwen/qwen2.5-coder:7b");
     } finally {
       child.kill("SIGKILL");
       await new Promise<void>((resolve) => {

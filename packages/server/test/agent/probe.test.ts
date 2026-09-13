@@ -63,7 +63,7 @@ describe("probeLogin", () => {
     expect(result).toEqual({ loggedIn: false });
   });
 
-  it("pi: the OpenRouter environment probe uses exit status", async () => {
+  it("pi: the local Qwen endpoint probe uses exit status", async () => {
     expect(await probeLogin("pi", runnerReturning(outcome({ code: 0 })))).toEqual({ loggedIn: true });
     expect(await probeLogin("pi", runnerReturning(outcome({ code: 1 })))).toEqual({ loggedIn: false });
   });
@@ -112,7 +112,7 @@ describe("probeLogin", () => {
     expect(seen).toEqual({ command: "codex", args: ["login", "status"] });
   });
 
-  it("passes the non-secret OpenRouter environment probe to the runner (pi)", async () => {
+  it("passes the local OpenAI-compatible endpoint probe to the runner (pi)", async () => {
     let seen: { command: string; args: string[] } | undefined;
     const runner: CommandRunner = async (command, args) => {
       seen = { command, args };
@@ -120,7 +120,8 @@ describe("probeLogin", () => {
     };
     await probeLogin("pi", runner);
     expect(seen?.command).toBe(process.execPath);
-    expect(seen?.args.join(" ")).toContain("OPENROUTER_API_KEY");
-    expect(seen?.args.join(" ")).not.toContain(process.env.OPENROUTER_API_KEY ?? "not-present");
+    expect(seen?.args.join(" ")).toContain("SLIDRA_PI_BASE_URL");
+    expect(seen?.args.join(" ")).toContain("/models");
+    expect(seen?.args.join(" ")).not.toContain(process.env.SLIDRA_PI_API_KEY ?? "not-present");
   });
 });

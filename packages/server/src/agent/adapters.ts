@@ -68,14 +68,26 @@ export const ADAPTER_SPECS: readonly AdapterSpec[] = [
   },
   {
     kind: "pi",
-    label: "Pi (OpenRouter)",
+    label: "Pi (Local Qwen)",
     npmPackage: "@automatalabs/pi-acp",
     modulePath: "dist/index.js",
     probeCommand: {
       command: process.execPath,
-      args: ["-e", "process.exit(process.env.OPENROUTER_API_KEY?.trim() ? 0 : 1)"],
+      args: [
+        "-e",
+        `const base=(process.env.SLIDRA_PI_BASE_URL||"http://127.0.0.1:11434/v1").replace(/\\/+$/,"");
+const model=process.env.SLIDRA_PI_MODEL||"qwen2.5-coder:7b";
+const key=process.env.SLIDRA_PI_API_KEY||"local";
+fetch(base+"/models",{headers:{Authorization:"Bearer "+key},signal:AbortSignal.timeout(4000)})
+  .then(async response=>{
+    if(!response.ok) process.exit(1);
+    const payload=await response.json();
+    process.exit(Array.isArray(payload.data)&&payload.data.some(candidate=>candidate&&candidate.id===model)?0:1);
+  })
+  .catch(()=>process.exit(1));`,
+      ],
     },
-    loginCommand: "export OPENROUTER_API_KEY=<your-key>",
+    loginCommand: "ollama run qwen2.5-coder:7b",
   },
 ];
 
@@ -170,19 +182,38 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   }
 
   if (kind === "pi") {
-    // Pi supports many providers. This Slidra choice intentionally means
-    // "Pi through OpenRouter", so keep its credential/config directory
-    // isolated and mask other ambient provider keys inherited by serve.
-    // The OpenRouter key itself remains inherited from the serve process.
-    const agentDir = path.join(resolveSlidraHome(), "pi-openrouter");
+    // Pi supports many providers. This Slidra choice intentionally means a
+    // single local Qwen endpoint speaking OpenAI Chat Completions. Keep its
+    // config isolated, write the one-provider catalog ourselves, and mask
+    // ambient cloud credentials inherited by serve.
+    const agentDir = path.join(resolveSlidraHome(), "pi-local-qwen");
+    const baseUrl = process.env.SLIDRA_PI_BASE_URL?.trim() || "http://127.0.0.1:11434/v1";
+    const model = process.env.SLIDRA_PI_MODEL?.trim() || "qwen2.5-coder:7b";
+    const apiKey = process.env.SLIDRA_PI_API_KEY?.trim() || "local";
     mkdirSync(agentDir, { recursive: true });
+    writeFileSync(path.join(agentDir, "models.json"), `${JSON.stringify({
+      providers: {
+        "local-qwen": {
+          baseUrl,
+          api: "openai-completions",
+          apiKey: "$SLIDRA_PI_API_KEY",
+          compat: {
+            supportsDeveloperRole: false,
+            supportsReasoningEffort: false,
+          },
+          models: [{ id: model, name: `Local Qwen (${model})` }],
+        },
+      },
+    }, null, 2)}\n`);
     config.env = {
       ...config.env,
       PI_CODING_AGENT_DIR: agentDir,
+      SLIDRA_PI_API_KEY: apiKey,
       ANTHROPIC_API_KEY: "",
       ANT_LING_API_KEY: "",
       AZURE_OPENAI_API_KEY: "",
       OPENAI_API_KEY: "",
+      OPENROUTER_API_KEY: "",
       DEEPSEEK_API_KEY: "",
       NVIDIA_API_KEY: "",
       GEMINI_API_KEY: "",

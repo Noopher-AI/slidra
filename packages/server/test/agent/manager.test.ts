@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 function dummyConfig(kind: AgentKind): AgentAdapterConfig {
-  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (OpenRouter)";
+  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (Local Qwen)";
   return { kind, label, command: "true", args: [] };
 }
 

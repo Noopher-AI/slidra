@@ -77,13 +77,13 @@ describe("fromAgentResponse", () => {
     });
   });
 
-  it("accepts Pi as the current OpenRouter-backed agent", () => {
+  it("accepts Pi as the current local-Qwen agent", () => {
     const result = fromAgentResponse({
       current: "pi",
       source: "settings",
-      agents: [{ kind: "pi", label: "Pi (OpenRouter)", status: "available", loginCommand: "export OPENROUTER_API_KEY=<your-key>" }],
+      agents: [{ kind: "pi", label: "Pi (Local Qwen)", status: "available", loginCommand: "ollama run qwen2.5-coder:7b" }],
     });
-    expect(result).toMatchObject({ kind: "ready", current: "pi", label: "Pi (OpenRouter)" });
+    expect(result).toMatchObject({ kind: "ready", current: "pi", label: "Pi (Local Qwen)" });
   });
 
   it("keeps a card's detail (e.g. a detected anomaly) unchanged", () => {

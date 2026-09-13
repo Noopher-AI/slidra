@@ -28,9 +28,12 @@ installs them, no global install needed. `--agent` only overrides which one is u
 file (`<SLIDRA_HOME>/settings.json`); if neither is set, `serve` still starts normally, but chat will
 report "no agent selected" until one is chosen.
 
-The `pi` choice is deliberately OpenRouter-only. Export `OPENROUTER_API_KEY` before starting setup,
-then use `npm run verify:setup -- --agent pi`; Pi itself and its ACP adapter are bundled, so no global
-Pi installation or separate Pi login is required.
+The `pi` choice currently targets a local Qwen server through the OpenAI-compatible Chat Completions
+API. The defaults are `http://127.0.0.1:11434/v1` and `qwen2.5-coder:7b`; start that Ollama model with
+`ollama run qwen2.5-coder:7b`, then use `npm run verify:setup -- --agent pi`. Override the defaults with
+`SLIDRA_PI_BASE_URL` and `SLIDRA_PI_MODEL`. If the local server requires a bearer token, set
+`SLIDRA_PI_API_KEY` as well; keyless servers receive the harmless placeholder `local`. Pi itself and
+its ACP adapter are bundled, so no global Pi installation or separate Pi login is required.
 
 The setup script runs `npm install` every time to sync workspace dependencies, so switching branches
 never leaves an adapter un-installed. The Codex adapter uses a read-only sandbox with per-request
