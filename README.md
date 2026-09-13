@@ -159,8 +159,6 @@ Every command returns:
 
 Commands exit with code `0` on success and `1` on failure. Add `--json` for single-line, script-friendly output.
 
----
-
 ## Quickstart
 
 ```sh
