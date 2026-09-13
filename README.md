@@ -41,7 +41,12 @@ Without persistent structure, every revision risks becoming another generation t
 - **Agents** inspect and modify the deck through a structured CLI.
 - **Both** work on the same `.slidra` file.
 
-> Read the full rationale in [Why Slidra When AI Can Already Generate Slides](docs/why-Slidra-when-AI-can-already-generate-slides.md) ([繁體中文](docs/why-Slidra-when-AI-can-already-generate-slides_zh.md)).
+That split is deliberate:
+
+- **UX-friendly for humans.** The visual editor supports selection, dragging, resizing, rotation, alignment, grouping, text and style editing, animations, comments, undo/redo, playback, and fullscreen presenting.
+- **AX-friendly for agents.** The CLI exposes stable object IDs, semantic operations, structured output, composable commands, and executable validation.
+
+> Read the full rationale in [Why Slidra When AI Can Already Generate Slides](docs/why-Slidra-when-AI-can-already-generate-slides.md) ([中文](docs/why-Slidra-when-AI-can-already-generate-slides_zh.md)).
 
 ---
 
@@ -65,6 +70,20 @@ Agent ───────────────────┘
 ```
 
 The GUI routes supported edits through the same command layer used by agents. This preserves object identity and document continuity across visual edits, CLI operations, undo, and redo.
+
+In practice, human–agent collaboration becomes a continuous refinement loop:
+
+```text
+Agent drafts the deck
+  → Human adjusts the layout
+  → Human pins a comment to an object
+  → Agent edits that object through the CLI
+  → The canvas updates
+  → Validation reports remaining issues
+  → Human or agent makes the next correction
+```
+
+This lets you start with AI without becoming trapped in generated output, make targeted changes without regenerating the deck, preserve object identity across the GUI, CLI, comments, and validation, and move fluidly between direct manipulation and agent-driven editing.
 
 ---
 
@@ -177,41 +196,6 @@ Geometry, structure, and taboo rules run on every deck. Additional rules activat
 When validation finds issues, the command exits non-zero but still returns `ok: true`: the validation ran successfully and produced findings.
 
 > Validation enables a reliable feedback loop. It does not replace visual judgment or automatically repair every issue.
-
----
-
-## Human–Agent Workflow
-
-```text
-Agent drafts the deck
-  → Human adjusts the layout
-  → Human pins a comment to an object
-  → Agent edits that object through the CLI
-  → The canvas updates
-  → Validation reports remaining issues
-  → Human or agent makes the next correction
-```
-
-This workflow lets you:
-
-- Start with AI without becoming trapped in generated output
-- Make targeted changes without regenerating the deck
-- Preserve object identity across the GUI, CLI, comments, and validation
-- Move fluidly between direct manipulation and agent-driven editing
-
----
-
-## Built for Both Sides
-
-### UX-friendly for humans
-
-The visual editor supports selection, dragging, resizing, rotation, alignment, grouping, text and style editing, animations, comments, undo/redo, playback, and fullscreen presenting.
-
-### AX-friendly for agents
-
-The CLI exposes stable object IDs, semantic operations, structured output, composable commands, and executable validation.
-
-Agents do not need to imitate mouse actions. They can operate directly on presentation semantics.
 
 ---
 
