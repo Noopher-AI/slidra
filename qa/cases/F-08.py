@@ -1,9 +1,9 @@
 """F-08: text/rectangle/ellipse/line elements inserted from the Insert panel
 should use a contrast color when the page has no accent set, instead of
 falling back to the SVG default or the `--brand-red` design token
-(documented in docs/visual-qa.md).
+(documented in qa/visual-qa.md).
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the following fixed primitives):
 
     open_deck() / goto_slide(n) / slide_svg(n) / shot(name)
@@ -23,8 +23,8 @@ identify the newly inserted element without touching React's controlled
 textarea synthetic events.
 
 Judgment criteria: this case needs to run twice — once against the default
-demo deck's page 1 (`quick_start.sh --qa`, background `#101418`, dark, no
-accent), and once against the `--blank` blank deck (`quick_start.sh --qa
+demo deck's page 1 (`scripts/quick_start.sh --qa`, background `#101418`, dark, no
+accent), and once against the `--blank` blank deck (`scripts/quick_start.sh --qa
 --blank`, a new deck's first page has no declared background/accent, which by
 convention defaults to white). Both runs must pass: every newly inserted
 element must carry an explicit fill (stroke for the line), with its lightness

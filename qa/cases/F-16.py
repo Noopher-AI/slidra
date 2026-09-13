@@ -1,6 +1,6 @@
 """F-16: the animation-order badge blocks the resize handle.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` starts the environment,
 `qa/agent_helpers.py` provides the fixed primitives below) -- this script only uses
 this list, without adding new primitives or rewriting it against another harness:
 

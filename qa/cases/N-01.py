@@ -1,6 +1,6 @@
 """N-01: drag-to-move regression test.
 
-Depends on the sandbox QA layer (`quick_start.sh --qa` brings up the
+Depends on the sandbox QA layer (`scripts/quick_start.sh --qa` brings up the
 environment; `qa/agent_helpers.py` provides the following fixed primitives):
 
     open_deck() / select(name_or_id) / selection() / drag(from_xy, to_xy) /

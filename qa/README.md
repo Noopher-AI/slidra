@@ -30,7 +30,7 @@ this back to a path under the repo when composing your own commands.
 To tear down:
 
 ```bash
-./quick_start.sh --qa-stop
+./scripts/quick_start.sh --qa-stop
 ```
 
 This shuts down both the background `slidra serve` process left by `--qa` and
@@ -85,13 +85,13 @@ git checkout <PR branch>
 npm run verify:setup -- --qa --no-open
 source .quickstart/qa/qa.env
 browser-use < qa/cases/<id>.py   # expected PASS
-./quick_start.sh --qa-stop
+./scripts/quick_start.sh --qa-stop
 
 git checkout <base>
 npm run verify:setup -- --qa --no-open
 source .quickstart/qa/qa.env
 browser-use < qa/cases/<id>.py   # expected FAIL (bug still present)
-./quick_start.sh --qa-stop
+./scripts/quick_start.sh --qa-stop
 ```
 
 Only when the PR branch PASSes and the base FAILs does the ticket actually count as
@@ -118,7 +118,7 @@ signal that an iframe can accept input is `runtime-ready`, not whether the DOM
 contains an `<svg>`.
 
 **(2) A dirtied deck.** As soon as any gesture actually moves an element, the
-served deck diverges from `demo/` — and **stays diverged**: `quick_start.sh` never
+served deck diverges from `demo/` — and **stays diverged**: `scripts/quick_start.sh` never
 repacks the demo automatically, and `open_deck()` only compares the URL, it never
 reloads. Every subsequent case script then judges against a deck whose positions are
 wrong. One F-series case's "rectangle covers three lines of text but not the
@@ -150,11 +150,11 @@ the double-click, `window.getSelection().toString()` is empty": turning the
 uncertainty of "will it happen" into the stably verifiable statement "if it does
 happen, it must not leak into a visibly broken state."
 
-## 5. Round-3 exploratory reports (reusing `docs/visual-qa.md`)
+## 5. Round-3 exploratory reports (reusing `qa/visual-qa.md`)
 
 Round-3 exploratory reports (no corresponding case script, just looking at
 screenshots for problems) reuse the criteria and format in
-[`docs/visual-qa.md`](../docs/visual-qa.md) rather than redefining them here:
+[`visual-qa.md`](visual-qa.md) rather than redefining them here:
 
 - **Five criteria categories**: insufficient foreground/background contrast,
   insufficient state-indicator contrast, no visual feedback after completing an
@@ -197,7 +197,7 @@ A PASS means these signatures haven't had a breaking change.
   exclusive.** Both rely on `drain_events()`, and `drain_events()` clears the
   daemon's event buffer — using both in the same flow means whichever is called
   second won't see events the other one already drained.
-- **`qa/cases/smoke.py` only supports the demo deck** (`quick_start.sh --qa`
+- **`qa/cases/smoke.py` only supports the demo deck** (`scripts/quick_start.sh --qa`
   without `--blank`). The blank deck has only 1 page and no
   `data-slidra-name="title"` element, so the `slide_count() == 4` assertion fails
   first, with a message suggesting "please don't add `--blank`."

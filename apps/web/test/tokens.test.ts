@@ -18,7 +18,7 @@ const tokensCss = readFileSync(tokensPath, "utf8");
 const fontsDir = path.join(webSrcDir, "assets", "fonts");
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const designTokensDocPath = path.join(repoRoot, "docs", "design", "docs", "01-DESIGN_TOKENS.md");
+const designTokensDocPath = path.join(repoRoot, ".dev_docs", "design", "01-DESIGN_TOKENS.md");
 const designTokensDoc = readFileSync(designTokensDocPath, "utf8");
 
 // The web bundle no longer depends on core's chart module at all — this
@@ -52,7 +52,7 @@ function declaredRootTokenValue(name: string): string {
   return match[1].trim();
 }
 
-// ── Parsing the token table in docs/design/docs/01-DESIGN_TOKENS.md ──────
+// ── Parsing the token table in .dev_docs/design/01-DESIGN_TOKENS.md ──────
 //
 // Each row in the doc is a pipe-table row of the form
 // `| \`token.path\` | value | (purpose) |` (not every table has the purpose
@@ -199,7 +199,7 @@ function expectedCssVarsFor(tokenPath: string): string[] {
   return SPLIT_TOKENS[tokenPath] ?? [dotPathToCssVar(tokenPath)];
 }
 
-describe("tokens.css against docs/design/docs/01-DESIGN_TOKENS.md (design package token table)", () => {
+describe("tokens.css against .dev_docs/design/01-DESIGN_TOKENS.md (design package token table)", () => {
   it("the design package doc itself parses out at least the tokens in each target category (the parser isn't reading empty)", () => {
     // Sanity check on the parser itself, independent of tokens.css: if this fails, the parser's
     // regex stopped matching the doc's real table format and every other test below is vacuous.

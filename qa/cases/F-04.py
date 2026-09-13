@@ -2,7 +2,7 @@
 break, visible immediately while editing, and produce two tspans once
 committed.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the primitives below) — this script only uses
 this list; it doesn't add new primitives or rewrite itself against a different
 harness:

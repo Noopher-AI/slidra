@@ -1,7 +1,7 @@
 """F-15: dragging on the true empty space below the three lines of text on demo
 slide 3 should produce a marquee selection.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` starts the environment,
 `qa/agent_helpers.py` provides the fixed primitives below) -- this script only uses
 this list, without adding new primitives or rewriting it against another harness
 (e.g. Playwright e2e):

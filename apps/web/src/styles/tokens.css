@@ -3,7 +3,7 @@
 
    This file was rewritten to track the design package's own token
    set, not an ad-hoc naming scheme:
-     docs/design/docs/01-DESIGN_TOKENS.md  ("design language inherits from Holspire…")
+     .dev_docs/design/01-DESIGN_TOKENS.md  ("design language inherits from Holspire…")
 
    Naming rule: a CSS custom property's name is `--` + the design
    package's token path with every `.` replaced by `-`.

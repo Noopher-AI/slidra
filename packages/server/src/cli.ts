@@ -9,12 +9,11 @@ import type { AgentSource } from "./agent/manager.js";
 /**
  * Entry point for `slidra serve <presentation-id>`.
  *
- * This is invoked from `packages/cli/bin/slidra.js` (plain JS, not part
- * of the compiled `packages/cli` sources) via a runtime-only dynamic
- * import. [E4.T9]/F7: `@slidra/server` no longer depends on
- * `packages/cli` at all — every command it needs now spawns the Rust
- * `slidra` binary (`slidra/`) instead of dispatching against an
- * in-process registry.
+ * This is invoked from `packages/server/bin/slidra-node.js` via a
+ * runtime-only dynamic import after the Rust `slidra` binary dispatches
+ * the `serve` entry point. `@slidra/server` spawns that same Rust binary
+ * for every command it needs instead of dispatching against an in-process
+ * registry.
  *
  * NOOP-230: serve now always starts, whether or not an agent is selected —
  * "no agent" is a supported state (chat stays gated off with a 409 until

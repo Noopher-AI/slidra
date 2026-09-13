@@ -3,9 +3,9 @@
 `element insert / delete / move / scale / resize / rotate / style set / order / group / align /
 distribute` is the command family that needs to handle "one or more target elements" at once (`insert`
 and `group`/`align`/`distribute` have their own single-target or minimum-count rules — see
-`.dev_docs/spec/cli.md` for the exact requirement per command). This document records the addressing
+`docs/spec/cli.md` for the exact requirement per command). This document records the addressing
 convention and the design rationale behind it; the normative, per-command behavior (error cases, minimum
-target counts, exact multi-target semantics) lives in `.dev_docs/spec/cli.md` — this document does not
+target counts, exact multi-target semantics) lives in `docs/spec/cli.md` — this document does not
 duplicate it and should not be read as an alternative source of truth.
 
 ### Comma-separated syntax
@@ -47,7 +47,7 @@ already written are not left half-applied).
 | `element rotate` | The same `degrees` delta is applied to each target's `rotation`, leaving the rest of its transform components unchanged, independently per target. |
 | `element style set` | The same property name/value is applied to every element in the list. |
 | `element order` | `front`/`back`: each target in the list moves to the top/bottom within its own parent container; among multiple targets, the list's given order is preserved (for `front`, the last id in the list ends up stacked on top; for `back`, the last id ends up stacked on the bottom). `up`/`down`: processed one at a time in list order, re-querying sibling relationships after each one before processing the next (not a single upfront displacement calculation). Targets in different parent containers move within their own parent container independently, with no effect on each other. |
-| `element group` / `align` / `distribute` | Not "move one target at a time" — these read the whole list's combined bounding box (or, for `group`, wrap the whole list) as a single operation. All targets must be in the same container layer; `align`/`group` require at least two targets, `distribute` requires at least three. See `.dev_docs/spec/cli.md` for the exact rule per command. |
+| `element group` / `align` / `distribute` | Not "move one target at a time" — these read the whole list's combined bounding box (or, for `group`, wrap the whole list) as a single operation. All targets must be in the same container layer; `align`/`group` require at least two targets, `distribute` requires at least three. See `docs/spec/cli.md` for the exact rule per command. |
 
 **One operation = one undo step:** every element command writes the modified slide file exactly once per
 invocation, regardless of how many ids are in the list — it never writes once per id, which would split
@@ -72,7 +72,7 @@ Two reasons, none of which is optional:
 
 If an agent needs "these elements as one uniformly-scaled group," `element group` groups them first, then
 `element scale` on the resulting group id already behaves as "treat the whole thing as one box" (it
-recurses into every descendant container's offset and primitive geometry — see `.dev_docs/spec/cli.md`'s
+recurses into every descendant container's offset and primitive geometry — see `docs/spec/cli.md`'s
 `element scale` entry for the exact recursive rule).
 
 ### Cleaning up dangling effect entries on `element delete` (ADR-0009)
@@ -81,6 +81,6 @@ After `element delete` removes an element, it also clears any `<slidra:effect>` 
 entries pointing at the removed id, including group descendant ids — silently, with no count reported in
 `data` (`element delete`'s success `data` is `{}`; see `crates/slidra/src/element/edit.rs`,
 `find_dangling_effect_ranges`). `element group`/`element ungroup` report the same kind of cleanup
-explicitly, as the `removedEffects` count in their success `data` — see `.dev_docs/spec/cli.md`. The
+explicitly, as the `removedEffects` count in their success `data` — see `docs/spec/cli.md`. The
 effect schema itself (`<slidra:effect target="…" .../>` inside a slide's `<metadata>`) is documented in
-`.dev_docs/spec/slidra-format.md`.
+`docs/spec/slidra-format.md`.

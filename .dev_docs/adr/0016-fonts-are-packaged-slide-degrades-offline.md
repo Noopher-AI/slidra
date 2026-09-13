@@ -3,7 +3,7 @@
 > **This ADR opens an explicit hole in two existing ADRs.** ADR-0003's container structure originally had three directories (`project.json` + `slides/` + `assets/`); this ADR adds a fourth: `fonts/`. ADR-0001 originally required "a static view must render correctly" whenever a single slide is opened in any tool; this ADR carves out an explicit exception for **fonts**: a slide opened on its own degrades to a system font. The rest of both ADRs is unaffected.
 >
 > The **decision** that fonts are packaged with the `.slidra`, and degrade to system fonts when opened standalone, is unchanged; the complete `FontEntry` field table for `project.json.fonts`, and the precise rule that `fonts` becomes required (`[]` is valid) starting at `formatVersion` 4, along with the 3→4 migration rules, are detailed in
-> [`docs/spec/slidra-format.md`](../spec/slidra-format.md).
+> [`docs/spec/slidra-format.md`](../../docs/spec/slidra-format.md).
 
 A CJK presentation needs a font to measure and render stable, cross-environment-consistent text: the Node side needs it to compute layout without a browser, and the browser needs to render with the exact same font — the widths measured on both sides must agree, or layout will jump between editing and playback. This font can't depend on the user's machine happening to have the right CJK font already installed — so it has to travel with the `.slidra`.
 

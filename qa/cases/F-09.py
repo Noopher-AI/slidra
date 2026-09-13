@@ -1,7 +1,7 @@
 """F-09: pressing Tab while editing a table cell should jump to the next
 cell, with focus staying on the same `INPUT.table-cell-editor`.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the following primitives) — this script only
 uses this list; it doesn't add new primitives or rewrite itself against a
 different harness:

@@ -14,7 +14,7 @@ import { contrastRatio, parseColor } from "../../../e2e/helpers/contrast.js";
 // under test otherwise).
 //
 // The token names below were updated to track the design package's naming
-// (docs/design/docs/01-DESIGN_TOKENS.md) after tokens.css's rewrite: several
+// (.dev_docs/design/01-DESIGN_TOKENS.md) after tokens.css's rewrite: several
 // of the old dark-shell scheme's token names no longer exist.
 // The design package itself makes no explicit WCAG contrast claims, so the
 // pairs and thresholds below were chosen to mirror this file's previous

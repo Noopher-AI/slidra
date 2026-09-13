@@ -1,6 +1,6 @@
 """F-02: keyboard paging stops working after selecting a slide element.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the fixed primitives — see qa/README.md and the
 notes in qa/cases/F-15.py). This file also uses `press_key(key)`, which is not
 a Slidra-specific primitive but one of the globals browser-use's core already

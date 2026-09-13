@@ -33,12 +33,12 @@ const execFileAsync = promisify(execFile);
  * effects rather than overloading one of those three with a second,
  * unrelated acceptance purpose. This test packs the repo's real `demo/`
  * directory (not a copy under `e2e/fixtures/`), opens it exactly the way
- * `quick_start.sh` does for a human, and walks the whole thing with real
+ * `scripts/quick_start.sh` does for a human, and walks the whole thing with real
  * `page.keyboard.press` calls — one continuous run from slide 1 to the
  * last step of slide 4, never leaving play mode. If a hand edit to
  * `demo/` ever breaks the walkthrough, this test goes red instead of the
  * breakage sitting undiscovered until a human happens to run
- * quick_start.sh.
+ * scripts/quick_start.sh.
  *
  * No autoplay-policy override: the real ArrowRight keypress below is the
  * real user gesture `play()` relies on.
