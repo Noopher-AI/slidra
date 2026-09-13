@@ -12,7 +12,7 @@ import { writeAgentModel, writeAgentSelection } from "./settings.js";
 /** Where the currently-selected agent kind came from (NOOP-230 §4.3). */
 export type AgentSource = "cli" | "settings" | "none";
 
-/** Only two states — deliberately no `not-installed` (§7.3): both adapters always ship with the package. */
+/** Only two states — deliberately no `not-installed` (§7.3): every adapter ships with the package. */
 export type AgentAvailability = "available" | "unauthenticated";
 
 export interface AgentCard {
@@ -28,7 +28,7 @@ export interface AgentCard {
 export interface AgentStatus {
   current: AgentKind | null;
   source: AgentSource;
-  /** Always both agents, in `ADAPTER_SPECS`'s order — regardless of which is `current`. */
+  /** Every supported agent, in `ADAPTER_SPECS`'s order — regardless of which is `current`. */
   agents: AgentCard[];
   /**
    * #303: true whenever there is something Stop can stop — a turn in
@@ -197,13 +197,10 @@ export class AgentManager {
     return this.buildStatus();
   }
 
-  /** Always reruns both probes (in parallel — total time bounded by one probe's own timeout) and refreshes the cache. */
+  /** Always reruns every probe in parallel (total time bounded by one probe's own timeout) and refreshes the cache. */
   async probe(): Promise<AgentStatus> {
-    const [claude, codex] = await Promise.all([this.probeOne("claude"), this.probeOne("codex")]);
-    this.probeCache = new Map<AgentKind, ProbeResult>([
-      ["claude", claude],
-      ["codex", codex],
-    ]);
+    const results = await Promise.all(ADAPTER_SPECS.map(async (spec) => [spec.kind, await this.probeOne(spec.kind)] as const));
+    this.probeCache = new Map<AgentKind, ProbeResult>(results);
     return this.buildStatus();
   }
 

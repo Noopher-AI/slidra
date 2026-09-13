@@ -6,5 +6,6 @@ set -e
 # 0.0.0.0, not the default loopback: inside a container a loopback bind is
 # unreachable from outside it.
 exec ./target/release/slidra serve "$(cat /app/presentation-id)" \
+  --agent pi \
   --port "${PORT:-80}" \
   --host 0.0.0.0

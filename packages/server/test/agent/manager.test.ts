@@ -33,7 +33,8 @@ afterEach(async () => {
 });
 
 function dummyConfig(kind: AgentKind): AgentAdapterConfig {
-  return { kind, label: kind === "claude" ? "Claude Code" : "Codex", command: "true", args: [] };
+  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (Local Qwen)";
+  return { kind, label, command: "true", args: [] };
 }
 
 function trackingResolveAdapter(): { resolveAdapter: (kind: AgentKind) => AgentAdapterConfig; calls: AgentKind[] } {
@@ -109,13 +110,13 @@ describe("AgentManager", () => {
     });
 
     await manager.status();
-    expect(calls).toHaveLength(2); // one probe per adapter kind
+    expect(calls).toHaveLength(3); // one probe per adapter kind
     await manager.status();
     await manager.status();
-    expect(calls).toHaveLength(2); // never reprobes on its own
+    expect(calls).toHaveLength(3); // never reprobes on its own
   });
 
-  it("probe() always reruns both probes, in parallel (bounded by one probe's own delay, not the sum)", async () => {
+  it("probe() always reruns every probe in parallel (bounded by one probe's own delay, not the sum)", async () => {
     const { resolveAdapter } = trackingResolveAdapter();
     const delayMs = 60;
     const { runCommand, calls } = runCommandReturning(loggedInOutcome, delayMs);
@@ -128,12 +129,12 @@ describe("AgentManager", () => {
     });
 
     await manager.status();
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     const start = Date.now();
     await manager.probe();
     const elapsed = Date.now() - start;
-    expect(calls).toHaveLength(4);
-    // Sequential would be >= 2*delayMs; parallel stays close to one delay.
+    expect(calls).toHaveLength(6);
+    // Sequential would be >= 3*delayMs; parallel stays close to one delay.
     expect(elapsed).toBeLessThan(delayMs * 2);
   });
 

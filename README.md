@@ -184,7 +184,7 @@ bounded edit, and run `validate`.
 
 ## Architecture
 
-Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns all presentation-content reads and writes. `slidra serve` serves the editor alongside the open deck and connects its chat to Claude Code or Codex through ACP. The web editor never accesses a `.slidra` deck directly: it sends read requests and semantic edit commands to the application server, which executes the corresponding `slidra` CLI commands.
+Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns all presentation-content reads and writes. `slidra serve` serves the editor alongside the open deck and connects its chat to Claude Code, Codex, or Pi through ACP. Pi currently targets a local Qwen server through its OpenAI-compatible API. The web editor never accesses a `.slidra` deck directly: it sends read requests and semantic edit commands to the application server, which executes the corresponding `slidra` CLI commands.
 
 ```mermaid
 flowchart LR
@@ -205,7 +205,7 @@ flowchart LR
 | --- | --- | --- |
 | Hosted demo edge | Vercel Routing Middleware, TypeScript | Authenticates visitors, serves the Next.js static export, and forwards authenticated `/api/*` traffic to the private `slidra serve` origin. |
 | Web editor | Next.js 16, React 19, TypeScript, HTML, CSS | Renders the editor and sends presentation read requests and semantic edit commands to the application server. It never accesses `.slidra` directly. |
-| Agent integration | Agent Client Protocol, TypeScript | Connects Claude Code or Codex to the resident server while keeping deck changes inside the CLI command surface. |
+| Agent integration | Agent Client Protocol, TypeScript | Connects Claude Code, Codex, or local-Qwen-backed Pi to the resident server while keeping deck changes inside the CLI command surface. |
 | Application server | Node.js 22, TypeScript, native `node:http` | Runs `slidra serve`, exposes the JSON and SSE endpoints, and translates Web requests into `slidra` CLI read or write commands. |
 | `slidra` CLI | Rust 1.85, Rust 2024 Edition, Clap, Serde | Implements reads, semantic edits, validation, undo and redo. It is the only presentation-content boundary for `.slidra`. |
 | `.slidra` | ZIP, JSON, SVG | Stores the manifest, ordered slides, templates, assets, fonts, and optional planning documents in one `.slidra` file. |

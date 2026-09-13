@@ -17,8 +17,7 @@ The Kubernetes resources are maintained in the infrastructure repository under `
 2. Vercel Routing Middleware validates the key, issues an eight-hour `HttpOnly`, `Secure`, `SameSite=Strict` session cookie, and redirects to a clean URL without the key. The Vercel framework preset remains `Other` because the Next.js preset cannot be combined with this project-level Routing Middleware; the frontend itself is still built by Next.js as a static export.
 3. Authenticated `/api/*` requests are rewritten to the Cloudflare Tunnel origin. Middleware overwrites the private origin and client-ID headers before forwarding.
 4. An nginx sidecar in Kubernetes rejects requests without the private origin token, enforces request-size and rate limits, and proxies accepted traffic to the single Slidra container.
-
-AI agents are intentionally disabled. Do not add Claude, Codex, model-provider keys, or agent credentials to this deployment.
+5. The Slidra container runs Pi as its selected ACP agent. Pi reaches the cluster-local SGLang service through its OpenAI-compatible API and offers only `Qwen3.8-27B-NVFP4`.
 
 ## Required secrets
 
@@ -33,6 +32,8 @@ Configure these values outside Git. Never put their values in this repository, c
 ### Kubernetes
 
 The `slidra-demo/origin-auth` Secret must contain the same origin credential under the `token` key.
+The `slidra-demo/qwen-api` Secret must contain the SGLang bearer token under the `api-key` key; keep
+it synchronized with `inference/sglang-api-key`. Neither secret belongs in Git.
 
 ## Build the container
 
@@ -70,6 +71,8 @@ npx vercel@latest inspect https://slidra-demo.vercel.app --scope noopher-ai
 - Keep the README demo badge disabled until an intentional public launch.
 - Keep the Kubernetes Deployment at one replica and use the `Recreate` strategy. Multiple Slidra processes contend for the same presentation editing lock.
 - Preserve `no-store` headers and unbuffered proxying for `/api/*` and SSE endpoints.
+- Keep Qwen traffic on the cluster network. The Slidra pod may reach only DNS and the SGLang service;
+  the SGLang ingress policy explicitly admits the `slidra-demo` namespace.
 - Direct requests to the Cloudflare origin must return `403`; requests without a valid Vercel session must return `401`.
 - Rotate all three secrets if an invitation URL or origin token is disclosed.
 
@@ -82,3 +85,5 @@ npx vercel@latest inspect https://slidra-demo.vercel.app --scope noopher-ai
 - Oversized command bodies return `413`.
 - Excess requests return `429`.
 - `/api/events` remains open and emits SSE heartbeat frames through both Vercel and Cloudflare.
+- `/api/agent` reports `Pi (Local Qwen)` as available and `/api/agent/session` reports
+  `local-qwen/Qwen3.8-27B-NVFP4`.

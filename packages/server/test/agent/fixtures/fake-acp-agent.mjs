@@ -325,7 +325,9 @@ class FakeAgent {
       if (config.permissionForToolCall) {
         const response = await this.connection.requestPermission({
           sessionId: params.sessionId,
-          toolCall: { toolCallId, title: "執行命令", rawInput: { command: config.toolCallCommand } },
+          toolCall: config.permissionForToolCallOmitInput
+            ? { toolCallId, title: "執行命令" }
+            : { toolCallId, title: "執行命令", rawInput: { command: config.toolCallCommand } },
           options: [
             { kind: "allow_once", name: "允許", optionId: "allow" },
             { kind: "reject_once", name: "拒絕", optionId: "reject" },

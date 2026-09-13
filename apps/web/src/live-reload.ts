@@ -15,8 +15,8 @@ export type SaveState = { known: true; dirty: boolean; fileName: string } | { kn
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** The two adapters `AgentManager` ever reports — restated here (not imported from `@slidra/server`) for the same reason `ExportFormat` above is: the browser bundle must never depend on a Node-only package. */
-export type AgentKind = "claude" | "codex";
+/** The adapters `AgentManager` can report — restated here because the browser bundle must never depend on the Node-only server package. */
+export type AgentKind = "claude" | "codex" | "pi";
 
 /** The `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
 export interface AgentChangedEvent {
@@ -300,7 +300,7 @@ function parseAgentChangedEventData(event: Event): AgentChangedEvent | undefined
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, label } = parsed as { kind?: unknown; label?: unknown };
-  if (kind !== "claude" && kind !== "codex") return undefined;
+  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
   if (typeof label !== "string") return undefined;
   return { kind, label };
 }
@@ -316,7 +316,7 @@ function parseAgentModelChangedEventData(event: Event): AgentModelChangedEvent |
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, modelId, name } = parsed as { kind?: unknown; modelId?: unknown; name?: unknown };
-  if (kind !== "claude" && kind !== "codex") return undefined;
+  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
   if (typeof modelId !== "string" || typeof name !== "string") return undefined;
   return { kind, modelId, name };
 }

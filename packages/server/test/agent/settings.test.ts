@@ -62,10 +62,12 @@ describe("agent settings", () => {
     expect(await readAgentSettings()).toEqual({ agent: null, models: {} });
   });
 
-  it("returns the stored kind for claude and codex", async () => {
+  it("returns every supported stored kind", async () => {
     await mkdir(home, { recursive: true });
-    await writeFile(agentSettingsPath(), JSON.stringify({ agent: "codex" }));
-    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
+    for (const agent of ["claude", "codex", "pi"] as const) {
+      await writeFile(agentSettingsPath(), JSON.stringify({ agent }));
+      expect(await readAgentSettings()).toEqual({ agent, models: {} });
+    }
   });
 
   it("throws a SlidraError listing the valid values when agent is an unknown value", async () => {
@@ -73,6 +75,7 @@ describe("agent settings", () => {
     await writeFile(agentSettingsPath(), JSON.stringify({ agent: "gemini" }));
     await expect(readAgentSettings()).rejects.toThrow(/claude/);
     await expect(readAgentSettings()).rejects.toThrow(/codex/);
+    await expect(readAgentSettings()).rejects.toThrow(/pi/);
   });
 
   it("writeAgentSelection creates SLIDRA_HOME and the file when neither exists yet", async () => {

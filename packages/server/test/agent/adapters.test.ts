@@ -14,7 +14,7 @@ const packageJsonPath = path.join(
   "../../package.json",
 );
 
-// NOOP-230 §3.2: both adapters ship as ordinary npm dependencies, resolved
+// NOOP-230 §3.2: all adapters ship as ordinary npm dependencies, resolved
 // via `process.execPath` + a real, on-disk file — never PATH, never
 // `node_modules/.bin`, never the bin path spawned directly. These tests
 // exercise the actual installed packages (no fake/injected resolver): if
@@ -36,6 +36,55 @@ describe("resolveAdapterConfig", () => {
     expect(existsSync(config.args![0])).toBe(true);
     expect(config.args![0]).toContain(path.join("@agentclientprotocol", "codex-acp"));
     expect(config.env?.INITIAL_AGENT_MODE).toBe("read-only");
+  });
+
+  it("pi: resolves the bundled ACP executable and writes an isolated local-Qwen catalog", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "slidra-pi-home-"));
+    const originalHome = process.env.SLIDRA_HOME;
+    const originalBaseUrl = process.env.SLIDRA_PI_BASE_URL;
+    const originalModel = process.env.SLIDRA_PI_MODEL;
+    const originalApiKey = process.env.SLIDRA_PI_API_KEY;
+    try {
+      process.env.SLIDRA_HOME = dir;
+      process.env.SLIDRA_PI_BASE_URL = "http://127.0.0.1:9000/v1";
+      process.env.SLIDRA_PI_MODEL = "qwen-test";
+      process.env.SLIDRA_PI_API_KEY = "test-local-key";
+      const config = resolveAdapterConfig("pi");
+      expect(config.command).toBe(process.execPath);
+      expect(config.args).toHaveLength(1);
+      expect(existsSync(config.args![0])).toBe(true);
+      expect(config.args![0]).toContain(path.join("@automatalabs", "pi-acp", "dist", "index.js"));
+      const agentDir = path.join(dir, "pi-local-qwen");
+      expect(config.env?.PI_CODING_AGENT_DIR).toBe(agentDir);
+      expect(config.env?.SLIDRA_PI_API_KEY).toBe("test-local-key");
+      expect(config.env?.OPENAI_API_KEY).toBe("");
+      expect(config.env?.OPENROUTER_API_KEY).toBe("");
+      expect(JSON.parse(await readFile(path.join(agentDir, "models.json"), "utf8"))).toEqual({
+        providers: {
+          "local-qwen": {
+            baseUrl: "http://127.0.0.1:9000/v1",
+            api: "openai-completions",
+            apiKey: "$SLIDRA_PI_API_KEY",
+            compat: {
+              supportsDeveloperRole: false,
+              supportsReasoningEffort: false,
+              thinkingFormat: "qwen-chat-template",
+            },
+            models: [{ id: "qwen-test", name: "Local Qwen (qwen-test)", reasoning: true }],
+          },
+        },
+      });
+    } finally {
+      if (originalHome === undefined) delete process.env.SLIDRA_HOME;
+      else process.env.SLIDRA_HOME = originalHome;
+      if (originalBaseUrl === undefined) delete process.env.SLIDRA_PI_BASE_URL;
+      else process.env.SLIDRA_PI_BASE_URL = originalBaseUrl;
+      if (originalModel === undefined) delete process.env.SLIDRA_PI_MODEL;
+      else process.env.SLIDRA_PI_MODEL = originalModel;
+      if (originalApiKey === undefined) delete process.env.SLIDRA_PI_API_KEY;
+      else process.env.SLIDRA_PI_API_KEY = originalApiKey;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("codex: with `codex` on PATH, CODEX_PATH is a launcher in SLIDRA_HOME that execs it with allow_login_shell=false", async () => {
@@ -81,11 +130,12 @@ describe("resolveAdapterConfig", () => {
     }
   });
 
-  it("package.json pins both adapters to exact versions", async () => {
+  it("package.json pins all adapters to exact versions", async () => {
     const raw = await readFile(packageJsonPath, "utf8");
     const pkg = JSON.parse(raw) as { dependencies: Record<string, string> };
     expect(pkg.dependencies["@zed-industries/claude-code-acp"]).toBe("0.16.2");
     expect(pkg.dependencies["@agentclientprotocol/codex-acp"]).toBe("1.11.0");
+    expect(pkg.dependencies["@automatalabs/pi-acp"]).toBe("0.8.0");
     expect(pkg.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
   });
 });

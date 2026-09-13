@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { SlidraError } from "../slidra/errors.js";
 import { resolveSlidraHome } from "../slidra/home.js";
-import type { AgentKind } from "./adapters.js";
+import { AGENT_KINDS, isAgentKind, type AgentKind } from "./adapters.js";
 
 /**
  * User-level agent selection, persisted at `<SLIDRA_HOME>/settings.json`.
@@ -37,7 +37,7 @@ export function agentSettingsPath(): string {
  * A missing file is not an error — nothing has been chosen yet — and this
  * function never creates one just because it was asked to read it; only
  * `writeAgentSelection` ever creates the file. Everything else that does not
- * parse as `{ agent: "claude" | "codex" | null, ... }` is an honest failure
+ * parse as a supported agent kind (or null) is an honest failure
  * (`SlidraError`): this module never silently patches a broken file into
  * a default value. The caller (`cli.ts`) is the one place allowed to catch
  * that failure and continue with `agent: null` — this module's job stops at
@@ -70,20 +70,20 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   if (value === undefined || value === null) {
     return { agent: null, models };
   }
-  if (value === "claude" || value === "codex") {
+  if (isAgentKind(value)) {
     return { agent: value, models };
   }
-  throw new SlidraError(`Settings file's agent field is invalid (must be claude, codex, or null): ${filePath}`);
+  throw new SlidraError(`Settings file's agent field is invalid (must be claude, codex, pi, or null): ${filePath}`);
 }
 
-/** `models` is `{ claude?: string, codex?: string }`; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */
+/** `models` is keyed by agent kind; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */
 function readModels(value: unknown, filePath: string): Partial<Record<AgentKind, string>> {
   if (value === undefined || value === null) return {};
   if (typeof value !== "object" || Array.isArray(value)) {
     throw new SlidraError(`Settings file's models field must be an object: ${filePath}`);
   }
   const models: Partial<Record<AgentKind, string>> = {};
-  for (const kind of ["claude", "codex"] as const) {
+  for (const kind of AGENT_KINDS) {
     const id = (value as Record<string, unknown>)[kind];
     if (id === undefined) continue;
     if (typeof id !== "string" || id === "") {
