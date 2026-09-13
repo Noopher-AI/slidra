@@ -65,8 +65,12 @@ describe("resolveAdapterConfig", () => {
             baseUrl: "http://127.0.0.1:9000/v1",
             api: "openai-completions",
             apiKey: "$SLIDRA_PI_API_KEY",
-            compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
-            models: [{ id: "qwen-test", name: "Local Qwen (qwen-test)" }],
+            compat: {
+              supportsDeveloperRole: false,
+              supportsReasoningEffort: false,
+              thinkingFormat: "qwen-chat-template",
+            },
+            models: [{ id: "qwen-test", name: "Local Qwen (qwen-test)", reasoning: true }],
           },
         },
       });

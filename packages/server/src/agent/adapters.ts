@@ -200,8 +200,9 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
           compat: {
             supportsDeveloperRole: false,
             supportsReasoningEffort: false,
+            thinkingFormat: "qwen-chat-template",
           },
-          models: [{ id: model, name: `Local Qwen (${model})` }],
+          models: [{ id: model, name: `Local Qwen (${model})`, reasoning: true }],
         },
       },
     }, null, 2)}\n`);
