@@ -14,6 +14,10 @@ Reuses the five canonical roles; the label strings match the role names. See `.d
 
 Single-context: root `CONTEXT.md` + `.dev_docs/adr/`. See `.dev_docs/agents/domain.md`.
 
+## Language
+
+Prefer English everywhere in this repository except under `docs/`, including pull requests and GitHub Issues.
+
 ## Verification prerequisites
 
 Manual acceptance always starts with `npm run verify:setup` — don't assemble the steps yourself. It
