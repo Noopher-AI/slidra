@@ -5,7 +5,7 @@
 <h1 align="center">Slidra</h1>
 
 <p align="center">
-  <b>Agentic Slide Harness Powers a Unified Presentation Editor for Agent Experience and User Experience.</b>
+  <b>Agentic Slide Harness Powers a Unified Presentation Editor for AX and UX.</b>
 </p>
 
 <p align="center">
