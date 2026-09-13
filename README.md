@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.gif" width="800" alt="An agent detects and fixes a text-overflow issue while the slide updates live.">
+  <img src="assets/hero.png" width="800" alt="An agent detects and fixes a text-overflow issue while the slide updates live.">
 </p>
 
 ---
