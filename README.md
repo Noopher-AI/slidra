@@ -238,20 +238,9 @@ bounded edit, and run `validate`.
 
 ---
 
-## Web editor
-
-`slidra serve` (started for you by `npm run verify:setup`) serves the visual editor in `apps/web`
-alongside the deck. It supports selecting, dragging, resizing, rotating, grouping, and aligning
-objects, editing text and styles, and pinning comments to elements — every edit routes through the
-same CLI command layer an agent uses, so object identity is preserved across GUI and CLI edits (see
-[How It Works](#how-it-works)). `serve` also wires up a chat connection to an agent (Claude Code or
-Codex, via ACP), so you can prompt changes for the open deck without leaving the editor.
-
----
-
 ## Architecture
 
-Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns every deck command. The web editor never edits a `.slidra` deck directly: human edits, agent requests, reads, validation, undo, and redo all pass through the same CLI command boundary.
+Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns every deck command. `slidra serve` serves the editor alongside the open deck and connects its chat to Claude Code or Codex through ACP. The web editor never edits a `.slidra` deck directly: human edits, agent requests, reads, validation, undo, and redo all pass through the same CLI command boundary, preserving object identity across GUI and CLI operations.
 
 ```mermaid
 flowchart LR
