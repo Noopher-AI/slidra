@@ -63,9 +63,11 @@ function defaultBundledSkillDir(): string {
   return path.join(here, "../../agent-workdir/.agents/skills");
 }
 
-/** Claude reads its own user-level skills from `~/.claude/skills`; Codex from `~/.agents/skills`. */
+/** Each agent's native user-level skill directory. */
 function defaultUserSkillDir(kind: AgentKind): string {
-  return kind === "claude" ? path.join(homedir(), ".claude/skills") : path.join(homedir(), ".agents/skills");
+  if (kind === "claude") return path.join(homedir(), ".claude/skills");
+  if (kind === "pi") return path.join(homedir(), ".pi/agent/skills");
+  return path.join(homedir(), ".agents/skills");
 }
 
 /**

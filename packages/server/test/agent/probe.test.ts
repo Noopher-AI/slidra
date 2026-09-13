@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { probeLogin, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
 
 // Pure decision logic driven entirely through an injected CommandRunner —
-// no real `claude`/`codex` CLI is ever spawned here: the "happy path,
+// no real agent login command is ever spawned here: the "happy path,
 // actually logged in" case can only be verified this way since the suite
 // must pass on a machine that is not logged into either.
 
@@ -63,6 +63,11 @@ describe("probeLogin", () => {
     expect(result).toEqual({ loggedIn: false });
   });
 
+  it("pi: the OpenRouter environment probe uses exit status", async () => {
+    expect(await probeLogin("pi", runnerReturning(outcome({ code: 0 })))).toEqual({ loggedIn: true });
+    expect(await probeLogin("pi", runnerReturning(outcome({ code: 1 })))).toEqual({ loggedIn: false });
+  });
+
   it("either agent: spawn failure/timeout (code: null) is treated as not logged in, with a reason", async () => {
     const result = await probeLogin(
       "claude",
@@ -105,5 +110,17 @@ describe("probeLogin", () => {
     };
     await probeLogin("codex", runner);
     expect(seen).toEqual({ command: "codex", args: ["login", "status"] });
+  });
+
+  it("passes the non-secret OpenRouter environment probe to the runner (pi)", async () => {
+    let seen: { command: string; args: string[] } | undefined;
+    const runner: CommandRunner = async (command, args) => {
+      seen = { command, args };
+      return outcome({ code: 0 });
+    };
+    await probeLogin("pi", runner);
+    expect(seen?.command).toBe(process.execPath);
+    expect(seen?.args.join(" ")).toContain("OPENROUTER_API_KEY");
+    expect(seen?.args.join(" ")).not.toContain(process.env.OPENROUTER_API_KEY ?? "not-present");
   });
 });

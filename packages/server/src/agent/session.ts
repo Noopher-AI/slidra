@@ -343,6 +343,15 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly relayedToolCalls = new Set<string>();
   /**
+   * The raw inputs announced by `session/update tool_call`, keyed until the
+   * turn ends. Most adapters repeat the input in `request_permission`; Pi's
+   * ACP adapter deliberately sends only the id there, after first flushing
+   * the full tool_call update. Hydrating that request from the protocol's
+   * earlier announcement keeps the same command/path gate and edit-lock
+   * semantics for Pi instead of treating missing duplicated data as safe.
+   */
+  private readonly announcedToolInputs = new Map<string, unknown>();
+  /**
    * Tool calls this turn whose command the allowlist refused. Kept so the
    * failure the adapter reports for them can be shown to the author in
    * Slidra's own words rather than the adapter's misleading one — same
@@ -695,6 +704,7 @@ export class AgentChatSession extends EventEmitter {
           // the refusal. Taking the turn back is plumbing.
           prompt = refusalCorrectionPrompt(hints);
           this.relayedToolCalls.clear();
+          this.announcedToolInputs.clear();
           this.refusedToolCalls.clear();
           this.refusalHints.clear();
           continue;
@@ -716,6 +726,7 @@ export class AgentChatSession extends EventEmitter {
     } finally {
       this.relayingCurrentTurn = false;
       this.relayedToolCalls.clear();
+      this.announcedToolInputs.clear();
       this.refusedToolCalls.clear();
       this.refusalHints.clear();
       await this.closeEditLockIfOpen();
@@ -978,6 +989,7 @@ export class AgentChatSession extends EventEmitter {
           return;
         }
         if (update.sessionUpdate === "tool_call") {
+          if (update.rawInput !== undefined) this.announcedToolInputs.set(update.toolCallId, update.rawInput);
           this.relayCommandStart(update);
           return;
         }
@@ -1002,15 +1014,20 @@ export class AgentChatSession extends EventEmitter {
           }
           return { outcome: { outcome: "cancelled" } };
         }
+        const announcedInput = this.announcedToolInputs.get(params.toolCall.toolCallId);
+        const effectiveParams: acp.RequestPermissionRequest =
+          params.toolCall.rawInput === undefined && announcedInput !== undefined
+            ? { ...params, toolCall: { ...params.toolCall, rawInput: announcedInput } }
+            : params;
         // Only a command actually about to run needs the floor — a request
         // the allowlist was always going to refuse touches nothing on
         // disk, so freezing for it would be pure side effect with no
         // corresponding write to protect (and would open/immediately-close
         // an empty history group for every refused command, for nothing).
-        if (isSlidraCliCommand(params)) {
+        if (isSlidraCliCommand(effectiveParams)) {
           await this.openEditLockOnFirstCommand();
         }
-        return this.decidePermission(params);
+        return this.decidePermission(effectiveParams);
       },
       readTextFile: async (params: acp.ReadTextFileRequest) => {
         return this.readTextFile(params);

@@ -77,6 +77,15 @@ describe("fromAgentResponse", () => {
     });
   });
 
+  it("accepts Pi as the current OpenRouter-backed agent", () => {
+    const result = fromAgentResponse({
+      current: "pi",
+      source: "settings",
+      agents: [{ kind: "pi", label: "Pi (OpenRouter)", status: "available", loginCommand: "export OPENROUTER_API_KEY=<your-key>" }],
+    });
+    expect(result).toMatchObject({ kind: "ready", current: "pi", label: "Pi (OpenRouter)" });
+  });
+
   it("keeps a card's detail (e.g. a detected anomaly) unchanged", () => {
     const result = fromAgentResponse({
       current: null,

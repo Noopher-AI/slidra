@@ -27,6 +27,7 @@
 #   ./quick_start.sh --blank              # fully automatic, blank presentation
 #   ./quick_start.sh --port 6000          # change the port
 #   ./quick_start.sh --agent claude       # pick an agent (recommended when several are detected)
+#   OPENROUTER_API_KEY=... ./quick_start.sh --agent pi  # use Pi through OpenRouter
 #   ./quick_start.sh --fresh              # discard the old presentation, recreate it
 #   ./quick_start.sh --skip-build         # skip the build (don't use this when you only changed frontend source)
 #   ./quick_start.sh --open               # also open a browser (default: don't)
@@ -186,14 +187,14 @@ if [ ! -x "$CLI" ]; then
 fi
 
 step "Checking agent"
-# Both adapters (claude-code-acp / codex-acp) are ordinary npm dependencies of
+# All adapters (claude-code-acp / codex-acp / pi-acp) are ordinary npm dependencies of
 # @slidra/server, installed together with step 1's npm install — no
 # separate global install or PATH probing needed. Which one to use is a
 # user-level setting (settings.json) or a one-time override via --agent; when
 # none is chosen, serve still starts normally, only the chat feature waits
 # until one is selected.
-if [ -n "$AGENT" ] && [ "$AGENT" != "claude" ] && [ "$AGENT" != "codex" ]; then
-  echo "--agent must be claude or codex." >&2
+if [ -n "$AGENT" ] && [ "$AGENT" != "claude" ] && [ "$AGENT" != "codex" ] && [ "$AGENT" != "pi" ]; then
+  echo "--agent must be claude, codex, or pi." >&2
   exit 1
 fi
 

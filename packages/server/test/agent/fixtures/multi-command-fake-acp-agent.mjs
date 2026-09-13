@@ -103,6 +103,9 @@ class MultiCommandFakeAgent {
         if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
           throw new Error(`命令未獲允許：${command}：${JSON.stringify(permission.outcome)}`);
         }
+        if (config.holdAfterPermissionMs) {
+          await new Promise((resolve) => setTimeout(resolve, config.holdAfterPermissionMs));
+        }
         await runShellCommand(command, sessionCwd);
         log({ turn, ranCommand: command });
       }

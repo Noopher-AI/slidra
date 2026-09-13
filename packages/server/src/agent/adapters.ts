@@ -8,18 +8,23 @@ import { resolveSlidraHome } from "../slidra/home.js";
 import type { AgentAdapterConfig } from "./session.js";
 
 /**
- * The two ACP adapters Slidra knows how to drive. Claude Code and Codex
- * are not themselves ACP servers — each needs its own thin adapter package
- * that speaks ACP over stdio and drives the underlying CLI.
+ * The ACP adapters Slidra knows how to drive. Claude Code and Codex are not
+ * themselves ACP servers, while Pi is embedded by its adapter; each package
+ * presents the same ACP-over-stdio boundary to Slidra.
  *
- * NOOP-230: both adapters ship as ordinary npm dependencies of
+ * NOOP-230: every adapter ships as an ordinary npm dependency of
  * `@slidra/server` (see `package.json`) rather than something the user
  * installs globally and Slidra goes looking for on `PATH`. "Which one is
- * installed" is no longer a question serve ever asks — both are always
+ * installed" is no longer a question serve ever asks — all are always
  * present the moment `npm install` has run; "which one is selected" is a
  * separate, user-level decision (`settings.ts`).
  */
-export type AgentKind = "claude" | "codex";
+export const AGENT_KINDS = ["claude", "codex", "pi"] as const;
+export type AgentKind = (typeof AGENT_KINDS)[number];
+
+export function isAgentKind(value: unknown): value is AgentKind {
+  return typeof value === "string" && (AGENT_KINDS as readonly string[]).includes(value);
+}
 
 export interface AdapterSpec {
   kind: AgentKind;
@@ -61,6 +66,17 @@ export const ADAPTER_SPECS: readonly AdapterSpec[] = [
     probeCommand: { command: "codex", args: ["login", "status"] },
     loginCommand: "codex login",
   },
+  {
+    kind: "pi",
+    label: "Pi (OpenRouter)",
+    npmPackage: "@automatalabs/pi-acp",
+    modulePath: "dist/index.js",
+    probeCommand: {
+      command: process.execPath,
+      args: ["-e", "process.exit(process.env.OPENROUTER_API_KEY?.trim() ? 0 : 1)"],
+    },
+    loginCommand: "export OPENROUTER_API_KEY=<your-key>",
+  },
 ];
 
 export function adapterSpecFor(kind: AgentKind): AdapterSpec {
@@ -91,7 +107,12 @@ const require = createRequire(import.meta.url);
  */
 export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   const spec = adapterSpecFor(kind);
-  const resolved = require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
+  // pi-acp exports its library entry but deliberately does not export its
+  // executable subpath. Resolve the public entry first, then address the
+  // sibling CLI file named by the package's `bin` field.
+  const resolved = kind === "pi"
+    ? path.join(dirname(require.resolve(spec.npmPackage)), "index.js")
+    : require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
   const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
 
   // NOOP-278: when the slidra Rust binary execs this Node process as its
@@ -146,6 +167,49 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
     if (codex && process.platform !== "win32") {
       config.env = { ...config.env, CODEX_PATH: writeCodexLauncher(codex) };
     }
+  }
+
+  if (kind === "pi") {
+    // Pi supports many providers. This Slidra choice intentionally means
+    // "Pi through OpenRouter", so keep its credential/config directory
+    // isolated and mask other ambient provider keys inherited by serve.
+    // The OpenRouter key itself remains inherited from the serve process.
+    const agentDir = path.join(resolveSlidraHome(), "pi-openrouter");
+    mkdirSync(agentDir, { recursive: true });
+    config.env = {
+      ...config.env,
+      PI_CODING_AGENT_DIR: agentDir,
+      ANTHROPIC_API_KEY: "",
+      ANT_LING_API_KEY: "",
+      AZURE_OPENAI_API_KEY: "",
+      OPENAI_API_KEY: "",
+      DEEPSEEK_API_KEY: "",
+      NVIDIA_API_KEY: "",
+      GEMINI_API_KEY: "",
+      AWS_BEARER_TOKEN_BEDROCK: "",
+      MISTRAL_API_KEY: "",
+      GROQ_API_KEY: "",
+      CEREBRAS_API_KEY: "",
+      CLOUDFLARE_API_KEY: "",
+      XAI_API_KEY: "",
+      AI_GATEWAY_API_KEY: "",
+      ZAI_API_KEY: "",
+      OPENCODE_API_KEY: "",
+      RADIUS_API_KEY: "",
+      HF_TOKEN: "",
+      FIREWORKS_API_KEY: "",
+      TOGETHER_API_KEY: "",
+      BASETEN_API_KEY: "",
+      KIMI_API_KEY: "",
+      MINIMAX_API_KEY: "",
+      MINIMAX_CN_API_KEY: "",
+      QWEN_TOKEN_PLAN_API_KEY: "",
+      QWEN_TOKEN_PLAN_CN_API_KEY: "",
+      XIAOMI_API_KEY: "",
+      XIAOMI_TOKEN_PLAN_CN_API_KEY: "",
+      XIAOMI_TOKEN_PLAN_AMS_API_KEY: "",
+      XIAOMI_TOKEN_PLAN_SGP_API_KEY: "",
+    };
   }
 
   return config;

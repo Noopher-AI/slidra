@@ -108,7 +108,7 @@ export async function probeLogin(kind: AgentKind, run: CommandRunner): Promise<P
     return { loggedIn: false, detail: truncateDetail(outcome.stderr || "Failed to run the probe command") };
   }
 
-  if (kind === "codex") {
+  if (kind !== "claude") {
     // Exit code is the entire signal; a non-zero exit (including the real
     // "Not logged in" case, exit 1) is the ordinary logged-out state, not a
     // probe failure worth surfacing as `detail`.

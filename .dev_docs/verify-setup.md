@@ -22,11 +22,15 @@ script's PATH fix. This is a known limitation; the fix is to always start it via
 
 ## The agent doesn't need separate installation, but you must pick one to chat
 
-`claude-code-acp` / `codex-acp` are ordinary npm dependencies of `@slidra/server` — `npm install`
+`claude-code-acp`, `codex-acp`, and the Pi ACP adapter are ordinary npm dependencies of `@slidra/server` — `npm install`
 installs them, no global install needed. `--agent` only overrides which one is used for this single
 `serve` run; without it, the setting falls back to whatever was previously chosen in the user's settings
 file (`<SLIDRA_HOME>/settings.json`); if neither is set, `serve` still starts normally, but chat will
 report "no agent selected" until one is chosen.
+
+The `pi` choice is deliberately OpenRouter-only. Export `OPENROUTER_API_KEY` before starting setup,
+then use `npm run verify:setup -- --agent pi`; Pi itself and its ACP adapter are bundled, so no global
+Pi installation or separate Pi login is required.
 
 The setup script runs `npm install` every time to sync workspace dependencies, so switching branches
 never leaves an adapter un-installed. The Codex adapter uses a read-only sandbox with per-request

@@ -97,9 +97,10 @@ async function openFreshPresentation(): Promise<string> {
 
 /** A single-command fake ACP adapter config, shared log across kinds so spawn order across a switch can be observed. */
 function fixtureAdapter(kind: AgentKind, fixture: string, scenario: Record<string, unknown> = {}): AgentAdapterConfig {
+  const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (OpenRouter)";
   return {
     kind,
-    label: kind === "claude" ? "Claude Code" : "Codex",
+    label,
     command: process.execPath,
     args: [fixture],
     env: { FAKE_AGENT_CONFIG: JSON.stringify(scenario), FAKE_AGENT_LOG: logPath },
@@ -117,10 +118,12 @@ const outcome = (partial: Partial<CommandOutcome> = {}): CommandOutcome => ({ co
 function loginStatusRunner(status: {
   claude?: CommandOutcome;
   codex?: CommandOutcome;
+  pi?: CommandOutcome;
 }): CommandRunner {
   return async (command) => {
     if (command === "claude") return status.claude ?? outcome({ stdout: '{"loggedIn":true}' });
     if (command === "codex") return status.codex ?? outcome();
+    if (command === process.execPath) return status.pi ?? outcome();
     throw new Error(`unexpected probe command in test: ${command}`);
   };
 }
@@ -419,7 +422,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
 });
 
 describe("GET /api/agent", () => {
-  it("reports both cards, each correctly available/unauthenticated, with their static login commands", async () => {
+  it("reports every card, each correctly available/unauthenticated, with its static login command", async () => {
     const id = await openFreshPresentation();
     const server = await serve({
       presentationId: id,
@@ -427,6 +430,7 @@ describe("GET /api/agent", () => {
       runCommand: loginStatusRunner({
         claude: outcome({ stdout: '{"loggedIn":true}' }),
         codex: outcome({ code: 1, stdout: "Not logged in" }),
+        pi: outcome(),
       }),
       resolveAdapter: resolveBothTo(singleCommandFixture),
     });
@@ -442,10 +446,13 @@ describe("GET /api/agent", () => {
     expect(status.source).toBe("cli");
     const claudeCard = status.agents.find((agent) => agent.kind === "claude")!;
     const codexCard = status.agents.find((agent) => agent.kind === "codex")!;
+    const piCard = status.agents.find((agent) => agent.kind === "pi")!;
     expect(claudeCard.status).toBe("available");
     expect(claudeCard.loginCommand).toBe("claude auth login");
     expect(codexCard.status).toBe("unauthenticated");
     expect(codexCard.loginCommand).toBe("codex login");
+    expect(piCard.status).toBe("available");
+    expect(piCard.loginCommand).toBe("export OPENROUTER_API_KEY=<your-key>");
   });
 
   it("a genuine probe failure (spawn error) surfaces as unauthenticated with a detail string", async () => {
@@ -511,6 +518,21 @@ describe("POST /api/agent/select", () => {
 
     const settingsRaw = await readFile(agentSettingsPath(), "utf8");
     expect(JSON.parse(settingsRaw)).toEqual({ agent: "codex" });
+  });
+
+  it("selects Pi as the third agent option and persists it", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve({
+      presentationId: id,
+      initialAgent: { kind: "claude", source: "cli" },
+      runCommand: bothAvailable,
+      resolveAdapter: resolveBothTo(singleCommandFixture),
+    });
+
+    const response = await selectAgent(server, "pi");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, current: "pi", source: "settings" });
+    expect(JSON.parse(await readFile(agentSettingsPath(), "utf8"))).toMatchObject({ agent: "pi" });
   });
 
   it("rejects an invalid body", async () => {
@@ -591,7 +613,7 @@ describe("POST /api/agent/select", () => {
       presentationId: lockId,
       initialAgent: { kind: "claude", source: "cli" },
       runCommand: bothAvailable,
-      resolveAdapter: resolveBothTo(multiCommandFixture, { commandsPerTurn: [[command]] }),
+      resolveAdapter: resolveBothTo(multiCommandFixture, { commandsPerTurn: [[command]], holdAfterPermissionMs: 250 }),
     });
 
     expect((await postChat(server, "改標題")).status).toBe(202);

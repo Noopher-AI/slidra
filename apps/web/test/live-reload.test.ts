@@ -361,9 +361,9 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("agent-changed", { kind: "codex", label: "Codex" });
+    fake!.emit("agent-changed", { kind: "pi", label: "Pi (OpenRouter)" });
 
-    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "codex", label: "Codex" });
+    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "pi", label: "Pi (OpenRouter)" });
   });
 
   it("calls onAgentModelChanged with the parsed agent-model-changed payload, dropping malformed ones", () => {

@@ -13,7 +13,8 @@ import type { AgentCardView, AgentUiStatus } from "../src/agent-status.js";
 
 const claude: AgentCardView = { kind: "claude", label: "Claude Code", status: "available", loginCommand: "claude auth login", inUse: true };
 const codex: AgentCardView = { kind: "codex", label: "Codex", status: "unauthenticated", loginCommand: "codex login", inUse: false };
-const ready: AgentUiStatus = { kind: "ready", current: "claude", label: "Claude Code", source: "settings", agents: [claude, codex] };
+const pi: AgentCardView = { kind: "pi", label: "Pi (OpenRouter)", status: "available", loginCommand: "export OPENROUTER_API_KEY=<your-key>", inUse: false };
+const ready: AgentUiStatus = { kind: "ready", current: "claude", label: "Claude Code", source: "settings", agents: [claude, codex, pi] };
 const models = [{ id: "default", name: "Default (recommended)", detail: "Opus 4.6" }, { id: "sonnet", name: "Sonnet" }];
 
 function markup(overrides: Partial<AgentPickerProps> = {}): string {
@@ -59,9 +60,9 @@ describe("AgentPicker: chips (menu closed)", () => {
 
   it("connecting / no agent selected / switching: the chip text updates accordingly; an unauthenticated state carries a badge", () => {
     expect(chip(markup({ agentConnection: "connecting" }), "agent")).toContain("Agent connecting…");
-    expect(chip(markup({ agent: { kind: "unset", agents: [{ ...claude, inUse: false }, codex] } }), "agent")).toContain("Select agent");
+    expect(chip(markup({ agent: { kind: "unset", agents: [{ ...claude, inUse: false }, codex, pi] } }), "agent")).toContain("Select agent");
     expect(chip(markup({ switchingKind: "codex" }), "agent")).toContain("Switching…");
-    const unauthenticated: AgentUiStatus = { kind: "unauthenticated", current: "codex", label: "Codex", loginCommand: "codex login", source: "settings", agents: [{ ...claude, inUse: false }, { ...codex, inUse: true }] };
+    const unauthenticated: AgentUiStatus = { kind: "unauthenticated", current: "codex", label: "Codex", loginCommand: "codex login", source: "settings", agents: [{ ...claude, inUse: false }, { ...codex, inUse: true }, pi] };
     const html = markup({ agent: unauthenticated });
     expect(chip(html, "agent")).toContain("Not signed in");
     // Unauthenticated means there is no session at all: the model chip does not appear.
@@ -86,6 +87,9 @@ describe("AgentPicker: agent menu", () => {
     expect(codexItem).toContain('aria-checked="false"');
     expect(codexItem).not.toContain("disabled");
     expect(codexItem).toContain("Not signed in · codex login");
+    const piItem = item(html, 'data-kind="pi"');
+    expect(piItem).toContain("Pi (OpenRouter)");
+    expect(piItem).toContain("Available");
     expect(html).toContain("Re-check sign-in status");
   });
 

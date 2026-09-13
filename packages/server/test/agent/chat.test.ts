@@ -1462,6 +1462,17 @@ describe("chat: the author can see the command run", () => {
     expect((notice!.data as { text: string }).text).toContain("blocked the agent's command that directly touched the presentation's files");
   });
 
+  it("hydrates Pi-style permission requests from the preceding tool announcement", async () => {
+    await commandEventsFor({
+      toolCallCommand: `sed -i s/a/b/ ${slidraHome}/work/p1/slides/001.svg`,
+      permissionForToolCall: true,
+      permissionForToolCallOmitInput: true,
+      toolCallOutcome: "failed",
+    });
+    const permission = (await readFakeAgentLog()).find((entry) => "permissionOutcome" in entry);
+    expect(permission?.permissionOutcome).toEqual({ outcome: "selected", optionId: "reject" });
+  });
+
   it("leaves a command's own failure alone — only a refused one gets Slidra's wording", async () => {
     const events = await commandEventsFor({
       toolCallCommand: "slidra ls p1",

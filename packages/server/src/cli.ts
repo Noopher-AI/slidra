@@ -3,7 +3,7 @@
 
 import { startServe } from "./serve.js";
 import { readAgentSettings } from "./agent/settings.js";
-import type { AgentKind } from "./agent/adapters.js";
+import { isAgentKind, type AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
 
 /**
@@ -140,8 +140,8 @@ function parseServeArgv(
       i++;
     } else if (arg === "--agent") {
       const value = argv[i + 1];
-      if (value !== "claude" && value !== "codex") {
-        console.error("--agent must be one of: claude, codex");
+      if (!isAgentKind(value)) {
+        console.error("--agent must be one of: claude, codex, pi");
         return undefined;
       }
       agent = value;

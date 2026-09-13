@@ -14,7 +14,7 @@ import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
-import { resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
+import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
@@ -727,8 +727,8 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
     return;
   }
   const kind = (body as { kind?: unknown } | null)?.kind;
-  if (kind !== "claude" && kind !== "codex") {
-    sendJson(res, 400, { error: "kind must be one of: claude, codex" });
+  if (!isAgentKind(kind)) {
+    sendJson(res, 400, { error: "kind must be one of: claude, codex, pi" });
     return;
   }
   try {

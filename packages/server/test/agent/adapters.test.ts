@@ -14,7 +14,7 @@ const packageJsonPath = path.join(
   "../../package.json",
 );
 
-// NOOP-230 §3.2: both adapters ship as ordinary npm dependencies, resolved
+// NOOP-230 §3.2: all adapters ship as ordinary npm dependencies, resolved
 // via `process.execPath` + a real, on-disk file — never PATH, never
 // `node_modules/.bin`, never the bin path spawned directly. These tests
 // exercise the actual installed packages (no fake/injected resolver): if
@@ -36,6 +36,26 @@ describe("resolveAdapterConfig", () => {
     expect(existsSync(config.args![0])).toBe(true);
     expect(config.args![0]).toContain(path.join("@agentclientprotocol", "codex-acp"));
     expect(config.env?.INITIAL_AGENT_MODE).toBe("read-only");
+  });
+
+  it("pi: resolves the bundled ACP executable and isolates it to OpenRouter credentials", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "slidra-pi-home-"));
+    const originalHome = process.env.SLIDRA_HOME;
+    try {
+      process.env.SLIDRA_HOME = dir;
+      const config = resolveAdapterConfig("pi");
+      expect(config.command).toBe(process.execPath);
+      expect(config.args).toHaveLength(1);
+      expect(existsSync(config.args![0])).toBe(true);
+      expect(config.args![0]).toContain(path.join("@automatalabs", "pi-acp", "dist", "index.js"));
+      expect(config.env?.PI_CODING_AGENT_DIR).toBe(path.join(dir, "pi-openrouter"));
+      expect(config.env?.OPENAI_API_KEY).toBe("");
+      expect(config.env).not.toHaveProperty("OPENROUTER_API_KEY");
+    } finally {
+      if (originalHome === undefined) delete process.env.SLIDRA_HOME;
+      else process.env.SLIDRA_HOME = originalHome;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("codex: with `codex` on PATH, CODEX_PATH is a launcher in SLIDRA_HOME that execs it with allow_login_shell=false", async () => {
@@ -81,11 +101,12 @@ describe("resolveAdapterConfig", () => {
     }
   });
 
-  it("package.json pins both adapters to exact versions", async () => {
+  it("package.json pins all adapters to exact versions", async () => {
     const raw = await readFile(packageJsonPath, "utf8");
     const pkg = JSON.parse(raw) as { dependencies: Record<string, string> };
     expect(pkg.dependencies["@zed-industries/claude-code-acp"]).toBe("0.16.2");
     expect(pkg.dependencies["@agentclientprotocol/codex-acp"]).toBe("1.11.0");
+    expect(pkg.dependencies["@automatalabs/pi-acp"]).toBe("0.8.0");
     expect(pkg.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
   });
 });

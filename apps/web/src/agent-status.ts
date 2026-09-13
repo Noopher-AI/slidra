@@ -91,7 +91,7 @@ function toCardView(card: AgentResponseCard, current: AgentKind | null): AgentCa
 function isValidCard(value: unknown): value is AgentResponseCard {
   if (typeof value !== "object" || value === null) return false;
   const { kind, label, status, loginCommand, detail } = value as Record<string, unknown>;
-  if (kind !== "claude" && kind !== "codex") return false;
+  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return false;
   if (typeof label !== "string") return false;
   if (status !== "available" && status !== "unauthenticated") return false;
   if (typeof loginCommand !== "string") return false;
@@ -169,7 +169,7 @@ export function turnRunningFrom(data: unknown): boolean {
 export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const { current, source, agents } = data as Record<string, unknown>;
-  if (current !== null && current !== "claude" && current !== "codex") return null;
+  if (current !== null && current !== "claude" && current !== "codex" && current !== "pi") return null;
   if (source !== "cli" && source !== "settings" && source !== "none") return null;
   if (!Array.isArray(agents) || !agents.every(isValidCard)) return null;
 
