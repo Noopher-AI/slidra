@@ -27,7 +27,7 @@
 #   ./quick_start.sh --blank              # fully automatic, blank presentation
 #   ./quick_start.sh --port 6000          # change the port
 #   ./quick_start.sh --agent claude       # pick an agent (recommended when several are detected)
-#   OPENROUTER_API_KEY=... ./quick_start.sh --agent pi  # use Pi through OpenRouter
+#   ./quick_start.sh --agent pi          # use Pi with the local OpenAI-compatible Qwen endpoint
 #   ./quick_start.sh --fresh              # discard the old presentation, recreate it
 #   ./quick_start.sh --skip-build         # skip the build (don't use this when you only changed frontend source)
 #   ./quick_start.sh --open               # also open a browser (default: don't)

@@ -5,9 +5,9 @@
 # user runs — not a reimplementation. ADR-0002 still holds: the frontend
 # and the API are one process, and every read spawns the real Rust binary.
 #
-# No agent is selected, so chat stays gated off (409) exactly as NOOP-230
-# describes. That is a supported state, not a broken one: the demo shows
-# the editor, dragging, `check`, and PDF export.
+# The entrypoint selects Pi. Kubernetes supplies the private, cluster-local
+# OpenAI-compatible Qwen endpoint, model id, and bearer token at runtime; no
+# model credential is baked into this image.
 
 # ---------------------------------------------------------------------------
 # Builder: Rust toolchain (pinned by rust-toolchain.toml) + Node 22 (CI parity)
