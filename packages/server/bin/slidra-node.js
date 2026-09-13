@@ -3,7 +3,7 @@
 // (`crates/slidra/src/node_entry.rs`) — `docs/spec/cli.md`'s `## 不經
 // registry 的入口：serve 與 export`. Plain JS, deliberately outside
 // `tsc -b`'s project-reference graph (same reason the deleted
-// `packages/cli/bin/slidra.js` shim was): it is the runtime-only edge
+// legacy Node CLI shim was): it is the runtime-only edge
 // between "the compiled binary on `PATH`" and this package's own build
 // output, not a source file any other TypeScript module imports.
 const argv = process.argv.slice(2);
