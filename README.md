@@ -14,9 +14,9 @@
   <!-- Public demo link intentionally hidden until launch. -->
 </p>
 
-<!-- <p align="center">
-  <img src="docs/assets/hero.gif" width="800" alt="An agent detects and fixes a text-overflow issue while the slide updates live.">
-</p> -->
+<p align="center">
+  <img src="assets/hero.gif" width="800" alt="An agent detects and fixes a text-overflow issue while the slide updates live.">
+</p>
 
 ---
 
