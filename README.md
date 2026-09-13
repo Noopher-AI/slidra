@@ -240,16 +240,19 @@ bounded edit, and run `validate`.
 
 ## Architecture
 
-Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns every deck command. `slidra serve` serves the editor alongside the open deck and connects its chat to Claude Code or Codex through ACP. The web editor never edits a `.slidra` deck directly: human edits, agent requests, reads, validation, undo, and redo all pass through the same CLI command boundary, preserving object identity across GUI and CLI operations.
+Slidra is a monorepo with a Next.js and React web editor, a resident Node.js server, and a Rust CLI that owns all presentation-content reads and writes. `slidra serve` serves the editor alongside the open deck and connects its chat to Claude Code or Codex through ACP. The web editor never accesses a `.slidra` deck directly: it sends read requests and semantic edit commands to the application server, which executes the corresponding `slidra` CLI commands.
 
 ```mermaid
 flowchart LR
     Browser["Browser"] --> Edge["Hosted demo edge"]
     Edge -->|"static app"| Web["Web editor"]
     Edge -->|"/api/*"| Server["Application server"]
-    Web <-->|"JSON API + SSE"| Server
+    Web -->|"read requests"| Server
+    Web -->|"edit commands"| Server
+    Server -.->|"SSE updates"| Web
     Agent["Agent integration"] -->|"ACP"| Server
-    Server --> CLI["slidra CLI"]
+    Server -->|"cat / ls / render"| CLI["slidra CLI"]
+    Server -->|"semantic edits"| CLI
     Agent -->|"shell"| CLI
     CLI <-->|"read / write"| Deck[".slidra"]
 ```
@@ -257,10 +260,10 @@ flowchart LR
 | Component | Frameworks and languages | Responsibility |
 | --- | --- | --- |
 | Hosted demo edge | Vercel Routing Middleware, TypeScript | Authenticates visitors, serves the Next.js static export, and forwards authenticated `/api/*` traffic to the private `slidra serve` origin. |
-| Web editor | Next.js 16, React 19, TypeScript, HTML, CSS | Renders the visual editor and translates human interactions into API requests. It is statically exported to `apps/web/dist` for both local serving and Vercel. |
+| Web editor | Next.js 16, React 19, TypeScript, HTML, CSS | Renders the editor and sends presentation read requests and semantic edit commands to the application server. It never accesses `.slidra` directly. |
 | Agent integration | Agent Client Protocol, TypeScript | Connects Claude Code or Codex to the resident server while keeping deck changes inside the CLI command surface. |
-| Application server | Node.js 22, TypeScript, native `node:http` | Runs `slidra serve`, exposes the JSON and SSE endpoints, manages ACP agent sessions, and coordinates export jobs. |
-| `slidra` CLI | Rust 1.85, Rust 2024 Edition, Clap, Serde | Implements semantic deck commands, validation, undo and redo, and `.slidra` container access. This is the authoritative mutation boundary. |
+| Application server | Node.js 22, TypeScript, native `node:http` | Runs `slidra serve`, exposes the JSON and SSE endpoints, and translates Web requests into `slidra` CLI read or write commands. |
+| `slidra` CLI | Rust 1.85, Rust 2024 Edition, Clap, Serde | Implements reads, semantic edits, validation, undo and redo. It is the only presentation-content boundary for `.slidra`. |
 | `.slidra` | ZIP, JSON, SVG | Stores the manifest, ordered slides, templates, assets, fonts, and optional planning documents in one `.slidra` file. |
 
 The local and hosted paths use the same frontend build and the same server and CLI contracts. Vercel hosts the static Next.js output and protects the public edge; it does not replace the stateful Node.js server or the Rust command engine.
