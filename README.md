@@ -88,8 +88,6 @@ Agent drafts the deck
   → Human or agent makes the next correction
 ```
 
----
-
 ## `.slidra` Format
 
 A `.slidra` file is a ZIP container with an explicit project manifest and authoritative SVG slides:
@@ -119,8 +117,6 @@ deck.slidra
 The document stores the current state instead of leaving it inside an agent’s temporary interpretation.
 
 For humans and agents alike, the `.slidra` document is the single source of truth.
-
----
 
 ## `slidra` CLI
 
