@@ -75,43 +75,15 @@ Slidra is a monorepo with a Next.js and React web editor, a resident Node.js ser
 
 ```mermaid
 flowchart LR
-    Human["Human author<br/>Browser"]
-    Agent["Coding agent<br/>Claude Code or Codex"]
-
-    subgraph Web["Web editor — TypeScript"]
-        Editor["Next.js 16 + React 19<br/>Static HTML, CSS, and JavaScript"]
-    end
-
-    subgraph App["Application runtime — Node.js 22 + TypeScript"]
-        Server["slidra serve<br/>HTTP API, SSE, ACP sessions, export jobs"]
-        Renderer["Playwright + Chromium<br/>PDF rendering"]
-    end
-
-    subgraph Domain["Command and document engine — Rust 1.85 / Edition 2024"]
-        CLI["slidra CLI<br/>Semantic commands and validation"]
-        Deck[".slidra deck<br/>ZIP + JSON + SVG + assets + fonts"]
-    end
-
-    subgraph Edge["Hosted demo — Vercel"]
-        Middleware["Routing Middleware<br/>TypeScript authentication"]
-        Static["Next.js static export<br/>Global static hosting"]
-        Origin["Cloudflare tunnel + nginx<br/>Private API origin"]
-    end
-
-    Human --> Editor
-    Editor <-->|"JSON API + SSE"| Server
-    Agent <-->|"ACP"| Server
-    Agent -->|"shell commands"| CLI
-    Server -->|"spawns commands"| CLI
-    Server --> Renderer
-    Renderer -->|"loads export.html"| Server
-    CLI <-->|"reads and writes"| Deck
-
-    Human -.->|"hosted request"| Middleware
-    Middleware -.->|"page and assets"| Static
-    Static -.->|"serves the editor"| Editor
-    Middleware -.->|"/api/*"| Origin
-    Origin -.-> Server
+    Browser["Browser"] --> Edge["Vercel<br/>TypeScript middleware"]
+    Edge -->|"static app"| Web["Web editor<br/>Next.js 16 + React 19 + TypeScript"]
+    Edge -->|"/api/*"| Server["Application server<br/>Node.js 22 + TypeScript"]
+    Web <-->|"JSON API + SSE"| Server
+    Agent["Coding agent"] -->|"ACP"| Server
+    Server --> CLI["Command engine<br/>Rust 1.85"]
+    Agent -->|"shell"| CLI
+    CLI <-->|"read / write"| Deck[".slidra<br/>ZIP + JSON + SVG"]
+    Server --> PDF["PDF export<br/>Playwright + Chromium"]
 ```
 
 | Component | Frameworks and languages | Responsibility |
