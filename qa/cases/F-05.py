@@ -1,7 +1,7 @@
 """F-05: after selecting an element, clicking the dark-gray stage backdrop
 around the slide fails to clear the selection.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` boots the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` boots the environment,
 `qa/agent_helpers.py` provides the fixed primitives — see qa/README.md and the
 notes in qa/cases/F-15.py). This file also uses `click_at_xy(x, y)` /
 `js(expression)`, which are not Slidra-specific primitives but globals that

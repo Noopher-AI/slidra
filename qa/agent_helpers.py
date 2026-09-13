@@ -32,7 +32,7 @@ _FRAME_READY_TIMEOUT = 15.0
 # open_deck()'s first navigation pays costs no later goto_slide() rebuild
 # does: cold V8 JIT, a cold disk cache for Chromium's own binary and the
 # app's JS bundle, and (on a sandbox pod) contention with whatever the rest
-# of `quick_start.sh --qa` just finished building. Measured on this pod: the
+# of `scripts/quick_start.sh --qa` just finished building. Measured on this pod: the
 # same commit failed _require_runtime_ready()'s plain 15s bound on a freshly
 # provisioned sandbox, then passed immediately on a rerun with
 # everything warm — same code, different outcome, so the 15s bound (not the
@@ -534,7 +534,7 @@ def open_deck():
     # `_new_tab`, or the cache-busting reload a few lines down.
     _install_ready_probe()
     _wait_for_load()
-    # `quick_start.sh --qa` launches Chromium with
+    # `scripts/quick_start.sh --qa` launches Chromium with
     # `--user-data-dir=$QA_DIR/profile`, a fixed on-disk profile that
     # `--qa-stop` never deletes — only the serve/Chromium processes are
     # killed, so the profile's disk HTTP cache survives a restart. Worse,

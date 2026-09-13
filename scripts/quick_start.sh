@@ -23,22 +23,22 @@
 #     blank presentation.
 #
 # Usage:
-#   ./quick_start.sh                      # fully automatic, demo presentation
-#   ./quick_start.sh --blank              # fully automatic, blank presentation
-#   ./quick_start.sh --port 6000          # change the port
-#   ./quick_start.sh --agent claude       # pick an agent (recommended when several are detected)
-#   ./quick_start.sh --agent pi          # use Pi with the local OpenAI-compatible Qwen endpoint
-#   ./quick_start.sh --fresh              # discard the old presentation, recreate it
-#   ./quick_start.sh --skip-build         # skip the build (don't use this when you only changed frontend source)
-#   ./quick_start.sh --open               # also open a browser (default: don't)
-#   ./quick_start.sh --no-open            # kept for existing invocations; already the default behavior
-#   ./quick_start.sh --qa --no-open       # sandbox QA layer: starts serve + headless
+#   ./scripts/quick_start.sh                      # fully automatic, demo presentation
+#   ./scripts/quick_start.sh --blank              # fully automatic, blank presentation
+#   ./scripts/quick_start.sh --port 6000          # change the port
+#   ./scripts/quick_start.sh --agent claude       # pick an agent (recommended when several are detected)
+#   ./scripts/quick_start.sh --agent pi          # use Pi with the local OpenAI-compatible Qwen endpoint
+#   ./scripts/quick_start.sh --fresh              # discard the old presentation, recreate it
+#   ./scripts/quick_start.sh --skip-build         # skip the build (don't use this when you only changed frontend source)
+#   ./scripts/quick_start.sh --open               # also open a browser (default: don't)
+#   ./scripts/quick_start.sh --no-open            # kept for existing invocations; already the default behavior
+#   ./scripts/quick_start.sh --qa --no-open       # sandbox QA layer: starts serve + headless
 #                                         #   Chromium in the background, writes the env file browser-use uses
-#   ./quick_start.sh --qa-stop            # tears down the background serve and Chromium left by --qa
+#   ./scripts/quick_start.sh --qa-stop            # tears down the background serve and Chromium left by --qa
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PORT=5173
@@ -537,6 +537,6 @@ QA environment is ready.
   browser-use < qa/cases/smoke.py
 
 To tear down:
-  ./quick_start.sh --qa-stop
+  ./scripts/quick_start.sh --qa-stop
 
 QAINFO

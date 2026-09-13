@@ -4,7 +4,7 @@
 >
 > **Later revision**: `formatVersion` moved from 3 to 4 (`templates` must be an object shape, the `transition` field is forbidden, `fonts` becomes required), with the full 1→2→3→4 migration rules settled in `docs/spec/slidra-format.md`; this ADR no longer tracks version-by-version detail.
 
-> The container layout, the complete type and required-ness of every `project.json` field, and the version-by-version `formatVersion` migration rules are authoritative in [`docs/spec/slidra-format.md`](../spec/slidra-format.md); this ADR only records why `formatVersion` exists and why the container takes this shape.
+> The container layout, the complete type and required-ness of every `project.json` field, and the version-by-version `formatVersion` migration rules are authoritative in [`docs/spec/slidra-format.md`](../../docs/spec/slidra-format.md); this ADR only records why `formatVersion` exists and why the container takes this shape.
 
 Users expect a presentation to be "one file" — something they can copy, send, and back up. But staying compressed while editing isn't practical: a presentation with embedded video would need tens of megabytes re-compressed for a single character change.
 

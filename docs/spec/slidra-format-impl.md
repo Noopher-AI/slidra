@@ -2,9 +2,9 @@
 
 ## Status of this document
 
-This document is the single normative reference for the `.slidra` container format and the `~/.slidra/` (`SLIDRA_HOME`) workspace layout. Rust is the sole implementation; this document is its authority. `FORMAT_VERSION` is **1** (`crates/slidra/src/presentation.rs`), and there is no migration chain: a `project.json` whose `formatVersion` is anything other than 1 is rejected outright when the presentation is opened. A `.slidra`/`.comot` file produced by the old CoMotion format is not migrated either — it is rejected outright by a container-level guard (see "`formatVersion`" below).
+This document is the implementation-facing reference for the `.slidra` container format and the `~/.slidra/` (`SLIDRA_HOME`) workspace layout: how the Rust CLI enforces the format, the exact byte-level rules, and the on-disk workspace layout. The public, human-readable format specification lives at [`docs/spec/slidra-format.md`](slidra-format.md); where the two disagree, the public spec wins and this document should be updated. The CLI command reference lives at [`docs/spec/cli.md`](cli.md).
 
-`.dev_docs/adr/` records decision history (why something was chosen at the time); this document records the current and future structural facts. Where the two disagree, this document wins.
+Rust is the sole implementation; this document records structural facts the code must honor. `FORMAT_VERSION` is **1** (`crates/slidra/src/presentation.rs`), and there is no migration chain: a `project.json` whose `formatVersion` is anything other than 1 is rejected outright when the presentation is opened. A `.slidra`/`.comot` file produced by the old CoMotion format is not migrated either — it is rejected outright by a container-level guard (see "`formatVersion`" below).
 
 ## Container layout
 

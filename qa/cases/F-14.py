@@ -1,6 +1,6 @@
 """F-14: Animate › Object card fields get clipped by the right panel's edge.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` starts the environment,
 `qa/agent_helpers.py` provides the fixed primitives below, `browser_harness.helpers`
 provides `js(expression, target_id=None)`) -- this script only uses this list:
 

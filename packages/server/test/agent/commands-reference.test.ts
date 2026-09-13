@@ -103,9 +103,11 @@ describe("editorial brief and reference/commands.md stay consistent", () => {
   const presentationId = "test-presentation-id";
   const brief = buildEditorialBrief(presentationId);
 
-  /** `docs/spec/cli.md` command names that literally appear in `text`. Safe as a plain substring test: no command name is a prefix of another (verified separately). */
+  /** `docs/spec/cli.md` command names that appear in `text` as whole words (word-boundary match, so the short command `ls` does not match "list"/"tools"/etc. in prose). */
   function commandsMentionedIn(text: string): string[] {
-    return specCommandNames.filter((name) => text.includes(name));
+    return specCommandNames.filter((name) =>
+      new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(text),
+    );
   }
 
   it("names only commands that actually exist in docs/spec/cli.md", () => {

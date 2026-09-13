@@ -1,7 +1,7 @@
 # A slide is self-contained
 
 > A slide being self-contained is a **decision**, unaffected by formalizing the spec; the full attribute table, namespace, and container-specific exception structures for the `slidra:*` elements inside a slide's `<metadata>` (`<slidra:effects>`/`<slidra:notes>`/`<slidra:comments>`/`<slidra:transition>`) live in
-> [`docs/spec/slidra-format.md`](../spec/slidra-format.md).
+> [`docs/spec/slidra-format.md`](../../docs/spec/slidra-format.md).
 
 Everything a single slide needs — graphics, element identifiers, display names, its list of effects — is written into that slide's own SVG. `project.json` retains only what only makes sense across slides: `formatVersion`, `name`, `canvas`, and the `slides` order array.
 

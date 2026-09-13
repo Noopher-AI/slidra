@@ -49,12 +49,12 @@ Codex settings to full access.
 into `serve` and stays resident). It writes out `.quickstart/qa/qa.env` (`BU_CDP_URL`,
 `BH_AGENT_WORKSPACE=qa/`, the server URL, the deck id, and so on); after `source`-ing it, `browser-use`
 can operate on this demo deck via the primitives in `qa/agent_helpers.py` — see `qa/README.md` for
-details and the primitive list. When done, wrap up with `./quick_start.sh --qa-stop`, which tears down
+details and the primitive list. When done, wrap up with `./scripts/quick_start.sh --qa-stop`, which tears down
 both the background `serve` and Chromium. Behavior without `--qa` is completely unaffected.
 
 ## When you must use `--fresh`
 
 After changing anything under `demo/`. The script doesn't automatically repackage the existing demo
 deck — repackaging it swaps in a new deck id, invalidating every URL and terminal command the user
-already has (see the corresponding comment in `quick_start.sh`). The same applies to the blank deck in
+already has (see the corresponding comment in `scripts/quick_start.sh`). The same applies to the blank deck in
 `--blank` mode: if you change it and want to rebuild it, add `--fresh` too.

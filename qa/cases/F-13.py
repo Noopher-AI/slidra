@@ -1,6 +1,6 @@
 """F-13: the left-column thumbnail shows a "✦ n" badge for how many effects a slide has.
 
-Depends on the sandboxed QA layer (`quick_start.sh --qa` starts the environment,
+Depends on the sandboxed QA layer (`scripts/quick_start.sh --qa` starts the environment,
 `qa/agent_helpers.py` provides the fixed primitives listed below) -- this script only
 uses this list of primitives and does not add any new browser-interaction primitive:
 
