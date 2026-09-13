@@ -5,7 +5,8 @@
 <h1 align="center">Slidra</h1>
 
 <p align="center">
-  <b>Agentic Slide Harness Powers a Unified Presentation Editor for AX and UX.</b>
+  <b>Agentic Slide Harness Powers a Unified Presentation Editor for AX and UX.</b><br/>
+  AI can generate slides. Slidra makes them a reliable shared workspace for humans and agents.
 </p>
 
 <p align="center">
@@ -21,55 +22,59 @@
 
 ## Why Slidra?
 
-Coding agents can generate slide decks. Slidra helps humans and agents keep improving them together.
+AI can already create an impressive presentation.
 
-Most AI slide workflows stop at generation:
-
-```text
-Prompt → Deck
-```
-
-Real presentation work does not:
+The harder question is: **what happens after the first draft?**
 
 ```text
-Prompt → Draft → Review → Edit → Validate → Present
+Prompt → Draft → Review → Local edits → Validation → More edits → Presentation
 ```
 
-Without persistent structure, every revision risks becoming another generation task. Slidra turns a deck into an inspectable, editable, and validatable document instead.
+Real presentation work is iterative. Titles change. Images move. Diagrams evolve. Animations need adjustment. Humans and agents take turns refining the same material.
 
-- **Humans** edit visually in the GUI.
-- **Agents** inspect and modify the deck through a structured CLI.
-- **Both** work on the same `.slidra` file.
+Without a structured environment, an agent may modify the deck through open-ended interpretation—deciding for itself what exists, what should change, how broadly to act, and whether the result is still valid.
 
-That split is deliberate:
+## How It Works?
 
-- **UX-friendly for humans.** The visual editor supports selection, dragging, resizing, rotation, alignment, grouping, text and style editing, animations, comments, undo/redo, playback, and fullscreen presenting.
-- **AX-friendly for agents.** The CLI exposes stable object IDs, semantic operations, structured output, composable commands, and executable validation.
+Slidra addresses this challenge through two connected shifts.
 
-> Read the full rationale in [Why Slidra When AI Can Already Generate Slides](docs/why-Slidra-when-AI-can-already-generate-slides.md) ([中文](docs/why-Slidra-when-AI-can-already-generate-slides_zh.md)).
+### Part I — From Open-Ended Generation to a Governed Harness
 
----
-
-## How It Works
-
-Slidra provides four boundaries for reliable agent workflows:
+Slidra places agent work inside four explicit boundaries:
 
 | Boundary | Component | Purpose |
 | --- | --- | --- |
 | **Representation** | `.slidra` format | Makes the deck inspectable |
-| **Action** | CLI | Defines what can be changed |
+| **Action** | `slidra` CLI | Defines what can be changed |
 | **Behavior** | Skills and guidance | Defines how work should proceed |
-| **Validation** | Executable validators | Defines what must remain true |
+| **Validation** | Executable validators `slidra validate` | Defines what must remain true |
 
-The agent can inspect the current state, make a bounded change, validate the result, and continue refining it.
+The agent still researches, reasons, writes, and designs. But it works within a system that makes presentation state inspectable, changes bounded, and results accountable.
 
 ```text
-Human ── Visual Editor ──┐
-                         ├── CLI ── .slidra
-Agent ───────────────────┘
+Inspect → Act → Validate → Refine
 ```
 
-The GUI routes supported edits through the same command layer used by agents. This preserves object identity and document continuity across visual edits, CLI operations, undo, and redo.
+### Part II — From One-Sided Adaptation to a Shared Medium
+
+Reliable agent operations are only half of the product.
+
+Humans should not have to describe every visual intention in a chat box. Agents should not have to imitate a mouse inside an interface designed for people.
+
+Slidra gives each participant a native interface:
+
+- **Humans** work visually through a UX-friendly editor.
+- **Agents** work programmatically through an AX-friendly CLI.
+- **Both** modify the same `.slidra` document through the same command layer.
+
+```text
+Human → Visual editor ┐
+                      ├→ `slidra` CLI → `.slidra` document
+Agent →     ACP   ────┘               ↓
+                                  Validate
+```
+
+The goal is not a better handoff between AI generation and manual editing. **The goal is to make the handoff disappear.**
 
 In practice, human–agent collaboration becomes a continuous refinement loop:
 
@@ -83,11 +88,9 @@ Agent drafts the deck
   → Human or agent makes the next correction
 ```
 
-This lets you start with AI without becoming trapped in generated output, make targeted changes without regenerating the deck, preserve object identity across the GUI, CLI, comments, and validation, and move fluidly between direct manipulation and agent-driven editing.
-
 ---
 
-## The `.slidra` Format
+## `.slidra` Format
 
 A `.slidra` file is a ZIP container with an explicit project manifest and authoritative SVG slides:
 
@@ -113,11 +116,13 @@ deck.slidra
 - Object animations and slide transitions
 - Templates and design-plan metadata
 
-The result is a persistent document that both humans and agents can inspect and edit without reconstructing the deck.
+The document stores the current state instead of leaving it inside an agent’s temporary interpretation.
+
+For humans and agents alike, the `.slidra` document is the single source of truth.
 
 ---
 
-## CLI
+## `slidra` CLI
 
 Slidra provides 88 commands for precise presentation editing:
 
@@ -160,45 +165,6 @@ Commands exit with code `0` on success and `1` on failure. Add `--json` for sing
 
 ---
 
-## Validation
-
-Slidra reports concrete, machine-readable findings:
-
-```json
-{
-  "checked": 6,
-  "errors": [
-    {
-      "slide": "slides/002.svg",
-      "element": "el-abc",
-      "rule": "text.bullet-length",
-      "actual": "37 characters",
-      "limit": "≤ 32 characters",
-      "message": "Page 2, bullet 3 has 37 characters, limit is 32"
-    }
-  ]
-}
-```
-
-Validation covers:
-
-- Geometry and overflow
-- Text density and font size
-- Style and contrast constraints
-- Backgrounds, notes, templates, and scrims
-- Animations and transitions
-- Page roster and visual rhythm
-- Diagram roles and blueprints
-- Presentation taboos
-
-Geometry, structure, and taboo rules run on every deck. Additional rules activate when the deck includes `plan/outline.md` or `plan/design-spec.md`.
-
-When validation finds issues, the command exits non-zero but still returns `ok: true`: the validation ran successfully and produced findings.
-
-> Validation enables a reliable feedback loop. It does not replace visual judgment or automatically repair every issue.
-
----
-
 ## Quickstart
 
 ```sh
@@ -219,7 +185,6 @@ npm run verify:setup -- --blank
 From there, point an agent at the CLI shown in [CLI](#cli): inspect the deck with `ls`/`cat`, make a
 bounded edit, and run `validate`.
 
----
 
 ## Web editor
 
@@ -230,7 +195,6 @@ same CLI command layer an agent uses, so object identity is preserved across GUI
 [How It Works](#how-it-works)). `serve` also wires up a chat connection to an agent (Claude Code or
 Codex, via ACP), so you can prompt changes for the open deck without leaving the editor.
 
----
 
 ## Contributing
 
@@ -240,7 +204,6 @@ requirements. Issues labeled
 place to start. Changes to the `.slidra` file format go through an RFC under `spec/rfcs/` rather than
 a direct PR.
 
----
 
 ## License
 
