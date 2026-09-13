@@ -20,7 +20,7 @@
 //      sentences (e.g. "Slidra", "1280 × 720", slide numbers) never
 //      depend on what happens to appear in the scanned files below.
 //   2. Every CJK Unified Ideograph found by scanning the UTF-8 text of:
-//        apps/web/index.html
+//        apps/web/src/app/layout.tsx
 //        apps/web/src/**/*.ts
 //        apps/web/src/**/*.tsx
 //        apps/web/src/**/*.js
@@ -45,7 +45,6 @@ import subsetFont from "subset-font";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webSrcDir = path.join(rootDir, "apps/web/src");
-const indexHtmlPath = path.join(rootDir, "apps/web/index.html");
 const fontsDir = path.join(rootDir, "apps/web/src/assets/fonts");
 
 // 400 keeps its pre-existing filename (README.md's OFL notice only adds the
@@ -81,7 +80,7 @@ async function collectCharacterSet() {
   // Fixed printable-ASCII range — see the "Character set" comment above.
   for (let code = 0x20; code <= 0x7e; code++) chars.add(String.fromCharCode(code));
 
-  const files = [indexHtmlPath, ...(await collectSourceFiles(webSrcDir))];
+  const files = await collectSourceFiles(webSrcDir);
   for (const file of files) {
     const text = await readFile(file, "utf8");
     for (const match of text.matchAll(CJK_RANGE)) chars.add(match[0]);

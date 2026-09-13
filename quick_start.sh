@@ -5,7 +5,7 @@
 #
 # What it does:
 #   1. Sync dependencies (including any new ones added to a workspace)
-#   2. Build server (tsc -b) and web (vite build), plus the Rust binary
+#   2. Build server (tsc -b) and web (Next.js static export), plus the Rust binary
 #   3. Check preconditions (build artifacts, CLI executable, agent adapter)
 #   4. Prepare a presentation (the demo deck, or a blank one with --blank)
 #   5. Run slidra serve, open a browser to look at it
@@ -163,7 +163,7 @@ step "Syncing dependencies"
 npm install
 
 # 2. Build --------------------------------------------------------------------
-# serve only serves apps/web/dist's static files, with no dev-server
+# serve only serves apps/web/dist's static files, with no framework dev server
 # proxy (ADR-0002), so the frontend must be rebuilt after every change to see
 # it.
 if [ "$SKIP_BUILD" -eq 0 ]; then

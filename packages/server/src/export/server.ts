@@ -19,8 +19,8 @@ import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRa
  * (chat/agent) the export page never uses. The GUI path (`POST
  * /api/export` on an already-running `serve`) does NOT use this file at
  * all — it points `render.ts` at that server's own URL, which already
- * serves `export.html` (the same `apps/web/dist` build, now built with
- * two Vite entries) and the same three read-only routes.
+ * serves `export.html` (the same `apps/web/dist` Next.js static export)
+ * and the same three read-only routes.
  *
  * Exactly five things this server answers: static files (`export.html` and
  * its chunks), `GET /api/presentation`, `GET /api/files/<path>`,

@@ -107,7 +107,7 @@ function waitForAllReady(getCompleted: () => number, total: number): Promise<voi
   });
 }
 
-async function main(): Promise<void> {
+export async function runExport(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const format = params.get("format");
   if (format !== "pdf" && format !== "pdf-frames") {
@@ -182,7 +182,3 @@ async function main(): Promise<void> {
   await waitForAllReady(() => readyCount, frames.length);
   window.__SLIDRA_EXPORT_DONE__ = true;
 }
-
-main().catch((error: unknown) => {
-  window.__SLIDRA_EXPORT_ERROR__ = error instanceof Error ? error.message : String(error);
-});
