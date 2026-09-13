@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `element insert` / `delete` / `move` / `rotate` / `order` / `lock` /
 //! `unlock` — ported from `packages/core/src/element-edit.ts` (plan section

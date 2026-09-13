@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `text set` / `text style set` / `text list set` / `textbox add` /
 //! `textbox width` / `textbox align` (plan section 1.1, phase P6). Ported

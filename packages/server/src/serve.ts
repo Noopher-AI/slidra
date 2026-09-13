@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";

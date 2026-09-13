@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";

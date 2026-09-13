@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Standard base64 (RFC 4648 §4, with `=` padding) — used only by `--json`
 //! output's `content` field (`cat`/`slide render`). Deliberately separate

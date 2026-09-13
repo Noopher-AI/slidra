@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra element style set` argv layer. Named `style_set` (not
 //! `style::set`) — the family's `dispatch` routes on the two-token

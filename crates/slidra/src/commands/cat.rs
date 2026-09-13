@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra cat <presentation-id> <path>` and, only under `--json`,
 //! `slidra cat <presentation-id> <path...> --json` (multi-path).

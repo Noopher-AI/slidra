@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `render_chart_svg(model) -> String`: the ONE place a chart's pixels get
 //! computed, ported from `packages/core/src/chart/render.ts` (311 lines).

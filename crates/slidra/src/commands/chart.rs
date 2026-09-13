@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `chart *` command handlers (8 commands), mirroring
 //! `packages/core/src/workspace.ts`'s `createSlideChart`/`setSlideChartData`/

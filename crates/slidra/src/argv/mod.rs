@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Shared argv parsing helpers for the command handlers in `commands/`
 //! (`require_positional`/`is_flag_like`/`require_flag`/`optional_flag`/

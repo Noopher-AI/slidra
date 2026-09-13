@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `.slidra` zip container read/write, using the `zip`/`flate2`
 //! crates in place of `fflate` (§3.6/D2 of the plan — version pinned to

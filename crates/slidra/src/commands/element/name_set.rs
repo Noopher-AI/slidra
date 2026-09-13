@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra element name set` argv layer. Unlike `argv.ts`'s runtime
 //! `sub === "name"` then `args[0] !== "set"` check, `resolve_takeover`

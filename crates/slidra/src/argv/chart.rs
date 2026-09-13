@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `chart` family argv parsing, ported from `packages/cli/src/argv.ts`'s
 //! `case "chart":` block (lines 664-777) — flag names, positional order,

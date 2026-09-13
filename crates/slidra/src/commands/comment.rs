@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `comment *` family: `comment add` / `comment edit` / `comment delete` /
 //! `comment list` (plan section 1.1, phase P8). CLI argv layer only — the

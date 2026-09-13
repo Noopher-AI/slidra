@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Workspace read AND write paths: home-dir resolution, the registry read,
 //! id-to-workDir lookup, project-json and virtual-fs logic in the

@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `element *` family: CLI argv layer for the `element` subcommands (plan
 //! section 1.1). Each subcommand's argv parsing + `CommandResult` assembly

@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The splice primitives every pure mutation function in `element::edit`,
 //! `element::group`, `element::arrange`, and `element::clipboard` builds its

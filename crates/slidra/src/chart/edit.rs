@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The container-level splice writers for the `chart` command family.
 //! Every command re-derives the FULL `ChartModel` (`read_chart_model`),

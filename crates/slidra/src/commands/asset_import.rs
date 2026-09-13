@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra asset import <presentation-id> <source> [--as csv]` — copies
 //! or downloads a media (or, with `--as csv`, data) asset into the

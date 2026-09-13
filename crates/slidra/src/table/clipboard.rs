@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `table cell copy / cut / paste`, ported from
 //! `packages/core/src/table-clipboard.ts` (147 lines) — a sibling file to

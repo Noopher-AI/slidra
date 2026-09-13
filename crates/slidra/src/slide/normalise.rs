@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Normalisation (`slidra convert`), ported from
 //! `packages/core/src/slide/normalise.ts` (full file, 234 lines): wraps bare

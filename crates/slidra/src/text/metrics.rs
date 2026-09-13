@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `measureTextWidth`, ported from `packages/core/src/text-metrics.ts` lines
 //! 591-626 (the `FontMetrics`/`parseFont` half of that file lives in

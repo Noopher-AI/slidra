@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Resolves every font a presentation embeds, keyed by font-family (plan
 //! section 3.2). This is what the text write path (`textbox add`/`text

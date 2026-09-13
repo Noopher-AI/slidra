@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `Splice`/`apply_splices`/`set_attr_splice`/`resolve_font`, ported from
 //! `packages/core/src/element-text.ts`'s splice primitives (`Splice`,

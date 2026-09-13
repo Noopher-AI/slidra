@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `themedCellStyle`, ported from `packages/core/src/table/theme.ts` (73
 //! lines, ported in full).

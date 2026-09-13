@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `element copy` / `element cut` / `element paste` / `element duplicate`
 //! (plan section 1.1, phase P7) — this ticket's

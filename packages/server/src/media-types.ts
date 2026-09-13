@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 /**
  * `/api/raw/`'s extension → MIME type table (NOOP-90/T4, [E4.T9]/F7).

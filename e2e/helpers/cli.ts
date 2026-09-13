@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 // Replaces the deleted TypeScript engine's in-process `CommandRegistry`
 // with a same-shaped object backed by the real compiled `slidra` binary

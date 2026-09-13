@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { runJsonCommand } from "./command.js";
 import { SlidraError, SlidraNotFoundError } from "./errors.js";

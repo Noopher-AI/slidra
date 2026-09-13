@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Shared argv-parsing helpers for every multi-token command family
 //! (`element`/`text`/`textbox`/`comment`) — mirroring the original CLI's

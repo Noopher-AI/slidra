@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Golden-fixture tests for the crate's pure-function public API — the
 //! second of the three public boundaries this ticket tests at (plan section

@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Author comments pinned to an element or a whole slide (ADR-0008, plan
 //! section 1.1, phase P8). Ported from `packages/core/src/slide/comments.ts`

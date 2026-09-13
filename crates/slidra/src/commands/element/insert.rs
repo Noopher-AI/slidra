@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra element insert` argv layer — mirrors `packages/cli/src/
 //! commands/element/insert.ts` + the `"insert"` branch of `argv.ts`'s

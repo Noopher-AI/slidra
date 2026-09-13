@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { describe, expect, it, vi } from "vitest";
 import { EditingLock, EditingLockConflictError, HUMAN_LEASE_MAX_MS } from "../src/editing-lock.js";

@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `slidra validate <presentation-id> [slide-path]` (#303): runs the
 //! deterministic design rules in `crate::validate` and reports every

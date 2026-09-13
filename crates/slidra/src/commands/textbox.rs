@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `textbox *` family: `textbox add` / `textbox width` / `textbox align`.
 //! CLI argv layer only — the pure mutation logic lives at

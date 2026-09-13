@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { useState } from "react";
 import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, type EffectFamily, type EffectName, type EffectStart } from "../../../effects.js";

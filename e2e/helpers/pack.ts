@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 // Re-exports the same `packDirectory` the deleted TypeScript engine package
 // used to provide, now backed by `scripts/pack-directory.mjs` (plan section

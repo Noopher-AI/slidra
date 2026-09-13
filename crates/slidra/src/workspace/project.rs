@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Reading and structurally validating `project.json`. Ported from
 //! `packages/core/src/project-json.ts` (full file) plus the read-only half

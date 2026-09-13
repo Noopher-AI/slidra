@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `element group` / `element ungroup` / `element name set` — the container
 //! structure commands (ADR-0012 nested groups), ported from

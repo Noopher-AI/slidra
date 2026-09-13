@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `TableModel`/`TableCell` — the rich, editable table model (cells, header,
 //! theme, source, span coverage). `crates/slidra/src/slide/table_grid.rs`

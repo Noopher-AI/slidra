@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Whole-page SVG ingest for `slide add --svg` / `slide set --svg`
 //! (ADR-0018): the agent authors one complete page, Slidra makes it a

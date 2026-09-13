@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The splice-only reader/writer for `<slidra:effects>`. Ported from
 //! `packages/core/src/effects/edit.ts`. Same conventions as

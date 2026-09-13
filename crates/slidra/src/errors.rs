@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Shared error type for the Rust engine. The two variants here exist
 //! purely so that `undo`/`redo` can map "no such presentation" to

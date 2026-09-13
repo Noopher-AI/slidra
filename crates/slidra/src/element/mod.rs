@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The pure `svgContent: string -> string` mutation layer. Every function
 //! here takes and returns plain SVG text, never touches the filesystem,

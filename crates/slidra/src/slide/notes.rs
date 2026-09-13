@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Speaker notes (`slide notes set`): a pure string -> string splice — every
 //! other byte of `svg_content` is preserved exactly. Notes live in the same

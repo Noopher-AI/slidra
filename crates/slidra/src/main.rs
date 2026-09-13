@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Entry point. Dispatch order (plan section 4.1) is hand-written here
 //! rather than handed to `clap` for the whole argv: `slidra`'s existing

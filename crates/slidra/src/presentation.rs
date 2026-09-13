@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `FORMAT_VERSION` and `build_minimal_presentation`,
 //! originally ported from `packages/core/src/presentation.ts` ([E4.T12]

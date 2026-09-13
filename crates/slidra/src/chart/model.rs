@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The `<slidra:chart>` data model, ported from `packages/core/src/chart/model.ts`
 //! (356 lines). Pure `svgContent: string -> value` / `value -> string`

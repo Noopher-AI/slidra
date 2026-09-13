@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Media format byte-header detection — ported from
 //! `packages/core/src/media-format.ts` (NOOP-90/T4, ADR-0015): one

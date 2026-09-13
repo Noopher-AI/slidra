@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `text *` family: `text set` / `text style set` / `text list set` (plan
 //! section 1.1, phase P6). CLI argv layer only — the pure mutation logic

@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Crate root — wires together the modules ported from `packages/core`
 //! (NOOP-278). Nothing here previously declared any of these as part of the

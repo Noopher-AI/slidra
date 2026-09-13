@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Opaque id generation, ported from `packages/core/src/id.ts`'s
 //! `randomBytes(9).toString("base64url")` (see plan section 3.8). No crate

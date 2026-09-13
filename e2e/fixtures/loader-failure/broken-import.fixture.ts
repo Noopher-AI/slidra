@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 // Deliberately broken: used by loader-failure-guard.test.ts to prove that a
 // file that fails to *load* still fails the run, not just a file whose

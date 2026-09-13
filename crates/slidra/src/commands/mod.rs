@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! The takeover table: the exact, closed set of `argv[0]` names this binary
 //! dispatches itself. `serve`/`export` are the two names `main.rs` execs

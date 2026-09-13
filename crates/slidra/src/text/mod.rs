@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Barrel for the text-layout engine (NOOP-278), ported from
 //! `packages/core/src/text/` and `packages/core/src/text-metrics.ts`.

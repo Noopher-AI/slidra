@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `table` family argv parsing: flag names, positional order, the
 //! `level1`/`level2`/`level3` sub-verb dispatch shape for multi-word

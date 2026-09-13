@@ -1,5 +1,5 @@
-// Copyright 2026 Noopher AI
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Slide- and template-level file orchestration, ported from
 //! `packages/core/src/slide-ops.ts` (the subset this ticket needs: `slide
