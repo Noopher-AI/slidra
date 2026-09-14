@@ -160,9 +160,9 @@ async function openApp(server: RunningServer, options: { waitForAgent?: boolean 
 }
 
 async function sendChatMessage(page: Page, text: string): Promise<void> {
-  await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+  await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
   await page.locator(".chat-input textarea").fill(text);
-  await page.locator(".chat-input button").click();
+  await page.locator('.chat-input button[type="submit"]').click();
 }
 
 async function listComments(
@@ -244,7 +244,7 @@ it("Cmd+Enter sends a chat message (06-KEYBOARD_AND_GESTURES.md): pressing Cmd+E
   const { server, cleanup } = await startServerFor();
   try {
     const page = await openApp(server, { waitForAgent: true });
-    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
     const input = page.locator(".chat-input textarea");
     await input.fill("Cmd+Enter send test");
     await input.press("Meta+Enter");
@@ -346,8 +346,8 @@ it("submitting: with pinned comments present, an empty input can still be sent (
     await registry.dispatch("comment add", { id: presentationId, slidePath: "slides/001.svg", target: "el-title", text: "Shorten the title" });
 
     const page = await openApp(server, { waitForAgent: true });
-    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
-    await page.locator(".chat-input button").click(); // not a single character typed
+    await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
+    await page.locator('.chat-input button[type="submit"]').click(); // not a single character typed
 
     // The conversation shows a placeholder string, not an empty bubble.
     const authored = page.locator(".chat-message-author").last();
@@ -389,6 +389,14 @@ it("after sending, the Send button becomes a stop button; clicking it ends the t
 
     const stop = page.locator(".chat-input .chat-stop");
     await expect.poll(() => stop.isVisible(), { timeout: 10_000 }).toBe(true);
+    // Stop only has a turn to cancel once one is actually in flight. The
+    // button appears the moment the message is sent — while the server may
+    // still be shaking hands with the adapter, where Stop takes the
+    // "stopped while being established" path instead and no turn ever ends
+    // with `cancelled`. The frozen badge is the observable proof that the
+    // agent already holds the editing lock, i.e. it is inside the hold with
+    // the command not yet run — exactly the window this test is about.
+    await expect.poll(() => page.locator(".titlebar-frozen-badge").isVisible(), { timeout: 30_000 }).toBe(true);
     await stop.click();
 
     const stopped = page.locator(".chat-system", { hasText: "Stopped" });
@@ -408,7 +416,7 @@ it("after sending, the Send button becomes a stop button; clicking it ends the t
  * `/slidra-build [plan-confirmed]` → `slide add` (fake agent).
  */
 async function openOutlineAndSubmit(page: Page, outline: string): Promise<void> {
-  await page.getByRole("button", { name: "New" }).click();
+  await page.locator(".rail-actions").getByRole("button", { name: "New" }).click();
   const menu = page.locator('[data-menu="new"]');
   await menu.getByRole("menuitem", { name: "From outline…" }).click();
   await page.locator(".outline-modal-textarea").fill(outline);
@@ -432,7 +440,10 @@ it("planning from an outline: through the real UI entry point, the plan gate pop
     await expect.poll(() => gate.isVisible(), { timeout: 30_000 }).toBe(true);
     // Both the plan table and the questions come from the file; the agent's recommendation is the default value.
     expect(await gate.locator(".plan-gate-table tbody tr").count()).toBe(1);
-    expect(await gate.locator(".plan-gate-table tbody td").nth(1).textContent()).toBe("Cover");
+    // Columns: Page | Relationship | Type | Rhythm | Claim.
+    const cells = gate.locator(".plan-gate-table tbody td");
+    expect(await cells.nth(1).textContent()).toBe("Membership");
+    expect(await cells.nth(2).textContent()).toBe("Cover");
     const recommended = gate.locator('.plan-gate-question[data-question-id="mode"] input[value="pyramid"]');
     expect(await recommended.isChecked()).toBe(true);
     expect(await gate.locator(".plan-gate-recommended").count()).toBe(1);
@@ -631,7 +642,7 @@ it("slash commands: sending /xxx with an argument, the prompt text the fake agen
     // Keep typing the argument — the completed text is left untouched, just followed by whatever the author types.
     await input.fill(`${completed}this is the argument`);
     await expect.poll(() => page.locator(".slash-menu").count(), { timeout: 5000 }).toBe(0); // contains a space, so the trigger condition no longer holds
-    await page.locator(".chat-input button:not([disabled])").click();
+    await page.locator('.chat-input button[type="submit"]:not([disabled])').click();
 
     const reply = page.locator(".chat-message-agent").last();
     await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("/slidra-plan this is the argument");

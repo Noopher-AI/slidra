@@ -625,8 +625,9 @@ it("when fullscreen entry is rejected, clicking the toggle still hands focus bac
 
   await page.locator(".fullscreen-toggle-button").click();
 
-  // This path is reached: the fullscreen error notice shows "this browser does not support fullscreen".
-  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "This browser does not support Fullscreen" });
+  // This path is reached: the notice carries the rejection's own message,
+  // the same wording the unsupported branch uses ("doesn't", not "does not").
+  const unsupportedNotice = page.locator(".player-error-notice", { hasText: "This browser doesn't support Fullscreen" });
   await expect.poll(() => unsupportedNotice.count(), { timeout: 10_000 }).toBe(1);
 
   // Before the fix: this early return never called focusPlayer(), so focus

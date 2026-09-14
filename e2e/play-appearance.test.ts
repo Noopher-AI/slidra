@@ -567,8 +567,11 @@ it("a slide with no background rect (a blank page from `slide add`) still render
       const page = await browser.newPage({ viewport: VIEWPORT });
       await page.goto(server.url);
 
-      const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
-      await expect.poll(() => slideText.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
+      // A blank page from `slide add` is an empty `<svg>` — it has no text
+      // to wait for, so what says "the slide has rendered" here is the slide
+      // document itself being in the frame.
+      const slideSvg = page.frameLocator("iframe.slide-frame").locator("svg");
+      await expect.poll(() => slideSvg.count().catch(() => 0), { timeout: 30_000 }).toBeGreaterThan(0);
 
       await enterPlay(page);
 

@@ -142,9 +142,9 @@ async function editingFrozen(page: Page): Promise<boolean> {
 }
 
 async function sendChatMessage(page: Page, text: string): Promise<void> {
-  await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+  await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
   await page.locator(".chat-input textarea").fill(text);
-  await page.locator(".chat-input button").click();
+  await page.locator('.chat-input button[type="submit"]').click();
 }
 
 /**
