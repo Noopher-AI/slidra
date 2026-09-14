@@ -224,6 +224,7 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
             "new" => (commands::new::run(&positional), None),
             "open" => (commands::open::run(&positional), None),
             "pack" => (commands::pack::run(&positional), None),
+            "extract" => (commands::extract::run(&positional), None),
             "convert" => (commands::convert::run(&positional), None),
             "presentation" => (commands::presentation::run(&positional), None),
             "template" => (commands::template::run(&positional), None),

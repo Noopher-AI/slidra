@@ -384,60 +384,48 @@ fn normalize_templates_value(templates: &Value) -> Value {
 mod tests {
     use super::*;
 
-    fn temp_dir(label: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "slidra-test-project-{label}-{}",
-            crate::id::random_hex_suffix()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn write_project_json(work_dir: &Path, contents: &str) {
-        std::fs::write(work_dir.join("project.json"), contents).unwrap();
+    fn deck_with_project_json(label: &str, contents: &str) -> std::path::PathBuf {
+        crate::deck::build_test_deck(label, &[("project.json", contents.as_bytes())])
     }
 
     #[test]
     fn empty_slides_array_is_valid() {
-        let work = temp_dir("empty-slides");
-        write_project_json(
-            &work,
-            r#"{"formatVersion":1,"name":"Empty","canvas":{"width":1280,"height":720},"slides":[]}"#,
+        let deck = deck_with_project_json(
+            "empty-slides",
+            r#"{"formatVersion":5,"name":"Empty","canvas":{"width":1280,"height":720},"slides":[]}"#,
         );
-        let project = read_project_json(&work).unwrap();
+        let project = read_project_json(&deck).unwrap();
         assert!(project.slides.is_empty());
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
     }
 
     #[test]
     fn missing_required_field_reports_exact_field_message() {
-        let work = temp_dir("missing-name");
-        write_project_json(
-            &work,
-            r#"{"formatVersion":1,"canvas":{"width":1,"height":1},"slides":[]}"#,
+        let deck = deck_with_project_json(
+            "missing-name",
+            r#"{"formatVersion":5,"canvas":{"width":1,"height":1},"slides":[]}"#,
         );
-        let err = read_project_json(&work).unwrap_err();
+        let err = read_project_json(&deck).unwrap_err();
         assert_eq!(
             err.message(),
             "project.json format error: missing or wrong type for name"
         );
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
     }
 
     #[test]
     fn templates_mixing_bare_strings_and_objects_is_valid_and_normalizes() {
-        let work = temp_dir("templates-mixed");
-        write_project_json(
-            &work,
+        let deck = deck_with_project_json(
+            "templates-mixed",
             r#"{
-                "formatVersion": 1,
+                "formatVersion": 5,
                 "name": "Mixed",
                 "canvas": {"width": 1, "height": 1},
                 "slides": [],
                 "templates": ["templates/001.svg", {"file": "templates/002.svg", "name": "Custom"}]
             }"#,
         );
-        let project = read_project_json(&work).unwrap();
+        let project = read_project_json(&deck).unwrap();
         let entries = read_template_entries(&project);
         assert_eq!(
             entries,
@@ -452,7 +440,7 @@ mod tests {
                 },
             ]
         );
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
     }
 
     /// A float extra field, and its position relative to the known fields,
@@ -461,11 +449,10 @@ mod tests {
     /// such path itself.
     #[test]
     fn round_trips_unknown_extra_field_and_float_value_exactly() {
-        let work = temp_dir("extra-float");
-        let source = r#"{"formatVersion":1,"name":"Extra","canvas":{"width":1,"height":1},"slides":[],"savedAt":1788887227268.932}"#;
-        write_project_json(&work, source);
+        let source = r#"{"formatVersion":5,"name":"Extra","canvas":{"width":1,"height":1},"slides":[],"savedAt":1788887227268.932}"#;
+        let deck = deck_with_project_json("extra-float", source);
 
-        let project = read_project_json(&work).unwrap();
+        let project = read_project_json(&deck).unwrap();
         // Order preserved: the extra field is exactly where it was.
         let keys: Vec<&str> = project.raw.keys().map(String::as_str).collect();
         assert_eq!(
@@ -484,16 +471,15 @@ mod tests {
         let reparsed: Value = serde_json::from_str(&serialized).unwrap();
         assert_eq!(reparsed["savedAt"].as_f64(), Some(1788887227268.932_f64));
 
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
     }
 
     #[test]
     fn malformed_json_syntax_is_reported_as_corrupt() {
-        let work = temp_dir("bad-syntax");
-        write_project_json(&work, "{not valid json");
-        let err = read_project_json(&work).unwrap_err();
+        let deck = deck_with_project_json("bad-syntax", "{not valid json");
+        let err = read_project_json(&deck).unwrap_err();
         assert_eq!(err.message(), "presentation config file is corrupted");
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
     }
 
     #[test]
@@ -519,7 +505,7 @@ mod tests {
 
     struct WriteProjectFixture {
         home: std::path::PathBuf,
-        work: std::path::PathBuf,
+        deck: std::path::PathBuf,
         id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -527,8 +513,11 @@ mod tests {
     impl WriteProjectFixture {
         fn new(label: &str) -> Self {
             let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
-            let home = temp_dir(&format!("write-project-{label}-home"));
-            let work = temp_dir(&format!("write-project-{label}-work"));
+            let home = std::env::temp_dir().join(format!(
+                "slidra-test-project-write-{label}-home-{}",
+                crate::id::random_hex_suffix()
+            ));
+            std::fs::create_dir_all(&home).unwrap();
             let id = format!("test-write-project-{label}");
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
@@ -538,11 +527,11 @@ mod tests {
             // presence is (`history::stage_snapshot_entries` reads the
             // existing virtual file before write_project's own content
             // replaces it).
-            write_project_json(&work, "{}");
-            crate::workspace::registry::register_for_test(&home, &id, &work);
+            let deck = crate::deck::build_test_deck(label, &[("project.json", b"{}")]);
+            crate::workspace::registry::register_for_test(&home, &id, &deck);
             WriteProjectFixture {
                 home,
-                work,
+                deck,
                 id,
                 _guard: guard,
             }
@@ -555,7 +544,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -582,10 +571,11 @@ mod tests {
 
         write_project(&fixture.id, raw).unwrap();
 
-        let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
+        let content =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap();
         assert_eq!(
             content,
-            "{\n  \"formatVersion\": 1,\n  \"name\": \"T\",\n  \"canvas\": {\n    \"width\": 1,\n    \"height\": 1\n  },\n  \"slides\": [],\n  \"fonts\": []\n}\n"
+            "{\n  \"formatVersion\": 5,\n  \"name\": \"T\",\n  \"canvas\": {\n    \"width\": 1,\n    \"height\": 1\n  },\n  \"slides\": [],\n  \"fonts\": []\n}\n"
         );
     }
 
@@ -606,10 +596,11 @@ mod tests {
 
         write_project(&fixture.id, raw).unwrap();
 
-        let content = std::fs::read_to_string(fixture.work.join("project.json")).unwrap();
+        let content =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap();
         assert_eq!(
             content,
-            "{\n  \"formatVersion\": 1,\n  \"name\": \"T\",\n  \"fonts\": [\n    {\n      \"family\": \"Inter\",\n      \"file\": \"fonts/inter.ttf\"\n    }\n  ],\n  \"slides\": []\n}\n"
+            "{\n  \"formatVersion\": 5,\n  \"name\": \"T\",\n  \"fonts\": [\n    {\n      \"family\": \"Inter\",\n      \"file\": \"fonts/inter.ttf\"\n    }\n  ],\n  \"slides\": []\n}\n"
         );
     }
 }

@@ -18,7 +18,7 @@
 //!
 //! Bundles the four-step boilerplate every one of the original CLI's
 //! per-command write wrappers (`setElementText`, `addTextBox`, `insertSlideElement`, ...)
-//! repeats verbatim — resolve the work dir, confirm the real file exists,
+//! repeats verbatim — resolve the deck, confirm the file exists,
 //! confirm it's a listed slide/template, read it — into one `require_slide`
 //! call, so these ~19 `element`/`text`/`textbox` command handlers
 //! don't each hand-roll the same four lines.
@@ -32,10 +32,10 @@ use std::path::{Path, PathBuf};
 
 /// A slide (or template) resolved and read, ready for a pure mutation
 /// function to transform. Bundles what `require_slide` had to look up along
-/// the way — `work_dir` (needed again by `write_presentation_file`) and
-/// `project` (some commands, e.g. `element style set`'s table-container
-/// check, need more of it than just membership) — so a caller never has to
-/// re-derive either.
+/// the way — `work_dir` (the deck's own file path, needed again by
+/// `write_presentation_file`) and `project` (some commands, e.g. `element
+/// style set`'s table-container check, need more of it than just
+/// membership) — so a caller never has to re-derive either.
 #[derive(Debug)]
 pub struct RequiredSlide {
     pub work_dir: PathBuf,
@@ -71,7 +71,7 @@ pub fn assert_slide_path_listed(work_dir: &Path, virtual_path: &str) -> SlidraRe
 /// both are reported before the file is ever read.
 pub fn require_slide(id: &str, slide_path: &str) -> SlidraResult<RequiredSlide> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     let project = assert_slide_path_listed(&work_dir, slide_path)?;
     let content = virtual_fs::read_virtual_file(&work_dir, slide_path)?;
     Ok(RequiredSlide {
@@ -96,21 +96,20 @@ pub fn require_slide(id: &str, slide_path: &str) -> SlidraResult<RequiredSlide> 
 /// snapshot file either.
 pub fn write_presentation_file(id: &str, virtual_path: &str, content: &str) -> SlidraResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
+    virtual_fs::assert_file_exists(&work_dir, virtual_path)?;
     let entries = history::stage_snapshot_entries(id, &[virtual_path])?;
     let history::CommitResult {
         previous_stack,
         pending_deletion_snapshot_ids,
     } = history::commit_snapshot_entries(id, entries.clone())?;
 
-    match std::fs::write(&real_path, content) {
+    match virtual_fs::write_existing_file(&work_dir, virtual_path, content.as_bytes()) {
         Ok(()) => {
             history::finalize_committed_entries(id, &pending_deletion_snapshot_ids)?;
             Ok(())
         }
         Err(_) => {
             history::revert_committed_entries(id, &entries, &previous_stack)?;
-            // real_path is a real filesystem path (ADR-0004) — never quote it.
             Err(SlidraError::invalid(format!(
                 "error writing slide: {virtual_path}"
             )))
@@ -127,8 +126,7 @@ pub fn write_presentation_file_without_history(
     content: &str,
 ) -> SlidraResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
-    std::fs::write(&real_path, content)
+    virtual_fs::write_existing_file(&work_dir, virtual_path, content.as_bytes())
         .map_err(|_| SlidraError::invalid(format!("error writing slide: {virtual_path}")))
 }
 
@@ -138,7 +136,7 @@ pub fn write_presentation_file_without_history(
 /// restoring prior content (`history::stage_new_file_entry`).
 pub fn create_presentation_file(id: &str, virtual_path: &str, content: &[u8]) -> SlidraResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    let already_exists = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path).is_ok();
+    let already_exists = virtual_fs::assert_file_exists(&work_dir, virtual_path).is_ok();
     if already_exists {
         return Err(SlidraError::invalid(format!(
             "file already exists: {virtual_path}"
@@ -146,19 +144,9 @@ pub fn create_presentation_file(id: &str, virtual_path: &str, content: &[u8]) ->
     }
 
     let entry = history::stage_new_file_entry(virtual_path);
-    let mut real_path = work_dir.clone();
-    for segment in virtual_path.split('/').filter(|s| !s.is_empty()) {
-        real_path.push(segment);
-    }
-    let write_result: std::io::Result<()> = (|| {
-        if let Some(parent) = real_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&real_path, content)
-    })();
+    let write_result = virtual_fs::create_new_file(&work_dir, virtual_path, content);
     if write_result.is_err() {
         history::discard_snapshot_entries(id, std::slice::from_ref(&entry))?;
-        // real_path is a real filesystem path (ADR-0004) — never quote it.
         return Err(SlidraError::invalid(format!(
             "error writing file: {virtual_path}"
         )));
@@ -173,9 +161,9 @@ pub fn create_presentation_file(id: &str, virtual_path: &str, content: &[u8]) ->
 /// content is snapshotted first, so undo restores it exactly.
 pub fn delete_presentation_file(id: &str, virtual_path: &str) -> SlidraResult<()> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, virtual_path)?;
+    virtual_fs::assert_file_exists(&work_dir, virtual_path)?;
     let entries = history::stage_snapshot_entries(id, &[virtual_path])?;
-    match std::fs::remove_file(&real_path) {
+    match virtual_fs::delete_file(&work_dir, virtual_path) {
         Ok(()) => {
             let commit = history::commit_snapshot_entries(id, entries)?;
             history::finalize_committed_entries(id, &commit.pending_deletion_snapshot_ids)?;
@@ -183,7 +171,6 @@ pub fn delete_presentation_file(id: &str, virtual_path: &str) -> SlidraResult<()
         }
         Err(_) => {
             history::discard_snapshot_entries(id, &entries)?;
-            // real_path is a real filesystem path (ADR-0004) — never quote it.
             Err(SlidraError::invalid(format!(
                 "error deleting file: {virtual_path}"
             )))
@@ -245,29 +232,34 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
+        /// Builds a deck holding a slide and a template with known
+        /// content, registers it under a fresh `SLIDRA_HOME` as `test_id`.
         fn new(label: &str, test_id: &str) -> Self {
             let guard = workspace::registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            let work_dir_json =
-                serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-            let id_json = serde_json::to_string(test_id).unwrap();
-            std::fs::write(
-                home.join("projects.json"),
-                format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#),
-            )
-            .unwrap();
+            let deck = crate::deck::build_test_deck(
+                label,
+                &[
+                    (
+                        "project.json",
+                        br#"{"formatVersion":5,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"templates":["templates/001.svg"]}"#,
+                    ),
+                    ("slides/001.svg", b"<svg>ORIGINAL</svg>"),
+                    ("templates/001.svg", b"<svg>TEMPLATE</svg>"),
+                ],
+            );
+            workspace::registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
         }
@@ -279,78 +271,43 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
-    }
-
-    fn write_project_with_slide_and_template(work: &Path) {
-        std::fs::write(
-            work.join("project.json"),
-            r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},
-            "slides":["slides/001.svg"],"templates":["templates/001.svg"]}"#,
-        )
-        .unwrap();
-        std::fs::create_dir_all(work.join("slides")).unwrap();
-        std::fs::create_dir_all(work.join("templates")).unwrap();
-        std::fs::write(work.join("slides/001.svg"), "<svg>ORIGINAL</svg>").unwrap();
-        std::fs::write(work.join("templates/001.svg"), "<svg>TEMPLATE</svg>").unwrap();
     }
 
     #[test]
     fn assert_slide_path_listed_accepts_both_slides_and_templates() {
-        let work = temp_dir("listed");
-        write_project_with_slide_and_template(&work);
-        assert!(assert_slide_path_listed(&work, "slides/001.svg").is_ok());
-        assert!(assert_slide_path_listed(&work, "templates/001.svg").is_ok());
-        let err = assert_slide_path_listed(&work, "project.json").unwrap_err();
+        let fixture = Fixture::new("listed", "pid-listed");
+        assert!(assert_slide_path_listed(&fixture.deck, "slides/001.svg").is_ok());
+        assert!(assert_slide_path_listed(&fixture.deck, "templates/001.svg").is_ok());
+        let err = assert_slide_path_listed(&fixture.deck, "project.json").unwrap_err();
         assert_eq!(err.message(), "not a slide: project.json");
-        std::fs::remove_dir_all(&work).ok();
+        drop(fixture);
     }
 
     #[test]
     fn require_slide_reports_a_missing_real_file_before_not_a_slide() {
-        let work = temp_dir("missing-real-file");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("missing-real-file", "pid-missing-real");
-        std::fs::rename(&fixture.work, "/nonexistent-should-not-be-hit").ok();
-        // Re-point the registry at `work` (created above, separately from
-        // the fixture's own work dir) so the ONLY thing under test is
-        // "slides/999.svg" not existing on disk.
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-missing-real":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
 
         let err = require_slide("pid-missing-real", "slides/999.svg").unwrap_err();
-        // resolve_virtual_file_path's "file not found" error, not
-        // assert_slide_path_listed's "not a slide" — proves the real-file
-        // check ran first.
+        // `assert_file_exists`'s "file not found" error, not
+        // `assert_slide_path_listed`'s "not a slide" — proves the
+        // existence check ran first.
         assert_eq!(err.message(), "file not found: slides/999.svg");
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
     fn write_presentation_file_round_trips_through_undo() {
-        let work = temp_dir("write-roundtrip");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("write-roundtrip", "pid-write-roundtrip");
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-write-roundtrip":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
 
         let slide = require_slide("pid-write-roundtrip", "slides/001.svg").unwrap();
         assert_eq!(slide.content, "<svg>ORIGINAL</svg>");
         write_presentation_file("pid-write-roundtrip", "slides/001.svg", "<svg>EDITED</svg>")
             .unwrap();
         assert_eq!(
-            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap(),
             "<svg>EDITED</svg>"
         );
 
@@ -360,12 +317,11 @@ mod tests {
             vec!["slides/001.svg".to_string()]
         );
         assert_eq!(
-            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap(),
             "<svg>ORIGINAL</svg>"
         );
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
@@ -373,40 +329,26 @@ mod tests {
         // Removing the `revert_committed_entries` call in
         // `write_presentation_file` left 291 tests green — nothing
         // exercised the "commit succeeded, the actual write then failed"
-        // branch. A directory swapped in for the slide file does not reach
-        // that branch: `write_presentation_file`
-        // resolves `real_path` via `resolve_virtual_file_path` BEFORE staging,
-        // and that resolution already rejects a directory ("not a file: …"), so
-        // the function would return before ever calling `commit_snapshot_entries`.
-        // A read-only file does reach it: `resolve_virtual_file_path` (a stat)
-        // and `stage_snapshot_entries` (a read) both still succeed, and only
-        // the final `std::fs::write` — which needs write permission, not just
-        // an existing regular file — fails.
+        // branch. `assert_file_exists` (a row lookup) and
+        // `stage_snapshot_entries` (a read) both still succeed against a
+        // read-only deck FILE; only the actual `UPDATE` — which needs to
+        // take a write lock on the file — fails, reaching exactly the
+        // branch under test.
         use std::os::unix::fs::PermissionsExt;
 
-        let work = temp_dir("write-fail");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("write-fail", "pid-write-fail");
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-write-fail":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
-
-        let slide_path = work.join("slides/001.svg");
-        std::fs::set_permissions(&slide_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&fixture.deck, std::fs::Permissions::from_mode(0o444)).unwrap();
 
         let write_result =
             write_presentation_file("pid-write-fail", "slides/001.svg", "<svg>EDITED</svg>");
         // Restore write permission immediately so the fixture's own Drop
-        // (which removes `work`) does not itself fail.
-        std::fs::set_permissions(&slide_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        // (which removes the deck file) does not itself fail.
+        std::fs::set_permissions(&fixture.deck, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         let err = write_result.unwrap_err();
         assert_eq!(err.message(), "error writing slide: slides/001.svg");
         assert_eq!(
-            std::fs::read_to_string(&slide_path).unwrap(),
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap(),
             "<svg>ORIGINAL</svg>",
             "a failed write must not have touched the file's content"
         );
@@ -432,20 +374,11 @@ mod tests {
         );
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
     fn write_presentation_file_without_history_does_not_occupy_undo_step() {
-        let work = temp_dir("write-no-history");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("write-no-history", "pid-write-no-history");
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-write-no-history":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
 
         write_presentation_file_without_history(
             "pid-write-no-history",
@@ -454,7 +387,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap(),
             "<svg>EDITED</svg>"
         );
 
@@ -462,27 +395,18 @@ mod tests {
         assert_eq!(err.message(), "no operation to undo");
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
     fn create_presentation_file_rejects_existing_path_and_undo_deletes_a_created_one() {
-        let work = temp_dir("create");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("create", "pid-create");
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-create":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
 
         let err = create_presentation_file("pid-create", "slides/001.svg", b"Y").unwrap_err();
         assert_eq!(err.message(), "file already exists: slides/001.svg");
 
         create_presentation_file("pid-create", "assets/new.png", b"\x89PNG").unwrap();
         assert_eq!(
-            std::fs::read(work.join("assets/new.png")).unwrap(),
+            virtual_fs::read_virtual_file_bytes(&fixture.deck, "assets/new.png").unwrap(),
             b"\x89PNG"
         );
 
@@ -491,26 +415,17 @@ mod tests {
             undo_result.restored_paths,
             vec!["assets/new.png".to_string()]
         );
-        assert!(!work.join("assets/new.png").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "assets/new.png").is_err());
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]
     fn delete_presentation_file_removes_and_undo_restores() {
-        let work = temp_dir("delete");
-        write_project_with_slide_and_template(&work);
         let fixture = Fixture::new("delete", "pid-delete");
-        let work_dir_json = serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-        std::fs::write(
-            fixture.home.join("projects.json"),
-            format!(r#"{{"pid-delete":{{"workDir":{work_dir_json}}}}}"#),
-        )
-        .unwrap();
 
         delete_presentation_file("pid-delete", "slides/001.svg").unwrap();
-        assert!(!work.join("slides/001.svg").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "slides/001.svg").is_err());
 
         let undo_result = history::undo("pid-delete").unwrap();
         assert_eq!(
@@ -518,12 +433,11 @@ mod tests {
             vec!["slides/001.svg".to_string()]
         );
         assert_eq!(
-            std::fs::read_to_string(work.join("slides/001.svg")).unwrap(),
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap(),
             "<svg>ORIGINAL</svg>"
         );
 
         drop(fixture);
-        std::fs::remove_dir_all(&work).ok();
     }
 
     #[test]

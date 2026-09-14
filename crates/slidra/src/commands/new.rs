@@ -5,7 +5,7 @@
 
 use crate::errors::SlidraError;
 use crate::result::{CommandResult, FailureKind};
-use crate::{argv, container, presentation};
+use crate::{argv, deck, presentation};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> CommandResult {
@@ -29,41 +29,11 @@ pub fn run(args: &[String]) -> CommandResult {
 }
 
 fn create_new_presentation(output_path: &str, name: &str) -> Result<(), SlidraError> {
-    let files = presentation::build_minimal_presentation(name);
-    let staging =
-        std::env::temp_dir().join(format!("slidra-new-{}", crate::id::random_hex_suffix()));
-    std::fs::create_dir_all(&staging).map_err(|_| {
-        SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
-    })?;
-
-    let write_result = (|| -> Result<(), SlidraError> {
-        for (relative_path, content) in &files {
-            let dest = staging.join(relative_path);
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent).map_err(|_| {
-                    SlidraError::invalid(format!(
-                        "failed to write presentation file: {output_path}"
-                    ))
-                })?;
-            }
-            std::fs::write(&dest, content).map_err(|_| {
-                SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
-            })?;
-        }
-        std::fs::create_dir_all(staging.join("assets")).map_err(|_| {
-            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
-        })?;
-        std::fs::create_dir_all(staging.join("fonts")).map_err(|_| {
-            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
-        })?;
-        std::fs::create_dir_all(staging.join("slides")).map_err(|_| {
-            SlidraError::invalid(format!("failed to write presentation file: {output_path}"))
-        })?;
-        container::pack_directory(&staging, Path::new(output_path))
-    })();
-
-    let _ = std::fs::remove_dir_all(&staging);
-    write_result
+    let files: std::collections::BTreeMap<String, Vec<u8>> =
+        presentation::build_minimal_presentation(name)
+            .into_iter()
+            .collect();
+    deck::create_new_with_files(Path::new(output_path), &files)
 }
 
 #[cfg(test)]

@@ -2,21 +2,25 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Workspace read AND write paths: home-dir resolution, the registry read,
-//! id-to-workDir lookup, project-json and virtual-fs logic in the
+//! id-to-deck-path lookup, project-json and virtual-fs logic in the
 //! `project`/`virtual_fs` submodules. The `registry` submodule also writes
 //! `projects.json` (`new`/`open`/`pack` need to register/update a
 //! presentation), and `write.rs` holds the content-write doors
 //! (`assert_slide_path_listed`, `write_presentation_file` and friends,
 //! plus `require_slide` and the per-presentation clipboard file I/O).
-//! Container packing/unpacking lives in `container.rs`.
-//! `list_presentation_entries` (`asset import`'s conflict-free-filename
-//! scan) is added directly to this file, and a
+//! The SQLite container itself lives in `deck.rs`; legacy ZIP reading
+//! lives in `container.rs`. `list_presentation_entries` (`asset import`'s
+//! conflict-free-filename scan) is added directly to this file, and a
 //! `fonts` submodule for a presentation's embedded font book — every other
 //! write this crate's commands need (`write_presentation_file`/
 //! `create_presentation_file`/`assert_slide_path_listed`/`require_slide`)
-//! reuses `write.rs`'s existing doors rather than adding its own. There is
-//! no format-version migration: `FORMAT_VERSION` is fixed at 1 and
-//! `project::validate_project_json` rejects anything else outright.
+//! reuses `write.rs`'s existing doors rather than adding its own.
+//!
+//! A presentation id resolves to the `.slidra` deck FILE itself — there is
+//! no separate work directory any more (`spec/rfcs/0001-sqlite-container-format.md`):
+//! `open <path>` operates on `<path>` in place (migrating it to SQLite
+//! first if it is still a legacy ZIP), and the registry simply remembers
+//! which id maps to which file.
 //!
 //! Public API:
 //! - `resolve_home() -> PathBuf` — `SLIDRA_HOME`, defaulting to
@@ -24,16 +28,21 @@
 //!   matching the TS original's stated reason: tests point it at a fresh
 //!   temp dir per case.
 //! - `resolve_work_dir(id) -> SlidraResult<PathBuf>` — the one place an
-//!   opaque presentation id becomes a real directory. `SlidraError::NotFound`
-//!   when `id` is not registered.
+//!   opaque presentation id becomes a real deck file path.
+//!   `SlidraError::NotFound` when `id` is not registered. Kept under its
+//!   original name (not renamed to "resolve_deck_path") to avoid a
+//!   crate-wide rename churning every one of its ~90 call sites for a
+//!   symbol whose contract — "the real path this id's content lives at" —
+//!   has not changed, only what that path now points to (a file, not a
+//!   directory).
 //! - `registry::lookup(id) -> SlidraResult<RegistryEntry>` — the lower-level
 //!   read `resolve_work_dir` is built on, in case a future caller needs more
-//!   of the registry entry than just `work_dir`.
-//! - `registry::write_registry`/`registry::work_dir_for`/
-//!   `registry::max_mtime_in_directory` — the write-side primitives `open`/
-//!   `pack` need (see `registry`'s own doc comment).
+//!   of the registry entry than just `deck_path`.
+//! - `registry::write_registry`/`registry::deck_file_mtime_millis` — the
+//!   write-side primitives `open`/`pack` need (see `registry`'s own doc
+//!   comment).
 //! - `project` — `project.json` read/parse/validate/write (see `project.rs`).
-//! - `virtual_fs` — virtual path resolution within a work dir (see
+//! - `virtual_fs` — virtual path resolution within a deck (see
 //!   `virtual_fs.rs`).
 //! - `fonts` — a presentation's embedded font book (see `fonts.rs`).
 //! - `write` — `assert_slide_path_listed`/`write_presentation_file`/
@@ -96,13 +105,13 @@ pub mod registry {
     use std::path::{Path, PathBuf};
 
     /// One `projects.json` entry. `source_path`/`saved_at`: the
-    /// `.slidra` path `open`/`pack` last read from or wrote to, and the work
-    /// directory's own max-mtime reading at that moment — absent for an
+    /// `.slidra` path `open`/`pack` last read from or wrote to, and that
+    /// deck file's own mtime reading at that moment — absent for an
     /// older registry entry (read side must tolerate missing fields,
     /// see `is_registry_entry`).
     #[derive(Debug, Clone, PartialEq)]
     pub struct RegistryEntry {
-        pub work_dir: PathBuf,
+        pub deck_path: PathBuf,
         pub source_path: Option<PathBuf>,
         pub saved_at: Option<f64>,
     }
@@ -245,10 +254,10 @@ pub mod registry {
         let mut registry = HashMap::with_capacity(obj.len());
         for (id, value) in obj {
             let entry_obj = value.as_object();
-            let work_dir = entry_obj
-                .and_then(|entry| entry.get("workDir"))
+            let deck_path = entry_obj
+                .and_then(|entry| entry.get("deckPath"))
                 .and_then(Value::as_str);
-            let work_dir = match work_dir {
+            let deck_path = match deck_path {
                 Some(path) => path,
                 None => {
                     return Err(SlidraError::invalid(format!(
@@ -266,7 +275,7 @@ pub mod registry {
             registry.insert(
                 id.clone(),
                 RegistryEntry {
-                    work_dir: PathBuf::from(work_dir),
+                    deck_path: PathBuf::from(deck_path),
                     source_path,
                     saved_at,
                 },
@@ -295,8 +304,8 @@ pub mod registry {
             let entry = &registry[id];
             let mut obj = serde_json::Map::new();
             obj.insert(
-                "workDir".to_string(),
-                Value::String(entry.work_dir.to_string_lossy().into_owned()),
+                "deckPath".to_string(),
+                Value::String(entry.deck_path.to_string_lossy().into_owned()),
             );
             if let Some(source_path) = &entry.source_path {
                 obj.insert(
@@ -337,46 +346,23 @@ pub mod registry {
         Ok(())
     }
 
-    /// The real work directory a fresh presentation id should live at —
-    /// `<home>/work/<id>/`. Callers create it; this function only computes
-    /// the path.
-    pub fn work_dir_for(home: &Path, id: &str) -> PathBuf {
-        home.join("work").join(id)
-    }
-
-    /// The newest `mtime`, in milliseconds since the Unix epoch, of `dir`
-    /// itself or anything nested inside it — used to snapshot "the work
-    /// directory's content is known to match `sourcePath` byte-for-byte"
-    /// at `open`/`pack` time (`RegistryEntry.saved_at`).
-    // Filesystem timestamp updates can lag the write that triggered them by a few
-    // milliseconds. Record this margin at a known-clean boundary so Node
-    // does not immediately report an unchanged presentation as dirty.
+    /// Margin added onto a `saved_at` reading. Filesystem timestamp updates
+    /// can lag the write that triggered them by a few milliseconds; this
+    /// margin, recorded at a known-clean boundary, keeps a caller
+    /// (`packages/server`'s dirty-state comparison) from immediately
+    /// reporting an unchanged presentation as dirty.
     pub const SAVED_AT_SETTLE_WINDOW_MS: f64 = 10.0;
 
-    pub fn max_mtime_in_directory(dir: &Path) -> SlidraResult<f64> {
-        let metadata = std::fs::metadata(dir)
+    /// The deck file's own `mtime`, in milliseconds since the Unix epoch —
+    /// used to snapshot "the deck is known to match `sourcePath`
+    /// byte-for-byte" at `open`/`pack` time (`RegistryEntry.saved_at`).
+    /// A single-file `stat`, not a directory walk: the deck IS the file
+    /// now (`spec/rfcs/0001-sqlite-container-format.md`), so there is
+    /// nothing nested left to recurse into.
+    pub fn deck_file_mtime_millis(deck_path: &Path) -> SlidraResult<f64> {
+        let metadata = std::fs::metadata(deck_path)
             .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
-        let mut max = mtime_millis(&metadata)?;
-        let entries = std::fs::read_dir(dir)
-            .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;
-        for entry in entries {
-            let entry = entry.map_err(|_| {
-                SlidraError::invalid("failed to read presentation content timestamp")
-            })?;
-            let file_type = entry.file_type().map_err(|_| {
-                SlidraError::invalid("failed to read presentation content timestamp")
-            })?;
-            let full_path = entry.path();
-            if file_type.is_dir() {
-                max = max.max(max_mtime_in_directory(&full_path)?);
-            } else if file_type.is_file() {
-                let file_metadata = std::fs::metadata(&full_path).map_err(|_| {
-                    SlidraError::invalid("failed to read presentation content timestamp")
-                })?;
-                max = max.max(mtime_millis(&file_metadata)?);
-            }
-        }
-        Ok(max)
+        mtime_millis(&metadata)
     }
 
     fn mtime_millis(metadata: &std::fs::Metadata) -> SlidraResult<f64> {
@@ -406,12 +392,12 @@ pub mod registry {
     /// used by sibling modules' `#[cfg(test)]` fixtures so each doesn't
     /// hand-roll `projects.json` JSON text.
     #[cfg(test)]
-    pub(crate) fn register_for_test(home: &Path, id: &str, work_dir: &Path) {
+    pub(crate) fn register_for_test(home: &Path, id: &str, deck_path: &Path) {
         let mut registry = HashMap::new();
         registry.insert(
             id.to_string(),
             RegistryEntry {
-                work_dir: work_dir.to_path_buf(),
+                deck_path: deck_path.to_path_buf(),
                 source_path: None,
                 saved_at: None,
             },
@@ -594,7 +580,7 @@ pub mod registry {
             let home = temp_dir("unknown-id");
             std::fs::write(
                 home.join("projects.json"),
-                r#"{"known-id":{"workDir":"/tmp/somewhere"}}"#,
+                r#"{"known-id":{"deckPath":"/tmp/somewhere"}}"#,
             )
             .unwrap();
             unsafe {
@@ -612,12 +598,12 @@ pub mod registry {
         }
 
         #[test]
-        fn known_id_resolves_work_dir() {
+        fn known_id_resolves_deck_path() {
             let _guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir("known-id");
             std::fs::write(
                 home.join("projects.json"),
-                r#"{"known-id":{"workDir":"/tmp/known-work-dir"}}"#,
+                r#"{"known-id":{"deckPath":"/tmp/known-deck-path.slidra"}}"#,
             )
             .unwrap();
             unsafe {
@@ -625,7 +611,10 @@ pub mod registry {
             }
 
             let entry = lookup("known-id").unwrap();
-            assert_eq!(entry.work_dir, PathBuf::from("/tmp/known-work-dir"));
+            assert_eq!(
+                entry.deck_path,
+                PathBuf::from("/tmp/known-deck-path.slidra")
+            );
 
             unsafe {
                 std::env::remove_var("SLIDRA_HOME");
@@ -635,9 +624,9 @@ pub mod registry {
     }
 }
 
-/// Resolves an opaque presentation id to its real work directory.
+/// Resolves an opaque presentation id to its real deck file path.
 pub fn resolve_work_dir(id: &str) -> SlidraResult<PathBuf> {
-    Ok(registry::lookup(id)?.work_dir)
+    Ok(registry::lookup(id)?.deck_path)
 }
 
 /// Lists the entry names of the virtual directory at `virtual_path` inside
@@ -663,7 +652,6 @@ pub fn list_presentation_entries(id: &str, virtual_path: &str) -> SlidraResult<V
 mod write_path_tests {
     use super::*;
     use crate::errors::SlidraError;
-    use std::path::Path;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -674,32 +662,24 @@ mod write_path_tests {
         dir
     }
 
-    fn register(home: &Path, test_id: &str, work_dir: &Path) {
-        let work_dir_json =
-            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
-        let id_json = serde_json::to_string(test_id).unwrap();
-        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
-        std::fs::write(home.join("projects.json"), json).unwrap();
-    }
-
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
-        fn new(label: &str, test_id: &str) -> Self {
+        fn new(label: &str, test_id: &str, files: &[(&str, &[u8])]) -> Self {
             let guard = registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            register(&home, test_id, &work);
+            let deck = crate::deck::build_test_deck(label, files);
+            registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
         }
@@ -711,16 +691,17 @@ mod write_path_tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
     #[test]
     fn list_presentation_entries_lists_existing_directory() {
-        let fixture = Fixture::new("list-entries", "pid-list-1");
-        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
-        std::fs::write(fixture.work.join("assets/a.png"), b"a").unwrap();
-        std::fs::write(fixture.work.join("assets/b.png"), b"b").unwrap();
+        let fixture = Fixture::new(
+            "list-entries",
+            "pid-list-1",
+            &[("assets/a.png", b"a"), ("assets/b.png", b"b")],
+        );
 
         let mut entries = list_presentation_entries("pid-list-1", "assets").unwrap();
         entries.sort();
@@ -731,7 +712,7 @@ mod write_path_tests {
 
     #[test]
     fn list_presentation_entries_missing_directory_is_not_found() {
-        let fixture = Fixture::new("list-missing", "pid-list-2");
+        let fixture = Fixture::new("list-missing", "pid-list-2", &[]);
         let err = list_presentation_entries("pid-list-2", "assets/data").unwrap_err();
         assert!(matches!(err, SlidraError::NotFound(_)));
 

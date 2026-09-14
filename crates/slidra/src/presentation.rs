@@ -5,11 +5,20 @@
 //! originally ported from `packages/core/src/presentation.ts` ([E4.T12]
 //! deletes that TypeScript source; Rust is now the sole implementation).
 //!
-//! `FORMAT_VERSION` is **1**: there is no migration chain. `open` and
-//! `validate_project_json` reject any other value outright, and `new`
-//! produces `formatVersion: 1` directly.
+//! `FORMAT_VERSION` is **5**: the SQLite container format
+//! (`spec/rfcs/0001-sqlite-container-format.md`), doubling as both
+//! `project.json`'s own `formatVersion` field and the deck file's SQLite
+//! `user_version` pragma (`deck.rs`) — the two must always agree, since
+//! `workspace::project::validate_project_json` checks the JSON field on
+//! every read regardless of which pragma the container itself reports.
+//! Format versions 1 through 4 were all ZIP containers with no migration
+//! chain between them; this crate never produces one, and reads one only
+//! to migrate it once (`deck::migrate_legacy_zip_in_place`) — the jump
+//! from 4 straight to 5 is deliberate, marking "this is a different
+//! container format", not a continuation of the old numbering.
+//! `new` produces `formatVersion: 5` directly.
 
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 5;
 
 const PRESENTATION_FONT_FAMILY: &str = "Noto Sans TC";
 const PRESENTATION_FONT_FILE: &str = "fonts/NotoSansTC-Presentation.ttf";
@@ -73,14 +82,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn produces_formatversion_1_with_no_slides() {
+    fn produces_formatversion_5_with_no_slides() {
         let files = build_minimal_presentation("test presentation");
         let (_, project_bytes) = files
             .iter()
             .find(|(path, _)| path == "project.json")
             .unwrap();
         let project: serde_json::Value = serde_json::from_slice(project_bytes).unwrap();
-        assert_eq!(project["formatVersion"], 1);
+        assert_eq!(project["formatVersion"], 5);
         assert_eq!(project["name"], "test presentation");
         assert_eq!(project["slides"], serde_json::json!([]));
         assert_eq!(project["fonts"][0]["family"], "Noto Sans TC");

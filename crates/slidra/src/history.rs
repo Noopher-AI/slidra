@@ -237,39 +237,10 @@ fn read_virtual_file_bytes_or_none(
     }
 }
 
-/// Derives `virtual_path`'s real filesystem path by direct join, without the
-/// structural discovery `virtual_fs::resolve_virtual_file_path` requires
-/// (which needs the file to already exist — not true when this group is
-/// about to *create* it). Safe here specifically because `virtual_path`
-/// always comes from this module's own trusted history entries, never from
-/// an external caller.
-fn derived_real_path(work_dir: &Path, virtual_path: &str) -> PathBuf {
-    let mut path = work_dir.to_path_buf();
-    for segment in virtual_path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-    {
-        path.push(segment);
-    }
-    path
-}
-
 /// Deletes `virtual_path` if it currently exists; a no-op if it does not
 /// (undoing a creation twice must not be an error).
 fn delete_real_file_if_present(work_dir: &Path, virtual_path: &str) -> SlidraResult<()> {
-    let real_path = match virtual_fs::resolve_virtual_file_path(work_dir, virtual_path) {
-        Ok(path) => path,
-        Err(SlidraError::NotFound(_)) => return Ok(()),
-        Err(err) => return Err(err),
-    };
-    match std::fs::remove_file(&real_path) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        // real_path is a real filesystem path (ADR-0004) — never quote it.
-        Err(_) => Err(SlidraError::invalid(format!(
-            "error deleting file: {virtual_path}"
-        ))),
-    }
+    virtual_fs::delete_file_if_present(work_dir, virtual_path)
 }
 
 struct ApplyGroupResult {
@@ -331,17 +302,7 @@ fn apply_group(
             None => delete_real_file_if_present(work_dir, &entry.virtual_path)?,
             Some(snapshot_id) => {
                 let content = read_snapshot(home, id, snapshot_id)?;
-                let real_path = derived_real_path(work_dir, &entry.virtual_path);
-                (|| -> std::io::Result<()> {
-                    if let Some(parent) = real_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                    std::fs::write(&real_path, &content)
-                })()
-                .map_err(|_| {
-                    // real_path is a real filesystem path (ADR-0004) — never quote it.
-                    SlidraError::invalid(format!("error writing slide: {}", entry.virtual_path))
-                })?;
+                virtual_fs::force_write_file(work_dir, &entry.virtual_path, &content)?;
                 consumed_snapshot_ids.push(snapshot_id.clone());
             }
         }
@@ -683,19 +644,6 @@ mod tests {
         dir
     }
 
-    /// Registers `test_id -> work_dir` under `home/projects.json`, minimal
-    /// shape `registry::lookup` needs. Built by hand (not `serde_json::json!`)
-    /// because that macro treats a bare identifier key like `test_id` as the
-    /// literal string `"test_id"`, not the variable's value — exactly the
-    /// mistake this comment exists to head off after catching it once here.
-    fn register(home: &Path, test_id: &str, work_dir: &Path) {
-        let work_dir_json =
-            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
-        let id_json = serde_json::to_string(test_id).unwrap();
-        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
-        std::fs::write(home.join("projects.json"), json).unwrap();
-    }
-
     fn write_stack_json(home: &Path, test_id: &str, contents: &str) {
         let dir = history_dir_for(home, test_id);
         std::fs::create_dir_all(&dir).unwrap();
@@ -710,24 +658,42 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
+        /// Builds an empty deck (just the `container::REQUIRED_DIRS`) and
+        /// registers it as `test_id` under a fresh `SLIDRA_HOME`. Content
+        /// for a specific test is written afterwards via `Fixture::write`.
         fn new(label: &str, test_id: &str) -> Self {
             let guard = workspace::registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            register(&home, test_id, &work);
+            let deck = crate::deck::build_test_deck(label, &[]);
+            workspace::registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
+        }
+
+        /// Writes `virtual_path`'s current on-disk content directly
+        /// (bypassing undo staging) — the deck-backed equivalent of the
+        /// old `std::fs::write(fixture.work.join(virtual_path), ...)`.
+        fn write(&self, virtual_path: &str, content: &[u8]) {
+            virtual_fs::force_write_file(&self.deck, virtual_path, content).unwrap();
+        }
+
+        fn read(&self, virtual_path: &str) -> Vec<u8> {
+            virtual_fs::read_virtual_file_bytes(&self.deck, virtual_path).unwrap()
+        }
+
+        fn exists(&self, virtual_path: &str) -> bool {
+            virtual_fs::assert_file_exists(&self.deck, virtual_path).is_ok()
         }
     }
 
@@ -737,7 +703,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -754,9 +720,7 @@ mod tests {
     #[test]
     fn undo_then_redo_round_trips_exact_byte_content() {
         let fixture = Fixture::new("roundtrip", "pid-roundtrip");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_path = fixture.work.join("slides").join("001.svg");
-        std::fs::write(&slide_path, b"<svg>ORIGINAL</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>ORIGINAL</svg>");
 
         write_snapshot_file(
             &fixture.home,
@@ -775,7 +739,7 @@ mod tests {
             undo_result.restored_paths,
             vec!["slides/001.svg".to_string()]
         );
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>BEFORE</svg>");
+        assert_eq!(fixture.read("slides/001.svg"), b"<svg>BEFORE</svg>");
         // The consumed snapshot is deleted only after the stack.json write
         // that drops the last reference to it succeeds.
         assert!(
@@ -790,7 +754,7 @@ mod tests {
             redo_result.restored_paths,
             vec!["slides/001.svg".to_string()]
         );
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>ORIGINAL</svg>");
+        assert_eq!(fixture.read("slides/001.svg"), b"<svg>ORIGINAL</svg>");
 
         drop(fixture);
     }
@@ -798,9 +762,7 @@ mod tests {
     #[test]
     fn undo_with_null_snapshot_id_deletes_the_file() {
         let fixture = Fixture::new("null-snapshot", "pid-null");
-        std::fs::create_dir_all(fixture.work.join("assets")).unwrap();
-        let asset_path = fixture.work.join("assets").join("new.png");
-        std::fs::write(&asset_path, b"fresh import bytes").unwrap();
+        fixture.write("assets/new.png", b"fresh import bytes");
 
         write_stack_json(
             &fixture.home,
@@ -810,7 +772,7 @@ mod tests {
 
         let result = undo("pid-null").unwrap();
         assert_eq!(result.restored_paths, vec!["assets/new.png".to_string()]);
-        assert!(!asset_path.exists());
+        assert!(!fixture.exists("assets/new.png"));
 
         drop(fixture);
     }
@@ -821,10 +783,8 @@ mod tests {
     #[test]
     fn group_with_same_virtual_path_twice_restores_pre_first_edit_state() {
         let fixture = Fixture::new("same-path-twice", "pid-twice");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_path = fixture.work.join("slides").join("001.svg");
         // Current on-disk content: the state AFTER both edits.
-        std::fs::write(&slide_path, b"V3-after-both-edits").unwrap();
+        fixture.write("slides/001.svg", b"V3-after-both-edits");
 
         write_snapshot_file(
             &fixture.home,
@@ -851,7 +811,7 @@ mod tests {
         // Deduped: one restored path even though the group has two entries
         // for it.
         assert_eq!(result.restored_paths, vec!["slides/001.svg".to_string()]);
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"V1-before-first-edit");
+        assert_eq!(fixture.read("slides/001.svg"), b"V1-before-first-edit");
 
         drop(fixture);
     }
@@ -863,9 +823,7 @@ mod tests {
     #[test]
     fn cap_evicts_oldest_undo_group_and_deletes_its_snapshot() {
         let fixture = Fixture::new("cap", "pid-cap");
-        std::fs::create_dir_all(fixture.work.join("live")).unwrap();
-        let live_path = fixture.work.join("live").join("001.svg");
-        std::fs::write(&live_path, b"content-before-redo").unwrap();
+        fixture.write("live/001.svg", b"content-before-redo");
 
         write_snapshot_file(&fixture.home, "pid-cap", "snap-u0", b"oldest-group-content");
         write_snapshot_file(&fixture.home, "pid-cap", "snap-r1", b"redo-content");
@@ -891,7 +849,7 @@ mod tests {
 
         let result = redo("pid-cap").unwrap();
         assert_eq!(result.restored_paths, vec!["live/001.svg".to_string()]);
-        assert_eq!(std::fs::read(&live_path).unwrap(), b"redo-content");
+        assert_eq!(fixture.read("live/001.svg"), b"redo-content");
 
         let stack_text = std::fs::read_to_string(stack_path(&fixture.home, "pid-cap")).unwrap();
         let stack_value: serde_json::Value = serde_json::from_str(&stack_text).unwrap();
@@ -946,8 +904,7 @@ mod tests {
     #[test]
     fn stack_json_referencing_a_missing_snapshot_file_is_damaged_history() {
         let fixture = Fixture::new("missing-snapshot", "pid-missing-snap");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        std::fs::write(fixture.work.join("slides").join("001.svg"), b"current").unwrap();
+        fixture.write("slides/001.svg", b"current");
         // References a snapshot id whose file was never written.
         write_stack_json(
             &fixture.home,
@@ -964,9 +921,7 @@ mod tests {
     #[test]
     fn stage_commit_finalize_round_trips_through_undo() {
         let fixture = Fixture::new("stage-commit", "pid-stage-commit");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_path = fixture.work.join("slides").join("001.svg");
-        std::fs::write(&slide_path, b"<svg>BEFORE</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>BEFORE</svg>");
 
         // Simulates write_presentation_file's stage -> commit -> write ->
         // finalize sequence (commit BEFORE the content write, per NOOP-337).
@@ -975,14 +930,14 @@ mod tests {
             pending_deletion_snapshot_ids,
             ..
         } = commit_snapshot_entries("pid-stage-commit", entries).unwrap();
-        std::fs::write(&slide_path, b"<svg>AFTER</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>AFTER</svg>");
         finalize_committed_entries("pid-stage-commit", &pending_deletion_snapshot_ids).unwrap();
 
         // Exactly one undo step was occupied, and it restores the pre-write
         // content.
         let result = undo("pid-stage-commit").unwrap();
         assert_eq!(result.restored_paths, vec!["slides/001.svg".to_string()]);
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>BEFORE</svg>");
+        assert_eq!(fixture.read("slides/001.svg"), b"<svg>BEFORE</svg>");
         assert!(
             undo("pid-stage-commit").is_err(),
             "only one step was committed"
@@ -998,9 +953,7 @@ mod tests {
     #[test]
     fn revert_after_a_failed_write_leaves_no_undo_step_and_no_orphan_snapshot() {
         let fixture = Fixture::new("revert", "pid-revert");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_path = fixture.work.join("slides").join("001.svg");
-        std::fs::write(&slide_path, b"<svg>ORIGINAL</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>ORIGINAL</svg>");
 
         let entries = stage_snapshot_entries("pid-revert", &["slides/001.svg"]).unwrap();
         let staged_snapshot_id = entries[0].snapshot_id.clone().unwrap();
@@ -1022,7 +975,7 @@ mod tests {
             "the staged snapshot must not be left behind"
         );
         // The slide itself was never touched by this staging dance.
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>ORIGINAL</svg>");
+        assert_eq!(fixture.read("slides/001.svg"), b"<svg>ORIGINAL</svg>");
 
         drop(fixture);
     }
@@ -1033,8 +986,7 @@ mod tests {
     #[test]
     fn revert_restores_a_redo_stack_the_commit_had_cleared() {
         let fixture = Fixture::new("revert-redo", "pid-revert-redo");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        std::fs::write(fixture.work.join("slides").join("001.svg"), b"current").unwrap();
+        fixture.write("slides/001.svg", b"current");
         write_snapshot_file(&fixture.home, "pid-revert-redo", "snap-r1", b"redo-content");
         write_stack_json(
             &fixture.home,
@@ -1060,16 +1012,14 @@ mod tests {
     #[test]
     fn record_snapshot_is_stage_commit_finalize_in_one_call() {
         let fixture = Fixture::new("record", "pid-record");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_path = fixture.work.join("slides").join("001.svg");
-        std::fs::write(&slide_path, b"<svg>BEFORE</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>BEFORE</svg>");
 
         record_snapshot("pid-record", &["slides/001.svg"]).unwrap();
-        std::fs::write(&slide_path, b"<svg>AFTER</svg>").unwrap();
+        fixture.write("slides/001.svg", b"<svg>AFTER</svg>");
 
         let result = undo("pid-record").unwrap();
         assert_eq!(result.restored_paths, vec!["slides/001.svg".to_string()]);
-        assert_eq!(std::fs::read(&slide_path).unwrap(), b"<svg>BEFORE</svg>");
+        assert_eq!(fixture.read("slides/001.svg"), b"<svg>BEFORE</svg>");
 
         drop(fixture);
     }
@@ -1077,8 +1027,7 @@ mod tests {
     #[test]
     fn discard_snapshot_entries_removes_unreferenced_staged_files() {
         let fixture = Fixture::new("discard", "pid-discard");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        std::fs::write(fixture.work.join("slides").join("001.svg"), b"content").unwrap();
+        fixture.write("slides/001.svg", b"content");
 
         let entries = stage_snapshot_entries("pid-discard", &["slides/001.svg"]).unwrap();
         let snapshot_id = entries[0].snapshot_id.clone().unwrap();
@@ -1115,11 +1064,8 @@ mod tests {
     #[test]
     fn commits_inside_an_open_group_join_it_as_one_undo_step() {
         let fixture = Fixture::new("group", "pid-group");
-        std::fs::create_dir_all(fixture.work.join("slides")).unwrap();
-        let slide_a = fixture.work.join("slides").join("001.svg");
-        let slide_b = fixture.work.join("slides").join("002.svg");
-        std::fs::write(&slide_a, b"A-before").unwrap();
-        std::fs::write(&slide_b, b"B-before").unwrap();
+        fixture.write("slides/001.svg", b"A-before");
+        fixture.write("slides/002.svg", b"B-before");
 
         let opened = begin_history_group("pid-group").unwrap();
         assert!(opened, "first caller must open the group");
@@ -1130,11 +1076,11 @@ mod tests {
 
         let entries_a = stage_snapshot_entries("pid-group", &["slides/001.svg"]).unwrap();
         commit_snapshot_entries("pid-group", entries_a).unwrap();
-        std::fs::write(&slide_a, b"A-after").unwrap();
+        fixture.write("slides/001.svg", b"A-after");
 
         let entries_b = stage_snapshot_entries("pid-group", &["slides/002.svg"]).unwrap();
         commit_snapshot_entries("pid-group", entries_b).unwrap();
-        std::fs::write(&slide_b, b"B-after").unwrap();
+        fixture.write("slides/002.svg", b"B-after");
 
         end_history_group("pid-group").unwrap();
 
@@ -1147,8 +1093,8 @@ mod tests {
             restored,
             vec!["slides/001.svg".to_string(), "slides/002.svg".to_string()]
         );
-        assert_eq!(std::fs::read(&slide_a).unwrap(), b"A-before");
-        assert_eq!(std::fs::read(&slide_b).unwrap(), b"B-before");
+        assert_eq!(fixture.read("slides/001.svg"), b"A-before");
+        assert_eq!(fixture.read("slides/002.svg"), b"B-before");
         assert!(undo("pid-group").is_err(), "only one step was pushed");
 
         drop(fixture);

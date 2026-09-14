@@ -39,7 +39,7 @@ fn result_of(
 /// before "not a slide").
 fn read_slide(id: &str, slide_path: &str) -> Result<String, SlidraError> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     workspace::write::assert_slide_path_listed(&work_dir, slide_path)?;
     virtual_fs::read_virtual_file(&work_dir, slide_path)
 }
@@ -247,7 +247,7 @@ pub fn run(args: &[String], stdin_csv: Option<String>) -> CommandResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -258,17 +258,9 @@ mod tests {
         dir
     }
 
-    fn register(home: &Path, test_id: &str, work_dir: &Path) {
-        let work_dir_json =
-            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
-        let id_json = serde_json::to_string(test_id).unwrap();
-        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
-        std::fs::write(home.join("projects.json"), json).unwrap();
-    }
-
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         id: &'static str,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -277,32 +269,30 @@ mod tests {
         fn new(label: &str, id: &'static str) -> Self {
             let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            register(&home, id, &work);
-            std::fs::write(
-                work.join("project.json"),
-                r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"]}"#,
-            )
-            .unwrap();
-            std::fs::create_dir_all(work.join("slides")).unwrap();
-            std::fs::write(
-                work.join("slides/001.svg"),
-                r#"<svg viewBox="0 0 1280 720"></svg>"#,
-            )
-            .unwrap();
+            let deck = crate::deck::build_test_deck(
+                label,
+                &[
+                    (
+                        "project.json",
+                        br#"{"formatVersion":5,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"]}"#,
+                    ),
+                    ("slides/001.svg", br#"<svg viewBox="0 0 1280 720"></svg>"#),
+                ],
+            );
+            crate::workspace::registry::register_for_test(&home, id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 id,
                 _guard: guard,
             }
         }
 
         fn slide(&self) -> String {
-            std::fs::read_to_string(self.work.join("slides/001.svg")).unwrap()
+            crate::workspace::virtual_fs::read_virtual_file(&self.deck, "slides/001.svg").unwrap()
         }
     }
 
@@ -312,7 +302,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -457,13 +447,15 @@ mod tests {
     #[test]
     fn create_after_cjk_content_produces_well_formed_xml() {
         let fixture = Fixture::new("cjk-before-insert", "pid-chart-cjk");
-        std::fs::write(
-            fixture.work.join("slides/001.svg"),
+        crate::workspace::virtual_fs::write_existing_file(
+            &fixture.deck,
+            "slides/001.svg",
             r#"<svg viewBox="0 0 1280 720">
   <g id="el-title" data-slidra-name="title">
     <text x="640" y="360" text-anchor="middle" font-family="Noto Sans TC" font-size="48">示範簡報</text>
   </g>
-</svg>"#,
+</svg>"#
+                .as_bytes(),
         )
         .unwrap();
 

@@ -736,13 +736,7 @@ pub fn set_plan(id: &str, name: &str, content: &str, force: bool) -> SlidraResul
             parse_design_spec(content)?;
         }
     }
-    let plan_dir = work_dir.join("plan");
-    std::fs::create_dir_all(&plan_dir)
-        .map_err(|_| SlidraError::invalid(format!("error writing file: {path}")))?;
-    let file_name = path
-        .strip_prefix("plan/")
-        .expect("plan paths live under plan/");
-    std::fs::write(plan_dir.join(file_name), content)
+    virtual_fs::force_write_file(&work_dir, path, content.as_bytes())
         .map_err(|_| SlidraError::invalid(format!("error writing file: {path}")))?;
     Ok(path.to_string())
 }
@@ -779,16 +773,15 @@ pub fn delete_plan(id: &str, name: Option<&str>) -> SlidraResult<String> {
     match name {
         Some(name) => {
             let path = plan_path_for(name)?;
-            let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, path)?;
-            std::fs::remove_file(&real_path)
-                .map_err(|_| SlidraError::invalid(format!("error deleting file: {path}")))?;
+            virtual_fs::assert_file_exists(&work_dir, path)?;
+            virtual_fs::delete_file(&work_dir, path)?;
             Ok(path.to_string())
         }
         None => {
             if virtual_fs::list_virtual_entries(&work_dir, "plan").is_err() {
                 return Err(SlidraError::not_found("directory not found: plan/"));
             }
-            std::fs::remove_dir_all(work_dir.join("plan"))
+            virtual_fs::delete_dir_recursive(&work_dir, "plan")
                 .map_err(|_| SlidraError::invalid("error deleting file: plan/"))?;
             Ok("plan/".to_string())
         }

@@ -183,7 +183,7 @@ fn require_index(args: &[String], index: usize, command: &str) -> SlidraResult<i
 /// (`resolveVirtualFilePath` before `assertSlidePathListed`).
 fn read_slide_for_write(id: &str, slide_path: &str) -> SlidraResult<String> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    workspace::virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    workspace::virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     workspace::write::assert_slide_path_listed(&work_dir, slide_path)?;
     workspace::virtual_fs::read_virtual_file(&work_dir, slide_path)
 }
@@ -449,7 +449,7 @@ pub fn list(args: &[String]) -> CommandResult {
 /// absent — plan 4.1's contract table).
 fn list_data(id: &str, slide_path: &str) -> SlidraResult<(usize, Value)> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    workspace::virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    workspace::virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     workspace::write::assert_slide_path_listed(&work_dir, slide_path)?;
     let original = workspace::virtual_fs::read_virtual_file(&work_dir, slide_path)?;
 

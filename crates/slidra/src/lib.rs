@@ -19,6 +19,7 @@ pub mod base64;
 pub mod chart;
 pub mod commands;
 pub mod container;
+pub mod deck;
 pub mod effects;
 pub mod element;
 pub mod errors;

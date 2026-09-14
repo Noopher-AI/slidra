@@ -6,7 +6,7 @@
 use crate::errors::SlidraError;
 use crate::result::{CommandResult, FailureKind};
 use crate::workspace::registry::RegistryEntry;
-use crate::{argv, container, id, workspace};
+use crate::{argv, deck, id, workspace};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> CommandResult {
@@ -24,38 +24,40 @@ pub fn run(args: &[String]) -> CommandResult {
     }
 }
 
+/// Opens `path` in place: migrates it to the SQLite container format first
+/// if it is still a legacy ZIP (a no-op otherwise — `deck::migrate_legacy_zip_in_place`
+/// is idempotent), then registers a fresh id pointing directly at `path`
+/// itself. There is no separate work directory to copy into any more
+/// (`spec/rfcs/0001-sqlite-container-format.md`) — `path` IS the
+/// presentation's content from this point on, exactly as `pack`ing back to
+/// it will later find it.
 fn open_presentation(path: &str) -> Result<String, SlidraError> {
     let home = workspace::resolve_home();
+    let deck_path = Path::new(path).to_path_buf();
+
+    deck::migrate_legacy_zip_in_place(&deck_path)?;
+    // Opening validates the header (application_id/user_version) even when
+    // no migration was needed — an unrecognized or too-new file must never
+    // be registered.
+    deck::open_connection(&deck_path)?;
+
     let new_id = id::generate_opaque_id();
-    let work_dir = workspace::registry::work_dir_for(&home, &new_id);
-
-    container::unpack_container(Path::new(path), &work_dir)?;
-    // unpack_container succeeded, so work_dir now holds real content on
-    // disk. Every failure from here rolls it back — it must not become an
-    // orphan directory nobody can reach.
-    let registration = (|| -> Result<(), SlidraError> {
-        let saved_at = workspace::registry::max_mtime_in_directory(&work_dir)?
-            + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
-        // Read-modify-write under the lock: a concurrent `open` reading the
-        // same map and writing after us would drop this brand-new entry.
-        workspace::registry::with_registry_lock(&home, || {
-            let mut registry = workspace::registry::read_registry(&home)?;
-            registry.insert(
-                new_id.clone(),
-                RegistryEntry {
-                    work_dir: work_dir.clone(),
-                    source_path: Some(Path::new(path).to_path_buf()),
-                    saved_at: Some(saved_at),
-                },
-            );
-            workspace::registry::write_registry(&home, &registry)
-        })
-    })();
-
-    if let Err(err) = registration {
-        let _ = std::fs::remove_dir_all(&work_dir);
-        return Err(err);
-    }
+    let saved_at = workspace::registry::deck_file_mtime_millis(&deck_path)?
+        + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
+    // Read-modify-write under the lock: a concurrent `open` reading the
+    // same map and writing after us would drop this brand-new entry.
+    workspace::registry::with_registry_lock(&home, || {
+        let mut registry = workspace::registry::read_registry(&home)?;
+        registry.insert(
+            new_id.clone(),
+            RegistryEntry {
+                deck_path: deck_path.clone(),
+                source_path: Some(deck_path.clone()),
+                saved_at: Some(saved_at),
+            },
+        );
+        workspace::registry::write_registry(&home, &registry)
+    })?;
     Ok(new_id)
 }
 
@@ -100,28 +102,33 @@ mod tests {
         std::fs::remove_dir_all(&home).ok();
     }
 
+    /// A legacy ZIP `open`ed migrates in place and registers at the
+    /// crate's current `formatVersion` (5, not the legacy file's own 1) —
+    /// renamed from `..._at_formatversion_1` (Plan §6's test inventory)
+    /// since that value itself is the whole point of migration.
     #[test]
-    fn opens_a_slidra_and_registers_it_at_formatversion_1() {
+    fn opens_a_legacy_zip_migrates_it_and_registers_it_at_formatversion_5() {
         let _guard = registry::ENV_LOCK.lock().unwrap();
         let home = temp_dir("open-success-home");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);
         }
 
-        let source = temp_dir("open-success-source");
-        std::fs::create_dir_all(source.join("slides")).unwrap();
-        std::fs::write(
-            source.join("slides/001.svg"),
-            b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n",
-        )
-        .unwrap();
-        std::fs::write(
-            source.join("project.json"),
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":["slides/001.svg"]}"#,
-        )
-        .unwrap();
-        let slidra_path = temp_dir("open-success-slidra").join("in.slidra");
-        crate::container::pack_directory(&source, &slidra_path).unwrap();
+        let slidra_dir = temp_dir("open-success-slidra");
+        let slidra_path = slidra_dir.join("in.slidra");
+        crate::container::write_legacy_zip(
+            &slidra_path,
+            &[
+                (
+                    "slides/001.svg",
+                    b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n",
+                ),
+                (
+                    "project.json",
+                    br#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":["slides/001.svg"]}"#,
+                ),
+            ],
+        );
 
         let result = run(&[slidra_path.to_string_lossy().into_owned()]);
         assert!(result.ok, "expected success, got {}", result.message);
@@ -130,16 +137,60 @@ mod tests {
             .unwrap()
             .to_string();
 
-        let work_dir = workspace::resolve_work_dir(&new_id).unwrap();
-        let project: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(work_dir.join("project.json")).unwrap())
-                .unwrap();
-        assert_eq!(project["formatVersion"], 1);
+        let deck_path = workspace::resolve_work_dir(&new_id).unwrap();
+        assert_eq!(deck_path, slidra_path, "open operates on the file in place");
+        let project = crate::workspace::project::read_project_json(&deck_path).unwrap();
+        assert_eq!(project.format_version, 5.0);
+        assert_eq!(
+            crate::deck::detect_format(&deck_path).unwrap(),
+            crate::deck::ContainerFormat::Sqlite
+        );
 
         unsafe {
             std::env::remove_var("SLIDRA_HOME");
         }
         std::fs::remove_dir_all(&home).ok();
-        std::fs::remove_dir_all(&source).ok();
+        std::fs::remove_dir_all(&slidra_dir).ok();
+    }
+
+    /// Opening an already-migrated deck a second time is idempotent: the
+    /// second `open` does not re-migrate (nothing changes about the file
+    /// besides gaining a second registry entry).
+    #[test]
+    fn opening_an_already_sqlite_deck_twice_is_idempotent() {
+        let _guard = registry::ENV_LOCK.lock().unwrap();
+        let home = temp_dir("open-idempotent-home");
+        unsafe {
+            std::env::set_var("SLIDRA_HOME", &home);
+        }
+        let slidra_dir = temp_dir("open-idempotent-slidra");
+        let slidra_path = slidra_dir.join("in.slidra");
+        crate::container::write_legacy_zip(
+            &slidra_path,
+            &[(
+                "project.json",
+                br#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":[]}"#,
+            )],
+        );
+
+        let first = run(&[slidra_path.to_string_lossy().into_owned()]);
+        assert!(first.ok);
+        let before = std::fs::read(&slidra_path).unwrap();
+
+        let second = run(&[slidra_path.to_string_lossy().into_owned()]);
+        assert!(second.ok, "expected success, got {}", second.message);
+        let after = std::fs::read(&slidra_path).unwrap();
+        assert_eq!(before, after, "a second open must not re-migrate");
+        assert_ne!(
+            first.data.as_ref().unwrap()["id"],
+            second.data.as_ref().unwrap()["id"],
+            "each open mints its own id even for the same deck path"
+        );
+
+        unsafe {
+            std::env::remove_var("SLIDRA_HOME");
+        }
+        std::fs::remove_dir_all(&home).ok();
+        std::fs::remove_dir_all(&slidra_dir).ok();
     }
 }

@@ -292,7 +292,7 @@ mod tests {
 
         struct Fixture {
             home: PathBuf,
-            work: PathBuf,
+            deck: PathBuf,
             id: String,
             _guard: std::sync::MutexGuard<'static, ()>,
         }
@@ -301,44 +301,50 @@ mod tests {
             fn new(label: &str) -> Self {
                 let guard = workspace::registry::ENV_LOCK.lock().unwrap();
                 let home = temp_dir(&format!("{label}-home"));
-                let work = temp_dir(&format!("{label}-work"));
                 let id = format!("pid-{label}");
-                let work_dir_json =
-                    serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-                let id_json = serde_json::to_string(&id).unwrap();
-                std::fs::write(
-                    home.join("projects.json"),
-                    format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#),
-                )
-                .unwrap();
-                std::fs::write(
-                    work.join("project.json"),
-                    r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"templates":["templates/001.svg"]}"#,
-                )
-                .unwrap();
-                std::fs::create_dir_all(work.join("slides")).unwrap();
-                std::fs::create_dir_all(work.join("templates")).unwrap();
+                let deck = crate::deck::build_test_deck(
+                    label,
+                    &[
+                        (
+                            "project.json",
+                            br#"{"formatVersion":5,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"templates":["templates/001.svg"]}"#,
+                        ),
+                        ("slides/001.svg", b""),
+                        ("templates/001.svg", b""),
+                    ],
+                );
+                workspace::registry::register_for_test(&home, &id, &deck);
                 unsafe {
                     std::env::set_var("SLIDRA_HOME", &home);
                 }
                 Fixture {
                     home,
-                    work,
+                    deck,
                     id,
                     _guard: guard,
                 }
             }
 
             fn write_slide(&self, content: &str) {
-                std::fs::write(self.work.join("slides/001.svg"), content).unwrap();
+                workspace::virtual_fs::write_existing_file(
+                    &self.deck,
+                    "slides/001.svg",
+                    content.as_bytes(),
+                )
+                .unwrap();
             }
 
             fn write_template(&self, content: &str) {
-                std::fs::write(self.work.join("templates/001.svg"), content).unwrap();
+                workspace::virtual_fs::write_existing_file(
+                    &self.deck,
+                    "templates/001.svg",
+                    content.as_bytes(),
+                )
+                .unwrap();
             }
 
             fn read_slide(&self) -> String {
-                std::fs::read_to_string(self.work.join("slides/001.svg")).unwrap()
+                workspace::virtual_fs::read_virtual_file(&self.deck, "slides/001.svg").unwrap()
             }
         }
 
@@ -348,7 +354,7 @@ mod tests {
                     std::env::remove_var("SLIDRA_HOME");
                 }
                 std::fs::remove_dir_all(&self.home).ok();
-                std::fs::remove_dir_all(&self.work).ok();
+                std::fs::remove_file(&self.deck).ok();
             }
         }
 
@@ -546,13 +552,19 @@ mod tests {
             let fixture = Fixture::new("list-all");
             // Second slide via a second project entry: reuse the same
             // fixture's project.json by rewriting it with two slides.
-            std::fs::write(
-                fixture.work.join("project.json"),
-                r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"]}"#,
+            crate::workspace::virtual_fs::write_existing_file(
+                &fixture.deck,
+                "project.json",
+                br#"{"formatVersion":5,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"]}"#,
             )
             .unwrap();
             fixture.write_slide(&slide(""));
-            std::fs::write(fixture.work.join("slides/002.svg"), slide("")).unwrap();
+            crate::workspace::virtual_fs::create_new_file(
+                &fixture.deck,
+                "slides/002.svg",
+                slide("").as_bytes(),
+            )
+            .unwrap();
 
             dispatch(
                 &["comment", "add"],
@@ -586,13 +598,19 @@ mod tests {
         #[test]
         fn list_with_a_slide_path_covers_only_that_slide() {
             let fixture = Fixture::new("list-one");
-            std::fs::write(
-                fixture.work.join("project.json"),
-                r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"]}"#,
+            crate::workspace::virtual_fs::write_existing_file(
+                &fixture.deck,
+                "project.json",
+                br#"{"formatVersion":5,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg","slides/002.svg"]}"#,
             )
             .unwrap();
             fixture.write_slide(&slide(""));
-            std::fs::write(fixture.work.join("slides/002.svg"), slide("")).unwrap();
+            crate::workspace::virtual_fs::create_new_file(
+                &fixture.deck,
+                "slides/002.svg",
+                slide("").as_bytes(),
+            )
+            .unwrap();
 
             dispatch(
                 &["comment", "add"],

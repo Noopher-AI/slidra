@@ -154,13 +154,15 @@ slidra open <path>
 
 - `path`: string, required. The local filesystem path of an existing `.slidra` file.
 
+`open` operates on `path` **in place** — there is no separate work directory or copy (`spec/rfcs/0001-sqlite-container-format.md`). If `path` is still a legacy ZIP container (`formatVersion` 1 through 4), it is migrated to the SQLite container format first, as a single atomic same-directory rename; a SQLite deck already at the crate's current version is opened unchanged. From this point on, `path` itself IS the presentation's content — editing commands write directly into it, and `pack`ing back to the same path is a no-op copy that only updates the "saved" bookkeeping.
+
 **Success `data`**
 
 ```json
 { "id": "AbCdEfGhIjKl" }
 ```
 
-`id` is a 12-character base64url opaque identifier (see the "element id format" section of `slidra-format.md`; `<presentation-id>` uses the same generator), and is the first positional argument of every subsequent command.
+`id` is a 12-character base64url opaque identifier (see the "element id format" section of `slidra-format.md`; `<presentation-id>` uses the same generator), and is the first positional argument of every subsequent command. Opening the same `path` more than once mints a distinct id each time; every id minted this way shares the exact same underlying file, so an edit made through one id is immediately visible through any other id opened against that same path.
 
 **Error cases**
 
@@ -168,9 +170,9 @@ slidra open <path>
 |---|---|
 | The file at `path` does not exist, or fails to read | `failed` |
 | `path` points to something that is not a file (e.g. a directory) | `failed` |
-| The file is not a valid zip (the `.slidra` is corrupted) | `failed` |
-| The decompressed content is missing a parseable `project.json`, or `project.json`'s format does not match the spec (see `slidra-format.md`) | `failed` |
-| `project.json.formatVersion` is greater than the maximum version this build supports | `failed` |
+| The file's header bytes match neither a legacy ZIP nor a SQLite container | `failed` |
+| A legacy ZIP's decompressed content is missing a parseable `project.json`, or `project.json`'s format does not match the spec (see `slidra-format.md`) | `failed` |
+| The container's stored format version is greater than the maximum version this build supports | `failed` |
 | An error occurs while registering the presentation, whether a disk error or an error in the registry file itself (`projects.json`) | `failed` |
 
 > All of these conditions are currently classified as `failed`, not `not-found` — `open`'s input is a local filesystem path, not "an identifier that may or may not exist," so there is no semantic case of "a known registered thing was not found"; a corrupted archive or non-conforming content both fall under "this request cannot be completed" rather than "positive proof that a known identifier does not exist."
@@ -192,7 +194,9 @@ slidra pack <presentation-id> <path>
 **Parameters**
 
 - `presentation-id`: string, required, the identifier of an opened presentation.
-- `path`: string, required, the local filesystem path of the output `.slidra` file; if it is the same as the source path originally read by `open`, this `pack` also marks the presentation as "saved" (`~/.slidra/projects.json`'s `savedAt` is updated — see `workspace.md`). Writing to any other path is simply a separate save that does not affect the "saved" status.
+- `path`: string, required, the local filesystem path of the output `.slidra` file.
+
+When `path` is the presentation's own deck file (the one `open` operates on in place), `pack` copies nothing — the content is already there — and simply updates `~/.slidra/projects.json`'s `savedAt` bookkeeping when `path` also matches the presentation's remembered source path (see `workspace.md`). Any other `path` is a plain file copy of the deck's current bytes (staged then renamed, overwriting whatever was there); it additionally marks the presentation "saved" only when `path` matches that same remembered source.
 
 **Success `data`**
 
@@ -211,6 +215,43 @@ slidra pack <presentation-id> <path>
 
 ```
 slidra pack pres-abc123 ./deck.slidra
+```
+
+## `extract`
+
+**Syntax**
+
+```
+slidra extract <id-or-path> <dir>
+```
+
+**Parameters**
+
+- `id-or-path`: string, required. Either an already-`open`ed presentation's id, or a `.slidra` filesystem path (legacy ZIP or SQLite) not yet opened.
+- `dir`: string, required. A local filesystem directory to write the deck's entire virtual filesystem into, as plain real files — every empty directory in the deck (e.g. a freshly `new`ed deck's `assets/`) is reproduced too, not just files.
+
+`extract` is read-only against the source: given a filesystem path, it never migrates or registers anything, so it is safe to run against a `.slidra` an author does not want touched — the escape hatch for getting back to "just files on disk" without any tool that understands the SQLite container format (`spec/rfcs/0001-sqlite-container-format.md` decision 6).
+
+**Success `data`**
+
+```json
+{}
+```
+
+**Error cases**
+
+| Condition | `failureKind` |
+|---|---|
+| `id-or-path` resolves to neither a registered id nor a readable file | `failed` |
+| `dir` already exists and is not empty | `failed` |
+| `dir` exists but is not a directory | `failed` |
+| The disk write fails | `failed` |
+
+**Example**
+
+```
+slidra extract pres-abc123 ./extracted
+slidra extract ./deck.slidra ./extracted
 ```
 
 ## `cat`

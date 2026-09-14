@@ -15,7 +15,6 @@
 //! wherever `cargo test` runs).
 
 use serde::Deserialize;
-use slidra::container::{pack_directory, unpack_container};
 use slidra::geometry::bbox::{
     ElementBoundsOptions, TextBoundsContext, element_bounds, format_bbox, path_bounds,
     primitive_bounds,
@@ -722,8 +721,46 @@ fn temp_dir(label: &str) -> PathBuf {
     dir
 }
 
+/// Zips `source_dir` into a legacy (pre-SQLite) `.slidra` container at
+/// `output_path` — every repo fixture is a plain directory, not a file, so
+/// this test builds the "v1-v4 file a real author would have on disk"
+/// itself before handing it to `deck::migrate_legacy_zip_in_place`. Mirrors
+/// the shape the deleted `container::pack_directory` used to produce
+/// (`slides/`/`assets`/`fonts` present even when empty), since that is
+/// what a legacy `.slidra` actually looked like.
+fn zip_legacy_directory(source_dir: &Path, output_path: &Path) {
+    let tree = collect_tree(source_dir);
+    let mut buffer: Vec<u8> = Vec::new();
+    {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
+        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        for dir in ["slides/", "assets/", "fonts/"] {
+            writer.add_directory(dir, options).unwrap();
+        }
+        for (path, bytes) in &tree {
+            writer.start_file(path, options).unwrap();
+            std::io::Write::write_all(&mut writer, bytes).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+    fs::write(output_path, &buffer).unwrap();
+}
+
+/// Snapshots a deck's entire content as a "virtual path -> bytes" map, via
+/// the same public read API production code uses — the SQLite-backed
+/// equivalent of `collect_tree`'s real-directory walk.
+fn collect_deck_tree(deck_path: &Path) -> BTreeMap<String, Vec<u8>> {
+    let mut map = BTreeMap::new();
+    for path in slidra::workspace::virtual_fs::list_virtual_files(deck_path, "").unwrap() {
+        let bytes =
+            slidra::workspace::virtual_fs::read_virtual_file_bytes(deck_path, &path).unwrap();
+        map.insert(path, bytes);
+    }
+    map
+}
+
 #[test]
-fn every_repo_fixture_is_formatversion_1_and_pack_open_round_trips() {
+fn every_repo_fixture_migrates_to_formatversion_5_with_content_preserved() {
     let dirs = fixture_directories();
     assert_eq!(
         dirs.len(),
@@ -732,81 +769,92 @@ fn every_repo_fixture_is_formatversion_1_and_pack_open_round_trips() {
         dirs.len()
     );
 
-    let scratch = temp_dir("fixture-roundtrip");
+    let scratch = temp_dir("fixture-migration");
     let mut failures = Vec::new();
 
     for (i, source_dir) in dirs.iter().enumerate() {
-        let first_slidra = scratch.join(format!("{i}-first.slidra"));
-        let first_work = scratch.join(format!("{i}-first-work"));
-        if let Err(err) = pack_directory(source_dir, &first_slidra) {
+        let legacy_path = scratch.join(format!("{i}-legacy.slidra"));
+        zip_legacy_directory(source_dir, &legacy_path);
+
+        if let Err(err) = slidra::deck::migrate_legacy_zip_in_place(&legacy_path) {
             failures.push(format!(
-                "{}: pack failed: {}",
-                source_dir.display(),
-                err.message()
-            ));
-            continue;
-        }
-        if let Err(err) = unpack_container(&first_slidra, &first_work) {
-            failures.push(format!(
-                "{}: unpack failed: {}",
+                "{}: migration failed: {}",
                 source_dir.display(),
                 err.message()
             ));
             continue;
         }
 
-        let project: serde_json::Value = match fs::read_to_string(first_work.join("project.json")) {
-            Ok(text) => serde_json::from_str(&text).unwrap(),
+        let project = match slidra::workspace::project::read_project_json(&legacy_path) {
+            Ok(p) => p,
             Err(err) => {
                 failures.push(format!(
-                    "{}: could not read project.json: {err}",
-                    source_dir.display()
+                    "{}: could not read migrated project.json: {}",
+                    source_dir.display(),
+                    err.message()
                 ));
                 continue;
             }
         };
-        if project["formatVersion"] != serde_json::json!(1) {
+        if project.format_version != 5.0 {
             failures.push(format!(
-                "{}: formatVersion is {:?}, not 1",
+                "{}: formatVersion is {:?}, not 5",
                 source_dir.display(),
-                project["formatVersion"]
+                project.format_version
             ));
         }
 
-        // pack -> open round-trip: second pack/unpack of the work dir must
-        // produce byte-identical content to the first.
-        let second_slidra = scratch.join(format!("{i}-second.slidra"));
-        let second_work = scratch.join(format!("{i}-second-work"));
-        if let Err(err) = pack_directory(&first_work, &second_slidra) {
-            failures.push(format!(
-                "{}: second pack failed: {}",
-                source_dir.display(),
-                err.message()
-            ));
-            continue;
+        // Content preserved exactly, except `project.json`'s own
+        // `formatVersion` field (the one deliberate bump migration makes —
+        // every other field, and every other file, must be byte-identical).
+        let original_tree = collect_tree(source_dir);
+        let migrated_tree = collect_deck_tree(&legacy_path);
+        for (path, original_bytes) in &original_tree {
+            let Some(migrated_bytes) = migrated_tree.get(path) else {
+                failures.push(format!(
+                    "{}: {path} missing after migration",
+                    source_dir.display()
+                ));
+                continue;
+            };
+            if path == "project.json" {
+                let mut original_json: serde_json::Value =
+                    serde_json::from_slice(original_bytes).unwrap();
+                let mut migrated_json: serde_json::Value =
+                    serde_json::from_slice(migrated_bytes).unwrap();
+                original_json["formatVersion"] = serde_json::json!(5);
+                migrated_json["formatVersion"] = serde_json::json!(5);
+                if original_json != migrated_json {
+                    failures.push(format!(
+                        "{}: project.json diverged beyond formatVersion",
+                        source_dir.display()
+                    ));
+                }
+                continue;
+            }
+            if migrated_bytes != original_bytes {
+                failures.push(format!("{}: {path} content diverged", source_dir.display()));
+            }
         }
-        if let Err(err) = unpack_container(&second_slidra, &second_work) {
+        let only_in_migrated: Vec<&String> = migrated_tree
+            .keys()
+            .filter(|k| !original_tree.contains_key(*k))
+            .collect();
+        if !only_in_migrated.is_empty() {
             failures.push(format!(
-                "{}: second unpack failed: {}",
-                source_dir.display(),
-                err.message()
+                "{}: migration introduced unexpected files: {only_in_migrated:?}",
+                source_dir.display()
             ));
-            continue;
         }
 
-        let first_tree = collect_tree(&first_work);
-        let second_tree = collect_tree(&second_work);
-        if first_tree != second_tree {
-            let only_in_first: Vec<&String> = first_tree
-                .keys()
-                .filter(|k| !second_tree.contains_key(*k))
-                .collect();
-            let only_in_second: Vec<&String> = second_tree
-                .keys()
-                .filter(|k| !first_tree.contains_key(*k))
-                .collect();
+        // Idempotence: migrating an already-SQLite deck a second time must
+        // be a byte-for-byte no-op.
+        let before = fs::read(&legacy_path).unwrap();
+        slidra::deck::migrate_legacy_zip_in_place(&legacy_path).unwrap();
+        let after = fs::read(&legacy_path).unwrap();
+        if before != after {
             failures.push(format!(
-                "{}: pack->open round-trip diverged (only_in_first={only_in_first:?}, only_in_second={only_in_second:?})",
+                "{}: re-migrating an already-SQLite deck was not a no-op",
                 source_dir.display()
             ));
         }
@@ -815,7 +863,7 @@ fn every_repo_fixture_is_formatversion_1_and_pack_open_round_trips() {
     fs::remove_dir_all(&scratch).ok();
     assert!(
         failures.is_empty(),
-        "A2 fixture round-trip failures:\n{}",
+        "migration fixture failures:\n{}",
         failures.join("\n")
     );
 }

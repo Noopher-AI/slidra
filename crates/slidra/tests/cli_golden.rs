@@ -187,6 +187,16 @@ fn concurrent_effect_adds_on_one_slide_are_serialised_by_the_presentation_lock()
         "{}",
         String::from_utf8_lossy(&ls.stdout)
     );
+
+    // AC6: 8 processes racing writes against the same deck must not
+    // corrupt the SQLite file itself, on top of "no effect was lost"
+    // above. `open` operates on `slidra_path` in place, so it IS the
+    // deck file this opens directly.
+    let conn = rusqlite::Connection::open(&slidra_path).unwrap();
+    let integrity: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(integrity, "ok");
 }
 
 #[test]
@@ -576,17 +586,16 @@ fn effect_list_with_damaged_list_matches_stderr() {
     let fixture = Fixture::new("effect-list-damaged");
     let id = new_open_and_convert(&fixture);
 
-    let slide_path = {
-        // Resolve the real on-disk path for slides/001.svg the same way the
-        // fixture's own `cat` calls do: via `projects.json`'s registered
-        // workDir, read directly rather than adding a new CLI surface just
-        // for this test.
+    let deck_path = {
+        // Resolve the deck file the same way the fixture's own `cat` calls
+        // do: via `projects.json`'s registered deckPath, read directly
+        // rather than adding a new CLI surface just for this test.
         let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
         let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
-        let work_dir = registry[&id]["workDir"].as_str().unwrap().to_string();
-        PathBuf::from(work_dir).join("slides").join("001.svg")
+        PathBuf::from(registry[&id]["deckPath"].as_str().unwrap())
     };
-    let original = fs::read_to_string(&slide_path).unwrap();
+    let original =
+        slidra::workspace::virtual_fs::read_virtual_file(&deck_path, "slides/001.svg").unwrap();
     let damaged = original.replace(
         "</svg>",
         r#"<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="bogus-target" family="not-a-family" effect="fade" start="on-click" duration="0.6" delay="0"/></slidra:effects></metadata></svg>"#,
@@ -595,7 +604,12 @@ fn effect_list_with_damaged_list_matches_stderr() {
         original, damaged,
         "the damaging replacement must actually apply"
     );
-    fs::write(&slide_path, damaged).unwrap();
+    slidra::workspace::virtual_fs::write_existing_file(
+        &deck_path,
+        "slides/001.svg",
+        damaged.as_bytes(),
+    )
+    .unwrap();
 
     let rust_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
     let node_out = fixture.run_rust(&["effect", "list", &id, "slides/001.svg"]);
@@ -1402,12 +1416,14 @@ fn asset_import_local_file_lands_under_assets_via_rust_binary() {
 
     // `cat` decodes strict UTF-8 and refuses binary content (it is a binary
     // asset and cannot be read as text) — not a usable read path for this
-    // assertion. Read the real file back directly via the registry's
-    // workDir instead.
+    // assertion. Read the raw bytes back directly via the registry's
+    // deckPath instead.
     let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
     let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
-    let work_dir = registry[&id]["workDir"].as_str().unwrap();
-    let real_bytes = fs::read(PathBuf::from(work_dir).join("assets/tiny.png")).unwrap();
+    let deck_path = PathBuf::from(registry[&id]["deckPath"].as_str().unwrap());
+    let real_bytes =
+        slidra::workspace::virtual_fs::read_virtual_file_bytes(&deck_path, "assets/tiny.png")
+            .unwrap();
     assert_eq!(real_bytes, png_bytes);
 }
 
@@ -1848,8 +1864,8 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
     let real_bytes = {
         let registry_raw = fs::read_to_string(fixture.home.join("projects.json")).unwrap();
         let registry: serde_json::Value = serde_json::from_str(&registry_raw).unwrap();
-        let work_dir = registry[DASH_ID]["workDir"].as_str().unwrap().to_string();
-        fs::read(PathBuf::from(work_dir).join("project.json")).unwrap()
+        let deck_path = PathBuf::from(registry[DASH_ID]["deckPath"].as_str().unwrap());
+        slidra::workspace::virtual_fs::read_virtual_file_bytes(&deck_path, "project.json").unwrap()
     };
     assert_eq!(
         cat_env["data"][0]["content"],
@@ -1964,7 +1980,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
 /// Reads `docs/spec/cli.md` directly rather than shelling out — this test
 /// IS the parser, not a caller of one.
 #[test]
-fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
+fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
     let spec_path = repo_root().join("docs/spec/cli.md");
     let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
 
@@ -2006,8 +2022,8 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
     // independent extraction pass).
     let all_backtick_headings = heading_starts.len();
     assert_eq!(
-        all_backtick_headings, 88,
-        "docs/spec/cli.md must have exactly 88 backtick-H2 command headings, found {all_backtick_headings}"
+        all_backtick_headings, 89,
+        "docs/spec/cli.md must have exactly 89 backtick-H2 command headings, found {all_backtick_headings}"
     );
 
     let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
@@ -2024,15 +2040,15 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
         .collect();
     assert_eq!(
         commands::REGISTERED_COMMAND_NAMES.len(),
-        59,
-        "REGISTERED_COMMAND_NAMES must stay 59"
+        60,
+        "REGISTERED_COMMAND_NAMES must stay 60"
     );
     let takeover_total = commands::element::TAKEOVER.len()
         + commands::text::TAKEOVER.len()
         + commands::textbox::TAKEOVER.len()
         + commands::comment::TAKEOVER.len();
     assert_eq!(takeover_total, 29, "the four TAKEOVER tables must total 29");
-    assert_eq!(rust_names.len(), 88, "59 + 29 must equal 88");
+    assert_eq!(rust_names.len(), 89, "60 + 29 must equal 89");
 
     let rust_set: std::collections::BTreeSet<&str> =
         rust_names.iter().map(String::as_str).collect();
@@ -2040,8 +2056,8 @@ fn cli_md_lists_exactly_the_88_rust_dispatched_commands() {
         spec_entries.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
         spec_entries.len(),
-        88,
-        "docs/spec/cli.md must have exactly 88 command entries"
+        89,
+        "docs/spec/cli.md must have exactly 89 command entries"
     );
 
     let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
@@ -2160,7 +2176,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
-    assert_eq!(rust_names.len(), 88);
+    assert_eq!(rust_names.len(), 89);
 
     for name in &rust_names {
         let tokens: Vec<&str> = name.split(' ').collect();
@@ -2182,8 +2198,15 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
         // that address by element id, not slide path) are allowed to error
         // out of argv parsing here — this loop's ONLY claim is "never
         // silently falls back to node", checked below regardless of exit
-        // code.
-        if !matches!(tokens[0], "open" | "pack" | "template" | "presentation") {
+        // code. `extract`'s second positional is a target *directory*, not
+        // a slide path — excluded for a sharper reason than the others:
+        // passing "slides/001.svg" there would not just error, it would
+        // actually succeed and write real files to that relative path
+        // under this test process's own cwd.
+        if !matches!(
+            tokens[0],
+            "open" | "pack" | "extract" | "template" | "presentation"
+        ) {
             args.push("slides/001.svg");
         }
         if matches!(tokens[0], "element" | "text" | "textbox" | "comment") {
@@ -2256,9 +2279,8 @@ fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
     fixture.seed_slide(&id);
 
     let big_bytes = vec![b'x'; 8 * 1024 * 1024];
-    let work_dir = fixture.home.join("work").join(&id);
-    fs::create_dir_all(work_dir.join("assets")).unwrap();
-    fs::write(work_dir.join("assets/big.txt"), &big_bytes).unwrap();
+    slidra::workspace::virtual_fs::create_new_file(&slidra_path, "assets/big.txt", &big_bytes)
+        .unwrap();
 
     let script = format!(
         "set -o pipefail; {} cat {} assets/big.txt | head -c 1 >/dev/null",
@@ -3021,5 +3043,250 @@ fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
     assert!(
         String::from_utf8_lossy(&bad_role.stderr).contains("is not a valid role"),
         "{bad_role:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SQLite container format (spec/rfcs/0001-sqlite-container-format.md):
+// AC3 (no ~/.slidra/work/ ever), AC4 (deck directory holds exactly one file
+// once the process closes it), AC5 (editing one slide writes an amount of
+// data unrelated to the deck's total size), and migration idempotence.
+// ---------------------------------------------------------------------------
+
+/// AC3: `new` -> `open` -> an edit -> `pack` must never create
+/// `~/.slidra/work/`, the pre-SQLite work-directory scheme this format
+/// replaces. Paired with a static source-scan guard (`no_join_work_call_anywhere_in_production_code`
+/// below) so a future regression that quietly reintroduces a `work/` path
+/// is caught even if this particular sequence of commands doesn't happen
+/// to exercise it.
+#[test]
+fn no_work_directory_is_ever_created() {
+    let fixture = Fixture::new("no-work-dir");
+    let slidra_path = fixture.workspace.join("t.slidra");
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    let open_output = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id = extract_id(&open_output);
+    fixture.seed_slide(&id);
+    let pack_out = fixture.run_rust(&["pack", &id, slidra_path.to_str().unwrap()]);
+    assert!(pack_out.status.success(), "{pack_out:?}");
+
+    assert!(
+        !fixture.home.join("work").exists(),
+        "SLIDRA_HOME/work must never be created"
+    );
+}
+
+/// The static half of AC3: no production source file may call
+/// `.join("work")` — the exact call the deleted `work_dir_for` used to make
+/// to build `<home>/work/<id>`. Scoped to non-test code only (a `#[cfg(test)]`
+/// module below this line in the same file is skipped), since a legitimate
+/// virtual path literally named "work" is conceivable in a fixture string
+/// but must never appear as a real `Path::join` argument in a write path.
+#[test]
+fn no_join_work_call_anywhere_in_production_code() {
+    let src_root = repo_root().join("crates/slidra/src");
+    let mut offenders = Vec::new();
+    let mut stack = vec![src_root];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let content = fs::read_to_string(&path).unwrap();
+            // Strip everything from the first `#[cfg(test)]` onward — every
+            // file in this crate keeps its test module at the bottom, and
+            // this scan only cares about production code.
+            let production = match content.find("#[cfg(test)]") {
+                Some(idx) => &content[..idx],
+                None => &content[..],
+            };
+            if production.contains("join(\"work\")") {
+                offenders.push(path.display().to_string());
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "production code must never call .join(\"work\"): {offenders:?}"
+    );
+}
+
+/// AC4: once the process that touched a deck exits, the deck's directory
+/// holds exactly one file — no `-journal`, no lock file left behind
+/// alongside it (`journal_mode=DELETE` cleans up on commit;
+/// `workspace::lock`'s lock file lives under `SLIDRA_HOME/locks/`, never
+/// beside the deck).
+#[test]
+fn deck_directory_holds_exactly_one_file_after_close() {
+    let fixture = Fixture::new("ac4-single-file");
+    let deck_dir = env::temp_dir().join(format!("slidra-ac4-deck-dir-{}", std::process::id()));
+    fs::create_dir_all(&deck_dir).unwrap();
+    let slidra_path = deck_dir.join("t.slidra");
+
+    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    assert!(new_out.status.success(), "{new_out:?}");
+    let open_out = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id = extract_id(&open_out);
+    fixture.seed_slide(&id);
+    fixture.run_rust(&["effect", "add", &id, "slides/001.svg", "el-does-not-exist"]);
+    fixture.run_rust(&["undo", &id]);
+    let pack_out = fixture.run_rust(&["pack", &id, slidra_path.to_str().unwrap()]);
+    assert!(pack_out.status.success(), "{pack_out:?}");
+
+    let entries: Vec<String> = fs::read_dir(&deck_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        entries,
+        vec!["t.slidra".to_string()],
+        "deck directory must hold exactly one file once every process has exited"
+    );
+
+    fs::remove_dir_all(&deck_dir).ok();
+}
+
+/// AC2's migration half, restated as its own idempotence check at the CLI
+/// boundary: `open`ing a legacy ZIP migrates it once; `open`ing the SAME
+/// path a second time must not re-migrate (no `.migrating-<hex>` temp file
+/// left behind, byte-identical file before and after).
+#[test]
+fn migrates_a_zip_deck_once_and_is_idempotent() {
+    let fixture = Fixture::new("migrate-idempotent");
+    let deck_dir =
+        env::temp_dir().join(format!("slidra-migrate-idempotent-{}", std::process::id()));
+    fs::create_dir_all(&deck_dir).unwrap();
+    let slidra_path = deck_dir.join("legacy.slidra");
+
+    // A minimal legacy (v1) ZIP, built by hand the same way
+    // `tests/unit_golden.rs`'s fixture-migration test does.
+    let mut buffer: Vec<u8> = Vec::new();
+    {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
+        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        writer.start_file("project.json", options).unwrap();
+        std::io::Write::write_all(
+            &mut writer,
+            br#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":[]}"#,
+        )
+        .unwrap();
+        writer.finish().unwrap();
+    }
+    fs::write(&slidra_path, &buffer).unwrap();
+
+    let first = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    assert!(first.status.success(), "{first:?}");
+    let after_first = fs::read(&slidra_path).unwrap();
+
+    let second = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    assert!(second.status.success(), "{second:?}");
+    let after_second = fs::read(&slidra_path).unwrap();
+
+    assert_eq!(
+        after_first, after_second,
+        "a second open of an already-migrated deck must not change its bytes"
+    );
+    let siblings: Vec<String> = fs::read_dir(&deck_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        siblings,
+        vec!["legacy.slidra".to_string()],
+        "no .migrating-<hex> temp file must survive either open"
+    );
+
+    fs::remove_dir_all(&deck_dir).ok();
+}
+
+/// Deterministic pseudo-random bytes (LCG), so this test's 20 MiB asset is
+/// reproducible without committing a binary fixture to the repo.
+fn lcg_bytes(len: usize, seed: u64) -> Vec<u8> {
+    let mut state = seed;
+    let mut out = Vec::with_capacity(len);
+    while out.len() < len {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        out.extend_from_slice(&state.to_le_bytes());
+    }
+    out.truncate(len);
+    out
+}
+
+/// AC5: editing one slide in a deck containing an embedded video of at
+/// least 20 MB writes less than 1 MB. Measured by comparing the deck
+/// file's bytes before and after a single-slide edit, page by page
+/// (4096 bytes/page — SQLite's own default page size) — this is what
+/// "the write is unrelated to the deck's total size" actually means at
+/// the file level, not a proxy like elapsed time or syscall count.
+#[test]
+fn editing_one_slide_writes_under_1mb_even_with_a_20mb_asset() {
+    const PAGE_SIZE: usize = 4096;
+    const TWENTY_MB: usize = 20 * 1024 * 1024;
+
+    let fixture = Fixture::new("ac5-write-amount");
+    let slidra_path = fixture.workspace.join("t.slidra");
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    let open_out = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id = extract_id(&open_out);
+    fixture.seed_slide(&id);
+
+    let big_path = fixture.workspace.join("big.mp4");
+    // A minimal valid ISO-BMFF `ftyp` box (see `media_format.rs`'s own
+    // `mp4_signature_generic_brand` test) so `asset import` recognizes this
+    // as a video rather than rejecting it outright — the rest of the file
+    // is pseudo-random payload, which is all AC5's write-amount measurement
+    // actually cares about.
+    let mut big_bytes = vec![0, 0, 0, 0x18];
+    big_bytes.extend_from_slice(b"ftyp");
+    big_bytes.extend_from_slice(b"isom");
+    big_bytes.extend_from_slice(&lcg_bytes(TWENTY_MB - big_bytes.len(), 0x5EED_5EED));
+    fs::write(&big_path, &big_bytes).unwrap();
+    let import_out = fixture.run_rust(&["asset", "import", &id, big_path.to_str().unwrap()]);
+    assert!(import_out.status.success(), "{import_out:?}");
+    let pack_out = fixture.run_rust(&["pack", &id, slidra_path.to_str().unwrap()]);
+    assert!(pack_out.status.success(), "{pack_out:?}");
+
+    let before = fs::read(&slidra_path).unwrap();
+    assert!(
+        before.len() >= TWENTY_MB,
+        "deck must actually be at least 20MB before the measured edit, got {}",
+        before.len()
+    );
+
+    let notes_out = fixture.run_rust(&[
+        "slide",
+        "notes",
+        "set",
+        &id,
+        "slides/001.svg",
+        "measured edit",
+    ]);
+    assert!(notes_out.status.success(), "{notes_out:?}");
+    let pack_out2 = fixture.run_rust(&["pack", &id, slidra_path.to_str().unwrap()]);
+    assert!(pack_out2.status.success(), "{pack_out2:?}");
+    let after = fs::read(&slidra_path).unwrap();
+
+    let common_pages = before.len().min(after.len()) / PAGE_SIZE;
+    let mut changed_pages = 0usize;
+    for page in 0..common_pages {
+        let start = page * PAGE_SIZE;
+        let end = start + PAGE_SIZE;
+        if before[start..end] != after[start..end] {
+            changed_pages += 1;
+        }
+    }
+    let changed = changed_pages * PAGE_SIZE + after.len().saturating_sub(before.len());
+    assert!(
+        changed < 1_000_000,
+        "editing one slide must write under 1MB, measured {changed} bytes changed (before={}, after={})",
+        before.len(),
+        after.len()
     );
 }
