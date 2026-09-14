@@ -11,6 +11,7 @@
   "dependencies": {
     "@agentclientprotocol/codex-acp": "1.11.0",
     "@agentclientprotocol/sdk": "1.4.0",
+    "@anthropic-ai/sandbox-runtime": "0.0.76",
     "@automatalabs/pi-acp": "0.8.0",
     "@zed-industries/claude-code-acp": "0.16.2",
     "playwright": "^1.62.1"
