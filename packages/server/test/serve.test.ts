@@ -537,6 +537,40 @@ describe("startServe", () => {
     expect(body.error).not.toContain(slidraHome);
   });
 
+  // A `projects.json` written by a pre-SQLite release carries `workDir`
+  // entries and no `deckPath`. That entry's own id is dead either way
+  // (`<SLIDRA_HOME>/work/<id>/` is gone), but it must not take an
+  // unrelated presentation down with it: before `home.ts` told a legacy
+  // entry apart from a malformed one, every `serve` read after an upgrade
+  // answered "presentation registry data is corrupted". The Rust side is
+  // covered by `cli_golden.rs::
+  // a_legacy_work_dir_registry_entry_does_not_break_an_unrelated_open`;
+  // this is the same contract on the `serve` path.
+  //
+  // Added by Review (NOOP-442).
+  it("serves an unrelated presentation when the registry still holds a pre-upgrade entry", async () => {
+    const id = await openFreshPresentation();
+    const registryPath = path.join(slidraHome, "projects.json");
+    const registry = JSON.parse(await readFile(registryPath, "utf8")) as Record<string, unknown>;
+    registry.staleid123 = {
+      workDir: path.join(slidraHome, "work", "staleid123"),
+      sourcePath: path.join(slidraDir, "old.slidra"),
+      savedAt: 1,
+    };
+    await writeFile(registryPath, JSON.stringify(registry));
+    const server = await serve(id);
+
+    // `/api/save-state` is the read that resolves the registry inside this
+    // process (`slidra/save-state.ts` → `readProjectsRegistry`), rather
+    // than delegating to the Rust binary — it is the `serve` path the
+    // legacy entry actually reaches.
+    const response = await fetch(`${server.url}/api/save-state`);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(body)).not.toContain("corrupted");
+  });
+
   // `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
   // the browser. Builds its fixture through the real Rust binary rather
