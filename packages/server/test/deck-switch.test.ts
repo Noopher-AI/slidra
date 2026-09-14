@@ -289,6 +289,35 @@ describe("no deck open (AC1)", () => {
 });
 
 describe("switching (AC3/AC4/AC5)", () => {
+  // [E6.T2] AC5's second half: the plan's §5 check 5 requires that a renamed
+  // deck still OPENS afterwards, not just that the file moved. Renaming
+  // rewrites both the file name and the registry's deckPath/sourcePath, so
+  // this is the one assertion that catches a rename leaving behind an entry
+  // that no longer resolves — or one whose savedAt snapshot makes the deck
+  // open already "dirty".
+  it("a deck renamed through POST /api/deck/rename still switches in and serves under its new name (AC5)", async () => {
+    const server = await serve();
+
+    const created = await postJson(server, "/api/new", { name: "BeforeRename" });
+    expect(created.status).toBe(200);
+    const { id } = (await created.json()) as { id: string };
+
+    const renamed = await postJson(server, "/api/deck/rename", { id, name: "AfterRename" });
+    expect(renamed.status).toBe(200);
+
+    const switched = await switchTo(server, id);
+    expect(switched.status).toBe(200);
+
+    const presentation = await fetch(`${server.url}/api/presentation`);
+    expect(presentation.status).toBe(200);
+    expect((await presentation.json()).name).toBe("AfterRename");
+
+    // The rename re-snapshots savedAt, so the freshly opened deck must not
+    // present itself as having unsaved changes.
+    const saveState = await fetch(`${server.url}/api/save-state`);
+    expect(await saveState.json()).toMatchObject({ known: true, dirty: false, fileName: "AfterRename.slidra" });
+  });
+
   it("③ A→B: B's content is served", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");
