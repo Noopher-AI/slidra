@@ -2,10 +2,11 @@
   <img src="docs/assets/logo.svg" width="120" alt="Slidra">
 </p> -->
 
-<h1 align="center">Slidra - UX-AX Unified Editor with Slide Harness</h1>
+<h1 align="center">Slidra</h1>
 
 <p align="center">
-  <b>AI can generate slides. Slidra makes them a reliable shared workspace for humans and agents.</b>
+  <b>UX-AX Unified Editor with Slide Harness</b><br/><br/>
+  AI can generate slides. Slidra makes them a reliable shared workspace for humans and agents.
   
 </p>
 
