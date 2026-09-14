@@ -27,7 +27,11 @@
     "pngjs": "^7.0.0",
     "subset-font": "^2.5.0",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8",
+    "vitest": "^3.2.7",
     "ws": "^8.21.3"
+  },
+  "overrides": {
+    "minimatch": "^10.2.6",
+    "vite": "^6.4.3"
   }
 }

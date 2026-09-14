@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved the Visual QA protocol and report into `qa/`, and moved agent-skill acceptance fixtures from the root `fixtures/` directory to `qa/fixtures/skills/`.
 - Restored the design-token contract under `.dev_docs/design/`, the internal documentation location used by the web token tests and styles.
 - Fixed `commands-reference.test.ts` to match command names with word boundaries, so the short `ls` command no longer false-positives on English words like "list".
+- Upgraded Vitest and Vite and overrode transitive minimatch to resolve critical and high-severity security advisories.
 
 ## [0.1.0] - 2026-09-XX
 
