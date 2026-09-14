@@ -577,6 +577,96 @@ fn undo_history_survives_copying_the_deck_file_to_a_clean_home() {
     fs::remove_dir_all(&other_workspace).ok();
 }
 
+/// [E6.T6] AC3: `<SLIDRA_HOME>/history/` is never created — by no step of a
+/// full edit/group/undo/redo cycle. The pre-[E6.T6] tree is gone and
+/// nothing may recreate it; checked after EVERY step, so a single command
+/// that recreates it cannot hide behind a later one that does not.
+#[test]
+fn slidra_home_history_directory_is_never_created() {
+    let fixture = Fixture::new("ac3-no-history-dir");
+    let slidra_path = fixture.workspace.join("ac3.slidra");
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    let opened = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id = extract_id(&opened);
+    fixture.seed_slide(&id);
+    let svg = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&svg));
+
+    let steps: Vec<Vec<&str>> = vec![
+        vec!["text", "set", &id, "slides/001.svg", &element_id, "plain"],
+        vec!["history", "begin-group", &id],
+        vec!["text", "set", &id, "slides/001.svg", &element_id, "grouped"],
+        vec!["history", "end-group", &id],
+        vec!["undo", &id],
+        vec!["redo", &id],
+    ];
+    for step in steps {
+        let out = fixture.run_rust(&step);
+        assert!(out.status.success(), "step {step:?} failed: {out:?}");
+        assert!(
+            !fixture.home.join("history").exists(),
+            "`<SLIDRA_HOME>/history/` must never be created (created by: {step:?})"
+        );
+    }
+}
+
+/// [E6.T6] AC6: undo across a save boundary behaves the same as undo within
+/// one — a continuous save (`pack` onto the deck's OWN path, which is what
+/// saving is now) must neither close nor clear the open history group, and
+/// one undo afterwards must still revert BOTH edits as a single step.
+#[test]
+fn saving_mid_group_neither_closes_nor_clears_the_open_history_group() {
+    let fixture = Fixture::new("ac6-save-mid-group");
+    let slidra_path = fixture.workspace.join("ac6.slidra");
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    let opened = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id = extract_id(&opened);
+    fixture.seed_slide(&id);
+    let deck_path = deck_path_for(&fixture, &id);
+
+    let before = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
+    let element_id = extract_first_element_id(&String::from_utf8_lossy(&before));
+    let undo_len_before = undo_len(&fixture, &id);
+
+    let begin = fixture.run_rust(&["history", "begin-group", &id]);
+    assert!(begin.status.success(), "begin-group failed: {begin:?}");
+    let first = fixture.run_rust(&["text", "set", &id, "slides/001.svg", &element_id, "first"]);
+    assert!(first.status.success(), "first edit failed: {first:?}");
+
+    let entries_before_save = open_group_entry_count(&deck_path);
+    assert!(
+        entries_before_save > 0,
+        "the edit inside the group must have landed in the open group"
+    );
+
+    let save = fixture.run_rust(&["pack", &id, deck_path.to_str().unwrap()]);
+    assert!(save.status.success(), "save failed: {save:?}");
+    assert_eq!(
+        open_group_entry_count(&deck_path),
+        entries_before_save,
+        "saving must neither close nor clear the open history group"
+    );
+
+    let second = fixture.run_rust(&["text", "set", &id, "slides/001.svg", &element_id, "second"]);
+    assert!(second.status.success(), "second edit failed: {second:?}");
+    let end = fixture.run_rust(&["history", "end-group", &id]);
+    assert!(end.status.success(), "end-group failed: {end:?}");
+
+    assert_eq!(
+        undo_len(&fixture, &id),
+        undo_len_before + 1,
+        "a turn spanning a save must still collapse into exactly one undo step"
+    );
+
+    let undone = fixture.run_rust(&["undo", &id]);
+    assert!(undone.status.success(), "undo failed: {undone:?}");
+    let restored = fixture.run_rust(&["cat", &id, "slides/001.svg"]).stdout;
+    assert_eq!(
+        restored, before,
+        "one undo after a mid-group save must revert BOTH edits"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // effect add / remove / move / set / list ([E4.T7], plan 6.1/6.2)
 // ---------------------------------------------------------------------------
@@ -1799,10 +1889,27 @@ fn undo_len(fixture: &Fixture, id: &str) -> usize {
     .unwrap_or(0) as usize
 }
 
+/// Entry count of the deck's currently-open history group (`history_group`
+/// rows with `stack = 2`), or `0` when no group is open — [E6.T6] AC6's
+/// "a save does not close or clear the open group" check.
+fn open_group_entry_count(deck_path: &Path) -> i64 {
+    let Ok(conn) = rusqlite::Connection::open(deck_path) else {
+        return 0;
+    };
+    conn.query_row(
+        "SELECT COUNT(*) FROM history_entry WHERE group_rowid IN \
+         (SELECT id FROM history_group WHERE stack = 2)",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+}
+
 /// Whether the deck's history side tables have been created yet — AC3's
 /// "no history storage exists until the first edit" check, at the
 /// SQLite-schema level (`~/.slidra/history/` itself is checked for
-/// non-existence separately, in the e2e suite).
+/// non-existence by `slidra_home_history_directory_is_never_created`
+/// above).
 fn history_tables_exist(deck_path: &Path) -> bool {
     let Ok(conn) = rusqlite::Connection::open(deck_path) else {
         return false;
