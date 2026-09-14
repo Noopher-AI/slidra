@@ -4,7 +4,7 @@
 /**
  * Pure zoom/pan/hand-mode state for the New v3 stage. No DOM access,
  * no React — every function here is `(state, ...) => state`, testable with
- * plain function calls (apps/web/test/stage-view.test.ts). Stage.tsx and
+ * plain function calls (packages/web/test/stage-view.test.ts). Stage.tsx and
  * the Dock components wire these onto React state/event handlers; they must
  * not duplicate this logic themselves.
  *

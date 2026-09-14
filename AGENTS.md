@@ -12,7 +12,7 @@ Reuses the five canonical roles; the label strings match the role names. See `.d
 
 ### Domain docs
 
-Single-context: root `CONTEXT.md` + `.dev_docs/adr/`. See `.dev_docs/agents/domain.md`.
+Single-context: `.dev_docs/CONTEXT.md` + `.dev_docs/adr/`. See `.dev_docs/agents/domain.md`.
 
 ## Language
 

@@ -18,7 +18,7 @@ import { runSmoke } from "./helpers/smoke.js";
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 
 const VIEWPORTS = [
   { width: 1280, height: 720 },

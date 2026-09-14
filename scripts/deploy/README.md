@@ -42,7 +42,7 @@ Run from the repository root. Use the platform of the target Kubernetes node; th
 ```sh
 docker build \
   --platform linux/arm64 \
-  -f deploy/container/Dockerfile \
+  -f scripts/deploy/container/Dockerfile \
   -t localhost:5000/slidra-demo:<git-commit> \
   -t localhost:5000/slidra-demo:latest \
   .

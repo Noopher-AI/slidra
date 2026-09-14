@@ -20,7 +20,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * the whole thing still does not move".
  *
  * Everything here is real except the agent: a real `startServe`, the real
- * built `apps/web/dist` bundle, a real Chromium, a real presentation
+ * built `packages/web/dist` bundle, a real Chromium, a real presentation
  * created through the real `new`/`open` commands, and a real `slidra`
  * binary resolved from PATH. Only the agent is a fake ACP subprocess, so
  * the test needs neither Claude Code installed nor any API quota.
@@ -29,7 +29,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/export-deck");
 // Where npm's workspace linking puts the `slidra` executable. This is
@@ -47,10 +47,10 @@ let server: RunningServer;
 
 beforeAll(async () => {
   // A build is a precondition of this test, not part of it: the test runs
-  // against whatever is in apps/web/dist, which is exactly what makes
+  // against whatever is in packages/web/dist, which is exactly what makes
   // "the bundle itself is broken" a failure it can see. Missing build
   // output is an explicit error — never a skip, never a silent pass.
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
   // Printed so a passing run visibly says which real browser it drove,

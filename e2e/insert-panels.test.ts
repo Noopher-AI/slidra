@@ -19,7 +19,7 @@ import { openApp, requireBuilt, startServerFor, type StartedServer } from "./hel
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const SLIDE_PATH = "slides/001.svg";
 
 // 1×1 GIF — real decodable bytes, smaller than the PNG signature other
@@ -297,7 +297,7 @@ describe("Shape menu", () => {
   });
 });
 
-describe("disabled state (e2e covering three UI-reachable states apps/web/test/dock.test.ts doesn't reach)", () => {
+describe("disabled state (e2e covering three UI-reachable states packages/web/test/dock.test.ts doesn't reach)", () => {
   it("Animate/Arrange/Group are disabled with no selection, and Group becomes clickable once 2 elements are selected (the Insert group is unaffected)", async () => {
     const started = await startServerFor({ deckDir: demoDir, prefix: "insert-panels-disabled-state" });
     try {

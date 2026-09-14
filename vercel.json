@@ -2,11 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "proxy": {
-    "entrypoint": "deploy/vercel/middleware.ts"
+    "entrypoint": "scripts/deploy/vercel/middleware.ts"
   },
   "installCommand": "npm ci",
   "buildCommand": "npm run build --workspace @slidra/web",
-  "outputDirectory": "apps/web/dist",
+  "outputDirectory": "packages/web/dist",
   "rewrites": [
     {
       "source": "/api/:path*",

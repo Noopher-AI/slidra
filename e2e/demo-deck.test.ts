@@ -47,9 +47,9 @@ const execFileAsync = promisify(execFile);
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 let browser: Browser;
@@ -60,7 +60,7 @@ let server: RunningServer;
 let presentationId: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, please run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, please run npm run build first");
 
   browser = await chromium.launch();
   console.log(`Browser: Chromium ${browser.version()}`);

@@ -193,7 +193,7 @@ describe("POST /api/open", () => {
     const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other-"));
     try {
       const otherSlidraPath = path.join(otherDir, "other.slidra");
-      await packDirectory(path.join(rootDir, "demo"), otherSlidraPath);
+      await packDirectory(path.join(rootDir, "docs/demo"), otherSlidraPath);
       const otherBytes = await readFile(otherSlidraPath);
 
       const openResponse = await fetch(`${server.url}/api/open`, {
@@ -246,7 +246,7 @@ describe("POST /api/open", () => {
     const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other2-"));
     try {
       const otherSlidraPath = path.join(otherDir, "other.slidra");
-      await packDirectory(path.join(rootDir, "demo"), otherSlidraPath);
+      await packDirectory(path.join(rootDir, "docs/demo"), otherSlidraPath);
       const otherBytes = await readFile(otherSlidraPath);
 
       const refused = await fetch(`${server.url}/api/open`, {

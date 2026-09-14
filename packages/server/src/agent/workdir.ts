@@ -152,10 +152,10 @@ export async function readAgentWorkdirFile(workdirReal: string, relativePath: st
 /**
  * The package-shipped source of the work directory's contents, resolved
  * relative to this module's own location — the same trick `serve.ts`'s
- * `resolveWebDist()` uses for `apps/web/dist`, which works unmodified
+ * `resolveWebDist()` uses for `packages/web/dist`, which works unmodified
  * from both `src/` and `dist/` because both sit one directory level under
  * `packages/server/`. `agent-workdir/` is *not* copied into `dist/` by any
- * build step (unlike `apps/web/dist`, which Next.js itself produces) — it
+ * build step (unlike `packages/web/dist`, which Next.js itself produces) — it
  * stays at the package root, where this path resolves to it from either
  * location.
  */

@@ -82,7 +82,7 @@ const STAGE_CLICK_THRESHOLD_PX = 3;
  * existing `.canvas` div (identity unchanged) → the overlay stack (empty
  * containers, see stage-overlays/). Zoom/pan/hand-mode state is entirely
  * delegated to stage-view.ts's pure functions (see that file and
- * apps/web/test/stage-view.test.ts) — this component only wires up DOM
+ * packages/web/test/stage-view.test.ts) — this component only wires up DOM
  * events, converts coordinates once, and calls those functions.
  *
  * `canvasRef`'s div keeps the exact same JSX position and conditions here

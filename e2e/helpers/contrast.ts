@@ -4,7 +4,7 @@
 /**
  * WCAG 2.x relative-luminance / contrast-ratio maths, shared by the e2e
  * layer (real `getComputedStyle()` colours, always opaque `rgb(...)`) and
- * `apps/web/test/contrast.test.ts` (literal hex/`rgba()` text pulled
+ * `packages/web/test/contrast.test.ts` (literal hex/`rgba()` text pulled
  * straight out of tokens.css), which imports this file by relative path
  * since it runs under the root `vitest.config.ts`, not `e2e/vitest.config.ts`.
  *

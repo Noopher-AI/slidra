@@ -13,7 +13,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
  * (01-DESIGN_TOKENS.md's spacing/sizing section, 02-DESIGN_DOC.md §3) is
  * ever actually run or measured, so this file checks the literal values
  * that land in tokens.css directly — those values are already mechanically
- * checked against 01-DESIGN_TOKENS.md by apps/web/test/tokens.test.ts, and
+ * checked against 01-DESIGN_TOKENS.md by packages/web/test/tokens.test.ts, and
  * what this file verifies is whether the CSS values actually take effect as
  * the corresponding layout sizes in the browser. The two are complementary,
  * not redundant.
@@ -23,7 +23,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 
 const VIEWPORTS = [
   { width: 1280, height: 720 },

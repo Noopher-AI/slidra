@@ -27,7 +27,7 @@ import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 
 const VIEWPORT = { width: 1440, height: 900 };
 

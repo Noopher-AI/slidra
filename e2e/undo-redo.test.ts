@@ -37,7 +37,7 @@ import { requireBuilt, startServerFor, openApp, waitForAgentConnected, type Star
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 // editing-fake-acp-agent.mjs requires the `<text id="...">` id to sit

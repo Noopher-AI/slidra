@@ -29,7 +29,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/text-edit-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
@@ -44,7 +44,7 @@ let openPages: Page[] = [];
 let fontDataUrl: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
   const fontBytes = await readFile(path.join(presentationFontDir, "NotoSansTC-Presentation.ttf"));
   fontDataUrl = `data:font/ttf;base64,${fontBytes.toString("base64")}`;
