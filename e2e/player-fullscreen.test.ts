@@ -588,7 +588,7 @@ it("if requestFullscreen() is still pending when exiting play, the document does
   await expect.poll(() => page.locator('.play-button').count()).toBe(1);
 });
 
-it("when neither fullscreen API exists, clicking the toggle still hands focus back to the player", async () => {
+it("when fullscreen entry is rejected, clicking the toggle still hands focus back to the player", async () => {
   const page = await browser.newPage();
   await page.goto(server.url);
 
@@ -619,7 +619,7 @@ it("when neither fullscreen API exists, clicking the toggle still hands focus ba
       requestFullscreen?: unknown;
       webkitRequestFullscreen?: unknown;
     };
-    Object.defineProperty(container, "requestFullscreen", { value: undefined, configurable: true });
+    Object.defineProperty(container, "requestFullscreen", { value: () => Promise.reject(new Error("This browser doesn't support Fullscreen")), configurable: true });
     Object.defineProperty(container, "webkitRequestFullscreen", { value: undefined, configurable: true });
   });
 
@@ -773,7 +773,7 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
   // currentIndex === -1 (slides genuinely empty), which is an observable,
   // non-guessed signal that the reload has landed.
   await expect
-    .poll(() => page.frameLocator("iframe.slide-frame").locator("body").textContent().catch(() => null), {
+    .poll(() => page.locator(".stage-empty").textContent().catch(() => null), {
       timeout: 30_000,
     })
     .toContain("No slides now");

@@ -1227,13 +1227,10 @@ export function App() {
     const webkitContainer = container as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
     const request = (container.requestFullscreen ?? webkitContainer.webkitRequestFullscreen)?.bind(container);
     if (!request) {
-      setFullscreenError("This browser doesn't support fullscreen");
-      // P2 (review gate round 2): this early-return path used to skip
-      // focusPlayer() — the click that got here already moved DOM focus
-      // onto this button, so without this call the arrow keys silently die
-      // just like every other fullscreen transition would if it skipped
-      // this (settled decision #5 applies here too, not just the two paths
-      // that actually touch the Fullscreen API).
+      setFullscreenError("This browser doesn't support Fullscreen");
+      // A failed request still leaves focus on the toggle button. Wait for
+      // the error render, then hand keyboard control back to the player.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       controllerRef.current?.focusPlayer();
       return;
     }
