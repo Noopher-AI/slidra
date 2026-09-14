@@ -155,6 +155,11 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   void applyAspectRatio();
 
   let slides: string[] = [];
+  // Master mode's own page-source switch — while `"templates"`, reordering
+  // is a no-op (there is no "order" a template list means anything by;
+  // `slide move` would be the wrong command entirely). Updated from every
+  // `canvas.subscribe` tick below, same as `slides` itself.
+  let pageSource: "slides" | "templates" = "slides";
   // The last set App.tsx handed `setSlidesWithComments` — kept
   // across a `rebuildList` so a slide add/delete/move doesn't lose the
   // red-dot state until the next comment reload happens to run.
@@ -312,6 +317,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   }
 
   async function commitMove(from: number, to: number): Promise<void> {
+    if (pageSource !== "slides") return;
     if (isDropNoop(from, to)) return;
     const newIndex = to > from ? to - 1 : to; // T3 plan §3.8: exactly core's `moveSlide` newIndex, no further adjustment.
     const slidePath = slides[from];
@@ -350,7 +356,11 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
       const li = document.createElement("li");
       li.className = "overview-item";
       li.dataset.index = String(index);
-      li.draggable = true;
+      // Master mode: no drag-reorder at all (there is no "order" a template
+      // list means anything by) — not draggable, so no dragstart ever
+      // fires and no insert line is ever drawn. `commitMove`'s own guard
+      // above is the second, independent no-op for the same reason.
+      li.draggable = pageSource === "slides";
 
       // The button doubles as the placeholder: the <li>'s aspect-ratio box
       // (style.css) gives it its size, so the scrollbar is honest and the
@@ -445,6 +455,11 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   }
 
   const unsubscribe = canvas.subscribe((state) => {
+    // Read before rebuildList()/its `li.draggable` line, which is the
+    // whole point of updating this first — a source switch always changes
+    // `slides` too, so this always lands before the rebuild it needs to be
+    // visible to.
+    pageSource = state.pageSource;
     if (!sameSlides(slides, state.slides)) {
       rebuildList(state.slides);
     }
