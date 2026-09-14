@@ -147,14 +147,14 @@ async function fingerprintFile(filePath: string): Promise<string> {
   }
 }
 
-/** The four locations NOOP-433 AC3 promises are untouched by switching away from `id`: its work dir, its history, its deployed agent work directory, and the real `.slidra` file `open` read it from. */
+/** The four locations NOOP-433 AC3 promises are untouched by switching away from `id`: its deck file's directory, its history, its deployed agent work directory, and the real `.slidra` file `open` read it from. */
 async function fingerprintDeck(id: string, slidraPath: string): Promise<Record<string, string>> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) throw new Error(`test fixture: registry has no entry for ${id}`);
   const home = resolveSlidraHome();
   return {
-    workDir: await fingerprintDir(entry.workDir),
+    deckDir: await fingerprintDir(path.dirname(entry.deckPath)),
     history: await fingerprintDir(path.join(home, "history", id)),
     agentWorkdir: await fingerprintDir(path.join(home, "agent", id)),
     slidraFile: await fingerprintFile(slidraPath),

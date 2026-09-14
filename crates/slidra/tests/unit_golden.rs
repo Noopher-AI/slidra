@@ -764,8 +764,8 @@ fn every_repo_fixture_migrates_to_formatversion_5_with_content_preserved() {
     let dirs = fixture_directories();
     assert_eq!(
         dirs.len(),
-        27,
-        "expected exactly 27 project.json fixtures under docs/demo, e2e/fixtures, qa/fixtures/skills, found {}",
+        28,
+        "expected exactly 28 project.json fixtures under docs/demo, e2e/fixtures, qa/fixtures/skills, found {}",
         dirs.len()
     );
 

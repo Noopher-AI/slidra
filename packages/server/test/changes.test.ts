@@ -94,8 +94,14 @@ async function serve(presentationId: string): Promise<RunningServer> {
   return server;
 }
 
+let openFreshPresentationCount = 0;
+
+// SQLite in-place editing (spec/rfcs/0001-sqlite-container-format.md) means
+// `new` overwrites whatever file already sits at the given path — unlike the
+// old ZIP model, two decks in the same test can't share a filename without
+// the second `new` clobbering the first deck's file out from under it.
 async function openFreshPresentation(name = "Test Presentation"): Promise<{ id: string; elementId: string }> {
-  const slidraPath = path.join(slidraDir, "deck.slidra");
+  const slidraPath = path.join(slidraDir, `deck-${openFreshPresentationCount++}.slidra`);
   const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
