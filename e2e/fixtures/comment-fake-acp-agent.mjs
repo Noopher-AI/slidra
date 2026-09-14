@@ -16,7 +16,7 @@
 //     `.plan-gate`), not off this reply.
 //   - contains "[plan-confirmed]" (what the gate's confirm-and-build button
 //     sends, any author message index — it is always the *second* author
-//     turn; sourced from apps/web's plan-file.ts): requests permission for `slidra slide add
+//     turn; sourced from packages/web's plan-file.ts): requests permission for `slidra slide add
 //     <id>` (append), holds for E2E_DRAFT_HOLD_MS, then actually runs it
 //     and replies "build complete" — reports `completed` only if the
 //     command succeeds, `failed` (with stdout/stderr) if it doesn't. This

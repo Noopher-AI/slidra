@@ -23,9 +23,9 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
 const VIEWPORT = { width: 1440, height: 900 };
@@ -34,7 +34,7 @@ const CANVAS_RATIO = 1280 / 720;
 // New v3 shell rebuild: `.canvas-area`'s padding is no longer uniform on
 // every side. `--space-gutter` (28px top-bottom/left-right) is overridden on
 // the bottom edge by `--space-gutter-bottom` (76px) to reserve room for the
-// floating Dock (apps/web/src/styles/shell.css's `.canvas-area` rule) —
+// floating Dock (packages/web/src/styles/shell.css's `.canvas-area` rule) —
 // 01-DESIGN_TOKENS.md's own token, not a value invented here. The stage is
 // therefore centred left/right but pushed 76-28=48px above true vertical
 // centre; the "still centred" assertions below check for exactly that
@@ -48,7 +48,7 @@ let slidraHome: string;
 let slidraDir: string;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
   console.log(`Browser: Chromium ${browser.version()}`);
 

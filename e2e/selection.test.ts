@@ -36,7 +36,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *   - "baseline screenshot: standard view with selection box" / "clicking the background on demo slide 1 selects the background container..."
  *   - "hostile slide CSS cannot cover the Shadow DOM selection box..." / "a slide's own script intercepts the click first..."
  *   - "selection still works after leaving play mode: ..."
- *   - The context bar's "flips above when there's not enough room below" branch: not e2e'd in this file — see the explanatory block before the "the presentation file's bytes are completely unchanged after selection" test — it's covered precisely by apps/web/test/stage-overlays.test.ts (a pure-logic unit test).
+ *   - The context bar's "flips above when there's not enough room below" branch: not e2e'd in this file — see the explanatory block before the "the presentation file's bytes are completely unchanged after selection" test — it's covered precisely by packages/web/test/stage-overlays.test.ts (a pure-logic unit test).
  * - Feature "Selection" › Scenario "Multi-select" / "Select all / deselect": ⇧-click/box-select/⌘A are direct stage operations,
  *   tested in e2e/direct-manipulation.test.ts ("shift-clicking two elements then dragging them together",
  *   "dragging a box-select rectangle from empty space", "⌘A selects all top-level elements on the page..."); this file only tests
@@ -51,7 +51,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  *   - "baseline screenshot: dashed box while editing a group" / "baseline screenshot: label after drilling into a group (Group 2 › Group 1 path)"
  * - Feature "Groups (including nested)" › Scenario "Group" / "Nested" / "Ungroup" (the Dock's
  *   Group/Ungroup buttons; the disabled-state matrix itself is tested in
- *   apps/web/test/dock.test.ts — this file only tests that the button actually issues the command and the file actually changes):
+ *   packages/web/test/dock.test.ts — this file only tests that the button actually issues the command and the file actually changes):
  *   - "grouping: shift-selecting 2 elements and clicking Group removes the members' own animations and shows a toast"
  *     (includes the group-toast baseline screenshot)
  *   - "nesting: selecting one existing group plus one element and clicking Group wraps them in an outer layer, leaving the existing group untouched"
@@ -64,9 +64,9 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const hostileDeckDir = path.join(e2eDir, "fixtures/hostile-selection-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
@@ -76,7 +76,7 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, run npm run build first");
   browser = await chromium.launch();
   console.log(`Browser: Chromium ${browser.version()}`);
 });
@@ -342,7 +342,7 @@ it("clicking empty space deselects, clearing the status bar's selection display"
 // appears directly below the selection box (flipping above when there's
 // not enough room)" — that previously had no e2e coverage at all (the
 // coordinate-conversion logic itself is unit-tested in
-// apps/web/test/stage-overlays.test.ts; this verifies the final on-screen
+// packages/web/test/stage-overlays.test.ts; this verifies the final on-screen
 // position in a real browser).
 it("selecting a single element: a name label appears (above the selection box) along with the context bar (below the selection box)", async () => {
   const deck = await makeDeckDir(
@@ -393,7 +393,7 @@ it("selecting a single element: a name label appears (above the selection box) a
 // ghost (semi-transparent, `pointer-events:none`) until the pointer actually hovers it
 // for `HOVER_SOLIDIFY_MS`, and reverting to ghost after it leaves for
 // `HOVER_GHOST_MS` (`OverlayLayer`'s `createHoverSolidifier`,
-// `apps/web/test/stage-overlays.test.ts` unit-tests the delay logic
+// `packages/web/test/stage-overlays.test.ts` unit-tests the delay logic
 // itself directly). This is the one e2e case that crosses the parent
 // document/iframe boundary the unit tests cannot reach: a real click must
 // pass through the bar's on-screen position into the iframe underneath it.
@@ -454,7 +454,7 @@ it("the context bar passes clicks through to blocked content underneath while un
 // The above-flip branch (`ContextBar`'s `fitsBelow === false`) is NOT
 // e2e'd here — measured directly (see this PR's delivery notes): `.canvas-
 // area`'s CSS reserves a FIXED `--space-gutter-bottom: 76px` below the
-// rendered slide (apps/web/src/styles/tokens.css), and the flip
+// rendered slide (packages/web/src/styles/tokens.css), and the flip
 // threshold is GAP(8) + BAR_HEIGHT(40) = 48px < 76px. Any element placed
 // anywhere within the slide's own bounds therefore always leaves at least
 // 76px below it — `fitsBelow` is mathematically guaranteed true for every
@@ -462,7 +462,7 @@ it("the context bar passes clicks through to blocked content underneath while un
 // (probed at well heights from ~150px to ~700px). The flip branch is only
 // reachable through zoom+pan pushing a selection's on-screen box past the
 // visible well's edge, which this suite does not attempt to orchestrate
-// precisely — `apps/web/test/stage-overlays.test.ts` unit-tests both
+// precisely — `packages/web/test/stage-overlays.test.ts` unit-tests both
 // branches of `ContextBar`'s `fitsBelow` decision directly against its own
 // props instead, including the exact boundary case, which is the more
 // precise place to pin this particular piece of logic down.

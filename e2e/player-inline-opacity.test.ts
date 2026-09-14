@@ -27,7 +27,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
 const deckFixtureDir = path.join(e2eDir, "fixtures/inline-opacity-deck");
 const binDir = path.join(rootDir, "node_modules/.bin");
@@ -38,7 +38,7 @@ let slidraDir: string;
 let server: RunningServer;
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, run npm run build first");
 
   browser = await chromium.launch();
 

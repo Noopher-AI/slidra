@@ -58,7 +58,7 @@ let browser: Browser;
 
 beforeAll(async () => {
   await requireBuilt(rootDir);
-  await stat(path.join(rootDir, "apps/web/dist/export.html"));
+  await stat(path.join(rootDir, "packages/web/dist/export.html"));
   browser = await chromium.launch();
 }, 60_000);
 

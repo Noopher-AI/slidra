@@ -91,7 +91,7 @@ export interface ServeOptions {
   /**
    * Directory the built frontend is served from. Omitted everywhere in
    * production (`cli.ts`, the e2e smoke test), where it resolves to the
-   * real `apps/web/dist` exactly as before.
+   * real `packages/web/dist` exactly as before.
    *
    * It exists so tests have somewhere else to write. Without it the
    * static-serving tests had no choice but to populate the real build
@@ -1057,7 +1057,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * Resolves the built frontend's static directory (apps/web/dist),
+ * Resolves the built frontend's static directory (packages/web/dist),
  * relative to this module's own location so it works regardless of the
  * caller's cwd. The directory need not exist yet — `serveStatic` falls back
  * to an explicit error when it doesn't, which is all Seam B tests exercise;
@@ -1065,7 +1065,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  */
 function resolveWebDist(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, "../../../apps/web/dist");
+  return path.join(here, "../../../packages/web/dist");
 }
 
 /**

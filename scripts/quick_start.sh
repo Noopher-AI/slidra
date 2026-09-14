@@ -11,12 +11,12 @@
 #   5. Run slidra serve, open a browser to look at it
 #
 # Two ways to prepare a presentation:
-#   - Default (no flag): packs demo/ into a demo presentation, four slides,
+#   - Default (no flag): packs docs/demo/ into a demo presentation, four slides,
 #     three assets (an image, a video, an audio file), two of which carry an
 #     effect list. Used to verify **existing behavior still works** — page
 #     navigation, assets, playback, effects, rewind, fullscreen all need
 #     ready-made content to verify against. To change the test material, edit
-#     demo/, then rerun with --fresh.
+#     docs/demo/, then rerun with --fresh.
 #   - --blank: creates a brand-new blank presentation. Used to verify **the
 #     from-scratch path** — new presentation creation, the first element
 #     insertion, the empty-state screen, an agent's first command against a
@@ -72,7 +72,7 @@ while [ $# -gt 0 ]; do
 done
 
 CLI="$ROOT/node_modules/.bin/slidra"
-DEMO_SOURCE="$ROOT/demo"
+DEMO_SOURCE="$ROOT/docs/demo"
 DEMO_DIR="$ROOT/.quickstart"
 DEMO_SLIDRA="$DEMO_DIR/demo.slidra"
 DEMO_ID_FILE="$DEMO_DIR/presentation-id"
@@ -164,7 +164,7 @@ step "Syncing dependencies"
 npm install
 
 # 2. Build --------------------------------------------------------------------
-# serve only serves apps/web/dist's static files, with no framework dev server
+# serve only serves packages/web/dist's static files, with no framework dev server
 # proxy (ADR-0002), so the frontend must be rebuilt after every change to see
 # it.
 if [ "$SKIP_BUILD" -eq 0 ]; then
@@ -172,8 +172,8 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
   npm run build
 fi
 
-if [ ! -f "$ROOT/apps/web/dist/index.html" ]; then
-  echo "apps/web/dist does not exist — run npm run build first (or rerun without --skip-build)." >&2
+if [ ! -f "$ROOT/packages/web/dist/index.html" ]; then
+  echo "packages/web/dist does not exist — run npm run build first (or rerun without --skip-build)." >&2
   exit 1
 fi
 
@@ -224,7 +224,7 @@ if [ "$BLANK" -eq 1 ]; then
     exit 1
   fi
 else
-  # demo/ being newer than the packed .slidra means the source material has
+  # docs/demo/ being newer than the packed .slidra means the source material has
   # changed. The manual-verification path never repacks automatically —
   # repacking requires reopening, which would issue a new presentation id and
   # invalidate any URL or terminal command the user is already holding.
@@ -241,15 +241,15 @@ else
   # no room to trip over this.
   if [ -f "$DEMO_SLIDRA" ] && [ -n "$(find "$DEMO_SOURCE" -newer "$DEMO_SLIDRA" -type f -print -quit)" ]; then
     if [ "$QA" -eq 1 ]; then
-      step "demo/ is newer than the demo presentation, repacking (--qa)"
+      step "docs/demo/ is newer than the demo presentation, repacking (--qa)"
       rm -f "$DEMO_SLIDRA" "$DEMO_ID_FILE"
     else
-      echo "Note: demo/ has been modified, but the demo presentation is still the old one — rerun with --fresh to apply the change." >&2
+      echo "Note: docs/demo/ has been modified, but the demo presentation is still the old one — rerun with --fresh to apply the change." >&2
     fi
   fi
 
   if [ ! -f "$DEMO_SLIDRA" ]; then
-    step "Packing the demo presentation (demo/ -> .slidra)"
+    step "Packing the demo presentation (docs/demo/ -> .slidra)"
     # There is no CLI command to pack a directory into a .slidra (see
     # docs/spec/cli.md's `pack` entry — that packs an already-open
     # presentation, not an arbitrary directory), so call

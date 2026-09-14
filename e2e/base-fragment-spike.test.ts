@@ -5,9 +5,9 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, firefox, webkit, type Browser, type BrowserType, type Page } from "playwright";
-import { wrapSlideDocument, wrapPlayDocument, slideDirectory } from "../apps/web/src/canvas.js";
-import { wrapSlideDocument as wrapThumbnailDocument } from "../apps/web/src/overview.js";
-import { renderHideStyle, renderPlanScript } from "../apps/web/src/player-plan.js";
+import { wrapSlideDocument, wrapPlayDocument, slideDirectory } from "../packages/web/src/canvas.js";
+import { wrapSlideDocument as wrapThumbnailDocument } from "../packages/web/src/overview.js";
+import { renderHideStyle, renderPlanScript } from "../packages/web/src/player-plan.js";
 
 /**
  * A real-browser measurement of `<base>` and same-document fragment

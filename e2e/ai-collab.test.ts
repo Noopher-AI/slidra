@@ -32,7 +32,7 @@ import { waitForAgentConnected } from "./helpers/launch.js";
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
-const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
+const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
@@ -44,7 +44,7 @@ let browser: Browser;
 let openPages: Page[] = [];
 
 beforeAll(async () => {
-  await requireBuilt(webDistIndex, "apps/web/dist does not exist, please run npm run build first");
+  await requireBuilt(webDistIndex, "packages/web/dist does not exist, please run npm run build first");
   browser = await chromium.launch();
   console.log(`Browser: Chromium ${browser.version()}`);
 });

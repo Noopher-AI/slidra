@@ -25,15 +25,15 @@ const slidraBin = path.join(rootDir, "target/release/slidra");
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 /**
- * Checks that `apps/web/dist/index.html` and `target/release/slidra`
+ * Checks that `packages/web/dist/index.html` and `target/release/slidra`
  * (`slidra serve`'s own read/write path, and this file's own
  * `createDefaultRegistry()`/`registry.dispatch` calls below, both go
  * through the same compiled binary now) exist under `rootDir` — callers
  * must build before running these tests.
  */
 export async function requireBuilt(rootDir: string): Promise<void> {
-  const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
-  await requireExists(webDistIndex, "apps/web/dist does not exist, run npm run build first");
+  const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
+  await requireExists(webDistIndex, "packages/web/dist does not exist, run npm run build first");
   await requireExists(path.join(rootDir, "target/release/slidra"), "target/release/slidra does not exist, run npm run build first");
 }
 

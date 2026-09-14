@@ -12,7 +12,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
  * docs/design/docs/05-INTERACTIONS.feature. This only verifies that these
  * states actually land on the DOM (transform, cursor, the percentage text)
  * — the zoom/pan/hand-drag state transitions themselves are already
- * exhaustively boundary-tested in apps/web/test/stage-view.test.ts, so the
+ * exhaustively boundary-tested in packages/web/test/stage-view.test.ts, so the
  * clamping logic isn't retested here.
  *
  * Wheel-zoom/pan and hand-mode dragging over the slide body (`.stage`/inside
@@ -28,7 +28,7 @@ import { requireBuilt, startServerFor, openApp, type StartedServer } from "./hel
 
 const e2eDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(e2eDir, "..");
-const demoDir = path.join(rootDir, "demo");
+const demoDir = path.join(rootDir, "docs/demo");
 const VIEWPORT = { width: 1440, height: 900 };
 
 let browser: Browser;
