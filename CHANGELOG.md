@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated the test projects to Vitest 5 and cleared the remaining moderate npm audit findings.
 - Updated React, React DOM, and their TypeScript definitions together to 19.3.0.
 - Updated the Rust CLI HTTP client to ureq 3.4.1.
+- Updated the ACP TypeScript SDK to 1.4.0 and migrated model switching and connection-close handling.
 
 ## [0.1.0] - 2026-09-XX
 
