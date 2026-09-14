@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restored the design-token contract under `.dev_docs/design/`, the internal documentation location used by the web token tests and styles.
 - Fixed `commands-reference.test.ts` to match command names with word boundaries, so the short `ls` command no longer false-positives on English words like "list".
 - Upgraded Vitest and Vite and overrode transitive minimatch to resolve critical and high-severity security advisories.
+- Migrated the test projects to Vitest 5 and cleared the remaining moderate npm audit findings.
 
 ## [0.1.0] - 2026-09-XX
 
