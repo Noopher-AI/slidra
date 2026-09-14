@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleOpenPost } from "../src/open-endpoint.js";
+import { handleDecksGet, handleOpenPost } from "../src/open-endpoint.js";
 import { readProjectsRegistry } from "../src/slidra/home.js";
 import { resolveDeckFolder } from "../src/storage/deck-folder.js";
 import {
@@ -255,9 +255,84 @@ describe("DeckStore.rename", () => {
   });
 });
 
+describe("deck folder switching (AC2)", () => {
+  let otherFolder: string;
+
+  beforeEach(async () => {
+    otherFolder = await mkdtemp(path.join(tmpdir(), "slidra-deckstorage-folder-b-"));
+  });
+
+  afterEach(async () => {
+    await rm(otherFolder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it("sends subsequent decks to the newly configured folder and leaves decks already in the old one untouched", async () => {
+    await setDeckFolder(deckFolder);
+    const first = await createLocalDeckStore().create({ name: "InA" });
+    const firstPath = path.join(deckFolder, "InA.slidra");
+    const bytesBefore = await readFile(firstPath);
+    const mtimeBefore = (await stat(firstPath)).mtimeMs;
+
+    // resolveDeckFolder re-reads settings.json on every call, so the same
+    // store instance must already honour the new folder — no restart.
+    await setDeckFolder(otherFolder);
+    const second = await createLocalDeckStore().create({ name: "InB" });
+
+    expect(second.fileName).toBe("InB.slidra");
+    await expect(stat(path.join(otherFolder, "InB.slidra"))).resolves.toBeTruthy();
+    expect(second.id).not.toBe(first.id);
+
+    // The existing deck in folder A is unaffected: still there, same bytes,
+    // same mtime, and not copied/moved into B.
+    await expect(readFile(firstPath)).resolves.toEqual(bytesBefore);
+    expect((await stat(firstPath)).mtimeMs).toBe(mtimeBefore);
+    await expect(readdir(otherFolder)).resolves.toEqual(["InB.slidra"]);
+    await expect(readdir(deckFolder)).resolves.toEqual(["InA.slidra"]);
+  });
+});
+
+describe("deck owner metadata (AC6)", () => {
+  let store: DeckStore;
+
+  beforeEach(async () => {
+    await setDeckFolder(deckFolder);
+    store = createLocalDeckStore();
+  });
+
+  it("round-trips an owner given at create time through to the listing", async () => {
+    await store.create({ name: "Owned", owner: "u1" });
+    const decks = await store.list();
+    expect(decks.find((d) => d.fileName === "Owned.slidra")?.owner).toBe("u1");
+  });
+
+  it('defaults a create with no owner to "Anonymous" rather than leaving it null', async () => {
+    await store.create({ name: "Unowned" });
+    const decks = await store.list();
+    expect(decks.find((d) => d.fileName === "Unowned.slidra")?.owner).toBe("Anonymous");
+  });
+
+  it("filters the listing by owner, exactly", async () => {
+    await store.create({ name: "Mine", owner: "u1" });
+    await store.create({ name: "Theirs", owner: "u2" });
+
+    await expect(store.list("u1")).resolves.toEqual([
+      expect.objectContaining({ fileName: "Mine.slidra", owner: "u1" }),
+    ]);
+    const u2 = await store.list("u2");
+    expect(u2.map((d) => d.fileName)).toEqual(["Theirs.slidra"]);
+    await expect(store.list("nobody")).resolves.toEqual([]);
+    expect((await store.list()).map((d) => d.fileName).sort()).toEqual(["Mine.slidra", "Theirs.slidra"]);
+  });
+});
+
 function createOpenEndpointTestServer(store: DeckStore): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (req.method === "GET" && url.pathname === "/api/decks") {
+        void handleDecksGet(store, url, res);
+        return;
+      }
       void handleOpenPost(store, req, res);
     });
     server.listen(0, "127.0.0.1", () => {
@@ -292,6 +367,19 @@ describe("POST /api/open (merged from e2e/file-roundtrip.test.ts)", () => {
     });
     expect(response.status).toBe(400);
     await expect(readdir(deckFolder)).resolves.toEqual([]);
+  });
+
+  it("GET /api/decks?owner= passes the query value through to the store's filter (AC6)", async () => {
+    await store.create({ name: "Mine", owner: "u1" });
+    await store.create({ name: "Theirs", owner: "u2" });
+
+    const all = (await (await fetch(`${testServer.url}/api/decks`)).json()) as { decks: Array<{ fileName: string }> };
+    expect(all.decks.map((d) => d.fileName).sort()).toEqual(["Mine.slidra", "Theirs.slidra"]);
+
+    const filtered = (await (await fetch(`${testServer.url}/api/decks?owner=u1`)).json()) as {
+      decks: Array<{ fileName: string; owner: string | null }>;
+    };
+    expect(filtered.decks).toEqual([expect.objectContaining({ fileName: "Mine.slidra", owner: "u1" })]);
   });
 
   it("400s on an empty body with the existing wording", async () => {
