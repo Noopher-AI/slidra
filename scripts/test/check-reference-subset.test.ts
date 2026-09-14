@@ -29,7 +29,7 @@ describe("check-reference-subset", () => {
   });
 
   it("reports a reference command that has no entry in the spec", () => {
-    const referenceContent = "## made up command\n\n**Parameters:** `<presentation-id>`.\n**Usage:** Does not exist.\n";
+    const referenceContent = "## made up command\n\n**Parameters** `<presentation-id>`.\n**Usage** Does not exist.\n";
     const specContent = "# slidra CLI spec\n\n## `new`\n\n**Syntax**\n\n```\nslidra new <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
@@ -42,7 +42,7 @@ describe("check-reference-subset", () => {
   });
 
   it("reports a flag reference mentions that the spec's matching entry never mentions", () => {
-    const referenceContent = "## asset import\n\n**Parameters:** `<presentation-id>` `<source>`, `--as csv` (optional).\n";
+    const referenceContent = "## asset import\n\n**Parameters** `<presentation-id>` `<source>`, `--as csv` (optional).\n";
     const specContent =
       "# slidra CLI spec\n\n## `asset import`\n\n**Syntax**\n\n```\nslidra asset import <presentation-id> <source>\n```\n";
 
@@ -56,7 +56,7 @@ describe("check-reference-subset", () => {
   });
 
   it("does not let a spec's --csv-asset token satisfy a reference requirement for bare --csv (no substring matching)", () => {
-    const referenceContent = "## chart data set\n\n**Parameters:** `<presentation-id>`, `--csv <path>` (optional).\n";
+    const referenceContent = "## chart data set\n\n**Parameters** `<presentation-id>`, `--csv <path>` (optional).\n";
     const specContent =
       "# slidra CLI spec\n\n## `chart data set`\n\n**Parameters**\n\n- `--csv-asset`: optional, virtual path inside the container.\n";
 
@@ -71,7 +71,7 @@ describe("check-reference-subset", () => {
 
   it("ignores a flag mentioned only in reference's Usage/Example prose, not in its Parameters line", () => {
     const referenceContent =
-      "## cat\n\n**Parameters:** `<presentation-id>` `<path>`.\n**Usage:** Does not support `--recursive`; may be added in the future.\n";
+      "## cat\n\n**Parameters** `<presentation-id>` `<path>`.\n**Usage** Does not support `--recursive`; may be added in the future.\n";
     const specContent = "# slidra CLI spec\n\n## `cat`\n\n**Syntax**\n\n```\nslidra cat <presentation-id> <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);

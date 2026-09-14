@@ -1,4 +1,4 @@
-<title>CoMotion 投影片功能 QA</title>
+<title>CoMotion Slide Features QA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -373,621 +373,676 @@
 <div class="page">
 
   <header class="masthead">
-    <div class="eyebrow">手動探索測試 · 非 AI 功能 · 第二輪複驗</div>
-    <h1>CoMotion 基礎投影片功能 QA</h1>
+    <div class="eyebrow">Manual exploratory testing · Non-AI features · Round 2 re-verification</div>
+    <h1>CoMotion Core Slide Features QA</h1>
     <p class="standfirst">
-      第一輪在 <code>feat/break-changed-rust-cli</code>（<code>899bed3</code>）找出 19 則問題。這一輪把同一份清單
-      拿到合併後的 <code>main</code>（<code>db6d497</code>，Rust CLI 取代 TypeScript engine）上逐條複驗，
-      並繼續往沒走過的區域探索。範圍一樣限定不依賴 agent 的基礎功能。
+      Round 1 found 19 issues on <code>feat/break-changed-rust-cli</code> (<code>899bed3</code>). This round takes
+      the same list onto the merged <code>main</code> (<code>db6d497</code>, where the Rust CLI replaces the
+      TypeScript engine) and re-verifies each item one by one, while continuing to explore areas not yet covered.
+      The scope is again limited to core features that do not depend on the agent.
     </p>
     <dl class="runmeta">
-      <div><dt>本輪分支</dt><dd>main @ db6d497</dd></div>
-      <div><dt>上一輪</dt><dd>feat/break-changed-rust-cli @ 899bed3</dd></div>
-      <div><dt>啟動方式</dt><dd>npm run verify:setup --no-open</dd></div>
-      <div><dt>測試簡報</dt><dd>demo 四頁（含資產與效果清單）</dd></div>
-      <div><dt>瀏覽器</dt><dd>Chromium via CDP · 1440×900</dd></div>
-      <div><dt>日期</dt><dd>2026-09-10（第一輪 09-09）</dd></div>
+      <div><dt>Branch this round</dt><dd>main @ db6d497</dd></div>
+      <div><dt>Previous round</dt><dd>feat/break-changed-rust-cli @ 899bed3</dd></div>
+      <div><dt>Launch command</dt><dd>npm run verify:setup --no-open</dd></div>
+      <div><dt>Test deck</dt><dd>demo 4 pages (including the asset and effects list)</dd></div>
+      <div><dt>Browser</dt><dd>Chromium via CDP · 1440×900</dd></div>
+      <div><dt>Date</dt><dd>2026-09-10 (Round 1: 09-09)</dd></div>
     </dl>
   </header>
 
   <section>
-    <h2>本輪結果</h2>
+    <h2>Results this round</h2>
     <div class="tally">
-      <div class="tally-item t1"><b>1</b><span>P1 阻斷</span></div>
-      <div class="tally-item t2"><b>5</b><span>P2 嚴重</span></div>
-      <div class="tally-item t3"><b>9</b><span>P3 中等</span></div>
-      <div class="tally-item t4"><b>5</b><span>P4 輕微</span></div>
+      <div class="tally-item t1"><b>1</b><span>P1 Blocker</span></div>
+      <div class="tally-item t2"><b>5</b><span>P2 Critical</span></div>
+      <div class="tally-item t3"><b>9</b><span>P3 Moderate</span></div>
+      <div class="tally-item t4"><b>5</b><span>P4 Minor</span></div>
     </div>
     <p class="lede">
-      共 <b>20 則未解決</b>：上一輪 19 則裡有 <b>2 則已修復</b>（<code>F-03</code>、<code>F-10</code>）、其餘 17 則原樣重現，
-      再加上這一輪的 <b>3 則新發現</b>（<code>N-01</code> 是合併後才出現的回歸，<code>N-02</code>、<code>N-03</code> 來自新探索）。
-      P1 阻斷＝功能完全不可用或造成資料遺失；P2 嚴重＝核心操作失效且無明顯替代路徑；
-      P3 中等＝有替代路徑但會誤導或干擾作者；P4 輕微＝外觀與文案層級。
+      <b>20 unresolved</b> in total: of the 19 from the previous round, <b>2 are fixed</b> (<code>F-03</code>, <code>F-10</code>)
+      and the remaining 17 reproduce as before, plus <b>3 new findings</b> this round (<code>N-01</code> is a regression that
+      only appeared after the merge; <code>N-02</code> and <code>N-03</code> come from new exploration).
+      P1 Blocker = the feature is entirely unusable or causes data loss; P2 Critical = a core operation fails with no
+      obvious alternative; P3 Moderate = an alternative exists but it misleads or disrupts the author; P4 Minor = the
+      appearance- and copy-level tier.
     </p>
   </section>
 
   <section>
-    <h2>新發現</h2>
+    <h2>New findings</h2>
     <div class="findings">
       <article class="finding sev-p1">
         <div class="finding-head">
           <span class="fid">N-01</span>
-          <h3 class="ftitle">拖曳搬移元素完全失效——按住拖動毫無反應</h3>
-          <span class="pill">P1 阻斷</span>
-          <span class="status-chip st-new">本輪新增 · 回歸</span>
-          <span class="chip">直接操作</span>
+          <h3 class="ftitle">Drag-to-move elements is completely broken — holding and dragging produces no response</h3>
+          <span class="pill">P1 Blocker</span>
+          <span class="status-chip st-new">New this round · Regression</span>
+          <span class="chip">Direct manipulation</span>
         </div>
         <dl class="finding-body">
-          <dt>重現</dt>
+          <dt>Reproduction</dt>
           <dd>
             <ol>
-              <li>第 1 頁點標題「驗收用簡報」選取它。</li>
-              <li>在標題上按住滑鼠左鍵，拖到別的位置後放開。</li>
+              <li>On Slide 1, click the title “Acceptance Demo Deck” to select it.</li>
+              <li>On the title, hold the left mouse button, drag to a new position, and release.</li>
             </ol></dd>
-          <dt>實際</dt>
-          <dd>拖曳過程中沒有任何預覽、沒有吸附輔助線，放開後元素留在原地。<code>slides/001.svg</code>
-            沒有寫進任何 <code>transform</code>，也沒有產生可 Undo 的歷史步驟。主控台沒有任何錯誤。
-            對「本來就帶 <code>transform="translate(107.52 302.4)"</code> 的新插入文字」重試，結果一樣。</dd>
-          <dt>對照組</dt>
-          <dd>同一個元素、同一套 CDP 事件，<b>拖右上角把手縮放正常</b>（步驟一的 <code>font-size</code> 40 → 42.54；
-            第 1 頁標題 86 → 99.0）。所以手勢管線活著，壞掉的只有 move 這一種。</dd>
-          <dt>回歸證據</dt>
-          <dd>同一份 demo、同一套操作，在上一輪的 <code>899bed3</code> 上會把標題搬到新位置並即時更新左欄縮圖
-            （見上一版報告的「已確認正常：拖曳搬移元素」）。本輪在 <code>db6d497</code> 上無論如何都不動。
-            兩輪之間唯一的相關變更是 <code>81c4e74</code>「browser goes engine-free — DOM/CLI replace @co-motion/core」。</dd>
-          <dt>預期</dt>
-          <dd><code>05-INTERACTIONS.feature</code>「移動與縮放元素 › 拖曳吸附」：拖曳選取中的元素會移動、
-            靠近邊線時吸附並顯示粉紅輔助線，放開後成為一筆可 Undo 的歷史。</dd>
-          <dt>後果</dt>
-          <dd>拖曳搬移是視覺編輯器最基本的一個動作，而 GUI 沒有替代路徑——右欄 Style › Object 沒有位置欄位，
-            Arrange 只能對齊分佈、不能自由定位。作者要挪動任何一個元素，只剩下改用終端機下
-            <code>co-motion element move</code> 這條路。這條路壞掉，等於編輯器不能編輯版面。</dd>
-          <dt>可疑範圍</dt>
-          <dd><code>canvas.ts</code> 的 <code>beginMoveGesture</code>（<code>:2413</code>）在
-            <code>selectionIds</code>／<code>currentSlideModel</code>／<code>viewport</code> 任一缺席時會靜默放棄，
-            <code>originals.size === 0</code> 時也一樣。已排除 <code>currentSlideModel</code> 為 null
-            （<kbd>Ctrl</kbd>+<kbd>A</kbd> 仍能全選三個元素，那條路徑同樣依賴它）與 <code>viewport</code> 為 null
-            （縮放手勢同樣依賴它且正常）。')</dd>
+          <dt>Actual</dt>
+          <dd>During the drag there is no preview and no snap guide lines; after release the element stays where it
+            started. <code>slides/001.svg</code> has no <code>transform</code> written and no Undo-able history step is
+            produced. The console shows no errors. Retrying on a freshly inserted text element that already carries
+            <code>transform="translate(107.52 302.4)"</code> gives the same result.</dd>
+          <dt>Control</dt>
+          <dd>Same element, same CDP event sequence: <b>dragging the top-right handle to resize works correctly</b>
+            (Step 1’s <code>font-size</code> 40 → 42.54; the Slide 1 title 86 → 99.0). So the gesture pipeline is alive —
+            the only thing broken is <code>move</code>.</dd>
+          <dt>Regression evidence</dt>
+          <dd>Same demo, same operations: on the previous round’s <code>899bed3</code> this moved the title to the new
+            position and updated the left-rail thumbnail instantly (see the previous report’s “Confirmed working: drag to
+            move elements”). This round on <code>db6d497</code> it does not move no matter what. The only relevant change
+            between the two rounds is <code>81c4e74</code> “browser goes engine-free — DOM/CLI replace @co-motion/core”.</dd>
+          <dt>Expected</dt>
+          <dd><code>05-INTERACTIONS.feature</code> “Move and resize elements › drag snap”: dragging a selected element
+            moves it; when it nears an edge it snaps and shows pink guide lines; on release it becomes one Undo-able
+            history entry.</dd>
+          <dt>Impact</dt>
+          <dd>Drag-to-move is the most basic action of a visual editor, and the GUI has no alternative — the right
+            rail’s Style › Object has no position field, and Arrange can only align/distribute, not freely position. To
+            move any element the author is left with the terminal command <code>co-motion element move</code>. With that
+            path broken, the editor cannot edit layout.</dd>
+          <dt>Suspected scope</dt>
+          <dd><code>beginMoveGesture</code> in <code>canvas.ts</code> (<code>:2413</code>) silently bails out when any of
+            <code>selectionIds</code> / <code>currentSlideModel</code> / <code>viewport</code> is absent, and also when
+            <code>originals.size === 0</code>. <code>currentSlideModel</code> being null is ruled out (<kbd>Ctrl</kbd>+<kbd>A</kbd>
+            still selects all three elements, and that path depends on it too), as is <code>viewport</code> being null
+            (the resize gesture depends on it and works).')</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">N-02</span>
-          <h3 class="ftitle">GUI 沒有任何「存為範本」的入口，Templates 永遠是空的</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-new">本輪新增</span>
-          <span class="chip">範本</span>
+          <h3 class="ftitle">The GUI has no “save as template” entry point; Templates is always empty</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-new">New this round</span>
+          <span class="chip">Templates</span>
         </div>
         <dl class="finding-body">
-          <dt>重現</dt>
-          <dd>按左欄 <b>Templates</b>；再對任一縮圖按右鍵看選單。</dd>
-          <dt>實際</dt>
-          <dd>Templates 只顯示一行提示「No templates yet」，沒有任何新增按鈕。縮圖右鍵選單七項
-            （New slide below／New slides from outline…／Duplicate slide／Comment to agent／Move up／Move down／Delete slide）
-            也沒有存為範本。整個 <code>packages/web/src</code> 只有讀取端：<code>useTemplateList</code> 呼叫 <code>template list</code>，
-            <code>addSlideAt</code> 可以吃 <code>templatePath</code>，但沒有任何地方送出 <code>template add</code>。</dd>
-          <dt>預期</dt>
-          <dd><code>03-UI_RATIONALE.md</code> §H：「Templates｜版面卡片、<b>儲存目前頁為範本</b>。」
-            CLI 端該命令已經存在（<code>docs/spec/cli.md</code> §<code>template add</code>，支援 <code>--from &lt;slide-path&gt;</code>）。</dd>
-          <dt>後果</dt>
-          <dd>範本在 GUI 裡是一條死路：清單永遠空的，New 選單的 LAYOUTS 永遠只有 Blank，於是每張新頁都是
-            白底空白頁（整份 demo 是深色的），版面得從零重排。作者要用範本就得離開 GUI 去終端機下
-            <code>co-motion template add</code>——而「範本」正是設計文件用來取代母片的核心概念。</dd>
-          <dt>備註</dt>
-          <dd><code>08-KNOWN_GAPS_AND_ROADMAP.md</code> 只記了「Templates 對話框｜Rename／Delete 未接」，
-            沒有提到連新增都沒有入口。</dd>
+          <dt>Reproduction</dt>
+          <dd>Click <b>Templates</b> in the left rail; then right-click any thumbnail to see the menu.</dd>
+          <dt>Actual</dt>
+          <dd>Templates shows only one line of placeholder, “No templates yet”, with no add button. The thumbnail’s
+            seven-item right-click menu (New slide below / New slides from outline… / Duplicate slide / Comment to agent /
+            Move up / Move down / Delete slide) also has no save-as-template. All of <code>packages/web/src</code> is
+            read-only: <code>useTemplateList</code> calls <code>template list</code>, and <code>addSlideAt</code> can
+            accept a <code>templatePath</code>, but nothing sends <code>template add</code>.</dd>
+          <dt>Expected</dt>
+          <dd><code>03-UI_RATIONALE.md</code> §H: “Templates | layout cards, <b>save the current page as a template</b>.”
+            The command exists on the CLI side (<code>docs/spec/cli.md</code> §<code>template add</code>, supports
+            <code>--from &lt;slide-path&gt;</code>).</dd>
+          <dt>Impact</dt>
+          <dd>Templates is a dead end in the GUI: the list is always empty, the LAYOUTS section of the New menu is always
+            just Blank, so every new page is a white background blank page (the whole demo is dark), and the layout has to
+            be rebuilt from scratch. To use a template the author has to leave the GUI and run <code>co-motion template
+            add</code> in the terminal — and “templates” is precisely the core concept the design docs use to replace
+            masters.</dd>
+          <dt>Note</dt>
+          <dd><code>08-KNOWN_GAPS_AND_ROADMAP.md</code> only notes “Templates dialog | Rename / Delete not wired up”, and
+            does not mention that even the add entry point is missing.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">N-03</span>
-          <h3 class="ftitle">雙擊儲存格偶爾不開輸入框，整張投影片被刷成藍色選取底</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-new">本輪新增 · 偶發</span>
-          <span class="chip">表格</span>
+          <h3 class="ftitle">Double-clicking a cell occasionally fails to open the editor, and the entire slide is painted with a blue selection background</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-new">New this round · Intermittent</span>
+          <span class="chip">Tables</span>
         </div>
         <dl class="finding-body">
-          <dt>重現</dt>
+          <dt>Reproduction</dt>
           <dd>
             <ol>
-              <li>第 3 頁插入 3 × 4 表格，右欄停在 Animate 分頁。</li>
-              <li>單擊第 2 列第 2 格，再雙擊同一格。</li>
+              <li>On Slide 3, insert a 3 × 4 table and keep the right rail on the Animate tab.</li>
+              <li>Single-click the cell in row 2, column 2, then double-click the same cell.</li>
             </ol></dd>
-          <dt>實際</dt>
-          <dd>輸入框沒有出現（<code>document.activeElement</code> 仍是 <code>IFRAME.slide-frame</code>），
-            取而代之的是瀏覽器原生的雙擊選字擴散到整份投影片文件——整張投影片被塗成不透明的藍色，
-            標題與三行文字幾乎看不見。</dd>
-          <dt>重現率</dt>
-          <dd>觀察到 1 次。之後刻意重試 9 次（同一格 5 次、換分頁與換儲存格 4 次）都正常開啟
-            <code>INPUT.table-cell-editor</code>，無法穩定重現。列在這裡是因為畫面後果嚴重且有截圖存證，
-            交給團隊判斷是否值得追。</dd>
-          <dt>預期</dt>
-          <dd>雙擊儲存格一律進入編輯（<code>05-INTERACTIONS.feature</code>「表格儲存格」）；
-            沙箱 iframe 內的投影片文件無論如何都不該進入使用者可見的文字選取狀態。</dd>
-          <dt>後果</dt>
-          <dd>畫面看起來像整份簡報被某種東西蓋住或壞掉，而作者其實只是想填一格字。
-            當下沒有任何提示說明發生什麼事，也不知道要點哪裡才能恢復。</dd>
+          <dt>Actual</dt>
+          <dd>The editor does not appear (<code>document.activeElement</code> is still <code>IFRAME.slide-frame</code>).
+            Instead, the browser’s native double-click word selection spreads across the whole slide document — the entire
+            slide is painted with an opaque blue, and the title and three lines of text are nearly invisible.</dd>
+          <dt>Reproduction rate</dt>
+          <dd>Observed once. Nine deliberate retries afterward (5 on the same cell, 4 switching tabs and cells) all opened
+            <code>INPUT.table-cell-editor</code> normally, and it cannot be reproduced reliably. It is listed here because
+            the visual consequence is severe and there is a screenshot for the record; whether it is worth chasing is left
+            to the team’s judgment.</dd>
+          <dt>Expected</dt>
+          <dd>Double-clicking a cell always enters editing (<code>05-INTERACTIONS.feature</code> “table cells”); the slide
+            document inside the sandboxed iframe must never enter a user-visible text selection state.</dd>
+          <dt>Impact</dt>
+          <dd>The screen looks as if the whole presentation has been covered or broken by something, when the author only
+            wanted to fill in one cell. Nothing at the moment explains what happened, and there is no obvious place to
+            click to recover.</dd>
         </dl>
       </article>
     </div>
   </section>
 
   <section>
-    <h2>已修復</h2>
+    <h2>Fixed</h2>
     <div class="findings">
       <article class="finding sev-p3 is-fixed">
         <div class="finding-head">
           <span class="fid">F-10</span>
-          <h3 class="ftitle">點投影片關不掉 Dock 長出來的浮層，之後連 <kbd>Esc</kbd> 也失效</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-fixed">已修復</span>
-          <span class="chip">浮層</span>
+          <h3 class="ftitle">Clicking the slide cannot dismiss the layer that grew out of the Dock, after which even <kbd>Esc</kbd> stops working</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-fixed">Fixed</span>
+          <span class="chip">Layers</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>已修復。展開縮放選單後，點投影片中央／點標題／點投影片下半部三種位置都會立刻關閉浮層
-            （<code>openLayer</code> 由 <code>zoom-menu</code> 變成 <code>null</code>），<kbd>Esc</kbd> 也正常關閉。</dd>
-          <dt>原始問題</dt>
-          <dd>在 <code>899bed3</code> 上，點投影片會把焦點交給沙箱 iframe，浮層留在畫面上且 <kbd>Esc</kbd> 從此無效。</dd>
-          <dt>備註</dt>
-          <dd><code>use-floating-layer.ts</code> 本身沒有改動；行為差異來自
-            <code>81c4e74</code> 之後 iframe 內的 mousedown 會傳到父文件。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Fixed. After opening the resize menu, clicking the center of the slide / the title / the lower half of the
+            slide all immediately close the layer (<code>openLayer</code> changes from <code>zoom-menu</code> to
+            <code>null</code>), and <kbd>Esc</kbd> closes it normally too.</dd>
+          <dt>Original issue</dt>
+          <dd>On <code>899bed3</code>, clicking the slide moved focus into the sandboxed iframe, leaving the layer on
+            screen and <kbd>Esc</kbd> ineffective from then on.</dd>
+          <dt>Note</dt>
+          <dd><code>use-floating-layer.ts</code> itself was not changed; the behavioral difference comes from the fact that
+            after <code>81c4e74</code>, mousedown inside the iframe propagates to the parent document.</dd>
         </dl>
       </article>
       <article class="finding sev-p3 is-fixed">
         <div class="finding-head">
           <span class="fid">F-03</span>
-          <h3 class="ftitle">剛開啟、一個字都沒改，標題列就寫「Unsaved changes」</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-fixed">已修復</span>
-          <span class="chip">存檔狀態</span>
+          <h3 class="ftitle">Right after opening, without changing a single character, the title bar already says “Unsaved changes”</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-fixed">Fixed</span>
+          <span class="chip">Save state</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>已修復，而且是針對這個成因修的。連續 <code>co-motion open</code> 同一個 <code>.comot</code> 六次，
-            六次都回報乾淨；其中 1 次的原始浮點讀數差 <code>+0.000488</code> ms（舊邏輯會判成 dirty），
-            新邏輯把兩邊都向下取整到整毫秒後正確判成 clean。</dd>
-          <dt>修法</dt>
-          <dd><code>packages/server/src/comotion/save-state.ts</code> 的 <code>readSaveState</code> 改成
-            <code>Math.floor(maxMtimeMs) &gt; Math.floor(entry.savedAt)</code>，註解直接寫明是為了消掉
-            Rust 端 <code>as_secs_f64() * 1000.0</code> 與 Node 端 <code>mtimeMs</code> 之間最後一位小數的差異
-            ——與上一輪回報的 1 ULP 現象一致。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Fixed, and fixed for this exact cause. Running <code>co-motion open</code> on the same <code>.comot</code>
+            six times in a row reported clean all six; on one of them the raw floating-point reading differed by
+            <code>+0.000488</code> ms (the old logic would judge this dirty), and the new logic floors both sides to whole
+            milliseconds and correctly judges it clean.</dd>
+          <dt>Fix</dt>
+          <dd><code>readSaveState</code> in <code>packages/server/src/comotion/save-state.ts</code> was changed to
+            <code>Math.floor(maxMtimeMs) &gt; Math.floor(entry.savedAt)</code>, with a comment explicitly stating this is
+            to eliminate the last-digit floating-point difference between Rust’s <code>as_secs_f64() * 1000.0</code> and
+            Node’s <code>mtimeMs</code> — consistent with the 1-ULP phenomenon reported in the previous round.</dd>
         </dl>
       </article>
     </div>
   </section>
 
   <section>
-    <h2>仍然重現</h2>
+    <h2>Still reproducing</h2>
     <p class="lede">
-      以下 17 則在 <code>db6d497</code> 上逐條實測，行為與上一輪相同。每則的「本輪複驗」寫的是這一次量到的數字。
+      The following 17 were each actually measured on <code>db6d497</code>, and their behavior is the same as the previous
+      round. Each one’s “Re-verification this round” lists the numbers measured this time.
     </p>
     <div class="findings">
       <article class="finding sev-p2">
         <div class="finding-head">
           <span class="fid">F-01</span>
-          <h3 class="ftitle">投影片被瀏覽器捲軸壓住——編輯時是，正式播放時也是</h3>
-          <span class="pill">P2 嚴重</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">舞台 · 播放</span>
+          <h3 class="ftitle">Slides are crushed by browser scrollbars — both while editing and during actual playback</h3>
+          <span class="pill">P2 Critical</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Stage · Playback</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。<code>div.stage</code> 的 <code>clientHeight</code> 459、<code>scrollHeight</code> 462，
-            投影片右緣與下緣照樣各壓一條白色捲軸（含上下箭頭）。</dd>
-          <dt>實際</dt>
-          <dd>多出來的 3px 來自 <code>&lt;svg&gt;</code> 這個 inline 替換元素的基線間隙。
-            縮圖用的包裝已經有 <code>svg{display:block}</code>，主舞台與播放用的兩個沒有。</dd>
-          <dt>預期</dt>
-          <dd>投影片是固定比例的畫布，任何情況下都不該出現捲軸；播放模式更是「黑底全幅」。</dd>
-          <dt>後果</dt>
-          <dd>編輯時作者會誤以為是自己插入的元素或版面破圖，捲軸也遮掉最右與最下各約 15px；
-            播放時捲軸直接出現在給觀眾看的畫面上，而且沒有設定可以關掉。</dd>
-          <dt>線索</dt>
-          <dd><code>canvas.ts:4157</code>（檢視）／<code>:4223</code>（選取）／<code>:4262</code>（播放）
-            三個 srcdoc 包裝函式都只設 <code>&lt;body style="margin:0;background:#fff"&gt;</code>，
-            沒有 <code>overflow:hidden</code>，SVG 也沒有 <code>display:block</code>。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. <code>div.stage</code> has <code>clientHeight</code> 459 and <code>scrollHeight</code> 462;
+            the right and bottom edges of the slide are each still crushed by a white scrollbar (with up/down arrows).</dd>
+          <dt>Actual</dt>
+          <dd>The extra 3px comes from the baseline gap of <code>&lt;svg&gt;</code> as an inline replaced element. The
+            thumbnail wrapper already has <code>svg{display:block}</code>; the two used by the main stage and playback do
+            not.</dd>
+          <dt>Expected</dt>
+          <dd>A slide is a fixed-aspect canvas and should never show scrollbars under any circumstance; playback mode is
+            supposed to be “black background, full frame”.</dd>
+          <dt>Impact</dt>
+          <dd>While editing, the author will mistake it for a broken element or layout they inserted, and the scrollbars
+            cover about 15px on the right and bottom; during playback the scrollbars appear directly on the audience-facing
+            screen, and there is no setting to turn them off.</dd>
+          <dt>Clue</dt>
+          <dd>The three srcdoc wrapper functions at <code>canvas.ts:4157</code> (view) / <code>:4223</code> (select) /
+            <code>:4262</code> (playback) all only set <code>&lt;body style="margin:0;background:#fff"&gt;</code>, without
+            <code>overflow:hidden</code>, and the SVG has no <code>display:block</code> either.</dd>
         </dl>
       </article>
       <article class="finding sev-p2">
         <div class="finding-head">
           <span class="fid">F-02</span>
-          <h3 class="ftitle">點過投影片之後，<kbd>←</kbd> <kbd>→</kbd> 就再也不能換頁</h3>
-          <span class="pill">P2 嚴重</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">換頁</span>
+          <h3 class="ftitle">After clicking the slide, <kbd>←</kbd> <kbd>→</kbd> can no longer change pages</h3>
+          <span class="pill">P2 Critical</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Page navigation</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。點第 1 頁標題後 <code>document.activeElement</code> 是 <code>IFRAME</code>，
-            按 <kbd>→</kbd> 頁碼固定在 <code>Slide 1 of 4</code>。</dd>
-          <dt>預期</dt>
-          <dd><code>06-KEYBOARD_AND_GESTURES.md</code> 明列 <kbd>←</kbd>／<kbd>→</kbd> 為上一頁／下一頁，
-            狀態列也一直顯示「<code>←→ slides</code>」。</dd>
-          <dt>後果</dt>
-          <dd>選取元素是編輯的第一個動作，做完之後鍵盤換頁就靜默失效，只能改用縮圖或狀態列的
-            <kbd>‹</kbd> <kbd>›</kbd>。</dd>
-          <dt>線索</dt>
-          <dd><code>canvas.ts</code> 的 <code>stage-key</code> 轉送清單涵蓋 <code>Delete</code>／<kbd>⌘A</kbd>／<kbd>⌘D</kbd>／
-            <kbd>⌘Z</kbd>／<kbd>⌘C X V</kbd>／<code>Escape</code>／<code>[</code> <code>]</code>，
-            全檔搜不到 <code>ArrowLeft</code>／<code>ArrowRight</code>。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. After clicking the Slide 1 title, <code>document.activeElement</code> is the
+            <code>IFRAME</code>, and pressing <kbd>→</kbd> keeps the page counter pinned at <code>Slide 1 of 4</code>.</dd>
+          <dt>Expected</dt>
+          <dd><code>06-KEYBOARD_AND_GESTURES.md</code> explicitly lists <kbd>←</kbd> / <kbd>→</kbd> as previous / next
+            page, and the status bar keeps displaying “<code>←→ slides</code>”.</dd>
+          <dt>Impact</dt>
+          <dd>Selecting an element is the first editing action; after doing it, keyboard page navigation silently stops
+            working, leaving only the thumbnails or the status bar’s <kbd>‹</kbd> <kbd>›</kbd>.</dd>
+          <dt>Clue</dt>
+          <dd>The <code>stage-key</code> forwarding list in <code>canvas.ts</code> covers <code>Delete</code> /
+            <kbd>⌘A</kbd> / <kbd>⌘D</kbd> / <kbd>⌘Z</kbd> / <kbd>⌘C X V</kbd> / <code>Escape</code> / <code>[</code>
+            <code>]</code>; a search of the whole file finds no <code>ArrowLeft</code> / <code>ArrowRight</code>.</dd>
         </dl>
       </article>
       <article class="finding sev-p2">
         <div class="finding-head">
           <span class="fid">F-04</span>
-          <h3 class="ftitle">就地編輯時看不到自己打的換行，提交後才冒出來——還撞上副標</h3>
-          <span class="pill">P2 嚴重</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">就地編輯</span>
+          <h3 class="ftitle">During in-place editing you cannot see the newline you type; it only appears after committing — and it collides with the subtitle</h3>
+          <span class="pill">P2 Critical</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">In-place editing</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。雙擊第 1 頁標題，在「收」「用」之間打 <code>QA</code> → <kbd>Enter</kbd> → <code>X</code>，
-            編輯中畫面是單行「驗收QA X用簡報」；<kbd>Esc</kbd> 提交後檔案裡是
-            <code>&lt;tspan y="330"&gt;驗收QA&lt;/tspan&gt;&lt;tspan y="454.528"&gt;X用簡報&lt;/tspan&gt;</code>，
-            第二行壓在 <code>y=420</code> 的副標上。</dd>
-          <dt>預期</dt>
-          <dd><code>05-INTERACTIONS.feature</code>「就地編輯 › 文字」：<kbd>Enter</kbd> 應「游標處插入一個硬換行，
-            不提交、不離開編輯」——換行要當場看得到。</dd>
-          <dt>後果</dt>
-          <dd>作者照著畫面排版，編輯中看到單行就以為排得下，提交後才發現變兩行並蓋住下一個元素。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. Double-click the Slide 1 title, type <code>QA</code> between the words → <kbd>Enter</kbd> →
+            <code>X</code>. While editing the screen shows a single line; after committing with <kbd>Esc</kbd> the file
+            contains <code>&lt;tspan y="330"&gt;Acceptance QA&lt;/tspan&gt;&lt;tspan y="454.528"&gt;Demo Deck&lt;/tspan&gt;</code>,
+            and the second line sits on top of the subtitle at <code>y=420</code>.</dd>
+          <dt>Expected</dt>
+          <dd><code>05-INTERACTIONS.feature</code> “In-place editing › text”: <kbd>Enter</kbd> should “insert a hard line
+            break at the cursor, without committing and without leaving editing” — the line break should be visible in
+            place.</dd>
+          <dt>Impact</dt>
+          <dd>The author lays out by looking at the screen; seeing one line during editing makes them think it fits, and
+            only after committing do they find it became two lines and covers the next element.</dd>
         </dl>
       </article>
       <article class="finding sev-p2">
         <div class="finding-head">
           <span class="fid">F-08</span>
-          <h3 class="ftitle">從 Dock 插入的文字與形狀都是黑色的，落在深色投影片上等於沒插入</h3>
-          <span class="pill">P2 嚴重</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">插入</span>
+          <h3 class="ftitle">Text and shapes inserted from the Dock are black, and on a dark slide that is the same as not inserting at all</h3>
+          <span class="pill">P2 Critical</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Insertion</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。第 1 頁插入文字得到
-            <code>&lt;text font-family="Noto Sans TC" font-size="28.16" font-weight="400"&gt;</code>；
-            插入矩形得到 <code>&lt;rect x="0" y="0" width="358.4" height="259.2"/&gt;</code>——兩段都沒有 <code>fill</code>。
-            量測像素：矩形是 <code>rgb(0,0,0)</code>，背景 <code>rgb(16,20,24)</code>。</dd>
-          <dt>預期</dt>
-          <dd>插入的元素要看得見。同一頁既有的標題用 <code>fill="#f4f6f8"</code>、副標用 <code>#9aa7b4</code>。</dd>
-          <dt>後果</dt>
-          <dd>作者按下 Insert 後畫面沒有看得見的變化，會判定插入失敗而重按好幾次，插出一疊看不見的重疊元素；
-            矩形更糟——一塊看不見的實心色塊已經蓋住底下的標題。這正是 <code>qa/visual-qa.md</code>
-            判準一（前景背景對比不足、內容實際不可見）點名的情形。</dd>
-          <dt>線索</dt>
-          <dd><code>ShapeMenu.tsx:9</code> 的註解寫明「沒有 page accent 時 rect/ellipse 省略 fill，
-            退回 <code>element insert</code> 的 SVG 預設」，同一段註解卻為 line 特別處理成
-            「沒有 stroke 會變成看不見的洞」——rect/ellipse 沒享受到同一個推論。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. Inserting text on Slide 1 yields
+            <code>&lt;text font-family="Noto Sans TC" font-size="28.16" font-weight="400"&gt;</code>; inserting a rectangle
+            yields <code>&lt;rect x="0" y="0" width="358.4" height="259.2"/&gt;</code> — neither has a <code>fill</code>.
+            Pixel measurement: the rectangle is <code>rgb(0,0,0)</code>, background <code>rgb(16,20,24)</code>.</dd>
+          <dt>Expected</dt>
+          <dd>Inserted elements should be visible. The existing title on the same page uses <code>fill="#f4f6f8"</code> and
+            the subtitle uses <code>#9aa7b4</code>.</dd>
+          <dt>Impact</dt>
+          <dd>After pressing Insert the author sees no visible change, concludes the insert failed, and presses again
+            several times, stacking invisible overlapping elements. The rectangle is worse — an invisible solid block
+            already covers the title underneath. This is exactly the case called out by criterion 1 of
+            <code>qa/visual-qa.md</code> (insufficient foreground/background contrast, content actually invisible).</dd>
+          <dt>Clue</dt>
+          <dd>The comment at <code>ShapeMenu.tsx:9</code> explicitly states “when there is no page accent, rect/ellipse
+            omit fill and fall back to the SVG defaults of <code>element insert</code>”; the same comment treats
+            <code>line</code> specially as “without a stroke it becomes an invisible hole” — but rect/ellipse did not
+            benefit from that same reasoning.</dd>
         </dl>
       </article>
       <article class="finding sev-p2">
         <div class="finding-head">
           <span class="fid">F-15</span>
-          <h3 class="ftitle">在投影片空白處拖曳不會框選，只會選到滿版背景色塊</h3>
-          <span class="pill">P2 嚴重</span>
-          <span class="status-chip st-changed">仍然重現 · 後果暫時被遮住</span>
-          <span class="chip">選取</span>
+          <h3 class="ftitle">Dragging on the slide’s blank area does not marquee-select; it only selects the full-bleed background block</h3>
+          <span class="pill">P2 Critical</span>
+          <span class="status-chip st-changed">Still reproduces · consequence temporarily masked</span>
+          <span class="chip">Selection</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>框選依然完全用不到：從三行文字下方的空白處往右下拖，過程中沒有任何虛線框，
-            拖曳中狀態列顯示 <code>Selected: el-WZX2BUPDpa8S</code>（那個滿版背景 <code>&lt;rect&gt;</code>）。
-            整份 demo 每一頁都被滿版背景蓋滿，所以投影片內沒有「空白處」可點。</dd>
-          <dt>與上一輪的差別</dt>
-          <dd>上一輪這個手勢會把整張背景拖到 <code>translate(958.8 127.8)</code>，投影片當場毀掉。
-            這一輪背景沒有位移——但那不是修好了，而是 <b><code>N-01</code> 讓所有 move 都失效</b>，
-            把破壞性後果一起遮住了。<code>N-01</code> 一修好，這個後果就會原樣回來。</dd>
-          <dt>預期</dt>
-          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>：「拖曳空白 → 框選」；
-            <code>05-INTERACTIONS.feature</code>「多選」：命中的元素以虛線群框包住。</dd>
-          <dt>後果</dt>
-          <dd>框選在任何有背景的簡報上都不存在。與 <code>F-05</code> 同一個根源：
-            滿版背景把所有「空白處」的手勢全接走了。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Marquee selection is still completely unusable: dragging from the blank area below the three lines of text
+            toward the lower-right shows no dashed box during the drag, and the status bar shows
+            <code>Selected: el-WZX2BUPDpa8S</code> (that full-bleed background <code>&lt;rect&gt;</code>). Every page of the
+            whole demo is covered by a full-bleed background, so there is no “blank area” inside the slide to click.</dd>
+          <dt>Difference from the previous round</dt>
+          <dd>In the previous round this gesture dragged the entire background to <code>translate(958.8 127.8)</code>,
+            destroying the slide on the spot. This round the background does not move — but that is not a fix; it is
+            <b><code>N-01</code> making every move fail</b>, which masked the destructive consequence along with it. Once
+            <code>N-01</code> is fixed, this consequence will come back exactly as it was.</dd>
+          <dt>Expected</dt>
+          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>: “drag on blank → marquee select”;
+            <code>05-INTERACTIONS.feature</code> “multi-select”: hit elements are enclosed by a dashed group box.</dd>
+          <dt>Impact</dt>
+          <dd>Marquee selection does not exist in any deck with a background. Same root cause as <code>F-05</code>: the
+            full-bleed background intercepts every “blank area” gesture.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-05</span>
-          <h3 class="ftitle">點舞台空白處取消不了選取，只有 <kbd>Esc</kbd> 有用</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">選取</span>
+          <h3 class="ftitle">Clicking the stage’s blank area does not cancel the selection; only <kbd>Esc</kbd> works</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Selection</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。選取第 1 頁標題後點投影片外圈的深灰舞台底，狀態列仍是 <code>Selected: 標題</code>，
-            選取框、把手、情境列全都還在。點投影片內的背景色塊則只是改選那個色塊。</dd>
-          <dt>預期</dt>
-          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>：「點 → 選取；點空白取消」。</dd>
-          <dt>後果</dt>
-          <dd>取消選取只剩鍵盤一條路。情境列會一直壓在版面上，而它蓋住的那個元素也就跟著點不到
-            （見 <code>F-17</code>）。</dd>
-          <dt>線索</dt>
-          <dd><code>Stage.tsx:288</code> 只在切換 ✋ 抓取模式時呼叫 <code>controller.clearSelection()</code>，
-            舞台底沒有掛任何點擊清除選取的處理。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. After selecting the Slide 1 title, clicking the dark gray stage backdrop outside the slide
+            leaves the status bar at <code>Selected: Title</code>, with the selection box, handles, and context bar all
+            still present. Clicking the background block inside the slide just re-selects that block.</dd>
+          <dt>Expected</dt>
+          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>: “click → select; click blank → cancel”.</dd>
+          <dt>Impact</dt>
+          <dd>Canceling the selection is left with only the keyboard. The context bar keeps pressing on the layout, and
+            the element it covers becomes unclickable along with it (see <code>F-17</code>).</dd>
+          <dt>Clue</dt>
+          <dd><code>Stage.tsx:288</code> only calls <code>controller.clearSelection()</code> when toggling the ✋ grab
+            mode; the stage backdrop has no click-to-clear-selection handler attached.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-09</span>
-          <h3 class="ftitle">表格編輯中按 <kbd>Tab</kbd> 不跳下一格，焦點直接飛出投影片</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">表格</span>
+          <h3 class="ftitle">Pressing <kbd>Tab</kbd> while editing a table does not move to the next cell; focus flies straight out of the slide</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Tables</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。雙擊儲存格打 <code>A1</code>，按 <kbd>Tab</kbd> 後
-            <code>document.activeElement</code> 變成 <code>BUTTON.dock-hand-button</code>，
-            接著打的 <code>B1</code> 沒有進到任何地方。存檔後只有 <code>A1</code> 那格有字。</dd>
-          <dt>預期</dt>
-          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>：「Tab（儲存格編輯中）→ 下一格」。</dd>
-          <dt>後果</dt>
-          <dd>填表格是逐格輸入的工作。作者照習慣按 <kbd>Tab</kbd> 繼續打，字全部打進空氣裡而且沒有提示，
-            一張 3 × 4 的表要雙擊 12 次。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. Double-click a cell and type <code>A1</code>, then press <kbd>Tab</kbd>:
+            <code>document.activeElement</code> becomes <code>BUTTON.dock-hand-button</code>, and the <code>B1</code> typed
+            afterward goes nowhere. After saving, only the <code>A1</code> cell has text.</dd>
+          <dt>Expected</dt>
+          <dd><code>06-KEYBOARD_AND_GESTURES.md</code>: “Tab (while editing a cell) → next cell”.</dd>
+          <dt>Impact</dt>
+          <dd>Filling a table is cell-by-cell input. The author habitually presses <kbd>Tab</kbd> to keep typing, and all
+            the characters go into thin air with no indication; a 3 × 4 table requires 12 double-clicks.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-13</span>
-          <h3 class="ftitle">左欄縮圖不顯示動畫數，看不出哪幾頁有效果</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">總覽</span>
+          <h3 class="ftitle">Left-rail thumbnails do not show the animation count, so you cannot tell which pages have effects</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Overview</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。第 3 頁的 <code>slides/003.svg</code> 帶三個 <code>&lt;comot:effect&gt;</code>，
-            但該縮圖的 DOM 只有 <code>.overview-number</code>、<code>.overview-thumb</code> 與留言鈕，
-            沒有任何動畫標記。</dd>
-          <dt>預期</dt>
-          <dd><code>03-UI_RATIONALE.md</code> §B：「頁碼圓點｜當前頁紅底白字；<code>✦ n</code> 標示該頁動畫數」。</dd>
-          <dt>後果</dt>
-          <dd>無法一眼看出整份簡報的動畫分布，只能一頁一頁點進去把右欄切到 Animate › Object 看有沒有卡片。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. <code>slides/003.svg</code> on Slide 3 carries three <code>&lt;comot:effect&gt;</code>
+            elements, but that thumbnail’s DOM has only <code>.overview-number</code>, <code>.overview-thumb</code>, and
+            the comment button, with no animation marker at all.</dd>
+          <dt>Expected</dt>
+          <dd><code>03-UI_RATIONALE.md</code> §B: “page-number dot | current page is white on red; <code>✦ n</code> marks
+            that page’s animation count”.</dd>
+          <dt>Impact</dt>
+          <dd>The animation distribution across the whole deck cannot be seen at a glance; the only option is to click into
+            each page and switch the right rail to Animate › Object to check for cards.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-14</span>
-          <h3 class="ftitle">Animate › Object 的卡片被右欄切掉，Start 與 Delay 兩欄看不見也改不到</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">動畫面板</span>
+          <h3 class="ftitle">The cards in Animate › Object are cut off by the right rail; the Start and Delay columns are invisible and cannot be edited</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Animation panel</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現，數字一模一樣：<code>Start</code> 與 <code>Delay</code> 的欄位右緣落在 <code>x=1466</code>，
-            面板可視範圍只到 <code>x=1440</code>；<code>.animate-object-list</code> 的
-            <code>scrollWidth 365 &gt; clientWidth 339</code>，<code>.animate-card-fields</code> 是 <code>342 &gt; 293</code>。</dd>
-          <dt>預期</dt>
-          <dd>四個欄位（Effect／Start／Duration／Delay）都要完整落在右欄內。</dd>
-          <dt>後果</dt>
-          <dd>Start（on click／with／after）決定這個效果是自成一步還是跟前一個一起播。
-            作者在預設視窗寬度下看不到它被設成什麼，很容易整份簡報的觸發時機都沒調過就拿去播。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces, numbers identical: the right edges of the <code>Start</code> and <code>Delay</code> fields
+            land at <code>x=1466</code>, while the panel’s visible range only extends to <code>x=1440</code>;
+            <code>.animate-object-list</code> has <code>scrollWidth 365 &gt; clientWidth 339</code>, and
+            <code>.animate-card-fields</code> is <code>342 &gt; 293</code>.</dd>
+          <dt>Expected</dt>
+          <dd>All four fields (Effect / Start / Duration / Delay) must fit fully inside the right rail.</dd>
+          <dt>Impact</dt>
+          <dd>Start (on click / with / after) determines whether this effect is its own step or plays together with the
+            previous one. At the default window width the author cannot see how it is set, making it easy to present the
+            whole deck without ever tuning the trigger timing.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-16</span>
-          <h3 class="ftitle">有動畫的元素，左上角縮放把手被編號徽章蓋住抓不到</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">縮放</span>
+          <h3 class="ftitle">On elements with animations, the top-left resize handle is covered by the number badge and cannot be grabbed</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Resize</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現，而且有乾淨的對照：選取第 3 頁「步驟一」後，拖<b>左上</b>角把手
-            <code>(611,312)</code> 完全沒反應（<code>font-size</code> 停在 40）；拖<b>右上</b>角把手
-            <code>(688,312)</code> 正常縮放（40 → 42.54）。動畫編號徽章 ① 佔
-            <code>(603,304)–(619,320)</code>，正好蓋住左上把手，且 <code>.animation-badge</code> 的
-            <code>pointer-events</code> 是 <code>auto</code>。三張卡片的徽章都是同樣情形。</dd>
-          <dt>預期</dt>
-          <dd><code>05-INTERACTIONS.feature</code>「縮放」：拖曳四角把手都要能縮放。</dd>
-          <dt>後果</dt>
-          <dd>凡是加過動畫的元素，四個把手只剩三個能用，而且沒有任何提示說明為什麼。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces, with a clean control: after selecting “Step 1” on Slide 3, dragging the <b>top-left</b>
+            handle <code>(611,312)</code> produces no response at all (<code>font-size</code> stays at 40); dragging the
+            <b>top-right</b> handle <code>(688,312)</code> resizes normally (40 → 42.54). The animation number badge ①
+            occupies <code>(603,304)–(619,320)</code>, covering exactly the top-left handle, and
+            <code>.animation-badge</code> has <code>pointer-events</code> set to <code>auto</code>. All three cards’ badges
+            behave the same way.</dd>
+          <dt>Expected</dt>
+          <dd><code>05-INTERACTIONS.feature</code> “Resize”: dragging any of the four corner handles should resize.</dd>
+          <dt>Impact</dt>
+          <dd>On any element that has had an animation added, only three of the four handles work, with no indication
+            explaining why.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-17</span>
-          <h3 class="ftitle">情境列蓋住選取框正下方那一行，讓它完全點不到</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">情境列</span>
+          <h3 class="ftitle">The context bar covers the line directly below the selection box, making it completely unclickable</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Context bar</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。選取第 1 頁標題後，情境列橫跨 <code>(442,378)–(1092,414)</code>，
-            而副標在 <code>y≈401</code>——整行被壓在情境列底下。第 3 頁同理：選「步驟一」後
-            「步驟二」（<code>y≈381</code>）點不到，<kbd>⇧</kbd>+點「步驟三」（<code>y≈437</code>，
-            在情境列之外）才正常加選成 <code>2 elements</code>。</dd>
-          <dt>預期</dt>
-          <dd>情境列的位置規則是「出現在選框正下方（空間不足則翻到上方）」（<code>03-UI_RATIONALE.md</code> §C），
-            但這個規則只考慮舞台邊界，沒考慮它會不會壓到別的元素。</dd>
-          <dt>後果</dt>
-          <dd>條列式版面是簡報最常見的排版。作者選了第一行之後，第二行就變成點不到、選不到、加選不到，
-            也沒有提示說明原因。要碰到它得先 <kbd>Esc</kbd>，但 <code>F-05</code> 讓「點空白取消」也不能用。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. After selecting the Slide 1 title, the context bar spans
+            <code>(442,378)–(1092,414)</code>, while the subtitle is at <code>y≈401</code> — the whole line is crushed
+            under the context bar. The same on Slide 3: after selecting “Step 1”, “Step 2” (<code>y≈381</code>) cannot be
+            clicked, and only ⇧+click on “Step 3” (<code>y≈437</code>, outside the context bar) adds a selection normally to
+            <code>2 elements</code>.</dd>
+          <dt>Expected</dt>
+          <dd>The context bar’s positioning rule is “appear directly below the selection box (flip above if there is not
+            enough space)” (<code>03-UI_RATIONALE.md</code> §C), but this rule only considers the stage bounds and not
+            whether it will crush another element.</dd>
+          <dt>Impact</dt>
+          <dd>List layouts are the most common layout in decks. After the author selects the first line, the second line
+            becomes unclickable, unselectable, and un-addable, with no explanation. To reach it you must first press
+            <kbd>Esc</kbd>, but <code>F-05</code> makes “click blank to cancel” unavailable too.</dd>
         </dl>
       </article>
       <article class="finding sev-p3">
         <div class="finding-head">
           <span class="fid">F-18</span>
-          <h3 class="ftitle">匯出失敗時，錯誤訊息有 2126px 被推到畫面左邊外面，讀不到原因</h3>
-          <span class="pill">P3 中等</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">匯出</span>
+          <h3 class="ftitle">When export fails, 2126px of the error message is pushed off the left side of the screen, so the cause cannot be read</h3>
+          <span class="pill">P3 Moderate</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Export</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現，幾何完全一致：<code>.export-status-error</code> 的
-            <code>x = −2126</code>、寬 <code>3439px</code>、<code>white-space: nowrap</code>、
-            <code>overflow: visible</code>、原始訊息 9 行。左邊 2126px 永遠在視窗外且拉不回來。</dd>
-          <dt>實際</dt>
-          <dd>畫面上讀得到的只有尾巴「…to download new browsers: ｜ ｜ ｜ npx playwright install ｜ ｜ ｜
-            &lt;3 Playwright Team ｜」。真正指出原因的第一行
-            <code>browserType.launch: Executable doesn't exist at …</code> 整句在畫面外，
-            Playwright 的方框繪字元則變成一串 <code>|</code>。</dd>
-          <dt>預期</dt>
-          <dd>錯誤要說清楚哪裡出錯、怎麼修，而且完整落在畫面內。多行後端輸出應換行顯示或收進可展開區塊。</dd>
-          <dt>後果</dt>
-          <dd>作者只看到一段沒頭沒尾的英文與一排直線，判斷不出是簡報有問題、伺服器掛了、還是少裝東西。</dd>
-          <dt>備註</dt>
-          <dd>匯出失敗本身是這台機器的環境問題（Playwright 瀏覽器沒裝），不是程式缺陷；
-            <b>兩輪都因此無法驗證匯出成功的路徑</b>。這裡回報的只有錯誤呈現方式。
-            <code>export-panel.css:101</code> 與 <code>:108</code> 的 <code>white-space: nowrap</code> 未動。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces, geometry identical: <code>.export-status-error</code> has <code>x = −2126</code>, width
+            <code>3439px</code>, <code>white-space: nowrap</code>, <code>overflow: visible</code>, and the original message
+            is 9 lines. The leftmost 2126px is permanently off-screen and cannot be pulled back.</dd>
+          <dt>Actual</dt>
+          <dd>The only part readable on screen is the tail “…to download new browsers: ｜ ｜ ｜ npx playwright install ｜ ｜
+            ｜ &lt;3 Playwright Team ｜”. The first line that actually states the cause,
+            <code>browserType.launch: Executable doesn't exist at …</code>, is entirely off-screen, and Playwright’s
+            box-drawing characters become a run of <code>|</code>.</dd>
+          <dt>Expected</dt>
+          <dd>The error should make clear what went wrong and how to fix it, and fit fully on screen. Multi-line backend
+            output should wrap or be collapsed into an expandable block.</dd>
+          <dt>Impact</dt>
+          <dd>The author sees only a fragment of English with no beginning or end and a row of straight lines, and cannot
+            tell whether the deck has a problem, the server has crashed, or something is missing.</dd>
+          <dt>Note</dt>
+          <dd>The export failure itself is an environment issue on this machine (Playwright’s browser is not installed),
+            not a program defect; <b>both rounds were therefore unable to verify the successful export path</b>. Only the
+            error presentation is reported here. The <code>white-space: nowrap</code> at <code>export-panel.css:101</code>
+            and <code>:108</code> was not changed.</dd>
         </dl>
       </article>
       <article class="finding sev-p4">
         <div class="finding-head">
           <span class="fid">F-06</span>
-          <h3 class="ftitle">沒有顯示名稱的元素，直接把內部識別碼當名字給人看</h3>
-          <span class="pill">P4 輕微</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">選取</span>
+          <h3 class="ftitle">Elements with no display name are shown to the user with their internal ID as the name</h3>
+          <span class="pill">P4 Minor</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Selection</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。點第 1 頁背景色塊，選取框標籤與狀態列 chip 都顯示
-            <code>el-VDJP6MD9hs3N</code>；有 <code>data-comot-name</code> 的元素則正常顯示「標題」「副標」。</dd>
-          <dt>預期</dt>
-          <dd><code>CONTEXT.md</code> 把「顯示名稱」定義為「元素給人看的名字」，並明說它與識別碼是兩回事。
-            沒有顯示名稱時應退回可讀的東西，不是把識別碼端出來。</dd>
-          <dt>後果</dt>
-          <dd>作者看到一串亂碼，判斷不出選到的是背景、插圖還是誤選了別的東西。</dd>
-          <dt>備註</dt>
-          <dd><code>StatusBar.tsx:24</code> 的註解說明這是 #56／ADR-0011 的既有決定
-            （<code>names[0] ?? ids[0]</code>），逐字沿用自舊 StatusBar。要改的是那個 fallback 的取值。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. Clicking the Slide 1 background block, both the selection box label and the status-bar chip
+            show <code>el-VDJP6MD9hs3N</code>; elements that have <code>data-comot-name</code> display “Title” and
+            “Subtitle” normally.</dd>
+          <dt>Expected</dt>
+          <dd><code>CONTEXT.md</code> defines “display name” as “the element’s human-facing name” and explicitly states
+            that it is a different thing from the ID. When there is no display name it should fall back to something
+            readable, not serve up the ID.</dd>
+          <dt>Impact</dt>
+          <dd>The author sees a string of gibberish and cannot tell whether what they selected is the background, an
+            illustration, or something else by mistake.</dd>
+          <dt>Note</dt>
+          <dd>The comment at <code>StatusBar.tsx:24</code> explains this is a pre-existing decision from #56 / ADR-0011
+            (<code>names[0] ?? ids[0]</code>), carried over verbatim from the old StatusBar. What needs changing is that
+            fallback’s value.</dd>
         </dl>
       </article>
       <article class="finding sev-p4">
         <div class="finding-head">
           <span class="fid">F-07</span>
-          <h3 class="ftitle">在 Linux／Windows 上仍標示 macOS 的 <kbd>⌘</kbd></h3>
-          <span class="pill">P4 輕微</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">快捷鍵</span>
+          <h3 class="ftitle">Still shows the macOS <kbd>⌘</kbd> on Linux / Windows</h3>
+          <span class="pill">P4 Minor</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Shortcuts</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。字串照樣寫死在 <code>StatusBar.tsx:39</code>
-            （<code>⌘Z undo · ⌘D duplicate</code>）與 <code>ArrangeMenu.tsx:24-27</code>
-            （<code>⌘⇧]</code>／<code>⌘]</code>／<code>⌘[</code>／<code>⌘⇧[</code>），
-            整個 <code>packages/web/src</code> 沒有任何平台偵測。</dd>
-          <dt>實際</dt>
-          <dd>實際能用的是 <kbd>Ctrl</kbd>（程式碼一律 <code>metaKey || ctrlKey</code>），
-            但畫面上完全沒提到 <kbd>Ctrl</kbd>。</dd>
-          <dt>後果</dt>
-          <dd>非 macOS 的作者在鍵盤上找不到 <kbd>⌘</kbd>，會認定這些快捷鍵不適用於自己，改用滑鼠繞路。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. The strings are still hard-coded in <code>StatusBar.tsx:39</code>
+            (<code>⌘Z undo · ⌘D duplicate</code>) and <code>ArrangeMenu.tsx:24-27</code> (<code>⌘⇧]</code> /
+            <code>⌘]</code> / <code>⌘[</code> / <code>⌘⇧[</code>), and all of <code>packages/web/src</code> has no
+            platform detection.</dd>
+          <dt>Actual</dt>
+          <dd>The key that actually works is <kbd>Ctrl</kbd> (the code always uses <code>metaKey || ctrlKey</code>), but
+            <kbd>Ctrl</kbd> is never mentioned on screen.</dd>
+          <dt>Impact</dt>
+          <dd>Authors on non-macOS systems cannot find <kbd>⌘</kbd> on their keyboards, conclude these shortcuts do not
+            apply to them, and work around them with the mouse.</dd>
         </dl>
       </article>
       <article class="finding sev-p4">
         <div class="finding-head">
           <span class="fid">F-11</span>
-          <h3 class="ftitle">「無選取按 <kbd>Delete</kbd> 刪頁」只在焦點落在左欄縮圖時成立</h3>
-          <span class="pill">P4 輕微</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">頁面管理</span>
+          <h3 class="ftitle">“Press <kbd>Delete</kbd> with no selection to delete the page” only holds when focus is on a left-rail thumbnail</h3>
+          <span class="pill">P4 Minor</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Page management</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。<code>App.tsx:796</code> 的
-            <code>activeElement.closest(".rail")</code> 守衛未動。焦點在舞台上按 <kbd>Delete</kbd>
-            毫無反應；先點左欄縮圖再按才刪頁。</dd>
-          <dt>預期</dt>
-          <dd><code>06-KEYBOARD_AND_GESTURES.md</code> 的快捷鍵表只寫「無選取 → 刪頁」，沒有提到焦點條件。</dd>
-          <dt>後果</dt>
-          <dd>作者剛在畫布上做完事、按 <kbd>Delete</kbd> 想刪整頁，什麼都不會發生也沒有提示。</dd>
-          <dt>備註</dt>
-          <dd>實作是刻意的：註解說明這是為了修 #214×#215 整合後「沒有選取時按 Delete 會誤刪整張投影片」的回歸。
-            要修的是快捷鍵文件與畫面提示，不是把守衛拿掉。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. The <code>activeElement.closest(".rail")</code> guard at <code>App.tsx:796</code> was not
+            changed. With focus on the stage, pressing <kbd>Delete</kbd> does nothing; only clicking a left-rail thumbnail
+            first and then pressing it deletes the page.</dd>
+          <dt>Expected</dt>
+          <dd>The shortcut table in <code>06-KEYBOARD_AND_GESTURES.md</code> only says “no selection → delete page”, with
+            no mention of a focus condition.</dd>
+          <dt>Impact</dt>
+          <dd>The author has just finished working on the canvas and presses <kbd>Delete</kbd> to delete the whole page;
+            nothing happens and nothing is indicated.</dd>
+          <dt>Note</dt>
+          <dd>The implementation is deliberate: the comment explains this was to fix the regression after the #214 × #215
+            integration where “pressing Delete with no selection accidentally deletes the whole slide.” What needs fixing
+            is the shortcut docs and the on-screen hint, not removing the guard.</dd>
         </dl>
       </article>
       <article class="finding sev-p4">
         <div class="finding-head">
           <span class="fid">F-12</span>
-          <h3 class="ftitle">播放控制列只顯示頁碼，不顯示這一頁還有幾步</h3>
-          <span class="pill">P4 輕微</span>
-          <span class="status-chip st-open">仍然重現</span>
-          <span class="chip">播放</span>
+          <h3 class="ftitle">The playback control bar only shows the page number, not how many steps are left on this page</h3>
+          <span class="pill">P4 Minor</span>
+          <span class="status-chip st-open">Still reproduces</span>
+          <span class="chip">Playback</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>仍然重現。<code>PlayChrome.tsx:196-198</code> 只輸出
-            <code>{currentIndex + 1} / {slides.length}</code>，沒有步數。</dd>
-          <dt>預期</dt>
-          <dd><code>03-UI_RATIONALE.md</code> §I：「底部膠囊控制列（‹ 頁碼·步數 › ｜全螢幕｜Exit）」。</dd>
-          <dt>後果</dt>
-          <dd>簡報者在有多個動畫步的頁面上不知道還剩幾下要按，掌握不到節奏。</dd>
-          <dt>備註</dt>
-          <dd>註解說明文字與 class 是被裁決凍結成原型的 <code>N / M</code> 形式。要改的是那個裁決或設計文件。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>Still reproduces. <code>PlayChrome.tsx:196-198</code> only outputs <code>{currentIndex + 1} /
+            {slides.length}</code>, with no step count.</dd>
+          <dt>Expected</dt>
+          <dd><code>03-UI_RATIONALE.md</code> §I: “bottom pill control bar (‹ page·steps › | fullscreen | Exit)”.</dd>
+          <dt>Impact</dt>
+          <dd>On pages with multiple animation steps, the presenter does not know how many more presses are left and cannot
+            keep the rhythm.</dd>
+          <dt>Note</dt>
+          <dd>The comment explains that the text and class were ruled and frozen into the <code>N / M</code> form. What
+            needs changing is that ruling or the design document.</dd>
         </dl>
       </article>
       <article class="finding sev-p4">
         <div class="finding-head">
           <span class="fid">F-19</span>
-          <h3 class="ftitle">狀態列沒有 Normal／Grid／Play 檢視切換，總覽覆蓋層不存在</h3>
-          <span class="pill">P4 輕微</span>
-          <span class="status-chip st-changed">仍然重現 · 判定修正</span>
-          <span class="chip">總覽</span>
+          <h3 class="ftitle">The status bar has no Normal / Grid / Play view switch, and the overview overlay does not exist</h3>
+          <span class="pill">P4 Minor</span>
+          <span class="status-chip st-changed">Still reproduces · verdict revised</span>
+          <span class="chip">Overview</span>
         </div>
         <dl class="finding-body">
-          <dt>本輪複驗</dt>
-          <dd>狀態列仍然只有選取 chip、快捷鍵提示、<code>Slide N of M</code> 與
-            <kbd>‹</kbd> <kbd>›</kbd>、設定齒輪。</dd>
-          <dt>判定修正</dt>
-          <dd>上一輪把它記成「尚未實作」，這是我的判讀不夠。<code>StatusBar.tsx:15</code> 的註解
-            寫得很清楚：「舊殼的標準／網格／播放三顆檢視切換按鈕已經沒有對應物：<b>網格檢視整個拿掉
-            （GridView 已刪除）</b>，播放改由 TitleBar 的 ▶Play 進入」。所以這是<b>刻意移除</b>，
-            真正的問題是 <code>03-UI_RATIONALE.md</code> §G 沒有跟著更新。</dd>
-          <dt>後果</dt>
-          <dd>對讀設計文件的人：文件承諾的功能不存在。對作者：要一次看完整份簡報只能用左欄那條窄縮圖軌，
-            頁數一多就得捲動。</dd>
-          <dt>備註</dt>
-          <dd>設計文件同樣提到的 PPTX 匯出已經明確被排除在範圍外
-            （<code>e2e/export-cli.test.ts:116</code> 斷言它會被拒絕），那一項不列入本報告。</dd>
+          <dt>Re-verification this round</dt>
+          <dd>The status bar still has only the selection chip, shortcut hints, <code>Slide N of M</code> with
+            <kbd>‹</kbd> <kbd>›</kbd>, and the settings gear.</dd>
+          <dt>Verdict revision</dt>
+          <dd>The previous round logged this as “not yet implemented”, which was my misreading. The comment at
+            <code>StatusBar.tsx:15</code> is very clear: “The old shell’s Standard / Grid / Play view-switch buttons no
+            longer have a counterpart: <b>the grid view was removed entirely (GridView deleted)</b>, and playback now
+            enters via the TitleBar’s ▶Play.” So this is a <b>deliberate removal</b>, and the real problem is that
+            <code>03-UI_RATIONALE.md</code> §G was not updated to follow.</dd>
+          <dt>Impact</dt>
+          <dd>For readers of the design document: the promised feature does not exist. For authors: to see the whole deck at
+            once they are left with the narrow thumbnail strip in the left rail, which has to be scrolled once the page
+            count grows.</dd>
+          <dt>Note</dt>
+          <dd>The PPTX export also mentioned in the design document has been explicitly excluded from scope
+            (<code>e2e/export-cli.test.ts:116</code> asserts it is rejected); that item is not included in this report.</dd>
         </dl>
       </article>
     </div>
   </section>
 
   <section>
-    <h2>本輪確認正常</h2>
+    <h2>Confirmed working this round</h2>
     <div class="passes">
-      <div class="pass">左欄四張縮圖以真實元素繪製，內容與投影片同步（初次載入需約 2 秒才上字，不是缺陷）</div>
-      <div class="pass">點擊元素單選：紅框、四角把手、名稱標籤、狀態列 chip 都到位</div>
-      <div class="pass"><kbd>Ctrl</kbd>+<kbd>A</kbd> 全選本頁三個元素；<kbd>⇧</kbd>+點 加選（在情境列蓋不到的位置）</div>
-      <div class="pass">拖四角把手縮放：文字 <code>font-size</code> 正確改寫，Undo 可還原</div>
-      <div class="pass">雙擊進入就地編輯，游標落在雙擊處；輸入正確寫回 SVG</div>
-      <div class="pass">點儲存格選單格，Style › Object 換成 Cell 區塊；雙擊開 <code>INPUT.table-cell-editor</code></div>
-      <div class="pass">Insert Text／Shape／Table／Chart 四個面板都正常送出並選取新元素</div>
-      <div class="pass">插入圖表帶樣本資料，長條、座標軸標籤、圖例都正確算出</div>
-      <div class="pass">雙擊圖表開啟 Chart data 浮動視窗：類型列、資料格、調色盤、圖例、格線、數值標籤、堆疊、雙軸、軸標題</div>
-      <div class="pass"><kbd>Delete</kbd> 與情境列 Delete 都能刪除選取元素</div>
-      <div class="pass">Undo／Redo 涵蓋文字編輯、縮放、插入、刪除、頁序變更</div>
-      <div class="pass">Dock 浮層：縮放選單、Shape 三項、Arrange 三欄、Table 8×6 選格都正常展開</div>
-      <div class="pass">縮圖右鍵選單七項齊全；Move down 與拖曳重排都正確寫回頁序</div>
-      <div class="pass">New › Blank 在目前頁之後插入新頁；焦點在縮圖時 <kbd>Delete</kbd> 正確刪頁</div>
-      <div class="pass">Animate › Page 四種 Enter／Exit 效果與時長、Apply to all slides</div>
-      <div class="pass">Animate › Object 讀出第 3 頁三個效果，順序與舞台上的 ①②③ 對得起來</div>
-      <div class="pass">播放：逐步揭露效果後才換頁、倒退一次退一步、跨頁回到「整頁跑完」的樣子、<kbd>Esc</kbd> 離開</div>
-      <div class="pass">Save：標題列轉為「Saved」，<code>/api/save-state</code> 回 <code>dirty:false</code></div>
+      <div class="pass">The four left-rail thumbnails are drawn with real elements and their content stays in sync with the slides (first load takes about 2s before the text appears; not a defect)</div>
+      <div class="pass">Clicking an element selects it singly: red box, four corner handles, name label, and status-bar chip are all in place</div>
+      <div class="pass"><kbd>Ctrl</kbd>+<kbd>A</kbd> selects all three elements on the page; ⇧+click adds to the selection (at a position the context bar does not cover)</div>
+      <div class="pass">Dragging the four corner handles to resize: text <code>font-size</code> is rewritten correctly and Undo restores it</div>
+      <div class="pass">Double-clicking enters in-place editing with the cursor at the double-click position; input is written back to the SVG correctly</div>
+      <div class="pass">Clicking a cell in the menu, Style › Object switches to the Cell block; double-click opens <code>INPUT.table-cell-editor</code></div>
+      <div class="pass">The Insert Text / Shape / Table / Chart panels all submit correctly and select the new element</div>
+      <div class="pass">Inserted charts come with sample data; bars, axis labels, and the legend are all computed correctly</div>
+      <div class="pass">Double-clicking a chart opens the Chart data floating window: the type row, data cells, palette, legend, gridlines, value labels, stacking, dual axes, and axis titles</div>
+      <div class="pass">Both <kbd>Delete</kbd> and the context bar’s Delete remove the selected element</div>
+      <div class="pass">Undo / Redo cover text editing, resizing, insertion, deletion, and page-order changes</div>
+      <div class="pass">The Dock layer: the resize menu, Shape’s three items, Arrange’s three columns, and the Table 8×6 cell picker all expand correctly</div>
+      <div class="pass">The thumbnail’s right-click menu has all seven items; both Move down and drag reordering write the page order back correctly</div>
+      <div class="pass">New › Blank inserts a new page after the current one; with focus on a thumbnail, <kbd>Delete</kbd> deletes the page correctly</div>
+      <div class="pass">Animate › Page’s four Enter / Exit effects and durations, plus Apply to all slides</div>
+      <div class="pass">Animate › Object reads out the three effects on Slide 3, and the order matches the ①②③ on the stage</div>
+      <div class="pass">Playback: the page only advances after each step’s effect is revealed, going back one step at a time, across pages it returns to the “whole page finished” state, and <kbd>Esc</kbd> exits</div>
+      <div class="pass">Save: the title bar changes to “Saved”, and <code>/api/save-state</code> returns <code>dirty:false</code></div>
     </div>
   </section>
 
   <section>
-    <h2>尚未測試</h2>
+    <h2>Not yet tested</h2>
     <div class="pending">
-      以下項目兩輪都沒測到：Image／Video／Audio 三個插入面板（需要真實檔案）· 群組鑽入（雙擊進下一層）·
-      巢狀群組 · 全螢幕 API · 匯出成功路徑（本機環境缺 Playwright 瀏覽器）· 拖曳吸附輔助線（受
-      <code>N-01</code> 阻擋，move 修好前無法驗）· 表格欄寬拖曳與儲存格右鍵選單 · 鎖定元素 ·
-      投影片尺寸切換 · 從大綱生成。
+      The following items were not reached in either round: the Image / Video / Audio insert panels (require real files) ·
+      group drill-in (double-click to go one level deeper) · nested groups · the fullscreen API · the successful export path
+      (the local environment is missing Playwright’s browser) · drag snap guide lines (blocked by <code>N-01</code>, cannot
+      be verified until move is fixed) · table column-width dragging and the cell right-click menu · element locking · slide
+      size switching · generation from an outline.
     </div>
   </section>
 
   <footer>
-    第二輪複驗：20 則未解決（1 P1、5 P2、9 P3、5 P4），2 則已修復。全部以 Chromium + CDP 手動操作驗證，
-    嚴重度為人工判定。建議先處理 <code>N-01</code>——拖曳搬移失效讓編輯器失去最基本的版面操作能力，
-    而且它同時遮住了 <code>F-15</code> 的破壞性後果。
+    Round 2 re-verification: 20 unresolved (1 P1, 5 P2, 9 P3, 5 P4), 2 fixed. All verified by manual operation with
+    Chromium + CDP; severity is a human judgment. It is recommended to handle <code>N-01</code> first — the broken
+    drag-to-move strips the editor of its most basic layout manipulation, and it is simultaneously masking the destructive
+    consequence of <code>F-15</code>.
   </footer>
 
 </div>
