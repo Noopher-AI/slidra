@@ -25,8 +25,11 @@ import type { AgentSource } from "./agent/manager.js";
  */
 export async function runServeCli(argv: string[]): Promise<number> {
   const parsed = parseServeArgv(argv);
+  // NOOP-433: a presentation id is no longer required — "no deck open" is a
+  // supported startup state (see ServeOptions.presentationId's own
+  // docstring). `parsed` is only undefined for a malformed `--port`/`--host`/
+  // `--agent`, each of which has already printed its own specific message.
   if (!parsed) {
-    console.error("Command serve is missing an argument: presentation-id");
     return 1;
   }
 
@@ -110,7 +113,7 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
 
 function parseServeArgv(
   argv: string[],
-): { presentationId: string; port?: number; host?: string; agent?: AgentKind } | undefined {
+): { presentationId?: string; port?: number; host?: string; agent?: AgentKind } | undefined {
   let presentationId: string | undefined;
   let port: number | undefined;
   let host: string | undefined;
@@ -150,8 +153,8 @@ function parseServeArgv(
     }
   }
 
-  if (!presentationId) {
-    return undefined;
-  }
+  // NOOP-433: presentationId is optional now — "no deck open" is a
+  // supported startup state, no longer a parse failure. `--unknown` (not
+  // one of the flags above) is still just taken as the id, unchanged.
   return { presentationId, port, host, agent };
 }
