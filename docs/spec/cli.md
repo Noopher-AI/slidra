@@ -3748,3 +3748,76 @@ Besides `id`/`target`/`author`/`created` (ISO 8601)/`text`, each comment carries
 slidra comment list pres-abc123
 slidra comment list pres-abc123 slides/001.svg
 ```
+
+## `deck list`
+
+**Syntax**
+
+```
+slidra deck list <path> [--owner <owner>]
+```
+
+**Parameters**
+
+- `path`: string, required. A local filesystem path — either a directory to scan (non-recursive) for `.slidra` files (matched by extension, case-insensitive), or a single `.slidra` file to describe on its own. Unlike every other command, this is a real filesystem path, not a `<presentation-id>` — the folder being scanned may hold decks that have never been `open`ed and therefore have no id yet.
+- `--owner`: string, optional. When given, only decks whose `owner` (see `project.json`'s `owner` field, [`workspace.md`](workspace.md)) exactly equals this value are included; decks with no `owner` at all never match, even against `--owner ''`.
+
+**Success `data`**
+
+```json
+{
+  "decks": [
+    { "fileName": "Q3.slidra", "name": "Q3 Report", "slideCount": 4, "owner": "alice" },
+    { "fileName": "broken.slidra", "name": null, "slideCount": null, "owner": null }
+  ]
+}
+```
+
+Each entry's `fileName` is the file's basename only — never a full or absolute path (ADR-0004). A file that fails to open or parse (a not-yet-migrated legacy ZIP, a corrupted container) contributes one entry with `name`/`slideCount`/`owner` all `null`, rather than failing the whole command — a single bad file must never hide every other deck in the folder.
+
+**Error cases**
+
+| Condition | `failureKind` |
+|---|---|
+| `path` does not exist | `not-found` |
+
+**Example**
+
+```
+slidra deck list ~/Slidra --owner alice
+```
+
+## `deck meta set`
+
+**Syntax**
+
+```
+slidra deck meta set <path> [--name <name>] [--owner <owner>]
+```
+
+**Parameters**
+
+- `path`: string, required. The local filesystem path of an existing `.slidra` file — like `deck list`, this operates directly on a path rather than a `<presentation-id>`, since it is also used before a deck is ever registered.
+- `--name`: string, optional. Overwrites `project.json`'s `name` field.
+- `--owner`: string, optional. Overwrites `project.json`'s `owner` field. An explicit empty string is a legal value, written as-is.
+
+At least one of `--name`/`--owner` must be given. Every other field already in `project.json` (including an `owner` this command isn't touching) is left byte-for-byte untouched, in its original position.
+
+**Success `data`**
+
+```json
+{}
+```
+
+**Error cases**
+
+| Condition | `failureKind` |
+|---|---|
+| Neither `--name` nor `--owner` is given | `failed` |
+| `path` does not exist, or is not a valid `.slidra` container | `failed` |
+
+**Example**
+
+```
+slidra deck meta set ~/Slidra/Q3.slidra --owner alice
+```

@@ -96,6 +96,20 @@ The full rules for parameter syntax (quoting, comma-separated lists, etc.) are i
 **Example** `slidra convert <presentation-id>`
 > This command is used by the user or Slidra itself; the agent typically does not need it.
 
+## deck list
+
+**Parameters** `<dir-or-file>` (a real filesystem path, not a `<presentation-id>`), `--owner <owner>` (optional; filters to an exact match).
+**Usage** Scans a folder for `.slidra` files (or describes a single one) without opening any of them — file name, display name, slide count, and owner.
+**Example** `slidra deck list ~/Slidra --owner alice`
+> This command's first argument is a real filesystem path, which the agent's own permission gate refuses regardless of this document (ADR-0019: any `.slidra` container, or anything under `<SLIDRA_HOME>`, is blocked). Listed here only for `docs/spec/cli.md` parity — the agent cannot actually run it.
+
+## deck meta set
+
+**Parameters** `<deck-path>` (a real filesystem path, not a `<presentation-id>`), `--name <name>` (optional), `--owner <owner>` (optional; at least one of the two is required).
+**Usage** Overwrites `project.json`'s `name`/`owner` fields directly by file path, ahead of the deck ever being registered.
+**Example** `slidra deck meta set ~/Slidra/Q3.slidra --owner alice`
+> Same caveat as `deck list` above: its first argument is a `.slidra` path, which the agent's own permission gate refuses (ADR-0019). Listed here only for `docs/spec/cli.md` parity.
+
 ## font import
 
 **Parameters** `<presentation-id>` `<source-path-or-url>`, `--family <family-name>`, `--license <license>`, `--source <origin>` (all three flags required), `--license-file <path-or-url>` (optional).
