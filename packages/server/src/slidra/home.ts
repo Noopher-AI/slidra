@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -14,17 +14,19 @@ import { SlidraError, SlidraNotFoundError } from "./errors.js";
  * presentation's content goes through the binary; this file (and
  * `history/<id>/stack.json`, see `history-group.ts`) is the one place the
  * server still touches `SLIDRA_HOME` directly, because there is no CLI
- * command that exposes an id's real work directory or the save-state bookkeeping.
+ * command that exposes an id's real deck path or the save-state bookkeeping.
  *
- * The shape mirrors `packages/core/src/workspace.ts`'s `RegistryEntry`
+ * The shape mirrors the Rust crate's `workspace::registry::RegistryEntry`
  * exactly — the two must never drift, since they read and write the exact
- * same file.
+ * same file. A presentation id resolves to the `.slidra` deck FILE itself
+ * now (`spec/rfcs/0001-sqlite-container-format.md`) — there is no separate
+ * work directory any more.
  */
 export interface SlidraRegistryEntry {
-  workDir: string;
+  deckPath: string;
   /** The `.slidra` path `open`/`slidra open` last read from. */
   sourcePath?: string;
-  /** `maxMtimeInDirectory`'s reading at the last moment the work directory is known to match `sourcePath` byte-for-byte — see `readSaveState`. */
+  /** The deck file's own mtime at the last moment it is known to match `sourcePath` byte-for-byte — see `readSaveState`. */
   savedAt?: number;
 }
 
@@ -63,8 +65,8 @@ function isRegistryEntry(value: unknown): value is SlidraRegistryEntry {
   return (
     typeof value === "object" &&
     value !== null &&
-    "workDir" in value &&
-    typeof (value as { workDir: unknown }).workDir === "string"
+    "deckPath" in value &&
+    typeof (value as { deckPath: unknown }).deckPath === "string"
   );
 }
 
@@ -216,33 +218,20 @@ export async function writeProjectsRegistry(registry: SlidraRegistry): Promise<v
 }
 
 /**
- * Resolves an opaque presentation id to its real work directory — the one
+ * Resolves an opaque presentation id to its real deck file path — the one
  * id-to-path lookup this module offers. An unknown id throws
  * `SlidraNotFoundError`, the same wording `slidra`'s own commands use.
  */
-export async function workDirFor(id: string): Promise<string> {
+export async function deckPathFor(id: string): Promise<string> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) {
     throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   }
-  return entry.workDir;
+  return entry.deckPath;
 }
 
-const COORDINATION_FILE_NAME = ".slidra.lock";
-
-/** The newest content-file `mtimeMs` nested inside `dir`. Directory metadata and coordination locks are excluded. */
-export async function maxMtimeInDirectory(dir: string): Promise<number> {
-  let max = 0;
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (entry.name === COORDINATION_FILE_NAME) continue;
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      max = Math.max(max, await maxMtimeInDirectory(fullPath));
-    } else if (entry.isFile()) {
-      max = Math.max(max, (await stat(fullPath)).mtimeMs);
-    }
-  }
-  return max;
+/** The deck file's own `mtimeMs` — a single `stat`, not a directory walk: the deck IS the file now. */
+export async function deckFileMtime(deckPath: string): Promise<number> {
+  return (await stat(deckPath)).mtimeMs;
 }

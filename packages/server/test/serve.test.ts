@@ -12,6 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
+import { deckPathFor } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -208,6 +209,41 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
 // right here, before any id or work directory exists for it — it never
 // reaches `serve()` at all. This returns `open`'s own rejection message
 // (and asserts the dispatch failed) instead of an id.
+/**
+ * Test-only direct reads/writes of one content row in a deck's `content`
+ * table (`crates/slidra/src/deck.rs`'s schema) — the SQLite-backed
+ * equivalent of the deleted-work-directory era's `readFile`/`writeFile`
+ * on a slide's real path, used ONLY to simulate a slide file damaged by
+ * something other than this server (never a stand-in for the server's own
+ * write path, which always goes through the CLI — decision 9). `node:sqlite`
+ * is experimental in this Node version but used read/write here exactly
+ * the way the deleted test used raw `fs` access: to reach past every
+ * normal validation layer on purpose.
+ */
+async function readDeckFile(deckPath: string, virtualPath: string): Promise<string> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath);
+  try {
+    const row = db.prepare("SELECT data FROM content WHERE path = ?").get(virtualPath) as
+      | { data: Uint8Array }
+      | undefined;
+    if (!row) throw new Error(`no such content row: ${virtualPath}`);
+    return Buffer.from(row.data).toString("utf-8");
+  } finally {
+    db.close();
+  }
+}
+
+async function writeDeckFile(deckPath: string, virtualPath: string, content: string): Promise<void> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath);
+  try {
+    db.prepare("UPDATE content SET data = ? WHERE path = ?").run(Buffer.from(content, "utf-8"), virtualPath);
+  } finally {
+    db.close();
+  }
+}
+
 async function openMalformedPresentation(projectJsonRaw: string): Promise<string> {
   const { zipSync } = await import("fflate");
   const zipped = zipSync({
@@ -460,11 +496,12 @@ describe("startServe", () => {
   it.skipIf(isRunningAsRoot)("responds 500, not 404, when the slide exists but the underlying read fails", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
-    // Real filesystem path of the unpacked slide, per workspace.ts's
-    // workDirFor(home, id) = path.join(home, "work", id). Only used to
-    // break the read (chmod) — never asserted against the response.
-    const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
-    await chmod(realSlidePath, 0o000);
+    // The deck is a single SQLite file now — there is no longer a
+    // per-slide real path to break individually, so this breaks every
+    // read from the deck at once (chmod the file itself) — never
+    // asserted against the response.
+    const deckPath = await deckPathFor(id);
+    await chmod(deckPath, 0o000);
 
     try {
       const response = await fetch(`${server.url}/api/files/slides/001.svg`);
@@ -475,11 +512,11 @@ describe("startServe", () => {
       // A real I/O failure must never be told back as "the file is missing".
       expect(body.error).not.toBe("file not found: slides/001.svg");
       // The real filesystem path must never leak (ADR-0004, third layer).
-      expect(body.error).not.toContain(realSlidePath);
+      expect(body.error).not.toContain(deckPath);
       expect(body.error).not.toContain(slidraHome);
       expect(body.error).not.toContain("EACCES");
     } finally {
-      await chmod(realSlidePath, 0o644);
+      await chmod(deckPath, 0o644);
     }
   });
 
@@ -574,15 +611,15 @@ describe("startServe", () => {
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
-      const realSlidePath = path.join(slidraHome, "work", id, "slides", "001.svg");
-      const original = await readFile(realSlidePath, "utf-8");
+      const deckPath = await deckPathFor(id);
+      const original = await readDeckFile(deckPath, "slides/001.svg");
       const damaged = original.replace(
         "</svg>",
         '<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">' +
           '<slidra:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
           "</slidra:effects></metadata></svg>",
       );
-      await writeFile(realSlidePath, damaged);
+      await writeDeckFile(deckPath, "slides/001.svg", damaged);
 
       const server = await serve(id);
       const response = await fetch(`${server.url}/api/effects/slides/001.svg`);

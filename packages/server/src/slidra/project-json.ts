@@ -22,18 +22,18 @@ export interface ProjectJson {
 
 /**
  * The newest `formatVersion` this build understands (mirrors
- * `packages/core`'s `presentation.ts` / `crates/slidra/src/presentation.rs`
- * `FORMAT_VERSION` constant, both currently `4`). A freshly `new`+`open`ed
- * presentation is written at exactly this version, but an older `.slidra`
- * `open` has already validated is legitimately at a lower version forever
- * — `migrateLegacyTransition` only migrates 2→3, and real decks (including
- * several `e2e/fixtures/*` demo decks, found running the e2e suite) sit at
- * 3 or even 1 with no further migration ever applied. Only a version
- * *higher* than this build knows about is a real problem (a newer Slidra
- * wrote it) — reject `>`, never `!==` (an earlier version of this check
- * wrongly required exact equality, which broke on every such fixture).
+ * `crates/slidra/src/presentation.rs`'s `FORMAT_VERSION` constant, both
+ * currently `5` — the SQLite container format,
+ * `spec/rfcs/0001-sqlite-container-format.md`). `slidra open` migrates a
+ * deck to this exact version unconditionally now, so every presentation id
+ * this server ever sees is already at `5` by the time it gets here — this
+ * check exists for the same reason it always did: only a version *higher*
+ * than this build knows about is a real problem (a newer Slidra wrote it)
+ * — reject `>`, never `!==` (an earlier version of this check wrongly
+ * required exact equality, which broke on every legacy-version fixture
+ * before migration was mandatory).
  */
-const CURRENT_FORMAT_VERSION = 4;
+const CURRENT_FORMAT_VERSION = 5;
 
 /**
  * Minimal structural validation of an already-JSON-parsed `project.json`.

@@ -13,6 +13,7 @@ import type { RunningServer } from "../src/serve.js";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
+import { deckPathFor } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
@@ -193,11 +194,12 @@ describe("GET /api/raw/<virtual path>", () => {
     async () => {
       const id = await openPresentationWithAssets();
       const server = await serve(id);
-      // Real filesystem path of the unpacked asset, per workspace.ts's
-      // workDirFor(home, id) = path.join(home, "work", id). Only used to
-      // break the read (chmod) — never asserted against the response.
-      const realAssetPath = path.join(slidraHome, "work", id, "assets", "photo.png");
-      await chmod(realAssetPath, 0o000);
+      // The deck is a single SQLite file now — there is no longer a
+      // per-asset real path to break individually, so this breaks every
+      // read from the deck at once (chmod the file itself) — never
+      // asserted against the response.
+      const deckPath = await deckPathFor(id);
+      await chmod(deckPath, 0o000);
 
       try {
         const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
@@ -209,45 +211,23 @@ describe("GET /api/raw/<virtual path>", () => {
         // "the file is missing".
         expect(body.error).not.toBe("file not found: assets/photo.png");
         // The real filesystem path must never leak into the response.
-        expect(body.error).not.toContain(realAssetPath);
+        expect(body.error).not.toContain(deckPath);
         expect(body.error).not.toContain(slidraHome);
       } finally {
-        await chmod(realAssetPath, 0o644);
+        await chmod(deckPath, 0o644);
       }
     },
   );
 
-  it.skipIf(isRunningAsRoot)(
-    "returns 500, not 404, when a directory earlier in the lookup path is unreadable",
-    async () => {
-      const id = await openPresentationWithAssets();
-      const server = await serve(id);
-      // Real filesystem path of the unpacked "assets" directory itself
-      // (not a file inside it). Every virtual-path lookup enumerates this
-      // directory while building the tree (buildVirtualTree -> populate,
-      // packages/core/src/virtual-fs.ts), before ever reaching a file's
-      // own read — so an unreadable directory must be a 500 too, not just
-      // an unreadable file.
-      const realAssetsDir = path.join(slidraHome, "work", id, "assets");
-      await chmod(realAssetsDir, 0o000);
-
-      try {
-        const response = await fetch(`${server.url}/api/raw/assets/photo.png`);
-        const body = await response.json();
-
-        expect(response.status).toBe(500);
-        expect(body.error).toBeTruthy();
-        // A real I/O failure must never be told back to the browser as
-        // "the file is missing".
-        expect(body.error).not.toBe("file not found: assets/photo.png");
-        // The real filesystem path must never leak into the response.
-        expect(body.error).not.toContain(realAssetsDir);
-        expect(body.error).not.toContain(slidraHome);
-      } finally {
-        await chmod(realAssetsDir, 0o755);
-      }
-    },
-  );
+  // "returns 500, not 404, when a directory earlier in the lookup path is
+  // unreadable" (pre-SQLite) is deleted, not adapted: its own scenario — an
+  // intermediate real directory in a virtual-path lookup, distinct from the
+  // leaf file itself — no longer exists once the deck is a single SQLite
+  // file (`spec/rfcs/0001-sqlite-container-format.md`). The contract it
+  // guarded ("a permission failure is 500, never a disguised 404") is the
+  // same contract "returns 500 with an explicit body, not a 404, when the
+  // file exists but the underlying read fails" (above) already covers,
+  // now via the same single-file permission break.
 
   it("returns 500, not 404, when the presentation registry itself is corrupt", async () => {
     const id = await openPresentationWithAssets();

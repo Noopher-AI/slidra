@@ -3,15 +3,15 @@
 
 import { watch as fsWatch } from "node:fs";
 import { SlidraError } from "./slidra/errors.js";
-import { workDirFor } from "./slidra/home.js";
+import { deckPathFor } from "./slidra/home.js";
 
 /**
- * Watches one presentation's work directory for filesystem changes and
+ * Watches one presentation's deck file for filesystem changes and
  * calls `onChange` (debounced, coalesced) whenever something changes.
- * Ported verbatim from `packages/core`'s `watch.ts` ([E4.T9]/F7 — the
- * server no longer imports `packages/core` at all); the only change is
- * `resolveWorkDir` -> `workDirFor` (`slidra/home.ts`), which resolves
- * the same `projects.json` registry file.
+ * Ported originally from `packages/core`'s `watch.ts`, and updated for
+ * `spec/rfcs/0001-sqlite-container-format.md`: the deck is a single file
+ * now, not a directory, so this watches `deckPathFor(id)` itself
+ * (non-recursive) rather than `fs.watch(workDir, { recursive: true })`.
  *
  * `onChange` deliberately carries no payload — not which file, not what
  * changed. `openEventStream` (packages/server/src/sse.ts) implements no
@@ -25,21 +25,23 @@ export interface PresentationWatcher {
 }
 
 /**
- * The CLI's per-presentation file lock (`.slidra.lock`, #303) lives
- * inside the watched work directory and is created and removed around
- * every command — reads included. It is coordination, never content, so a
- * change to it must not reach `onChange`: `serve` answers a live-reload
- * notification by re-reading the presentation *through the CLI*, which
- * takes the lock again, which notifies again — a loop that never settles.
- * Its visible symptom is the editor reloading constantly, which drops the
- * author's selection the instant they click an element.
+ * SQLite's `journal_mode=DELETE` (`crates/slidra/src/deck.rs`) creates a
+ * `<deckname>-journal` sibling for the duration of one write transaction
+ * and unlinks it the moment that transaction commits. It is coordination,
+ * never content, so a change to it must not reach `onChange`: `serve`
+ * answers a live-reload notification by re-reading the presentation
+ * *through the CLI*, which opens (and briefly journals) the same deck
+ * again, which would notify again — a loop that never settles. Its visible
+ * symptom is the editor reloading constantly, which drops the author's
+ * selection the instant they click an element. The CLI's own
+ * per-deck advisory lock (`workspace::lock`) no longer lives beside the
+ * deck at all (`<SLIDRA_HOME>/locks/`), so it is never in this watcher's
+ * path to begin with.
  */
-const LOCK_FILE_NAME = ".slidra.lock";
-
 function isCoordinationFile(filename: string | Buffer | null): boolean {
   if (filename === null) return false;
   const name = typeof filename === "string" ? filename : filename.toString("utf-8");
-  return name === LOCK_FILE_NAME || name.endsWith(`/${LOCK_FILE_NAME}`);
+  return name.endsWith("-journal");
 }
 
 // Trailing debounce window: a single logical edit (e.g. `text set`) can
@@ -63,7 +65,7 @@ export async function watchPresentation(
   onChange: () => void,
   onError: (error: Error) => void,
 ): Promise<PresentationWatcher> {
-  const workDir = await workDirFor(id);
+  const deckPath = await deckPathFor(id);
 
   let closed = false;
   let debounceTimer: NodeJS.Timeout | null = null;
@@ -85,7 +87,7 @@ export async function watchPresentation(
 
   let watcher: ReturnType<typeof fsWatch>;
   try {
-    watcher = fsWatch(workDir, { recursive: true }, (_event, filename) => {
+    watcher = fsWatch(deckPath, (_event, filename) => {
       if (isCoordinationFile(filename)) return;
       scheduleNotify();
     });
@@ -93,7 +95,7 @@ export async function watchPresentation(
     // `fs.watch` throws synchronously (not just via its `error` event) when
     // the target has vanished or become unreadable between id resolution
     // above and this call. That raw error's message very likely embeds the
-    // real work directory path (ADR-0004), exactly like the asynchronous
+    // real deck path (ADR-0004), exactly like the asynchronous
     // `error` event handled below, so it gets the same sanitised treatment.
     throw new SlidraError("Error watching presentation files");
   }
