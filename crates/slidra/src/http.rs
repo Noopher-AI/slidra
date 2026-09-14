@@ -30,16 +30,16 @@ pub fn download_source(url: &str) -> SlidraResult<Vec<u8>> {
     match ureq::get(url).call() {
         Ok(response) => {
             let mut bytes = Vec::new();
-            response
-                .into_reader()
+            let (_, body) = response.into_parts();
+            body.into_reader()
                 .read_to_end(&mut bytes)
                 .map_err(|_| SlidraError::invalid(format!("failed to download source: {url}")))?;
             Ok(bytes)
         }
-        Err(ureq::Error::Status(status, _response)) => Err(SlidraError::invalid(format!(
+        Err(ureq::Error::StatusCode(status)) => Err(SlidraError::invalid(format!(
             "failed to download source, server responded {status}: {url}"
         ))),
-        Err(ureq::Error::Transport(_)) => Err(SlidraError::invalid(format!(
+        Err(_) => Err(SlidraError::invalid(format!(
             "failed to download source: {url}"
         ))),
     }
