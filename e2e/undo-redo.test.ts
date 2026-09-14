@@ -231,9 +231,9 @@ it("frozen state: Undo/Redo buttons are disabled while the agent holds the lock,
     await page.frameLocator("iframe.slide-frame").locator("svg text").first().waitFor({ timeout: 30_000 });
     await waitForAgentConnected(page);
 
-    await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+    await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
     await page.locator(".chat-input textarea").fill("change the title");
-    await page.locator(".chat-input button").click();
+    await page.getByRole("button", { name: "Send" }).click();
 
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
     expect(await page.locator('.titlebar-icon-button[aria-label="Undo"]').isDisabled()).toBe(true);

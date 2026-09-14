@@ -110,7 +110,7 @@ class EditingFakeAgent {
 
     const titles = authorText.includes("two steps") ? [newTitle, `${newTitle} (step 2)`] : [newTitle];
     for (const title of titles) {
-      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
+      const command = ["slidra", "text", "set", presentationId, SLIDE_PATH, elementId, title].map(shellQuote).join(" ");
       const permission = await this.connection.requestPermission({
         sessionId: params.sessionId,
         toolCall: { toolCallId: "e2e-text-set", title: "Edit title text", rawInput: { command } },
@@ -151,6 +151,10 @@ function extractTextElementId(svg) {
   const match = /<text[^>]*\bid="([^"]+)"/.exec(svg);
   if (!match) throw new Error("could not find a <text> element with an id in the slide");
   return match[1];
+}
+
+function shellQuote(value) {
+  return String.fromCharCode(39) + value.replace(/\x27/g, String.fromCharCode(39) + "\"" + String.fromCharCode(39) + "\"" + String.fromCharCode(39)) + String.fromCharCode(39);
 }
 
 function runShellCommand(command, cwd) {

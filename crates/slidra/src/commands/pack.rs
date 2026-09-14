@@ -44,7 +44,8 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
         })
         .unwrap_or(false);
     if is_same_as_source {
-        let saved_at = workspace::registry::max_mtime_in_directory(&entry.work_dir)?;
+        let saved_at = workspace::registry::max_mtime_in_directory(&entry.work_dir)?
+            + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
         // Re-read inside the lock rather than reusing the map read above:
         // packing runs between the two, and anything another process
         // registered meanwhile must survive this write.
