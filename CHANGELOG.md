@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `commands-reference.test.ts` to match command names with word boundaries, so the short `ls` command no longer false-positives on English words like "list".
 - Upgraded Vitest and Vite and overrode transitive minimatch to resolve critical and high-severity security advisories.
 - Migrated the test projects to Vitest 5 and cleared the remaining moderate npm audit findings.
+- Updated React, React DOM, and their TypeScript definitions together to 19.3.0.
 
 ## [0.1.0] - 2026-09-XX
 
