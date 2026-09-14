@@ -3116,6 +3116,55 @@ fn no_join_work_call_anywhere_in_production_code() {
     );
 }
 
+/// A `projects.json` written by a pre-SQLite release carries `workDir`
+/// entries, never `deckPath`. Such an entry's own id is dead either way —
+/// `<SLIDRA_HOME>/work/<id>/` is gone — but it must not take the rest of
+/// the CLI down with it: `open`ing an unrelated, brand-new deck has
+/// nothing to do with that stale entry, and today it fails with
+/// "presentation registry data is corrupted: <id>", leaving every command
+/// (CLI and `packages/server` alike, `home.ts`'s `isRegistryEntry` rejects
+/// the same shape) unusable after an upgrade until the author finds and
+/// deletes an undocumented file. A legacy-shaped entry must be told apart
+/// from a genuinely malformed one (which stays an explicit error, per
+/// `registry_entry_missing_work_dir_is_corrupted_error`) and must not
+/// abort the whole registry read.
+///
+/// Added by Review (NOOP-439) as the reproduction of that defect.
+#[test]
+fn a_legacy_work_dir_registry_entry_does_not_break_an_unrelated_open() {
+    let fixture = Fixture::new("legacy-registry-entry");
+    let stale_work_dir = fixture.home.join("work").join("staleid123");
+    fs::write(
+        fixture.home.join("projects.json"),
+        format!(
+            r#"{{"staleid123":{{"workDir":{},"sourcePath":{},"savedAt":1.0}}}}"#,
+            serde_json::to_string(&stale_work_dir.to_string_lossy().into_owned()).unwrap(),
+            serde_json::to_string(
+                &fixture
+                    .workspace
+                    .join("old.slidra")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+            .unwrap(),
+        ),
+    )
+    .unwrap();
+
+    let slidra_path = fixture.workspace.join("fresh.slidra");
+    let new_out = fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "fresh"]);
+    assert!(
+        new_out.status.success(),
+        "`new` must not be blocked by a pre-upgrade registry entry: {new_out:?}"
+    );
+    let open_out = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    assert!(
+        open_out.status.success(),
+        "`open` of an unrelated deck must not be blocked by a pre-upgrade registry entry: {}",
+        String::from_utf8_lossy(&open_out.stderr)
+    );
+}
+
 /// AC4: once the process that touched a deck exits, the deck's directory
 /// holds exactly one file — no `-journal`, no lock file left behind
 /// alongside it (`journal_mode=DELETE` cleans up on commit;
