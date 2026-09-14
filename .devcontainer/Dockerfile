@@ -81,6 +81,17 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && dpkg -l | grep -q '^ii  gcc '
 
+# The agent sandbox (packages/server/src/sandbox/) shells out to `srt`,
+# which on Linux enforces the write sandbox via bubblewrap and needs socat
+# to mediate the loopback network path; both are unconditional dependencies
+# of its Linux code path (it throws at startup if either is missing), so
+# they belong in the image rather than an npm dependency.
+RUN apt-get update \
+    && apt-get install -y bubblewrap socat \
+    && rm -rf /var/lib/apt/lists/* \
+    && dpkg -l | grep -q '^ii  bubblewrap' \
+    && dpkg -l | grep -q '^ii  socat'
+
 USER dev
 ENV HOME=/home/dev
 
