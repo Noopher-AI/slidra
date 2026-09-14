@@ -340,6 +340,30 @@ it("master mode: entering shows the deck's templates on the rail and stage, its 
   }
 });
 
+it("master mode: leaving restores the slide the author was actually on, not one clamped to the template count (AC1)", async () => {
+  const { server, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+
+    // This deck has four slides and two templates. Entering master mode
+    // from a slide index the template list cannot hold (3 > 2 - 1) is the
+    // case the AC1 test above cannot see: it enters from index 0, where a
+    // clamp against the wrong list is indistinguishable from a correct
+    // restore.
+    await page.locator('.overview-item[data-index="3"] button.overview-thumb').click();
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("3");
+
+    await page.getByRole("button", { name: "Edit template" }).click();
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(2);
+
+    await page.getByRole("button", { name: "Back to slides" }).click();
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(4);
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("3");
+  } finally {
+    await cleanup();
+  }
+});
+
 it("master mode: editing a template with an ordinary command changes only the template, no slide (AC2)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
