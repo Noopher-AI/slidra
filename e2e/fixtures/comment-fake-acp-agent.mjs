@@ -124,12 +124,14 @@ class CommentFakeAgent {
     }
 
     if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("[plan-from-outline]")) {
-      // Contract §1 shapes, kept minimal. Single-quoted for the CLI's argv
-      // rules (no `'` inside; JSON's double quotes are fine).
+      // Contract §1 shapes, kept minimal. Every interpolated argument goes
+      // through `shellQuote`: these bodies carry apostrophes, backticks and
+      // newlines, and naive `'...'` interpolation lets the first apostrophe
+      // end the quoting and hands the rest of the plan to `sh` as code.
       const outlineFile = "```json\n" + JSON.stringify({
         status: "draft",
         mode: "pyramid",
-        pages: [{ n: 1, type: "cover", rhythm: "anchor", title: "e2e plan cover" }],
+        pages: [{ n: 1, relationship: "membership", type: "cover", rhythm: "anchor", title: "e2e plan cover" }],
         questions: [{
           id: "mode",
           question: "Narrative skeleton",
@@ -144,8 +146,8 @@ class CommentFakeAgent {
         palette: { background: "#FFFFFF", secondary_bg: "#F3F4F6", primary: "#1F3A93", accent: "#E4572E", secondary_accent: "#2A9D8F", text: "#1F1A1A", muted: "#6B7280" },
         type_scale: { cover: 64, section: 56, number: 140, claim: 48, title: 40, subtitle: 28, body: 24, column: 22, caption: 18 },
       }) + "\n```\n";
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "Write plan", `slidra plan set ${presentationId} outline '${outlineFile}'`, this.sessionCwd, 0);
-      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "Write design spec", `slidra plan set ${presentationId} design-spec '${specFile}'`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-outline", "Write plan", `slidra plan set ${presentationId} outline ${shellQuote(outlineFile)}`, this.sessionCwd, 0);
+      await requestAndRun(this.connection, sessionId, "e2e-plan-set-spec", "Write design spec", `slidra plan set ${presentationId} design-spec ${shellQuote(specFile)}`, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "plan is ready" } },
@@ -203,7 +205,7 @@ class CommentFakeAgent {
     }
 
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("write a comment")) {
-      const command = `slidra comment add ${presentationId} ${SLIDE_PATH} page '${agentComment}'`;
+      const command = `slidra comment add ${presentationId} ${SLIDE_PATH} page ${shellQuote(agentComment)}`;
       await requestAndRun(this.connection, sessionId, "e2e-comment-add", "Add comment", command, this.sessionCwd, 0);
       await this.connection.sessionUpdate({
         sessionId,
@@ -215,7 +217,7 @@ class CommentFakeAgent {
     if (index === AUTHOR_PROMPT_INDEX && authorText.includes("hold the lock")) {
       const slide = await this.connection.readTextFile({ sessionId, path: SLIDE_PATH, line: null, limit: null });
       const elementId = extractTextElementId(slide.content);
-      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} 'text changed by the lock-holding test'`;
+      const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} ${shellQuote("text changed by the lock-holding test")}`;
       const ran = await requestAndRun(this.connection, sessionId, "e2e-text-set", "Edit title text", command, this.sessionCwd, freezeHoldMs);
       if (!ran) return { stopReason: "cancelled" };
       await this.connection.sessionUpdate({
@@ -303,6 +305,17 @@ function extractTextElementId(svg) {
   const match = /<text[^>]*\bid="([^"]+)"/.exec(svg);
   if (!match) throw new Error("could not find a <text> element with an id in the slide");
   return match[1];
+}
+
+/**
+ * POSIX single-quoting for one `sh -c` argument: wrap in `'...'` and write
+ * every embedded `'` as `'"'"'`. Mirrors the same helper in
+ * `editing-fake-acp-agent.mjs` — a fixture that builds shell commands by
+ * interpolation needs it, because plan bodies and comment text are ordinary
+ * English prose full of apostrophes.
+ */
+function shellQuote(value) {
+  return String.fromCharCode(39) + String(value).replace(/\x27/g, String.fromCharCode(39) + "\"" + String.fromCharCode(39) + "\"" + String.fromCharCode(39)) + String.fromCharCode(39);
 }
 
 function runShellCommand(command, cwd) {

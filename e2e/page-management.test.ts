@@ -243,7 +243,7 @@ it("New panel: Blank and the template list are both usable, applying either inse
     const before = await readProject(registry, presentationId);
     expect(before.slides).toEqual(["slides/001.svg", "slides/002.svg", "slides/003.svg", "slides/004.svg"]);
 
-    await page.getByRole("button", { name: "New" }).click();
+    await page.locator(".rail-actions").getByRole("button", { name: "New" }).click();
     const menu = page.locator('[role="menu"][data-menu="new"]');
     await expect.poll(() => menu.getByRole("menuitem", { name: "From outline…" }).isVisible()).toBe(true);
     await expect.poll(() => menu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
@@ -260,7 +260,7 @@ it("New panel: Blank and the template list are both usable, applying either inse
     expect(before.slides).not.toContain(blankSlidePath);
 
     // Applying a template: same insertion semantics, content copied byte-for-byte except ids.
-    await page.getByRole("button", { name: "New" }).click();
+    await page.locator(".rail-actions").getByRole("button", { name: "New" }).click();
     await menu.getByRole("menuitem", { name: "Title" }).click();
     await expect.poll(async () => (await readProject(registry, presentationId)).slides.length, { timeout: 10_000 }).toBe(
       6,
@@ -395,7 +395,10 @@ it("root-cause regression guard: entering play mode after slide notes set shows 
     await page.locator(".play-button").click();
     await page.waitForTimeout(500);
 
-    expect(await page.locator('[role="alert"]').count()).toBe(0);
+    // Next.js keeps its own always-present, empty route announcer at
+    // `#__next-route-announcer__` with `role="alert"` — it is a live region,
+    // never an error. What this guard is about is the app's own alerts.
+    expect(await page.locator('[role="alert"]:not(#__next-route-announcer__)').count()).toBe(0);
     expect(await page.content()).not.toContain("Failed to load effect list");
 
     const playFrame = page.frameLocator("iframe.slide-frame");
@@ -540,7 +543,7 @@ it("thumbnail context menu \"Save as template\": saving makes the template appea
     await expect.poll(() => templatesMenu.getByRole("menuitem", { name: "My Template" }).isVisible()).toBe(true);
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: "New" }).click();
+    await page.locator(".rail-actions").getByRole("button", { name: "New" }).click();
     const newMenu = page.locator('[role="menu"][data-menu="new"]');
     await expect.poll(() => newMenu.getByRole("menuitem", { name: "My Template" }).isVisible()).toBe(true);
     await newMenu.getByRole("menuitem", { name: "My Template" }).click();
@@ -613,7 +616,7 @@ it("GUI and CLI are byte-for-byte equivalent (every operation has a matching CLI
     let guiContent: string;
     try {
       const page = await openApp(gui.server);
-      await page.getByRole("button", { name: "New" }).click();
+      await page.locator(".rail-actions").getByRole("button", { name: "New" }).click();
       const menu = page.locator('[role="menu"][data-menu="new"]');
       await expect.poll(() => menu.getByRole("menuitem", { name: "Blank" }).isVisible()).toBe(true);
       await menu.getByRole("menuitem", { name: "Blank" }).click();

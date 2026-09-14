@@ -665,14 +665,14 @@ fn repo_root() -> PathBuf {
         .expect("repo root must exist")
 }
 
-/// Every directory under `demo/`, `e2e/fixtures/*/`, `qa/fixtures/skills/*/`
+/// Every directory under `docs/demo/`, `e2e/fixtures/*/`, `qa/fixtures/skills/*/`
 /// that has its own `project.json` — 27 as of this ticket (§5 A2's own
 /// count, re-derived here rather than hard-coded so a fixture added later
 /// is picked up automatically).
 fn fixture_directories() -> Vec<PathBuf> {
     let root = repo_root();
     let mut dirs = Vec::new();
-    for top in ["demo", "e2e/fixtures", "qa/fixtures/skills"] {
+    for top in ["docs/demo", "e2e/fixtures", "qa/fixtures/skills"] {
         let top_path = root.join(top);
         if top_path.join("project.json").is_file() {
             dirs.push(top_path.clone());
@@ -728,7 +728,7 @@ fn every_repo_fixture_is_formatversion_1_and_pack_open_round_trips() {
     assert_eq!(
         dirs.len(),
         27,
-        "expected exactly 27 project.json fixtures under demo/e2e/fixtures/qa/fixtures/skills, found {}",
+        "expected exactly 27 project.json fixtures under docs/demo, e2e/fixtures, qa/fixtures/skills, found {}",
         dirs.len()
     );
 

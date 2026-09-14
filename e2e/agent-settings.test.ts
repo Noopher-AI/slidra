@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
-import type { AgentKind } from "../packages/server/src/agent/adapters.js";
+import { AGENT_KINDS, type AgentKind } from "../packages/server/src/agent/adapters.js";
 import type { CommandOutcome, CommandRunner } from "../packages/server/src/agent/probe.js";
 import { openApp, requireBuilt, startServerFor, type StartedServer } from "./helpers/launch.js";
 
@@ -109,10 +109,17 @@ it("agent menu shows active/not-logged-in/probing based on probe results, with a
   let probeCount = 0;
   const runner: CommandRunner = async (command) => {
     probeCount++;
-    if (probeCount > 2) await new Promise((resolve) => setTimeout(resolve, PROBE_DELAY_MS));
+    // One probe per agent kind makes up the initial mount round; only what
+    // comes after it is a re-probe, and only those are delayed.
+    if (probeCount > AGENT_KINDS.length) await new Promise((resolve) => setTimeout(resolve, PROBE_DELAY_MS));
     if (command === "claude") return outcome({ stdout: '{"loggedIn":true}' });
     if (command === "codex") return outcome({ code: 1, stdout: "Not logged in" });
-    throw new Error(`unexpected probe command: ${command}`);
+    // Every other kind (today: `pi`, probed by running a script through
+    // this very Node binary rather than a bare command name) answers
+    // logged-out. This test asserts on the claude/codex rows only, but the
+    // runner still has to answer for all of them — a throw here fails the
+    // whole probe round and leaves the chip disabled with no cards.
+    return outcome({ code: 1 });
   };
 
   activeServer = await startServerFor({
@@ -150,7 +157,7 @@ it("menu status updates with probe results after clicking re-probe", async () =>
   const runner: CommandRunner = async (command) => {
     if (command === "claude") return outcome({ stdout: '{"loggedIn":true}' });
     if (command === "codex") return codexLoggedIn ? outcome() : outcome({ code: 1, stdout: "Not logged in" });
-    throw new Error(`unexpected probe command: ${command}`);
+    return outcome({ code: 1 }); // every other kind: logged out (see the runner above)
   };
 
   activeServer = await startServerFor({
