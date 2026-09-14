@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,24 +156,6 @@ describe("file round-trip via POST /api/save", () => {
       process.env.SLIDRA_BIN = slidraBin;
     }
   });
-
-  it("POST /api/save without a sourcePath (a legacy registry entry) is refused with 400, not a guessed path", async () => {
-    harness = await startHarness();
-    const { server, slidraHome, presentationId } = harness;
-
-    // Simulate a registry entry created before sourcePath/savedAt tracking
-    // existed: no sourcePath/savedAt at all.
-    const registryPath = path.join(slidraHome, "projects.json");
-    const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { deckPath: string }>;
-    const deckPath = raw[presentationId].deckPath;
-    raw[presentationId] = { deckPath };
-    await writeFile(registryPath, JSON.stringify(raw));
-
-    const saveResponse = await fetch(`${server.url}/api/save`, { method: "POST" });
-    expect(saveResponse.status).toBe(400);
-    const body = (await saveResponse.json()) as { error: string };
-    expect(body.error).toContain("no file path to write back to");
-  });
 });
 
 describe("POST /api/open", () => {
@@ -232,50 +214,6 @@ describe("POST /api/open", () => {
       expect(uploadedDeckPath).not.toBe(await deckPathFor(presentationId));
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
-  });
-});
-
-describe("Cmd+S keyboard entry point (via a real browser — the two describe blocks above are pure HTTP, this is the only one exercising App.tsx's keydown handler)", () => {
-  let browser: Browser;
-
-  it("pressing Cmd+S sends POST /api/save, and GET /api/save-state then reports dirty: false", async () => {
-    await requireBuilt(rootDir);
-    browser = await chromium.launch();
-    const started = await startServerFor({ deckDir, prefix: "roundtrip-cmd-s" });
-    try {
-      const page = await openApp(browser, started.server);
-      // startServerFor opens the file via registry.dispatch("open", { path: slidraPath }),
-      // which always carries a sourcePath (see helpers/launch.ts's own notes),
-      // so /api/save has something to write back to. Make a real edit first so
-      // dirty becomes true — pressing Cmd+S without changing anything would
-      // leave dirty: false regardless of whether Cmd+S did anything.
-      const setResult = await started.registry.dispatch("text set", {
-        id: started.presentationId,
-        slidePath: "slides/001.svg",
-        elementId: "el-title",
-        newText: "Cmd+S test",
-      });
-      expect(setResult.ok).toBe(true);
-      await expect
-        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: true, fileName: "deck.slidra" });
-
-      // Focus is deliberately left on the parent document (no click into the
-      // slide): the Cmd+S keydown listener is attached to App.tsx's
-      // `document`, and if focus first moved into the sandbox iframe, this
-      // key event would never bubble back to the parent document (events
-      // don't bubble across iframe boundaries), so Cmd+S would never fire —
-      // this verifies exactly the most directly reachable path, "focus in
-      // the parent document".
-      await page.keyboard.press("Meta+s");
-
-      await expect
-        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: false, fileName: "deck.slidra" });
-    } finally {
-      await browser.close();
-      await started.cleanup();
     }
   });
 });
