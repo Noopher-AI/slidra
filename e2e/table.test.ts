@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { deckPathFor } from "../packages/server/src/slidra/home.js";
+import { readDeckFileText } from "./helpers/deck.js";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
@@ -107,7 +110,7 @@ function cellMarkup(svg: string, row: number, col: number): string {
   return match[0];
 }
 
-it("B1: opening workdir's slides/001.svg directly via file:// produces no parsererror, and the rect count matches the actual cell count", async () => {
+it("B1: the CLI-written slides/001.svg opened directly via file:// produces no parsererror, and the rect count matches the actual cell count", async () => {
   const { server, registry, presentationId, elementId, cleanup } = await newTableDeck("b1", { rows: 2, cols: 2 });
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
@@ -115,13 +118,24 @@ it("B1: opening workdir's slides/001.svg directly via file:// produces no parser
     const expectedCells = (svgContent.match(/data-slidra-cell="/g) ?? []).length;
     expect(expectedCells).toBeGreaterThan(0);
 
-    const workDir = path.join(process.env.SLIDRA_HOME!, "work", presentationId);
-    const page = await browser.newPage();
-    openPages.push(page);
-    await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);
+    // The deck's content lives inside a single SQLite file now — a browser
+    // cannot `file://` into a row of it directly, so this extracts the
+    // exact CLI-written bytes (never re-serialized) to a real temp file
+    // first, preserving the test's actual point: the CLI's own SVG output
+    // is well-formed standalone XML, independent of the app's rendering.
+    const svgOnDisk = await mkdtemp(path.join(tmpdir(), "slidra-table-b1-"));
+    try {
+      const svgPath = path.join(svgOnDisk, "001.svg");
+      await writeFile(svgPath, await readDeckFileText(await deckPathFor(presentationId), SLIDE_PATH), "utf-8");
+      const page = await browser.newPage();
+      openPages.push(page);
+      await page.goto(`file://${svgPath}`);
 
-    expect(await page.locator("parsererror").count()).toBe(0);
-    expect(await page.locator("[data-slidra-type=table] rect").count()).toBe(expectedCells);
+      expect(await page.locator("parsererror").count()).toBe(0);
+      expect(await page.locator("[data-slidra-type=table] rect").count()).toBe(expectedCells);
+    } finally {
+      await rm(svgOnDisk, { recursive: true, force: true });
+    }
   } finally {
     await cleanup();
   }
@@ -132,10 +146,12 @@ it("B2: template row cells are display:none, generated cells are not", async () 
   try {
     await bindToSalesCsv(registry, presentationId, elementId, 1);
 
-    const workDir = path.join(process.env.SLIDRA_HOME!, "work", presentationId);
+    const svgOnDisk2 = await mkdtemp(path.join(tmpdir(), "slidra-table-b2-"));
+    const svgPath2 = path.join(svgOnDisk2, "001.svg");
+    await writeFile(svgPath2, await readDeckFileText(await deckPathFor(presentationId), SLIDE_PATH), "utf-8");
     const page = await browser.newPage();
     openPages.push(page);
-    await page.goto(`file://${path.join(workDir, SLIDE_PATH)}`);
+    await page.goto(`file://${svgPath2}`);
 
     const templateDisplay = await page.locator('[data-slidra-repeat="row"]').first().evaluate((el) => getComputedStyle(el).display);
     expect(templateDisplay).toBe("none");
@@ -144,6 +160,7 @@ it("B2: template row cells are display:none, generated cells are not", async () 
     expect(generatedCount).toBe(6);
     const generatedDisplays = await page.locator('[data-slidra-generated="1"]').evaluateAll((els) => els.map((el) => getComputedStyle(el).display));
     for (const display of generatedDisplays) expect(display).not.toBe("none");
+    await rm(svgOnDisk2, { recursive: true, force: true });
   } finally {
     await cleanup();
   }
