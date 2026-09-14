@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Added private vulnerability-reporting guidance and automated dependency update configuration.
 - Consolidated the deck format into the authoritative `docs/spec/slidra-format.md`, and moved the separate local-runtime contract to `docs/spec/workspace.md`. Updated the CLI references so `SLIDRA_HOME`, history, and `savedAt` point at the workspace contract.
 - Moved `quick_start.sh` to `scripts/quick_start.sh` (`npm run verify:setup` updated; docs and QA docs updated to match).
 - Moved the Visual QA protocol and report into `qa/`, and moved agent-skill acceptance fixtures from the root `fixtures/` directory to `qa/fixtures/skills/`.
