@@ -378,12 +378,14 @@ describe("slidra/reads.ts: read decoding", () => {
  */
 describe("slidra/save-state.ts: readSaveState's whole-millisecond comparison", () => {
   let home: string;
-  let workDir: string;
+  let deckDir: string;
+  let deckPath: string;
   let previousHome: string | undefined;
 
   beforeEach(async () => {
     home = await mkdtemp(path.join(tmpdir(), "slidra-slidra-test-home-"));
-    workDir = await mkdtemp(path.join(tmpdir(), "slidra-slidra-test-workdir-"));
+    deckDir = await mkdtemp(path.join(tmpdir(), "slidra-slidra-test-deck-"));
+    deckPath = path.join(deckDir, "deck.slidra");
     previousHome = process.env.SLIDRA_HOME;
     process.env.SLIDRA_HOME = home;
   });
@@ -392,25 +394,23 @@ describe("slidra/save-state.ts: readSaveState's whole-millisecond comparison", (
     if (previousHome === undefined) delete process.env.SLIDRA_HOME;
     else process.env.SLIDRA_HOME = previousHome;
     await rm(home, { recursive: true, force: true });
-    await rm(workDir, { recursive: true, force: true });
+    await rm(deckDir, { recursive: true, force: true });
   });
 
   async function writeRegistry(savedAt: number): Promise<void> {
     await writeFile(
       path.join(home, "projects.json"),
-      `${JSON.stringify({ P1: { workDir, sourcePath: "/x/deck.slidra", savedAt } }, null, 2)}\n`,
+      `${JSON.stringify({ P1: { deckPath, sourcePath: "/x/deck.slidra", savedAt } }, null, 2)}\n`,
     );
   }
 
-  it("dirty is false when maxMtime and savedAt fall in the same integer millisecond", async () => {
-    const file = path.join(workDir, "slide.svg");
-    await writeFile(file, "x");
+  it("dirty is false when the deck's mtime and savedAt fall in the same integer millisecond", async () => {
+    await writeFile(deckPath, "x");
     // Seconds, not ms — fs.utimes takes seconds. 1_700_000_000.0005s ->
     // mtimeMs whose whole-millisecond part is 1_700_000_000_000, same as
     // the `savedAt` below, but with a nonzero fractional remainder.
     const t = 1_700_000_000.0005;
-    await utimes(file, t, t);
-    await utimes(workDir, t, t);
+    await utimes(deckPath, t, t);
     await writeRegistry(1_700_000_000_000);
 
     await expect(readSaveState("P1")).resolves.toEqual({
@@ -420,12 +420,10 @@ describe("slidra/save-state.ts: readSaveState's whole-millisecond comparison", (
     });
   });
 
-  it("dirty is true when maxMtime's whole millisecond is genuinely later than savedAt's", async () => {
-    const file = path.join(workDir, "slide.svg");
-    await writeFile(file, "x");
+  it("dirty is true when the deck's mtime's whole millisecond is genuinely later than savedAt's", async () => {
+    await writeFile(deckPath, "x");
     const t = 1_700_000_000.0005;
-    await utimes(file, t, t);
-    await utimes(workDir, t, t);
+    await utimes(deckPath, t, t);
     await writeRegistry(1_699_999_999_999);
 
     await expect(readSaveState("P1")).resolves.toEqual({

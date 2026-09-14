@@ -62,6 +62,7 @@ pub mod comment;
 pub mod convert;
 pub mod effect;
 pub mod element;
+pub mod extract;
 pub mod font;
 pub mod ls;
 pub mod new;
@@ -167,6 +168,7 @@ pub const TAKEOVER_TABLE: &[&str] = &[
     "effect move",
     "effect remove",
     "effect set",
+    "extract",
     "font",
     "ls",
     "new",
@@ -209,7 +211,7 @@ pub fn is_in_takeover_table(name: &str) -> bool {
     TAKEOVER_TABLE.contains(&name)
 }
 
-/// The 58 full registered command names this crate's scope covers —
+/// The 60 full registered command names this crate's scope covers —
 /// `argv[0]` alone for the single-level commands, `"<family> <sub...>"`
 /// for the rest: `undo`/`redo`, the five `effect` sub-commands, and the 26
 /// `chart`/`table`/`asset` commands.
@@ -217,6 +219,7 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "new",
     "open",
     "pack",
+    "extract",
     "ls",
     "cat",
     "convert",
@@ -367,6 +370,7 @@ mod tests {
                 "effect move",
                 "effect remove",
                 "effect set",
+                "extract",
                 "font",
                 "ls",
                 "new",
@@ -386,13 +390,14 @@ mod tests {
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
-        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 59);
+        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 60);
         assert_eq!(
             REGISTERED_COMMAND_NAMES,
             [
                 "new",
                 "open",
                 "pack",
+                "extract",
                 "ls",
                 "cat",
                 "convert",

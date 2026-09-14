@@ -76,45 +76,30 @@ pub fn resolve_presentation_fonts(id: &str) -> SlidraResult<HashMap<String, Box<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
-
-    fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "slidra-test-fonts-{label}-{}",
-            crate::id::random_hex_suffix()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn write_project_json(work_dir: &Path, contents: &str) {
-        std::fs::write(work_dir.join("project.json"), contents).unwrap();
-    }
+    use std::path::PathBuf;
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
-        fn new(label: &str, test_id: &str, work: PathBuf) -> Self {
+        fn new(label: &str, test_id: &str, files: &[(&str, &[u8])]) -> Self {
             let guard = workspace::registry::ENV_LOCK.lock().unwrap();
-            let home = temp_dir(&format!("{label}-home"));
-            let work_dir_json =
-                serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-            let id_json = serde_json::to_string(test_id).unwrap();
-            std::fs::write(
-                home.join("projects.json"),
-                format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#),
-            )
-            .unwrap();
+            let home = std::env::temp_dir().join(format!(
+                "slidra-test-fonts-{label}-home-{}",
+                crate::id::random_hex_suffix()
+            ));
+            std::fs::create_dir_all(&home).unwrap();
+            let deck = crate::deck::build_test_deck(label, files);
+            workspace::registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
         }
@@ -126,18 +111,20 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
     #[test]
     fn no_fonts_field_still_resolves_the_bundled_default() {
-        let work = temp_dir("no-fonts");
-        write_project_json(
-            &work,
-            r#"{"formatVersion":1,"name":"P","canvas":{"width":1,"height":1},"slides":[]}"#,
+        let fixture = Fixture::new(
+            "no-fonts",
+            "pid-no-fonts",
+            &[(
+                "project.json",
+                br#"{"formatVersion":5,"name":"P","canvas":{"width":1,"height":1},"slides":[]}"#,
+            )],
         );
-        let fixture = Fixture::new("no-fonts", "pid-no-fonts", work);
         let book = resolve_presentation_fonts("pid-no-fonts").unwrap();
         assert!(book.contains_key(DEFAULT_FONT_FAMILY));
         assert_eq!(book.len(), 1);
@@ -146,17 +133,18 @@ mod tests {
 
     #[test]
     fn declared_font_family_overwrites_the_bundled_default() {
-        let work = temp_dir("override-default");
-        std::fs::create_dir_all(work.join("assets/fonts")).unwrap();
-        std::fs::write(work.join("assets/fonts/custom.ttf"), DEFAULT_FONT_BYTES).unwrap();
-        write_project_json(
-            &work,
-            &format!(
-                r#"{{"formatVersion":1,"name":"P","canvas":{{"width":1,"height":1}},"slides":[],
-                "fonts":[{{"file":"assets/fonts/custom.ttf","family":"{DEFAULT_FONT_FAMILY}","license":"OFL","licenseFile":"assets/fonts/custom.ttf","source":"test"}}]}}"#
-            ),
+        let project_json = format!(
+            r#"{{"formatVersion":5,"name":"P","canvas":{{"width":1,"height":1}},"slides":[],
+            "fonts":[{{"file":"assets/fonts/custom.ttf","family":"{DEFAULT_FONT_FAMILY}","license":"OFL","licenseFile":"assets/fonts/custom.ttf","source":"test"}}]}}"#
         );
-        let fixture = Fixture::new("override-default", "pid-override", work);
+        let fixture = Fixture::new(
+            "override-default",
+            "pid-override",
+            &[
+                ("assets/fonts/custom.ttf", DEFAULT_FONT_BYTES),
+                ("project.json", project_json.as_bytes()),
+            ],
+        );
         let book = resolve_presentation_fonts("pid-override").unwrap();
         // Both the bundled default and the declared override key the SAME
         // family — exactly one entry, proving the second insert won rather
@@ -168,13 +156,15 @@ mod tests {
 
     #[test]
     fn missing_font_file_is_an_error_not_a_silent_skip() {
-        let work = temp_dir("missing-file");
-        write_project_json(
-            &work,
-            r#"{"formatVersion":1,"name":"P","canvas":{"width":1,"height":1},"slides":[],
-            "fonts":[{"file":"assets/fonts/nope.ttf","family":"Nope","license":"OFL","licenseFile":"assets/fonts/nope.ttf","source":"test"}]}"#,
+        let fixture = Fixture::new(
+            "missing-file",
+            "pid-missing-font",
+            &[(
+                "project.json",
+                br#"{"formatVersion":5,"name":"P","canvas":{"width":1,"height":1},"slides":[],
+                "fonts":[{"file":"assets/fonts/nope.ttf","family":"Nope","license":"OFL","licenseFile":"assets/fonts/nope.ttf","source":"test"}]}"#,
+            )],
         );
-        let fixture = Fixture::new("missing-file", "pid-missing-font", work);
         // `Box<dyn FontMetrics>` isn't `Debug` (plan section 3.1's trait has
         // no such bound), so `Result::unwrap_err` (which needs the Ok side
         // to be `Debug`) can't be used here — match instead.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
-import { workDirFor } from "../packages/server/src/slidra/home.js";
+import { listDeckFiles, readDeckFileBytes, readDeckFileText } from "./helpers/deck.js";
+import { deckPathFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
@@ -74,24 +75,6 @@ async function stopHarness(harness: Harness): Promise<void> {
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
-/** Recursively lists every regular file under `dir`, as paths relative to `dir` (posix-joined, sorted). */
-async function listFilesRecursive(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  async function walk(current: string): Promise<void> {
-    const entries = await readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        await walk(full);
-      } else if (entry.isFile()) {
-        out.push(path.relative(dir, full).split(path.sep).join("/"));
-      }
-    }
-  }
-  await walk(dir);
-  return out.sort();
-}
-
 let harness: Harness | undefined;
 let secondHome: string | undefined;
 
@@ -128,9 +111,9 @@ describe("file round-trip via POST /api/save", () => {
     const stateResponse = await fetch(`${server.url}/api/save-state`);
     await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: "a.slidra" });
 
-    // The work directory this server is still running against.
-    const firstWorkDir = await workDirFor(harness.presentationId);
-    const firstFiles = await listFilesRecursive(firstWorkDir);
+    // The deck file this server is still running against.
+    const firstDeckPath = await deckPathFor(harness.presentationId);
+    const firstFiles = await listDeckFiles(firstDeckPath);
 
     // Re-open the just-saved `a.slidra` into a completely separate
     // SLIDRA_HOME and compare every file byte-for-byte.
@@ -142,13 +125,13 @@ describe("file round-trip via POST /api/save", () => {
     try {
       const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: slidraPath });
       const secondId = secondOpened.data!.id;
-      const secondWorkDir = await workDirFor(secondId);
-      const secondFiles = await listFilesRecursive(secondWorkDir);
+      const secondDeckPath = await deckPathFor(secondId);
+      const secondFiles = await listDeckFiles(secondDeckPath);
       expect(secondFiles).toEqual(firstFiles);
 
       for (const relativePath of firstFiles) {
-        const firstBytes = await readFile(path.join(firstWorkDir, relativePath));
-        const secondBytes = await readFile(path.join(secondWorkDir, relativePath));
+        const firstBytes = await readDeckFileBytes(firstDeckPath, relativePath);
+        const secondBytes = await readDeckFileBytes(secondDeckPath, relativePath);
         if (relativePath === "project.json") {
           expect(JSON.parse(secondBytes.toString("utf-8"))).toEqual(JSON.parse(firstBytes.toString("utf-8")));
         } else {
@@ -156,7 +139,7 @@ describe("file round-trip via POST /api/save", () => {
         }
       }
 
-      const editedSlide = await readFile(path.join(secondWorkDir, "slides/001.svg"), "utf-8");
+      const editedSlide = await readDeckFileText(secondDeckPath, "slides/001.svg");
       expect(editedSlide).toContain("roundtrip edited");
     } finally {
       process.env.SLIDRA_HOME = previousHome;
@@ -172,9 +155,9 @@ describe("file round-trip via POST /api/save", () => {
     // Simulate a registry entry created before sourcePath/savedAt tracking
     // existed: no sourcePath/savedAt at all.
     const registryPath = path.join(slidraHome, "projects.json");
-    const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { workDir: string }>;
-    const workDir = raw[presentationId].workDir;
-    raw[presentationId] = { workDir };
+    const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { deckPath: string }>;
+    const deckPath = raw[presentationId].deckPath;
+    raw[presentationId] = { deckPath };
     await writeFile(registryPath, JSON.stringify(raw));
 
     const saveResponse = await fetch(`${server.url}/api/save`, { method: "POST" });
@@ -223,7 +206,7 @@ describe("POST /api/open", () => {
       expect(undoBody.error).toContain("no operation to undo");
 
       // The presentation id served did not change.
-      expect(await workDirFor(presentationId)).toBeTruthy();
+      expect(await deckPathFor(presentationId)).toBeTruthy();
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
@@ -277,7 +260,7 @@ describe("POST /api/open", () => {
   it("400s on a corrupt upload without touching the work directory's existing content", async () => {
     harness = await startHarness();
     const { server, presentationId } = harness;
-    const before = await readFile(path.join(await workDirFor(presentationId), "project.json"), "utf-8");
+    const before = await readDeckFileText(await deckPathFor(presentationId), "project.json");
 
     const response = await fetch(`${server.url}/api/open`, {
       method: "POST",
@@ -286,7 +269,7 @@ describe("POST /api/open", () => {
     });
     expect(response.status).toBe(400);
 
-    const after = await readFile(path.join(await workDirFor(presentationId), "project.json"), "utf-8");
+    const after = await readDeckFileText(await deckPathFor(presentationId), "project.json");
     expect(after).toBe(before);
   });
 

@@ -2,13 +2,12 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { SlidraError } from "./slidra/errors.js";
 import { runJsonCommand } from "./slidra/command.js";
 import {
-  maxMtimeInDirectory,
   readProjectsRegistry,
   resolveSlidraHome,
   withProjectsRegistryLock,
@@ -88,20 +87,19 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
 }
 
 /**
- * Replaces presentation `id`'s work directory content in place with
- * `stagedPath`'s, without changing `id` itself — plan §3.8, ported from
- * `packages/core`'s `reopenPresentationInPlace`, with the actual unpack
- * moved into the Rust binary: `slidra open <stagedPath> --json` does the
- * zip decompression, `project.json` validation and formatVersion migration
- * (a fresh, throwaway id `id2`); this function only moves files around
- * afterwards.
+ * Replaces presentation `id`'s deck content in place with `stagedPath`'s,
+ * without changing `id` itself — plan §3.8, ported from `packages/core`'s
+ * `reopenPresentationInPlace`, with the actual unpack/migration moved into
+ * the Rust binary: `slidra open <stagedPath> --json` does the ZIP-to-SQLite
+ * migration (if needed) and validation, minting a fresh, throwaway id
+ * `id2`; this function only moves bytes around afterwards.
  *
- * The real work directory (`workDirFor(id)`) is never deleted or recreated
- * — only its children are swapped — because `fs.watch(workDir, {recursive:
- * true})` (`watch.ts`) holds a handle on that exact inode; recreating the
- * directory would kill a live `serve` watcher out from under a running
- * server. `id`'s staging directory (`workDirFor(id2)`) and its `projects.json`
- * entry are removed once the swap is durable.
+ * The real deck file (`entry.deckPath`) is never deleted or renamed over —
+ * its bytes are truncated and rewritten in place — because
+ * `fs.watch(deckPath)` (`watch.ts`) holds a handle on that exact inode;
+ * swapping the inode out from under a live `serve` watcher would kill it.
+ * `id2`'s staged file and its `projects.json` entry are removed once the
+ * swap is durable.
  */
 async function reopenPresentationInPlace(id: string, stagedPath: string): Promise<void> {
   const home = resolveSlidraHome();
@@ -126,18 +124,16 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
     throw new SlidraError(`no presentation found for id: ${id2}`);
   }
 
-  const existingChildren = await readdir(entry.workDir);
-  await Promise.all(existingChildren.map((name) => rm(path.join(entry.workDir, name), { recursive: true, force: true })));
-  const stagedChildren = await readdir(stagedEntry.workDir);
-  await Promise.all(
-    stagedChildren.map((name) => rename(path.join(stagedEntry.workDir, name), path.join(entry.workDir, name))),
-  );
+  // Truncate + write, never rename — see this function's own doc comment
+  // on why the inode must survive.
+  const stagedBytes = await readFile(stagedEntry.deckPath);
+  await writeFile(entry.deckPath, stagedBytes);
 
   // Read-modify-write under the lock, so a `slidra` process registering
   // its own presentation at the same moment does not lose its entry to this
   // write (or vice versa). Deliberately narrower than this whole function:
   // the `open` above shells out to the CLI, which takes this same lock.
-  const savedAt = (await maxMtimeInDirectory(entry.workDir)) + SAVED_AT_SETTLE_WINDOW_MS;
+  const savedAt = (await stat(entry.deckPath)).mtimeMs + SAVED_AT_SETTLE_WINDOW_MS;
   await withProjectsRegistryLock(async () => {
     const finalRegistry = await readProjectsRegistry();
     finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt });
@@ -145,7 +141,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
     await writeProjectsRegistry(finalRegistry);
   });
 
-  await rm(stagedEntry.workDir, { recursive: true, force: true }).catch(() => {});
+  await rm(path.dirname(stagedEntry.deckPath), { recursive: true, force: true }).catch(() => {});
   await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
 }
 

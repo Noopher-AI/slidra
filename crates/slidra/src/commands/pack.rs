@@ -6,7 +6,7 @@
 use crate::errors::SlidraError;
 use crate::result::{CommandResult, FailureKind};
 use crate::workspace::registry::RegistryEntry;
-use crate::{argv, container, workspace};
+use crate::{argv, workspace};
 use std::path::{Path, PathBuf};
 
 pub fn run(args: &[String]) -> CommandResult {
@@ -34,17 +34,28 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
         )));
     };
 
-    container::pack_directory(&entry.work_dir, Path::new(output_path))?;
+    let output_resolved = resolve_lexically(Path::new(output_path));
+    let is_same_file = output_resolved == resolve_lexically(&entry.deck_path);
+    if !is_same_file {
+        // A plain file copy, staged then renamed: the deck IS the
+        // container format now, so "pack to a different path" is just
+        // "duplicate this file" — no directory walk, no re-compression.
+        copy_deck_staged(&entry.deck_path, Path::new(output_path))?;
+    }
+    // "no copy, no VACUUM" (behavior table) only when the target IS the
+    // deck's own file — a target that merely matches the *source* path
+    // below still gets copied above, since the deck's current content can
+    // have diverged from what is sitting at that remembered path
+    // (`packages/server`'s `reopenPresentationInPlace` updates `source_path`
+    // independently of `deck_path`).
 
     let is_same_as_source = entry
         .source_path
         .as_ref()
-        .map(|source_path| {
-            resolve_lexically(Path::new(output_path)) == resolve_lexically(source_path)
-        })
+        .map(|source_path| output_resolved == resolve_lexically(source_path))
         .unwrap_or(false);
     if is_same_as_source {
-        let saved_at = workspace::registry::max_mtime_in_directory(&entry.work_dir)?
+        let saved_at = workspace::registry::deck_file_mtime_millis(&entry.deck_path)?
             + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
         // Re-read inside the lock rather than reusing the map read above:
         // packing runs between the two, and anything another process
@@ -60,6 +71,43 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
             );
             workspace::registry::write_registry(&home, &registry)
         })?;
+    }
+    Ok(())
+}
+
+/// Copies `source`'s bytes to `dest` via a same-directory temp file plus
+/// `rename`, so a reader of `dest` never observes a partially-written
+/// file. Overwrites an existing `dest`, matching the pre-SQLite
+/// `pack_directory`'s own unconditional-overwrite contract.
+fn copy_deck_staged(source: &Path, dest: &Path) -> Result<(), SlidraError> {
+    let display = dest.display().to_string();
+    let bytes = std::fs::read(source).map_err(|_| {
+        SlidraError::invalid(format!("failed to read presentation file: {display}"))
+    })?;
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|_| {
+                SlidraError::invalid(format!("failed to write presentation file: {display}"))
+            })?;
+        }
+    }
+    let temp_path = dest.with_file_name(format!(
+        ".{}.{}.tmp",
+        dest.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "deck".to_string()),
+        crate::id::random_hex_suffix()
+    ));
+    let write_result: std::io::Result<()> = (|| {
+        std::fs::write(&temp_path, &bytes)?;
+        std::fs::rename(&temp_path, dest)?;
+        Ok(())
+    })();
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(SlidraError::invalid(format!(
+            "failed to write presentation file: {display}"
+        )));
     }
     Ok(())
 }
@@ -137,21 +185,68 @@ mod tests {
         std::fs::remove_dir_all(&home).ok();
     }
 
+    fn minimal_deck(label: &str) -> PathBuf {
+        crate::deck::build_test_deck(
+            label,
+            &[(
+                "project.json",
+                br#"{"formatVersion":5,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#,
+            )],
+        )
+    }
+
     #[test]
-    fn packing_to_the_same_path_updates_saved_at() {
+    fn packing_to_the_deck_s_own_path_updates_saved_at_without_copying() {
         let _guard = registry::ENV_LOCK.lock().unwrap();
-        let home = temp_dir("same-path-home");
-        let work = temp_dir("same-path-work");
-        std::fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
+        let home = temp_dir("same-file-home");
+        let deck = minimal_deck("same-file");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);
         }
-        let output = temp_dir("same-path-output").join("out.slidra");
         let mut registry_map = std::collections::HashMap::new();
         registry_map.insert(
             "id1".to_string(),
             RegistryEntry {
-                work_dir: work.clone(),
+                deck_path: deck.clone(),
+                source_path: Some(deck.clone()),
+                saved_at: Some(0.0),
+            },
+        );
+        workspace::registry::write_registry(&home, &registry_map).unwrap();
+
+        let result = run(&["id1".to_string(), deck.to_string_lossy().into_owned()]);
+        assert!(result.ok, "expected success, got {}", result.message);
+
+        let updated_registry = workspace::registry::read_registry(&home).unwrap();
+        assert!(updated_registry["id1"].saved_at.unwrap() > 0.0);
+
+        unsafe {
+            std::env::remove_var("SLIDRA_HOME");
+        }
+        std::fs::remove_dir_all(&home).ok();
+        std::fs::remove_file(&deck).ok();
+    }
+
+    /// Packing to a path that matches the registry's remembered
+    /// `source_path` but is NOT the deck's own file still copies the
+    /// deck's current bytes there (the two can diverge —
+    /// `packages/server`'s `reopenPresentationInPlace` updates
+    /// `source_path` independently of `deck_path`) — then updates
+    /// `saved_at`, since the target now matches source.
+    #[test]
+    fn packing_to_a_remembered_source_path_copies_and_updates_saved_at() {
+        let _guard = registry::ENV_LOCK.lock().unwrap();
+        let home = temp_dir("same-source-home");
+        let deck = minimal_deck("same-source");
+        unsafe {
+            std::env::set_var("SLIDRA_HOME", &home);
+        }
+        let output = temp_dir("same-source-output").join("out.slidra");
+        let mut registry_map = std::collections::HashMap::new();
+        registry_map.insert(
+            "id1".to_string(),
+            RegistryEntry {
+                deck_path: deck.clone(),
                 source_path: Some(output.clone()),
                 saved_at: Some(0.0),
             },
@@ -161,6 +256,10 @@ mod tests {
         let result = run(&["id1".to_string(), output.to_string_lossy().into_owned()]);
         assert!(result.ok, "expected success, got {}", result.message);
         assert!(output.exists());
+        assert_eq!(
+            std::fs::read(&output).unwrap(),
+            std::fs::read(&deck).unwrap()
+        );
 
         let updated_registry = workspace::registry::read_registry(&home).unwrap();
         assert!(updated_registry["id1"].saved_at.unwrap() > 0.0);
@@ -169,15 +268,15 @@ mod tests {
             std::env::remove_var("SLIDRA_HOME");
         }
         std::fs::remove_dir_all(&home).ok();
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
+        std::fs::remove_file(&output).ok();
     }
 
     #[test]
     fn packing_to_a_different_path_leaves_saved_at_untouched() {
         let _guard = registry::ENV_LOCK.lock().unwrap();
         let home = temp_dir("diff-path-home");
-        let work = temp_dir("diff-path-work");
-        std::fs::write(work.join("project.json"), r#"{"formatVersion":1,"name":"X","canvas":{"width":1,"height":1},"slides":[],"fonts":[]}"#).unwrap();
+        let deck = minimal_deck("diff-path");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);
         }
@@ -185,7 +284,7 @@ mod tests {
         registry_map.insert(
             "id1".to_string(),
             RegistryEntry {
-                work_dir: work.clone(),
+                deck_path: deck.clone(),
                 source_path: Some(PathBuf::from("/some/other/path.slidra")),
                 saved_at: Some(0.0),
             },
@@ -195,6 +294,7 @@ mod tests {
         let output = temp_dir("diff-path-output").join("out.slidra");
         let result = run(&["id1".to_string(), output.to_string_lossy().into_owned()]);
         assert!(result.ok);
+        assert!(output.exists());
 
         let updated_registry = workspace::registry::read_registry(&home).unwrap();
         assert_eq!(updated_registry["id1"].saved_at, Some(0.0));
@@ -203,6 +303,7 @@ mod tests {
             std::env::remove_var("SLIDRA_HOME");
         }
         std::fs::remove_dir_all(&home).ok();
-        std::fs::remove_dir_all(&work).ok();
+        std::fs::remove_file(&deck).ok();
+        std::fs::remove_file(&output).ok();
     }
 }

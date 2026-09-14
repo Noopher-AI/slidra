@@ -57,43 +57,30 @@ pub fn resolve_presentation_fonts(id: &str) -> SlidraResult<HashMap<String, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
-
-    fn temp_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "slidra-test-fonts-{label}-{}",
-            crate::id::random_hex_suffix()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    fn register(home: &Path, test_id: &str, work_dir: &Path) {
-        let work_dir_json =
-            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
-        let id_json = serde_json::to_string(test_id).unwrap();
-        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
-        std::fs::write(home.join("projects.json"), json).unwrap();
-    }
+    use std::path::PathBuf;
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl Fixture {
-        fn new(label: &str, test_id: &str) -> Self {
+        fn new(label: &str, test_id: &str, files: &[(&str, &[u8])]) -> Self {
             let guard = workspace::registry::ENV_LOCK.lock().unwrap();
-            let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            register(&home, test_id, &work);
+            let home = std::env::temp_dir().join(format!(
+                "slidra-test-fonts-{label}-home-{}",
+                crate::id::random_hex_suffix()
+            ));
+            std::fs::create_dir_all(&home).unwrap();
+            let deck = crate::deck::build_test_deck(label, files);
+            workspace::registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
         }
@@ -105,18 +92,20 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
     #[test]
     fn no_fonts_field_still_resolves_the_default_family() {
-        let fixture = Fixture::new("no-fonts", "pid-fonts-1");
-        std::fs::write(
-            fixture.work.join("project.json"),
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":[]}"#,
-        )
-        .unwrap();
+        let fixture = Fixture::new(
+            "no-fonts",
+            "pid-fonts-1",
+            &[(
+                "project.json",
+                br#"{"formatVersion":5,"name":"T","canvas":{"width":1,"height":1},"slides":[]}"#,
+            )],
+        );
 
         let book = resolve_presentation_fonts("pid-fonts-1").unwrap();
         assert!(book.contains_key(DEFAULT_FONT_FAMILY));
@@ -127,14 +116,17 @@ mod tests {
 
     #[test]
     fn declared_font_family_is_added_to_the_book() {
-        let fixture = Fixture::new("declared-font", "pid-fonts-2");
-        std::fs::create_dir_all(fixture.work.join("fonts")).unwrap();
-        std::fs::write(fixture.work.join("fonts/custom.ttf"), DEFAULT_FONT_BYTES).unwrap();
-        std::fs::write(
-            fixture.work.join("project.json"),
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":1,"height":1},"slides":[],"fonts":[{"file":"fonts/custom.ttf","family":"Custom Family","license":"OFL","licenseFile":"fonts/OFL.txt","source":"local"}]}"#,
-        )
-        .unwrap();
+        let fixture = Fixture::new(
+            "declared-font",
+            "pid-fonts-2",
+            &[
+                ("fonts/custom.ttf", DEFAULT_FONT_BYTES),
+                (
+                    "project.json",
+                    br#"{"formatVersion":5,"name":"T","canvas":{"width":1,"height":1},"slides":[],"fonts":[{"file":"fonts/custom.ttf","family":"Custom Family","license":"OFL","licenseFile":"fonts/OFL.txt","source":"local"}]}"#,
+                ),
+            ],
+        );
 
         let book = resolve_presentation_fonts("pid-fonts-2").unwrap();
         assert!(book.contains_key(DEFAULT_FONT_FAMILY));

@@ -81,7 +81,7 @@ fn run_render(args: &[String], json_flag: bool) -> CommandResult {
 
 fn render_slide_for_display(id: &str, slide_path: &str) -> Result<String, SlidraError> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     let project = read_project_json(&work_dir)?;
     if !project.slides.contains(&slide_path.to_string()) {
         return Err(SlidraError::invalid(format!("not a slide: {slide_path}")));
@@ -583,7 +583,7 @@ fn run_background(args: &[String]) -> CommandResult {
                         "--asset must be a virtual path under assets/: {asset_path}"
                     )));
                 }
-                virtual_fs::resolve_virtual_file_path(&existing.work_dir, asset_path)?;
+                virtual_fs::assert_file_exists(&existing.work_dir, asset_path)?;
                 crate::slide::background::set_background(
                     &existing.content,
                     asset_path,
@@ -620,7 +620,7 @@ fn set_slide_page_style(
     update: PageStyleUpdate,
 ) -> Result<(), SlidraError> {
     let work_dir = workspace::resolve_work_dir(id)?;
-    virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
+    virtual_fs::assert_file_exists(&work_dir, slide_path)?;
     let project = read_project_json(&work_dir)?;
     let templates = crate::workspace::project::read_template_entries(&project);
     if !project.slides.contains(&slide_path.to_string())

@@ -5,7 +5,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { SlidraError } from "./errors.js";
-import { resolveSlidraHome, workDirFor } from "./home.js";
+import { deckPathFor, resolveSlidraHome } from "./home.js";
 
 /**
  * `<SLIDRA_HOME>/history/<id>/stack.json`'s open-group bookkeeping,
@@ -165,7 +165,7 @@ function generateGroupId(): string {
  */
 export async function beginHistoryGroup(id: string): Promise<boolean> {
   const home = resolveSlidraHome();
-  await workDirFor(id);
+  await deckPathFor(id);
   const stack = await readStack(home, id);
   if (stack.openGroup) {
     return false;
@@ -182,7 +182,7 @@ export async function beginHistoryGroup(id: string): Promise<boolean> {
  */
 export async function endHistoryGroup(id: string): Promise<void> {
   const home = resolveSlidraHome();
-  await workDirFor(id);
+  await deckPathFor(id);
   const stack = await readStack(home, id);
   const group = stack.openGroup;
   if (!group) {

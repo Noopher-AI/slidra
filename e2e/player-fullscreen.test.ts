@@ -10,6 +10,8 @@ import { chromium, type Browser, type Locator } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { deckPathFor } from "../packages/server/src/slidra/home.js";
+import { readDeckFileText, writeDeckFileText } from "./helpers/deck.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
@@ -755,19 +757,17 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(true);
 
-  // A genuine external edit: rewrite this presentation's actual working
-  // directory on disk directly (the one `open` unpacked, following
-  // `packages/core/src/workspace.ts`'s `workDirFor()` naming convention —
-  // not the read-only shared fixture at e2e/fixtures/play-deck), emptying
-  // out its slides, so this genuinely exercises the server's file watch ->
-  // SSE presentation-changed -> canvas.ts's reload() live-reload path end to
+  // A genuine external edit: rewrite this presentation's actual deck file
+  // on disk directly (the one `open` migrated/registered — not the
+  // read-only shared fixture at e2e/fixtures/play-deck), emptying out its
+  // slides, so this genuinely exercises the server's file watch -> SSE
+  // presentation-changed -> canvas.ts's reload() live-reload path end to
   // end, rather than simulating it.
-  const workDir = path.join(slidraHome, "work", presentationId);
-  const projectJsonPath = path.join(workDir, "project.json");
-  const original = await readFile(projectJsonPath, "utf-8");
+  const deckPath = await deckPathFor(presentationId);
+  const original = await readDeckFileText(deckPath, "project.json");
   const emptied = JSON.parse(original) as { slides: string[] };
   emptied.slides = [];
-  await writeFile(projectJsonPath, JSON.stringify(emptied, null, 2), "utf-8");
+  await writeDeckFileText(deckPath, "project.json", JSON.stringify(emptied, null, 2));
 
   // Wait for the reload to actually land instead of guessing a timing
   // before asserting: canvas.ts's renderPlay() renders this fixed text when

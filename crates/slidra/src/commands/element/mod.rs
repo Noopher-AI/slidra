@@ -117,7 +117,7 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -128,39 +128,40 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
             let id = format!("pid-{label}");
-            let work_dir_json =
-                serde_json::to_string(&work.to_string_lossy().into_owned()).unwrap();
-            let id_json = serde_json::to_string(&id).unwrap();
-            std::fs::write(
-                home.join("projects.json"),
-                format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#),
-            )
-            .unwrap();
-            std::fs::write(
-                work.join("project.json"),
-                r#"{"formatVersion":1,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"]}"#,
-            )
-            .unwrap();
-            std::fs::create_dir_all(work.join("slides")).unwrap();
+            let deck = crate::deck::build_test_deck(
+                label,
+                &[
+                    (
+                        "project.json",
+                        br#"{"formatVersion":5,"name":"P","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"]}"#,
+                    ),
+                    ("slides/001.svg", b""),
+                ],
+            );
+            workspace::registry::register_for_test(&home, &id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
             Fixture {
                 home,
-                work,
+                deck,
                 id,
                 _guard: guard,
             }
         }
 
         fn write_slide(&self, content: &str) {
-            std::fs::write(self.work.join("slides/001.svg"), content).unwrap();
+            workspace::virtual_fs::write_existing_file(
+                &self.deck,
+                "slides/001.svg",
+                content.as_bytes(),
+            )
+            .unwrap();
         }
 
         fn read_slide(&self) -> String {
-            std::fs::read_to_string(self.work.join("slides/001.svg")).unwrap()
+            workspace::virtual_fs::read_virtual_file(&self.deck, "slides/001.svg").unwrap()
         }
     }
 
@@ -170,7 +171,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -661,7 +662,7 @@ mod tests {
         let fixture = Fixture::new("paste-svg-file");
         fixture.write_slide(&slide(""));
 
-        let svg_file_path = fixture.work.join("external.svg");
+        let svg_file_path = fixture.home.join("external.svg");
         std::fs::write(
             &svg_file_path,
             r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:slidra="https://slidra.app/ns/2026" viewBox="0 0 1280 720" data-slidra-clipboard="elements" data-slidra-source="slides/999.svg"><g id="el-from-file"><rect x="0" y="0" width="1" height="1"/></g></svg>"#,

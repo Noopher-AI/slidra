@@ -1,16 +1,20 @@
 # `.slidra` Format Specification
 
-**Version:** 1  
+**Version:** 5 (container: SQLite, `spec/rfcs/0001-sqlite-container-format.md`)  
 **Status:** Stable  
 **Namespace:** `https://slidra.app/ns/2026`
 
-A `.slidra` file is the canonical, self-contained container for a Slidra presentation. It is a ZIP archive that bundles all slides, assets, fonts, and metadata into a single portable file. This document is the normative specification for format version 1.
+A `.slidra` file is the canonical, self-contained container for a Slidra presentation. This document describes the file's internal shape — `project.json`, slide SVGs, assets, fonts, templates — independent of which container format currently carries them; §1 covers where that shape lives on disk for each format version.
+
+> **`formatVersion` 5 changes the container itself, not just this document's version number.** [`spec/rfcs/0001-sqlite-container-format.md`](../../spec/rfcs/0001-sqlite-container-format.md) is authoritative for the SQLite container (schema, migration, concurrency, write granularity); this file's container description below (ZIP) applies to `formatVersion` 1 through 4 only. Every field/element/attribute rule elsewhere in this document — `project.json`'s shape, slide SVG structure, `<slidra:*>` elements — is unaffected by which container carries it.
 
 ---
 
 ## 1. Container
 
-A `.slidra` file is a standard ZIP archive (`.zip` internally; the `.slidra` extension is conventional). No specific compression method or level is mandated — any valid ZIP is acceptable.
+**`formatVersion` 1 through 4** (legacy): a `.slidra` file is a standard ZIP archive (`.zip` internally; the `.slidra` extension is conventional). No specific compression method or level is mandated — any valid ZIP is acceptable.
+
+**`formatVersion` 5** (current): a `.slidra` file is a SQLite database — see `spec/rfcs/0001-sqlite-container-format.md` §1 for the schema. Every entry below (`project.json`, `slides/`, `assets/`, `fonts/`, `templates/`, `plan/`) is a `path` row in that database's `content` table instead of a ZIP entry; the entries themselves, and everything `project.json` requires of them, are otherwise identical. A legacy file is migrated to this format exactly once, the first time `slidra open` sees it (RFC 0001 §2) — there is no ZIP-to-ZIP migration chain above `formatVersion` 4, and no SQLite-to-SQLite migration chain either: 5 is the only version this crate has ever produced.
 
 ### 1.1 Required top-level entries
 
@@ -554,16 +558,20 @@ Templates are stored under `templates/` and registered in `project.json.template
 
 ## 16. `formatVersion`
 
-- Current version: **1**.
-- There is no migration chain. A `project.json` with `formatVersion ≠ 1` is rejected.
-- Legacy CoMotion files (which also use `formatVersion: 1`) are detected by the presence of `xmlns:comot` or `co-motion.dev/ns` in any slide SVG and are rejected outright with an error message. They are never migrated or partially read.
+- Current version: **5** (SQLite container, `spec/rfcs/0001-sqlite-container-format.md`). A ZIP-container deck legitimately sits at 1 through 4 until the next `slidra open` migrates it once; a `.slidra` file itself is never partially at one version and partially at another.
+- A `project.json` with `formatVersion` greater than the version this build understands is rejected. A ZIP container additionally rejects any `formatVersion` outside 1–4 outright (no migration chain within the ZIP era either).
+- Legacy CoMotion files (which also use `formatVersion: 1`) are detected by the presence of `xmlns:comot` or `co-motion.dev/ns` in any slide SVG and are rejected outright with an error message, at migration time. They are never migrated or partially read.
 
 ---
 
 ## 17. File naming and layout summary
 
+The tree below is the entry set every `.slidra` file has, regardless of
+container format — a ZIP archive's entries (`formatVersion` 1–4) or a
+SQLite deck's `path` rows (`formatVersion` 5, `spec/rfcs/0001-sqlite-container-format.md`).
+
 ```
-my-presentation.slidra  (ZIP archive)
+my-presentation.slidra
 ├── project.json
 ├── slides/
 │   ├── 001.svg

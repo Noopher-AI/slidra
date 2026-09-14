@@ -12,7 +12,15 @@ use crate::result::{CommandResult, FailureKind};
 use crate::slide::normalise::normalise_slide_svg;
 use crate::workspace::{self, project::read_project_json, virtual_fs};
 use crate::{argv, id};
-use std::path::PathBuf;
+
+/// Writes `slide_path`'s content into `deck_path`, mapping any failure to
+/// the same "error writing slide: …" wording the pre-SQLite version used
+/// (`std::fs::write` failing on a real path) — the write itself now goes
+/// through `virtual_fs::write_existing_file` instead of a raw filesystem
+/// call, but the caller-visible contract is unchanged.
+fn write_slide(deck_path: &std::path::Path, slide_path: &str, content: &str) -> bool {
+    virtual_fs::write_existing_file(deck_path, slide_path, content.as_bytes()).is_ok()
+}
 
 pub fn run(args: &[String]) -> CommandResult {
     let presentation_id = match argv::require_id_positional(args, 0, "convert", "presentation-id") {
@@ -54,7 +62,6 @@ struct SlideOutcome {
 
 struct PendingSlide {
     slide_path: String,
-    real_path: PathBuf,
     svg: String,
     original: String,
     wrapped: usize,
@@ -67,7 +74,6 @@ fn convert_presentation_slides(id_str: &str) -> SlidraResult<Vec<SlideOutcome>> 
     let mut pending: Vec<PendingSlide> = Vec::with_capacity(project.slides.len());
     for slide_path in &project.slides {
         let original = virtual_fs::read_virtual_file(&work_dir, slide_path)?;
-        let real_path = virtual_fs::resolve_virtual_file_path(&work_dir, slide_path)?;
         let mut generate_id = || format!("el-{}", id::generate_opaque_id());
         let result = normalise_slide_svg(&original, &mut generate_id).map_err(|err| {
             SlidraError::invalid(format!(
@@ -77,7 +83,6 @@ fn convert_presentation_slides(id_str: &str) -> SlidraResult<Vec<SlideOutcome>> 
         })?;
         pending.push(PendingSlide {
             slide_path: slide_path.clone(),
-            real_path,
             svg: result.svg,
             original,
             wrapped: result.wrapped,
@@ -89,8 +94,8 @@ fn convert_presentation_slides(id_str: &str) -> SlidraResult<Vec<SlideOutcome>> 
     for slide in &pending {
         let changed = slide.svg != slide.original;
         if changed {
-            if std::fs::write(&slide.real_path, &slide.svg).is_err() {
-                return Err(SlidraError::invalid(roll_back(&written, slide)));
+            if !write_slide(&work_dir, &slide.slide_path, &slide.svg) {
+                return Err(SlidraError::invalid(roll_back(&work_dir, &written, slide)));
             }
             written.push(slide);
         }
@@ -106,14 +111,18 @@ fn convert_presentation_slides(id_str: &str) -> SlidraResult<Vec<SlideOutcome>> 
 /// Puts back every slide this run had already rewritten before one of them
 /// failed to write, and returns the message describing what actually
 /// happened on disk.
-fn roll_back(written: &[&PendingSlide], failed: &PendingSlide) -> String {
+fn roll_back(
+    work_dir: &std::path::Path,
+    written: &[&PendingSlide],
+    failed: &PendingSlide,
+) -> String {
     let mut not_restored: Vec<String> = Vec::new();
     for slide in written {
-        if std::fs::write(&slide.real_path, &slide.original).is_err() {
+        if !write_slide(work_dir, &slide.slide_path, &slide.original) {
             not_restored.push(slide.slide_path.clone());
         }
     }
-    if !restored_to_original(failed) {
+    if !restored_to_original(work_dir, failed) {
         not_restored.push(failed.slide_path.clone());
     }
     let failure = format!("error writing slide: {}.", failed.slide_path);
@@ -126,15 +135,15 @@ fn roll_back(written: &[&PendingSlide], failed: &PendingSlide) -> String {
     )
 }
 
-fn restored_to_original(slide: &PendingSlide) -> bool {
-    let current = match std::fs::read_to_string(&slide.real_path) {
+fn restored_to_original(work_dir: &std::path::Path, slide: &PendingSlide) -> bool {
+    let current = match virtual_fs::read_virtual_file(work_dir, &slide.slide_path) {
         Ok(c) => c,
         Err(_) => return false,
     };
     if current == slide.original {
         return true;
     }
-    std::fs::write(&slide.real_path, &slide.original).is_ok()
+    write_slide(work_dir, &slide.slide_path, &slide.original)
 }
 
 fn failure_kind_for(err: &SlidraError) -> FailureKind {
@@ -161,7 +170,7 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -170,20 +179,19 @@ mod tests {
         fn new(label: &str, project_json: &str, slides: &[(&str, &str)]) -> Self {
             let guard = registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
             let test_id = format!("test-{label}");
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
-            std::fs::create_dir_all(work.join("slides")).unwrap();
-            std::fs::write(work.join("project.json"), project_json).unwrap();
+            let mut files: Vec<(&str, &[u8])> = vec![("project.json", project_json.as_bytes())];
             for (path, content) in slides {
-                std::fs::write(work.join(path), content).unwrap();
+                files.push((path, content.as_bytes()));
             }
-            registry::register_for_test(&home, &test_id, &work);
+            let deck = crate::deck::build_test_deck(label, &files);
+            registry::register_for_test(&home, &test_id, &deck);
             Fixture {
                 home,
-                work,
+                deck,
                 id: test_id,
                 _guard: guard,
             }
@@ -196,7 +204,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -214,7 +222,7 @@ mod tests {
     fn already_compliant_slide_reports_no_slides_need_conversion_when_empty() {
         let fixture = Fixture::new(
             "empty",
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":[],"fonts":[]}"#,
+            r#"{"formatVersion":5,"name":"T","canvas":{"width":100,"height":100},"slides":[],"fonts":[]}"#,
             &[],
         );
         let result = run(&[fixture.id.clone()]);
@@ -226,7 +234,7 @@ mod tests {
     fn wraps_a_bare_primitive_and_reports_changed() {
         let fixture = Fixture::new(
             "wrap",
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":5,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">\n  <rect width=\"1\" height=\"1\"/>\n</svg>",
@@ -235,7 +243,9 @@ mod tests {
         let result = run(&[fixture.id.clone()]);
         assert!(result.ok);
         assert_eq!(result.message, "converted 1 slides");
-        let content = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let content =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         assert!(content.contains("<g id="));
     }
 
@@ -243,17 +253,21 @@ mod tests {
     fn already_compliant_slide_is_untouched_and_reported_as_such() {
         let fixture = Fixture::new(
             "compliant",
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":5,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><g id=\"a\"><rect width=\"1\" height=\"1\"/></g></svg>",
             )],
         );
-        let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let before =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         let result = run(&[fixture.id.clone()]);
         assert!(result.ok);
         assert_eq!(result.message, "converted 0 slides, 1 already compliant");
-        let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let after =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         assert_eq!(before, after);
     }
 
@@ -261,13 +275,15 @@ mod tests {
     fn blocking_issue_writes_nothing_and_names_the_slide() {
         let fixture = Fixture::new(
             "blocking",
-            r#"{"formatVersion":1,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
+            r#"{"formatVersion":5,"name":"T","canvas":{"width":100,"height":100},"slides":["slides/001.svg"],"fonts":[]}"#,
             &[(
                 "slides/001.svg",
                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><script>evil()</script></svg>",
             )],
         );
-        let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let before =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         let result = run(&[fixture.id.clone()]);
         assert!(!result.ok);
         assert!(result.message.starts_with("slides/001.svg: "));
@@ -276,7 +292,9 @@ mod tests {
                 .message
                 .ends_with("the entire presentation was not modified.")
         );
-        let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let after =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         assert_eq!(before, after);
     }
 }

@@ -19,3 +19,4 @@ serde_json = { version = "1", features = ["preserve_order"] }
 ureq = "3"
 flate2 = "1.0"
 zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }

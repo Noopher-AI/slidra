@@ -246,6 +246,13 @@ The full rules for parameter syntax (quoting, comma-separated lists, etc.) are i
 **Usage** Unlock elements.
 **Example** `slidra element unlock <presentation-id> slides/001.svg el-1`
 
+## extract
+
+**Parameters** `<id-or-path>` (an open presentation's id, or a `.slidra` filesystem path not yet opened), `<dir>` (must not already exist as a non-empty directory).
+**Usage** Write the deck's entire content out as plain real files under `dir` — the escape hatch back to "just files on disk" without any tool that understands the container format.
+**Example** `slidra extract <presentation-id> ./extracted`
+> This command is used by the user or Slidra itself; the agent typically does not need it.
+
 ## ls
 
 **Parameters** `<presentation-id>` `[path]` (omit to list the top level).

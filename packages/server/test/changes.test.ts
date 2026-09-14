@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { createChangeBroadcaster } from "../src/changes.js";
-import { workDirFor } from "../src/slidra/home.js";
+import { deckPathFor } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
@@ -199,20 +199,21 @@ describe("GET /api/events", () => {
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
-  it("ignores the CLI's .slidra.lock, so a read command does not look like a change", async () => {
-    // The lock is created and removed around every CLI command, reads
-    // included, inside the watched work directory. Treating it as content
-    // made every live-reload trigger a re-read that took the lock again —
-    // an endless reload loop that dropped the author's selection the
-    // moment they clicked an element.
+  it("ignores a SQLite -journal sibling, so a within-transaction file does not look like a change", async () => {
+    // `journal_mode=DELETE` (`crates/slidra/src/deck.rs`) creates and
+    // removes `<deck>-journal` around every write transaction, reads
+    // included via the CLI's own connection open. Treating it as content
+    // would make every live-reload trigger a re-read that opens the deck
+    // again — an endless reload loop that dropped the author's selection
+    // the moment they clicked an element.
     const { id, elementId } = await openFreshPresentation();
     const server = await serve(id);
     const frameReader = await connectEvents(server);
 
-    const lockPath = path.join(await workDirFor(id), ".slidra.lock");
+    const journalPath = `${await deckPathFor(id)}-journal`;
     for (let i = 0; i < 3; i++) {
-      await writeFile(lockPath, "");
-      await rm(lockPath);
+      await writeFile(journalPath, "");
+      await rm(journalPath);
     }
 
     // One read, raced twice: the reader may only be pulled once, or the
@@ -223,9 +224,9 @@ describe("GET /api/events", () => {
     // Well past the watcher's 100ms debounce: nothing may have arrived.
     expect(await Promise.race([pending, timeout(500)])).toBe(null);
 
-    // A real edit still gets through — the filter skips the lock, not the
-    // notification path itself.
-    await setText(id, elementId, "locking a file is not a change");
+    // A real edit still gets through — the filter skips the journal
+    // sibling, not the notification path itself.
+    await setText(id, elementId, "a journal sibling is not a change");
     expect(await pending).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
@@ -274,7 +275,7 @@ describe("GET /api/events", () => {
     // A fake SLIDRA_BIN that answers `cat <id> project.json`
     // for ANY id, real or not (the equivalent stub-registry test in
     // serve.test.ts uses the same technique) — loadProject succeeds
-    // through it, but `watchPresentation`'s `workDirFor` reads the REAL
+    // through it, but `watchPresentation`'s `deckPathFor` reads the REAL
     // `SLIDRA_HOME/projects.json` directly (slidra/home.ts, not the
     // CLI), which has no entry for this id at all. The failure must
     // surface as an explicit HTTP error, not a silently-opened stream.
@@ -344,21 +345,21 @@ describe("GET /api/events", () => {
     await broadcaster.dispose();
   });
 
-  it("responds without the real work directory path when fs.watch fails synchronously at startup", async () => {
+  it("responds without the real deck path when fs.watch fails synchronously at startup", async () => {
     // ADR-0004's third layer failing exactly where it matters: `fs.watch`
     // throws synchronously (not only via its async `error` event) when the
-    // work directory has vanished between server startup and the first
+    // deck file has vanished between server startup and the first
     // /api/events request — removing it here reproduces exactly that gap.
     const { id } = await openFreshPresentation();
     const server = await serve(id);
-    const workDir = await workDirFor(id);
-    await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    const deckPath = await deckPathFor(id);
+    await rm(deckPath, { force: true, maxRetries: 5, retryDelay: 100 });
 
     const response = await fetch(`${server.url}/api/events`);
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body.error).not.toContain(workDir);
+    expect(body.error).not.toContain(deckPath);
     expect(body.error).not.toContain(slidraHome);
   });
 

@@ -121,7 +121,7 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -130,26 +130,27 @@ mod tests {
         fn new(label: &str) -> Self {
             let guard = registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
             let id = format!("test-{label}");
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
-            std::fs::create_dir_all(work.join("slides")).unwrap();
-            std::fs::write(
-                work.join("project.json"),
-                r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
-            )
-            .unwrap();
-            std::fs::write(
-                work.join("slides/001.svg"),
-                "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n",
-            )
-            .unwrap();
-            registry::register_for_test(&home, &id, &work);
+            let deck = crate::deck::build_test_deck(
+                label,
+                &[
+                    (
+                        "project.json",
+                        br#"{"formatVersion":5,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
+                    ),
+                    (
+                        "slides/001.svg",
+                        b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"></svg>\n",
+                    ),
+                ],
+            );
+            registry::register_for_test(&home, &id, &deck);
             Fixture {
                 home,
-                work,
+                deck,
                 id,
                 _guard: guard,
             }
@@ -162,7 +163,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -199,7 +200,9 @@ mod tests {
     #[test]
     fn same_size_is_a_legal_no_op_and_writes_nothing() {
         let fixture = Fixture::new("same-size");
-        let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let before =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         let result = run(&[
             "canvas".to_string(),
             "set".to_string(),
@@ -210,7 +213,9 @@ mod tests {
             "720".to_string(),
         ]);
         assert!(result.ok);
-        let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let after =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         assert_eq!(before, after);
     }
 
@@ -228,11 +233,14 @@ mod tests {
         ]);
         assert!(result.ok, "expected success, got {}", result.message);
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "project.json")
+                .unwrap(),
         )
         .unwrap();
         assert_eq!(project["canvas"]["width"], 1920);
-        let slide = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let slide =
+            crate::workspace::virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
+                .unwrap();
         assert!(slide.contains("viewBox=\"0 0 1920 1080\""));
 
         let err = crate::history::undo(&fixture.id).unwrap_err();

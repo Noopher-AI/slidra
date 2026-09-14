@@ -129,7 +129,11 @@ fn splitmix64_next(state: u64) -> (u64, u64) {
     (next_state, z)
 }
 
-fn fnv1a64(bytes: &[u8]) -> u64 {
+/// FNV-1a, 64-bit variant. Also used by `workspace::lock` to derive a
+/// per-deck lock filename from a canonical path (`PresentationLock`) — a
+/// second, unrelated use of the same well-known, dependency-free hash, not
+/// a shared abstraction between the two.
+pub(crate) fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &b in bytes {
         hash ^= b as u64;

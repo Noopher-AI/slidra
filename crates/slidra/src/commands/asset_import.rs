@@ -330,17 +330,9 @@ mod tests {
         dir
     }
 
-    fn register(home: &std::path::Path, test_id: &str, work_dir: &std::path::Path) {
-        let work_dir_json =
-            serde_json::to_string(&work_dir.to_string_lossy().into_owned()).unwrap();
-        let id_json = serde_json::to_string(test_id).unwrap();
-        let json = format!(r#"{{{id_json}:{{"workDir":{work_dir_json}}}}}"#);
-        std::fs::write(home.join("projects.json"), json).unwrap();
-    }
-
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
 
@@ -348,15 +340,14 @@ mod tests {
         fn new(label: &str, test_id: &str) -> Self {
             let guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
-            register(&home, test_id, &work);
+            let deck = crate::deck::build_test_deck(label, &[]);
+            crate::workspace::registry::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
-            std::fs::create_dir_all(work.join("assets")).unwrap();
             Fixture {
                 home,
-                work,
+                deck,
                 _guard: guard,
             }
         }
@@ -368,7 +359,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -391,7 +382,10 @@ mod tests {
         assert_eq!(data["path"], "assets/photo.png");
         assert_eq!(data["mimeType"], "image/png");
         assert_eq!(data["kind"], "image");
-        assert!(fixture.work.join("assets/photo.png").exists());
+        assert!(
+            crate::workspace::virtual_fs::assert_file_exists(&fixture.deck, "assets/photo.png")
+                .is_ok()
+        );
 
         std::fs::remove_dir_all(&src_dir).ok();
         drop(fixture);
@@ -413,7 +407,7 @@ mod tests {
     #[test]
     fn as_csv_happy_path_lands_under_assets_data() {
         let fixture = Fixture::new("as-csv", "pid-asset-3");
-        std::fs::create_dir_all(fixture.work.join("assets/data")).unwrap();
+        crate::deck::add_test_dir(&fixture.deck, "assets/data");
         let src_dir = temp_dir("as-csv-src");
         let src_path = src_dir.join("sales.csv");
         std::fs::write(&src_path, "name,value\na,1\nb,2\n").unwrap();
@@ -430,7 +424,13 @@ mod tests {
         assert_eq!(data["path"], "assets/data/sales.csv");
         assert_eq!(data["mimeType"], "text/csv");
         assert_eq!(data["kind"], "data");
-        assert!(fixture.work.join("assets/data/sales.csv").exists());
+        assert!(
+            crate::workspace::virtual_fs::assert_file_exists(
+                &fixture.deck,
+                "assets/data/sales.csv"
+            )
+            .is_ok()
+        );
 
         std::fs::remove_dir_all(&src_dir).ok();
         drop(fixture);
@@ -509,7 +509,10 @@ mod tests {
         assert!(result.ok, "expected success, got: {}", result.message);
         let data = result.data.unwrap();
         assert_eq!(data["path"], "assets/photo.png");
-        assert!(fixture.work.join("assets/photo.png").exists());
+        assert!(
+            crate::workspace::virtual_fs::assert_file_exists(&fixture.deck, "assets/photo.png")
+                .is_ok()
+        );
 
         drop(fixture);
     }

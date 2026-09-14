@@ -13,7 +13,8 @@ import { PNG } from "pngjs";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { loadPdf } from "./helpers/pdf.js";
-import { workDirFor } from "../packages/server/src/slidra/home.js";
+import { deckPathFor } from "../packages/server/src/slidra/home.js";
+import { writeDeckFileText } from "./helpers/deck.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -574,8 +575,8 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
     const convertTestId = opened.data!.id;
     // `new` creates no slides (ADR-0018); mint slides/001.svg so `convert` has a page to rewrite.
     await registry.dispatch("slide add", { id: convertTestId });
-    const workDir = await workDirFor(convertTestId);
-    await writeFile(path.join(workDir, "slides/001.svg"), bare, "utf-8");
+    const deckPath = await deckPathFor(convertTestId);
+    await writeDeckFileText(deckPath, "slides/001.svg", bare);
     const convertResult = await registry.dispatch("convert", { id: convertTestId });
     expect(convertResult.ok).toBe(true);
     const catResult = await registry.dispatch<{ content: string }>("cat", { id: convertTestId, path: "slides/001.svg" });

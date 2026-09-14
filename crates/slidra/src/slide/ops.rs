@@ -606,7 +606,7 @@ mod tests {
 
     struct Fixture {
         home: PathBuf,
-        work: PathBuf,
+        deck: PathBuf,
         id: String,
         _guard: std::sync::MutexGuard<'static, ()>,
     }
@@ -615,22 +615,27 @@ mod tests {
         fn new(label: &str) -> Self {
             let guard = registry::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
-            let work = temp_dir(&format!("{label}-work"));
             let id = format!("test-{label}");
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }
-            std::fs::create_dir_all(work.join("slides")).unwrap();
-            std::fs::write(
-                work.join("project.json"),
-                r#"{"formatVersion":1,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
-            )
-            .unwrap();
-            std::fs::write(work.join("slides/001.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><rect id=\"r1\" width=\"1\" height=\"1\"/></svg>\n").unwrap();
-            registry::register_for_test(&home, &id, &work);
+            let deck = crate::deck::build_test_deck(
+                label,
+                &[
+                    (
+                        "project.json",
+                        br#"{"formatVersion":5,"name":"T","canvas":{"width":1280,"height":720},"slides":["slides/001.svg"],"fonts":[]}"#,
+                    ),
+                    (
+                        "slides/001.svg",
+                        b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1280 720\"><rect id=\"r1\" width=\"1\" height=\"1\"/></svg>\n",
+                    ),
+                ],
+            );
+            registry::register_for_test(&home, &id, &deck);
             Fixture {
                 home,
-                work,
+                deck,
                 id,
                 _guard: guard,
             }
@@ -643,7 +648,7 @@ mod tests {
                 std::env::remove_var("SLIDRA_HOME");
             }
             std::fs::remove_dir_all(&self.home).ok();
-            std::fs::remove_dir_all(&self.work).ok();
+            std::fs::remove_file(&self.deck).ok();
         }
     }
 
@@ -711,9 +716,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.slide_path, "slides/002.svg");
-        assert!(fixture.work.join("slides/002.svg").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "slides/002.svg").is_ok());
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -725,9 +730,10 @@ mod tests {
     #[test]
     fn add_slide_fills_gap_left_by_deletion() {
         let fixture = Fixture::new("add-slide-gap");
-        std::fs::write(
-            fixture.work.join("slides/002.svg"),
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n",
+        virtual_fs::create_new_file(
+            &fixture.deck,
+            "slides/002.svg",
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n",
         )
         .unwrap();
         let result = add_slide(
@@ -805,9 +811,9 @@ mod tests {
     fn delete_slide_removes_file_and_updates_project() {
         let fixture = Fixture::new("delete-slide");
         delete_slide(&fixture.id, "slides/001.svg").unwrap();
-        assert!(!fixture.work.join("slides/001.svg").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "slides/001.svg").is_err());
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(project["slides"], serde_json::json!([]));
@@ -825,10 +831,10 @@ mod tests {
         let fixture = Fixture::new("duplicate-slide");
         let result = duplicate_slide(&fixture.id, "slides/001.svg").unwrap();
         assert_eq!(result.slide_path, "slides/002.svg");
-        let dup_content = std::fs::read_to_string(fixture.work.join("slides/002.svg")).unwrap();
+        let dup_content = virtual_fs::read_virtual_file(&fixture.deck, "slides/002.svg").unwrap();
         assert!(!dup_content.contains("id=\"r1\""));
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -849,12 +855,12 @@ mod tests {
             },
         )
         .unwrap();
-        let before = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let before = virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap();
         move_slide(&fixture.id, "slides/001.svg", 1.0).unwrap();
-        let after = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let after = virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap();
         assert_eq!(before, after);
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -876,7 +882,7 @@ mod tests {
         .unwrap();
         assert_eq!(result.template_path, "templates/001.svg");
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -898,7 +904,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.message(), "template name cannot be empty");
-        assert!(!fixture.work.join("templates").exists());
+        assert!(virtual_fs::list_virtual_entries(&fixture.deck, "templates").is_err());
     }
 
     #[test]
@@ -921,11 +927,11 @@ mod tests {
         .unwrap();
         rename_template(&fixture.id, "templates/001.svg", "New").unwrap();
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(project["templates"][0]["name"], "New");
-        assert!(fixture.work.join("templates/001.svg").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "templates/001.svg").is_ok());
     }
 
     #[test]
@@ -947,9 +953,9 @@ mod tests {
         )
         .unwrap();
         delete_template(&fixture.id, "templates/001.svg").unwrap();
-        assert!(!fixture.work.join("templates/001.svg").exists());
+        assert!(virtual_fs::assert_file_exists(&fixture.deck, "templates/001.svg").is_err());
         let project: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixture.work.join("project.json")).unwrap(),
+            &virtual_fs::read_virtual_file(&fixture.deck, "project.json").unwrap(),
         )
         .unwrap();
         assert_eq!(project["templates"], serde_json::json!([]));
@@ -960,7 +966,7 @@ mod tests {
     fn set_notes_writes_slidra_notes() {
         let fixture = Fixture::new("set-notes");
         set_notes(&fixture.id, "slides/001.svg", "hello").unwrap();
-        let content = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let content = virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap();
         assert!(content.contains(
             "<slidra:notes xmlns:slidra=\"https://slidra.app/ns/2026\">hello</slidra:notes>"
         ));
@@ -989,7 +995,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(count, 1);
-        let content = std::fs::read_to_string(fixture.work.join("slides/001.svg")).unwrap();
+        let content = virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg").unwrap();
         assert!(content.contains("enter=\"fade\""));
     }
 
@@ -1019,12 +1025,12 @@ mod tests {
         .unwrap();
         assert_eq!(count, 2);
         assert!(
-            std::fs::read_to_string(fixture.work.join("slides/001.svg"))
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/001.svg")
                 .unwrap()
                 .contains("enter=\"zoom\"")
         );
         assert!(
-            std::fs::read_to_string(fixture.work.join("slides/002.svg"))
+            virtual_fs::read_virtual_file(&fixture.deck, "slides/002.svg")
                 .unwrap()
                 .contains("enter=\"zoom\"")
         );
