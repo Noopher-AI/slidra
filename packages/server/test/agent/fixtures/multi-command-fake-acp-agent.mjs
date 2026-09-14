@@ -101,7 +101,7 @@ class MultiCommandFakeAgent {
         });
         log({ turn, permissionOutcome: permission.outcome });
         if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
-          throw new Error(`command not allowed: ${command}：${JSON.stringify(permission.outcome)}`);
+          throw new Error(`command not allowed: ${command}: ${JSON.stringify(permission.outcome)}`);
         }
         if (config.holdAfterPermissionMs) {
           await new Promise((resolve) => setTimeout(resolve, config.holdAfterPermissionMs));
@@ -113,7 +113,7 @@ class MultiCommandFakeAgent {
 
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
-      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `completed turn ${turn} turn` } },
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `completed turn ${turn}` } },
     });
     return { stopReason: "end_turn" };
   }

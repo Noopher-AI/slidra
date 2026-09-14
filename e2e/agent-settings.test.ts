@@ -11,7 +11,7 @@ import type { CommandOutcome, CommandRunner } from "../packages/server/src/agent
 import { openApp, requireBuilt, startServerFor, type StartedServer } from "./helpers/launch.js";
 
 /**
- * The chat panel's agent／model chips and their menus (AgentPicker.tsx) and the agent-
+ * The chat panel's agent / model chips and their menus (AgentPicker.tsx) and the agent-
  * driven empty state, end to end. This started life as the settings
  * dialog's Agent tab test; the dialog and the status
  * bar gear are gone — everything the author used to do there is a pill

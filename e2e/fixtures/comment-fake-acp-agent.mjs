@@ -7,10 +7,8 @@
 // What it does on the author's first real message (index 1; index 0 is the
 // agent's own editing-charter turn) depends on the message text:
 //   - contains "[plan-from-outline]" (the position line Plan with agent puts
-//     after `/slidra-plan`, #303 contract §4 — a literal Chinese marker
-//     left untranslated because it comes from apps/web's App.tsx, outside
-//     this file's translation scope, and must keep matching what the real
-//     app actually sends): requests permission for, then actually runs,
+//     after `/slidra-plan`, #303 contract §4 — must keep matching what the
+//     real app actually sends): requests permission for, then actually runs,
 //     `slidra plan set <id> outline '…'` and `plan set <id> design-spec
 //     '…'` — a minimal but valid draft plan with one page and one question
 //     (contract §1) — and replies "plan is ready". The editor's plan gate
@@ -18,8 +16,7 @@
 //     `.plan-gate`), not off this reply.
 //   - contains "[plan-confirmed]" (what the gate's confirm-and-build button
 //     sends, any author message index — it is always the *second* author
-//     turn; same untranslated-marker note as above, sourced from
-//     apps/web's plan-file.ts): requests permission for `slidra slide add
+//     turn; sourced from apps/web's plan-file.ts): requests permission for `slidra slide add
 //     <id>` (append), holds for E2E_DRAFT_HOLD_MS, then actually runs it
 //     and replies "build complete" — reports `completed` only if the
 //     command succeeds, `failed` (with stdout/stderr) if it doesn't. This

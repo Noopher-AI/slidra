@@ -207,7 +207,7 @@ export function ChatPanel({
   }
 
   /**
-   * One `onKeyDown` for the input: ⌘↵／Ctrl+↵ always sends, even with the
+   * One `onKeyDown` for the input: ⌘↵ / Ctrl+↵ always sends, even with the
    * slash menu open (a modifier-Enter is unambiguously "send", never
    * "complete"); every other key goes to the menu first.
    */

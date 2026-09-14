@@ -698,7 +698,7 @@ export function App() {
     return event.key === "[" || event.key === "{" || event.code === "BracketLeft";
   }
 
-  // ⌘A／Delete／Backspace／⌘D／⌘]／⌘[／⌘⇧]／⌘⇧[ (NOOP-90/T2 §4.4) — the
+  // ⌘A / Delete / Backspace / ⌘D / ⌘] / ⌘[ / ⌘⇧] / ⌘⇧[ (NOOP-90/T2 §4.4) — the
   // PARENT document's own half of the keyboard relay. When focus sits
   // INSIDE the sandboxed iframe (e.g. right after clicking a slide
   // element), this listener never fires at all for that keypress — the

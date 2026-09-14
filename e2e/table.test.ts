@@ -161,7 +161,7 @@ it("E1: the Dock's Table button opens the insert panel; hovering previews the ce
 
     // Hover the cell at row index 2, col index 3 (0-based) — a 3×4 preview.
     await panel.locator('.table-panel-cell[aria-label="3 × 4"]').hover();
-    expect(await panel.locator('[role="grid"]').getAttribute("aria-label")).toBe("Table size：3 × 4");
+    expect(await panel.locator('[role="grid"]').getAttribute("aria-label")).toBe("Table size: 3 × 4");
 
     await panel.locator('.table-panel-cell[aria-label="3 × 4"]').click();
     const insertButton = panel.locator(".table-panel-insert");
