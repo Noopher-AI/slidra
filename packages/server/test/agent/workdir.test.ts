@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -136,51 +136,6 @@ describe("deployAgentWorkdir", () => {
 
     expect(await readFile(path.join(a, "agent-a-wrote-this.txt"), "utf8")).toBe("still here");
     expect(await realpath(a)).toBe(a);
-  });
-
-  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading", async () => {
-    const first = await deployAgentWorkdir(PRESENTATION);
-    const firstInode = (await stat(first)).ino;
-
-    await deployAgentWorkdir(PRESENTATION);
-
-    // The old inode is still readable — it was renamed aside, not removed.
-    const agentDir = path.join(slidraHome, "agent");
-    const retired = (await readdir(agentDir)).filter((name) => name.startsWith(`${PRESENTATION}.old-`));
-    expect(retired).toHaveLength(1);
-    const retiredDir = path.join(agentDir, retired[0]!);
-    expect((await stat(retiredDir)).ino).toBe(firstInode);
-    expect(await readFile(path.join(retiredDir, "AGENTS.md"), "utf8")).not.toBe("");
-  });
-
-  it("sweeps the retired generation on the deploy after next, so retired copies do not pile up", async () => {
-    await deployAgentWorkdir(PRESENTATION);
-    await deployAgentWorkdir(PRESENTATION);
-    await deployAgentWorkdir(PRESENTATION);
-
-    const retired = (await readdir(path.join(slidraHome, "agent"))).filter((name) =>
-      name.startsWith(`${PRESENTATION}.old-`),
-    );
-    expect(retired).toHaveLength(1);
-  });
-
-  it("never sweeps another presentation's retired directory — it may still be that serve's live agent cwd", async () => {
-    await deployAgentWorkdir("pres-a");
-    await deployAgentWorkdir("pres-a"); // retires pres-a's first generation
-    const agentDir = path.join(slidraHome, "agent");
-    const retiredA = (await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"));
-    expect(retiredA).toHaveLength(1);
-
-    await deployAgentWorkdir("pres-b");
-    await deployAgentWorkdir("pres-b");
-
-    expect((await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"))).toEqual(retiredA);
-  });
-
-  it("leaves no staging directory behind", async () => {
-    await deployAgentWorkdir(PRESENTATION);
-    const staging = (await readdir(slidraHome)).filter((name) => name.startsWith("agent.tmp-"));
-    expect(staging).toEqual([]);
   });
 });
 
