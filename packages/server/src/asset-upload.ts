@@ -121,8 +121,11 @@ async function runAssetImport(presentationId: string, sourceBasename: string, by
  * presentation id is never read from the request — same rule as
  * `handleCommandPost` — this server was started on exactly one id and that
  * is the only one any route ever writes into.
+ *
+ * Resolves to whether the upload actually wrote to the deck (NOOP-422),
+ * same convention as `handleCommandPost`.
  */
-export async function handleAssetPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleAssetPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const sourceNameHeader = req.headers[ASSET_NAME_HEADER];
   const sourceUrlHeader = req.headers[ASSET_URL_HEADER];
   const hasName = typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
@@ -130,25 +133,24 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
 
   if (hasName && hasUrl) {
     sendJson(res, 400, { error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}` });
-    return;
+    return false;
   }
 
   if (hasUrl) {
-    await handleUrlAsset(presentationId, sourceUrlHeader as string, res);
-    return;
+    return handleUrlAsset(presentationId, sourceUrlHeader as string, res);
   }
 
   const sourceName = typeof sourceNameHeader === "string" ? sourceNameHeader : "";
   if (sourceName.trim() === "") {
     sendJson(res, 400, { error: `Missing header: ${ASSET_NAME_HEADER} or ${ASSET_URL_HEADER}` });
-    return;
+    return false;
   }
   let decodedSourceName: string;
   try {
     decodedSourceName = decodeURIComponent(sourceName);
   } catch {
     sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_NAME_HEADER}` });
-    return;
+    return false;
   }
 
   let body: Buffer;
@@ -157,10 +159,10 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
       sendJson(res, 400, { error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)` });
-      return;
+      return false;
     }
     sendJson(res, 400, { error: "Failed to read request body" });
-    return;
+    return false;
   }
 
   let data: AssetImportData;
@@ -168,10 +170,11 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
     data = await runAssetImport(presentationId, decodedSourceName, new Uint8Array(body));
   } catch (error) {
     sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
-    return;
+    return false;
   }
 
   sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
+  return true;
 }
 
 /** `sourceNameOf` for a URL (mirrors the old `packages/cli` asset-import command's own helper): the URL path's basename, percent-decoded. */
@@ -216,18 +219,18 @@ async function downloadAssetSource(url: string, maxBytes: number): Promise<Uint8
  * by `MAX_ASSET_BODY_BYTES`) and stages the result the same way the
  * raw-bytes path does, then runs the same `asset import` spawn.
  */
-async function handleUrlAsset(presentationId: string, urlHeader: string, res: ServerResponse): Promise<void> {
+async function handleUrlAsset(presentationId: string, urlHeader: string, res: ServerResponse): Promise<boolean> {
   let url: string;
   try {
     url = decodeURIComponent(urlHeader);
   } catch {
     sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_URL_HEADER}` });
-    return;
+    return false;
   }
 
   if (!URL_SCHEME_PATTERN.test(url)) {
     sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
-    return;
+    return false;
   }
 
   let data: AssetImportData;
@@ -236,8 +239,9 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
     data = await runAssetImport(presentationId, sourceBasenameOfUrl(url), bytes);
   } catch (error) {
     sendJson(res, 400, { error: error instanceof AssetImportFailedError ? error.message : "Import failed" });
-    return;
+    return false;
   }
 
   sendJson(res, 200, { ok: true, data, message: `imported media: ${data.path}` });
+  return true;
 }

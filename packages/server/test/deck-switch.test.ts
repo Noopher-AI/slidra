@@ -219,7 +219,7 @@ describe("no deck open (AC1)", () => {
       { method: "GET", path: "/api/save-state" },
       { method: "POST", path: "/api/command" },
       { method: "POST", path: "/api/asset" },
-      { method: "POST", path: "/api/save" },
+      { method: "POST", path: "/api/save/flush" },
       { method: "POST", path: "/api/undo" },
       { method: "POST", path: "/api/redo" },
       { method: "POST", path: "/api/export" },

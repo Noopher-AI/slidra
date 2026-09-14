@@ -516,7 +516,10 @@ it("a comment survives a Save/Open round-trip", async () => {
     await composer.getByRole("button", { name: "Add comment" }).click();
     await expect.poll(() => composer.isVisible(), { timeout: 5000 }).toBe(false);
 
-    await page.locator('.titlebar-button[title="Save (⌘S)"]').click();
+    // NOOP-422: there is no Save button any more — the comment-add command
+    // that just landed already made `saveController.markDirty()` fire
+    // server-side, so continuous save's own debounce writes this back with
+    // no author action.
     await expect.poll(() => page.locator(".titlebar-saved-status").textContent(), { timeout: 30_000 }).toBe("Saved");
     // A short settle after the "Saved" status text appears — observed
     // flaky without it (re-open sometimes raced the save's own disk write
@@ -559,7 +562,9 @@ it("master mode: \"Let the agent update the slides\" saves first, names the chan
     const page = await openApp(server, { waitForAgent: true });
 
     const requestOrder: string[] = [];
-    await page.route("**/api/save", (route) => {
+    // NOOP-422: `applyTemplateToSlides` now flushes through `/api/save/flush`
+    // instead of the retired `/api/save` — same ordering guarantee (AC3(i)).
+    await page.route("**/api/save/flush", (route) => {
       requestOrder.push("save");
       void route.continue();
     });

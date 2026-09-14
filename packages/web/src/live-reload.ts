@@ -3,8 +3,11 @@
 
 import type { SlashCommandOption } from "./slash-commands.js";
 
-/** core's own `SaveState` shape (`workspace.ts`), restated here rather than imported: the browser bundle no longer depends on core at all. */
-export type SaveState = { known: true; dirty: boolean; fileName: string } | { known: false };
+/** `@slidra/server`'s `SaveStateWire` shape (`save-state.ts`), restated here rather than imported: the browser bundle no longer depends on the Node-only server package (NOOP-422 added `phase`/`reason` to the pre-existing `known`/`dirty`/`fileName`). */
+export type SavePhase = "saved" | "saving" | "failed";
+export type SaveState =
+  | { known: true; dirty: boolean; fileName: string; phase: SavePhase; reason?: string }
+  | { known: false };
 
 /**
  * Restated here rather than imported: `@slidra/server`'s
@@ -260,9 +263,24 @@ function parseSaveStateEventData(event: Event): SaveState | undefined {
   const known = (parsed as { known: unknown }).known;
   if (known === false) return { known: false };
   if (known !== true) return undefined;
-  const { dirty, fileName } = parsed as { dirty?: unknown; fileName?: unknown };
+  const { dirty, fileName, phase, reason } = parsed as {
+    dirty?: unknown;
+    fileName?: unknown;
+    phase?: unknown;
+    reason?: unknown;
+  };
   if (typeof dirty !== "boolean" || typeof fileName !== "string") return undefined;
-  return { known: true, dirty, fileName };
+  // A payload from an older server build carries no `phase` at all — legal,
+  // never discarded wholesale: derived the same way a `dirty`-only reader
+  // always could (NOOP-422 §4(c)'s table).
+  const resolvedPhase: SavePhase = phase === "saved" || phase === "saving" || phase === "failed" ? phase : dirty ? "saving" : "saved";
+  return {
+    known: true,
+    dirty,
+    fileName,
+    phase: resolvedPhase,
+    ...(typeof reason === "string" ? { reason } : {}),
+  };
 }
 
 /** Parses an `agent-commands` SSE payload — same `{ commands: [{name,description,source}] }` shape `GET /api/agent/commands` returns. Malformed → dropped, previous list kept (errors over fallbacks); `source` is read by the server but not needed here, so it is not validated. */

@@ -571,6 +571,36 @@ describe("startServe", () => {
     expect(JSON.stringify(body)).not.toContain("corrupted");
   });
 
+  // NOOP-422: continuous save replaced the manual Save button — `/api/save`
+  // is retired entirely (405, the same "no POST route matched" answer any
+  // unknown path gets), and `/api/save/flush` is the one remaining manual
+  // escape hatch (Retry, the unsaved-changes modal's "Save now",
+  // `applyTemplateToSlides`'s pre-dispatch save).
+  it("POST /api/save no longer exists; POST /api/save/flush writes back and reports dirty:false", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const retired = await fetch(`${server.url}/api/save`, { method: "POST" });
+    expect(retired.status).toBe(405);
+
+    // A real write through the one route that calls `saveController.
+    // markDirty()` synchronously (serve.ts's `/api/command` handler) —
+    // deterministic, unlike relying on the startup "resume a crash-dirty
+    // deck" check's own timing.
+    const setResponse = await fetch(`${server.url}/api/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "slide notes set", input: { slidePath: "slides/001.svg", text: "hello" } }),
+    });
+    expect(setResponse.status).toBe(200);
+
+    const flushed = await fetch(`${server.url}/api/save/flush`, { method: "POST" });
+    expect(flushed.status).toBe(200);
+    const body = (await flushed.json()) as { known: boolean; dirty: boolean };
+    expect(body.known).toBe(true);
+    expect(body.dirty).toBe(false);
+  });
+
   // `GET /api/effects/<path>` — the step-plan route the player and
   // step-by-step export now fetch instead of computing it themselves in
   // the browser. Builds its fixture through the real Rust binary rather

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,8 +98,8 @@ afterEach(async () => {
   }
 });
 
-describe("file round-trip via POST /api/save", () => {
-  it("an edit saved through /api/save survives a reopen into a second SLIDRA_HOME, byte-for-byte", async () => {
+describe("continuous save (NOOP-422)", () => {
+  it("an edit left alone is durable in the deck file within the debounce window, with no author action, byte-for-byte after reopening into a second SLIDRA_HOME (AC2)", async () => {
     harness = await startHarness();
     const { server, slidraPath } = harness;
 
@@ -113,12 +113,12 @@ describe("file round-trip via POST /api/save", () => {
     });
     expect(setResponse.status).toBe(200);
 
-    const saveResponse = await fetch(`${server.url}/api/save`, { method: "POST" });
-    expect(saveResponse.status).toBe(200);
-    await expect(saveResponse.json()).resolves.toEqual({ ok: true });
-
-    const stateResponse = await fetch(`${server.url}/api/save-state`);
-    await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: "a.slidra" });
+    // No author action beyond the edit itself — the SaveController's own
+    // trailing debounce must write this back on its own within a few
+    // seconds, well inside this poll's timeout.
+    await expect
+      .poll(() => fetch(`${server.url}/api/save-state`).then((r) => r.json()), { timeout: 5000 })
+      .toEqual({ known: true, dirty: false, fileName: "a.slidra", phase: "saved" });
 
     // The deck file this server is still running against.
     const firstDeckPath = await deckPathFor(harness.presentationId);
@@ -155,24 +155,6 @@ describe("file round-trip via POST /api/save", () => {
       // slidra serve now spawns the Rust binary for every read/write.
       process.env.SLIDRA_BIN = slidraBin;
     }
-  });
-
-  it("POST /api/save without a sourcePath (a legacy registry entry) is refused with 400, not a guessed path", async () => {
-    harness = await startHarness();
-    const { server, slidraHome, presentationId } = harness;
-
-    // Simulate a registry entry created before sourcePath/savedAt tracking
-    // existed: no sourcePath/savedAt at all.
-    const registryPath = path.join(slidraHome, "projects.json");
-    const raw = JSON.parse(await readFile(registryPath, "utf-8")) as Record<string, { deckPath: string }>;
-    const deckPath = raw[presentationId].deckPath;
-    raw[presentationId] = { deckPath };
-    await writeFile(registryPath, JSON.stringify(raw));
-
-    const saveResponse = await fetch(`${server.url}/api/save`, { method: "POST" });
-    expect(saveResponse.status).toBe(400);
-    const body = (await saveResponse.json()) as { error: string };
-    expect(body.error).toContain("no file path to write back to");
   });
 });
 
@@ -236,43 +218,50 @@ describe("POST /api/open", () => {
   });
 });
 
-describe("Cmd+S keyboard entry point (via a real browser — the two describe blocks above are pure HTTP, this is the only one exercising App.tsx's keydown handler)", () => {
+describe("no manual Save entry point anywhere in the UI (AC1, via a real browser — the describe blocks above are pure HTTP)", () => {
   let browser: Browser;
 
-  it("pressing Cmd+S sends POST /api/save, and GET /api/save-state then reports dirty: false", async () => {
+  it("no Save button exists, and Cmd+S sends no POST to /api/save or /api/save/flush", async () => {
     await requireBuilt(rootDir);
     browser = await chromium.launch();
-    const started = await startServerFor({ deckDir, prefix: "roundtrip-cmd-s" });
+    const started = await startServerFor({ deckDir, prefix: "roundtrip-no-save-entry" });
     try {
       const page = await openApp(browser, started.server);
-      // startServerFor opens the file via registry.dispatch("open", { path: slidraPath }),
-      // which always carries a sourcePath (see helpers/launch.ts's own notes),
-      // so /api/save has something to write back to. Make a real edit first so
-      // dirty becomes true — pressing Cmd+S without changing anything would
-      // leave dirty: false regardless of whether Cmd+S did anything.
+
+      // The title bar's old Save button is gone entirely — not just
+      // relabeled or disabled.
+      expect(await page.locator('.titlebar-button[title="Save (⌘S)"]').count()).toBe(0);
+      expect(await page.getByRole("button", { name: "Save", exact: true }).count()).toBe(0);
+
+      const saveRequests: string[] = [];
+      page.on("request", (request) => {
+        if (request.method() === "POST" && new URL(request.url()).pathname.startsWith("/api/save")) {
+          saveRequests.push(request.url());
+        }
+      });
+
+      // A real edit first, so there is something a manual save COULD have
+      // acted on — pressing Cmd+S over a clean deck would prove nothing.
       const setResult = await started.registry.dispatch("text set", {
         id: started.presentationId,
         slidePath: "slides/001.svg",
         elementId: "el-title",
-        newText: "Cmd+S test",
+        newText: "Cmd+S no-op test",
       });
       expect(setResult.ok).toBe(true);
       await expect
         .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: true, fileName: "deck.slidra" });
+        .toMatchObject({ known: true, dirty: true });
 
-      // Focus is deliberately left on the parent document (no click into the
-      // slide): the Cmd+S keydown listener is attached to App.tsx's
-      // `document`, and if focus first moved into the sandbox iframe, this
-      // key event would never bubble back to the parent document (events
-      // don't bubble across iframe boundaries), so Cmd+S would never fire —
-      // this verifies exactly the most directly reachable path, "focus in
-      // the parent document".
+      // Focus is deliberately left on the parent document (no click into
+      // the slide): a keydown listener bound there is the most directly
+      // reachable path for a global keyboard shortcut to exist at all.
       await page.keyboard.press("Meta+s");
+      // Gives a keydown handler, if one still existed, time to fire its
+      // fetch — this is the one place a negative assertion needs a wait.
+      await page.waitForTimeout(300);
 
-      await expect
-        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toEqual({ known: true, dirty: false, fileName: "deck.slidra" });
+      expect(saveRequests).toEqual([]);
     } finally {
       await browser.close();
       await started.cleanup();

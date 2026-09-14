@@ -111,6 +111,10 @@ button:disabled {
   white-space: nowrap;
   flex: none;
 }
+.titlebar-saved-status[data-state="failed"] {
+  color: var(--brand-red);
+  font-weight: 600;
+}
 .titlebar-file-input {
   position: absolute;
   width: 1px;
@@ -377,4 +381,81 @@ button:disabled {
 .dock-zoom-control:focus-visible {
   outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
   outline-offset: 1px;
+}
+.save-failed-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.save-retry-button {
+  height: var(--control-h);
+  padding: 0 var(--space-5);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  color: var(--ink-700);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+/* NOOP-422 §4(d): same mask/dialog skeleton as .save-template-modal-* (rail.css). */
+.unsaved-changes-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: var(--s-overlay);
+}
+.unsaved-changes-modal {
+  width: var(--panel-w);
+  max-width: 90vw;
+  padding: var(--space-8);
+  box-sizing: border-box;
+  background: var(--surface-white);
+  border-radius: var(--radius-xl-dialog);
+  box-shadow: var(--shadow-dialog);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.unsaved-changes-modal-title {
+  margin: 0;
+  font-size: var(--text-lg-dialog);
+  font-weight: 700;
+  color: var(--ink-900);
+}
+.unsaved-changes-modal-text {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--ink-700);
+}
+.unsaved-changes-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.unsaved-changes-modal-save,
+.unsaved-changes-modal-keep,
+.unsaved-changes-modal-discard {
+  height: var(--control-h);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: 0;
+}
+.unsaved-changes-modal-save {
+  background: var(--brand-red);
+  color: var(--surface-white);
+  order: -1;
+}
+.unsaved-changes-modal-keep {
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  color: var(--ink-700);
+}
+.unsaved-changes-modal-discard {
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+  color: var(--brand-red);
 }
