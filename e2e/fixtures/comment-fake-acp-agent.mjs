@@ -30,6 +30,12 @@
 //     editing-fake-acp-agent.mjs's default case, giving AC5's
 //     titlebar-frozen screenshot a real, observable freeze window
 //     (E2E_FREEZE_HOLD_MS).
+//   - starts with "/slidra-apply-master" (master-mode plan §4/AC3/AC4):
+//     reads project.json for the deck's slide list, then for every slide
+//     runs its own `text set` in the *same* turn (one `requestAndRun` per
+//     slide, no history-group bookkeeping of its own needed — session.ts
+//     already opens one group for the whole turn) — this is what the e2e
+//     test's "one undo restores every slide" assertion depends on.
 //   - anything else, at index 1 or later: echoes the received prompt text
 //     back verbatim as an `agent_message_chunk` — this is what AC1's
 //     "submitting" scenario actually asserts on (proof the comment-context
@@ -223,6 +229,24 @@ class CommentFakeAgent {
       await this.connection.sessionUpdate({
         sessionId,
         update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "locked and edited" } },
+      });
+      return { stopReason: "end_turn" };
+    }
+
+    if (index === AUTHOR_PROMPT_INDEX && authorText.startsWith("/slidra-apply-master")) {
+      const project = await this.connection.readTextFile({ sessionId, path: "project.json", line: null, limit: null });
+      const slides = JSON.parse(project.content).slides;
+      let changed = 0;
+      for (const slidePath of slides) {
+        const slide = await this.connection.readTextFile({ sessionId, path: slidePath, line: null, limit: null });
+        const elementId = extractTextElementId(slide.content);
+        const command = `slidra text set ${presentationId} ${slidePath} ${elementId} ${shellQuote("swept from the template")}`;
+        await requestAndRun(this.connection, sessionId, `e2e-apply-master-${changed}`, "Apply template change", command, this.sessionCwd, 0);
+        changed++;
+      }
+      await this.connection.sessionUpdate({
+        sessionId,
+        update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `applied to ${changed} slides` } },
       });
       return { stopReason: "end_turn" };
     }

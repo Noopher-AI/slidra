@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Apply Master Test Deck",
+  "canvas": {
+    "width": 1280,
+    "height": 720
+  },
+  "slides": ["slides/001.svg", "slides/002.svg"],
+  "templates": [{ "file": "templates/001.svg", "name": "Content" }]
+}

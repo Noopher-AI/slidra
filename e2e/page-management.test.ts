@@ -301,6 +301,80 @@ it("Templates button: lists only templates (no Blank/From outline…), applying 
   }
 });
 
+it("master mode: entering shows the deck's templates on the rail and stage, its label avoids sync language, and leaving restores the previous slide (AC1/AC5)", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+
+    // Starts on slides/001.svg (index 0) — the slide master mode must
+    // restore on exit.
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("0");
+
+    await page.getByRole("button", { name: "Edit template" }).click();
+
+    // The rail now lists the deck's two templates, not its four slides.
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(2);
+    await expect.poll(() => page.locator(".rail-slides-label").textContent()).toContain("Templates");
+    const stageText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
+    await expect.poll(() => stageText.textContent()).toBe("Title Template");
+
+    // AC5: the mode's own explanation never implies automatic sync, and
+    // says outright that existing slides don't change on their own.
+    const barText = (await page.locator(".master-mode-bar").textContent()) ?? "";
+    expect(barText.toLowerCase()).not.toMatch(/sync|automatic/);
+    expect(barText).toContain("don't change");
+    await expect.poll(() => page.getByRole("button", { name: "Let the agent update the slides" }).isVisible()).toBe(true);
+
+    // AC1: selecting a different template puts it on stage, same as a slide.
+    await page.locator('.overview-item[data-index="1"] button.overview-thumb').click();
+    await expect.poll(() => stageText.textContent()).toBe("Section Template");
+
+    await page.getByRole("button", { name: "Back to slides" }).click();
+
+    // Back to the deck's four slides, on the same slide the author left.
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(4);
+    await expect.poll(() => page.locator(".overview-item-current").getAttribute("data-index")).toBe("0");
+    await expect.poll(() => stageText.textContent()).not.toBe("Section Template");
+  } finally {
+    await cleanup();
+  }
+});
+
+it("master mode: editing a template with an ordinary command changes only the template, no slide (AC2)", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor();
+  try {
+    const page = await openApp(server);
+    const slidesBefore = (await readProject(registry, presentationId)).slides;
+    const slideBytesBefore = await Promise.all(slidesBefore.map((p) => readSlide(registry, presentationId, p)));
+
+    await page.getByRole("button", { name: "Edit template" }).click();
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(2);
+
+    // Same command endpoint any ordinary tool (Style panel, in-place text
+    // edit) already issues — see file-roundtrip.test.ts/
+    // direct-manipulation.test.ts for the same direct-POST shape.
+    const response = await fetch(`${server.url}/api/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "text set",
+        input: { slidePath: "templates/001.svg", elementId: "el-template-title", newText: "Edited Template" },
+      }),
+    });
+    expect(response.status).toBe(200);
+
+    const templateAfter = await readSlide(registry, presentationId, "templates/001.svg");
+    expect(templateAfter).toContain("Edited Template");
+
+    const slidesAfter = (await readProject(registry, presentationId)).slides;
+    expect(slidesAfter).toEqual(slidesBefore);
+    const slideBytesAfter = await Promise.all(slidesAfter.map((p) => readSlide(registry, presentationId, p)));
+    expect(slideBytesAfter).toEqual(slideBytesBefore);
+  } finally {
+    await cleanup();
+  }
+});
+
 it("drag reordering: a red insertion line appears at the drop target's edge, releasing changes project.json's order", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
