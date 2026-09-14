@@ -217,6 +217,11 @@ class FakeAgent {
     return {};
   }
 
+  async extMethod(method, params) {
+    if (method === "session/set_model") return this.unstable_setSessionModel(params);
+    throw acp.RequestError.methodNotFound(method);
+  }
+
   async setSessionConfigOption(params) {
     log({ setConfigOption: { configId: params.configId, value: params.value } });
     if (params.configId !== "model" || !modelOption.options.some((option) => option.value === params.value)) {

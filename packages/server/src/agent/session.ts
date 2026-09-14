@@ -209,6 +209,22 @@ export interface AgentModelChoice {
  */
 type ModelMechanism = { kind: "models" } | { kind: "config"; configId: string };
 
+/**
+ * The model selector that claude-code-acp still returns as an experimental
+ * extension on `session/new`. ACP SDK 1.x removed it from the stable response
+ * type, but clients must keep accepting extension fields from older adapters.
+ */
+interface ExperimentalModelInfo {
+  modelId: string;
+  name: string;
+  description?: string | null;
+}
+
+interface ExperimentalModelState {
+  currentModelId: string;
+  availableModels: ExperimentalModelInfo[];
+}
+
 /** Events an `AgentChatSession` emits while a user-triggered turn is active. */
 interface ChatEvents {
   "chat-chunk": (payload: { text: string }) => void;
@@ -369,10 +385,9 @@ export class AgentChatSession extends EventEmitter {
   /**
    * Rejects whatever ACP call (`initialize`/`newSession`/`prompt`) is
    * currently awaited, set for the duration of that one call by
-   * `withInterrupt`. The ACP SDK never settles a pending call on its own
-   * when stdio hits EOF or a write fails (fix 1) — this is the only thing
-   * that can unblock it, so the child's `error`/`exit` handlers reach for
-   * it directly instead of hoping the SDK notices.
+   * `withInterrupt`. Current ACP SDKs reject pending calls when stdio closes;
+   * the child's `error`/`exit` handlers still reach this directly so spawn
+   * failures and older adapter behavior cannot leave a call hanging.
    */
   private activeReject: ((error: Error) => void) | undefined;
   /**
@@ -494,7 +509,7 @@ export class AgentChatSession extends EventEmitter {
     choice: AgentModelChoice,
   ): Promise<void> {
     if (mechanism.kind === "models") {
-      await connection.unstable_setSessionModel({ sessionId, modelId: choice.id });
+      await connection.extMethod("session/set_model", { sessionId, modelId: choice.id });
     } else {
       const response = await connection.setSessionConfigOption({ sessionId, configId: mechanism.configId, value: choice.id });
       this.readConfigOptions(response.configOptions);
@@ -515,15 +530,19 @@ export class AgentChatSession extends EventEmitter {
     // config option wins when present; `models` is what `claude-code-acp`
     // sends and the only shape it has.
     this.readConfigOptions(session.configOptions ?? []);
-    if (this.modelMechanism || !session.models) return;
+    const models = (session as acp.NewSessionResponse & { models?: ExperimentalModelState | null }).models;
+    if (this.modelMechanism || !models) return;
     this.modelMechanism = { kind: "models" };
-    this.modelChoices = session.models.availableModels.map(toChoice);
-    this.setCurrentModel(session.models.currentModelId);
+    this.modelChoices = models.availableModels.map(toChoice);
+    this.setCurrentModel(models.currentModelId);
   }
 
   /** `codex-acp`'s shape: the `configOptions` entry whose `category` is `model`. Grouped options are flattened. */
   private readConfigOptions(options: readonly acp.SessionConfigOption[]): void {
-    const option = options.find((candidate) => candidate.category === "model");
+    const option = options.find(
+      (candidate): candidate is Extract<acp.SessionConfigOption, { type: "select" }> =>
+        candidate.category === "model" && candidate.type === "select",
+    );
     if (!option) return;
     this.modelMechanism = { kind: "config", configId: option.id };
     this.modelChoices = option.options.flatMap((entry) =>
@@ -774,7 +793,11 @@ export class AgentChatSession extends EventEmitter {
         },
         (error) => {
           this.activeReject = undefined;
-          reject(error);
+          reject(
+            error instanceof Error && error.message === "ACP connection closed"
+              ? new SlidraError(`${this.config.label}'s connection was lost, please resend the message`)
+              : error,
+          );
         },
       );
     });
@@ -833,10 +856,8 @@ export class AgentChatSession extends EventEmitter {
 
   /**
    * The child (belonging to `generation`) exited or failed to spawn.
-   * Whatever ACP call is currently awaited (setup or a turn) would
-   * otherwise hang forever — the ACP SDK never settles a pending call on
-   * its own once stdio is dead — so this rejects it directly via
-   * `activeReject`, then tears the session down completely so the next
+   * Whatever ACP call is currently awaited (setup or a turn) is rejected
+   * directly via `activeReject`, then the session is torn down so the next
    * message starts fresh instead of reusing a dead child (fix 1).
    *
    * Ignored when `generation` is no longer `this.generation`: a stale
@@ -1340,7 +1361,7 @@ export class AgentChatSession extends EventEmitter {
   }
 }
 
-function toChoice(info: acp.ModelInfo): AgentModelChoice {
+function toChoice(info: ExperimentalModelInfo): AgentModelChoice {
   // `claude-code-acp` names the unpinned default "Default (recommended)" and
   // puts which models that actually resolves to in the description — so the
   // description is kept, as the picker's tooltip.
