@@ -90,7 +90,7 @@ def main() -> int:  # noqa: PLR0915 - a single linear flow; splitting into funct
 
     open_deck()  # noqa: F821
 
-    long_media = "placeholder-" + ("長訊息驗證用填充字元" * 20) + ".xyz"
+    long_media = "placeholder-" + ("long-message-validation-padding" * 20) + ".xyz"
     inserted = slidra(
         "element", "insert", "rect", presentation_id, slide_path,
         "--x", "0", "--y", "0", "--width", "10", "--height", "10",

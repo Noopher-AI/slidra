@@ -1,11 +1,11 @@
 # 06 · nordic-calm
 
-**第一秒的感覺**：灰藍的白、幾乎看不出彩度的字。像北歐的冬天下午——安靜、低溫、什麼都沒有多說。留白本身就是內容。
+**First-impression feel**: A gray-blue white, text with almost no visible saturation. Like a Nordic winter afternoon — quiet, cool, saying nothing extra. The whitespace is itself the content.
 
-**適合**：設計提案、產品哲學、需要「沉住氣」的場合。
-**不適合**：需要熱情或急迫感的場合（募資、促銷、動員）。它太冷靜了。
+**Suited for**: Design proposals, product philosophy, contexts that need to "hold steady."
+**Not suited for**: Contexts needing enthusiasm or urgency (fundraising, promotions, rallies). It is too calm.
 
-**為什麼是這個配色**：整組彩度都壓在 20% 以下——主色是灰藍不是藍，accent 是霧橘不是橘。這是唯一一組「沒有任何顏色想被看見」的配色，所以版面的留白與對齊會變成唯一的視覺重點，做不好就無處可躲。
+**Why this palette**: The entire set is kept under 20% saturation — the primary is gray-blue, not blue; the accent is a muted orange, not orange. This is the only palette where "no color wants to be seen," so the layout's whitespace and alignment become the only visual focus; if done poorly, there is nowhere to hide.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：**標題不用粗體**（weight 400）——這是這個風格最反直覺也最關鍵的一點。層級靠字級與留白建立，不靠粗細。加粗會立刻毀掉它。
+**Typography and contrast**: **Headings are not bold** (weight 400) — this is the most counterintuitive and most crucial point of this style. Hierarchy is built through type scale and whitespace, not weight. Bolding would destroy it immediately.
 
-**間距節奏**：級距最鬆的一組（16/24/40/64/96），邊界 112。一頁最多 3 個單位，寧可拆頁。
+**Spacing rhythm**: The loosest spacing set (16/24/40/64/96), margins of 112. At most 3 units per page; split into more pages if needed.
 
-**建議背景**：01 `soft-blobs`（opacity 0.4 以下）或乾脆 `background: off`。 **明亮背景**（背景庫 46–54，為淺底畫的）：48、52。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.4 or below) or simply `background: off`. **Light backgrounds** (background library 46–54, designed for light bases): 48, 52.

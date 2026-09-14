@@ -1,32 +1,32 @@
 # layered
 
-**解的關係**：`overlap`
-**單位數**：2–4
-**一句話**：疊放的方塊錯開排列，共同覆蓋的區域在最上層——比 `venn` 更適合放文字。
+**Relationship solved**: `overlap`
+**Unit count**: 2–4
+**One line**: Stacked blocks arranged with offsets; the shared overlapping region is on top — better than `venn` for holding text.
 
-**什麼時候用它**：幾個東西有共用的基礎或共同的部分，而且每一層都要放得下一句話。
-**什麼時候不要用**：只有兩個東西且交集很單純——`venn` 更直觀。
+**When to use it**: Several things share a common foundation or overlap, and each layer needs to hold a sentence.
+**When not to use it**: Only two things with a simple intersection — `venn` is more intuitive.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `layered.svg`。
+Full SVG: see `layered.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 層 ×N | `node`（`field`） | 錯開疊放 | — | — |
-| 層名 | `label` | 放在各自不被遮住的角落 | 10 字 | 1 |
-| 共同區 | `node` | 顏色最深 | 8 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Layers ×N | `node` (`field`) | offset and overlapping | — | — |
+| Layer name | `label` | placed in a corner not covered by others | 10 chars | 1 |
+| Shared zone | `node` | the darkest color | 8 chars | 1 |
 
-## 節奏
+## Rhythm
 
-錯開的距離約為方塊寬的 40%。**共同區必須是最深的顏色**，否則看起來只是兩個方塊剛好疊到。層名一定要放在沒被遮住的地方。
+The offset distance is about 40% of the block width. **The shared zone must be the darkest color** — otherwise it looks like two blocks that happen to overlap. Layer names must be placed where they are not covered.
 
-`blueprint.shape` 寫 `layered`。
+Write `blueprint.shape` as `layered`.
 
-## 變體
+## Variants
 
-- **三層階梯**：三個方塊依序錯開，像撲克牌攤開。
-- **底層加寬**：最底層明顯較大，表示它是基礎而不是對等的一層。
+- **Three-step staircase**: three blocks offset in sequence, like playing cards fanned out.
+- **Wider base**: the bottom layer is visibly larger, indicating it is the foundation, not an equal layer.

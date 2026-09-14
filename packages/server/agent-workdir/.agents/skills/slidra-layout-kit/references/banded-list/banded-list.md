@@ -1,31 +1,31 @@
 # banded-list
 
-**解的關係**：`membership`
-**單位數**：3–5
-**一句話**：單欄橫條，靠底色深淺交替分層——像表格的斑馬紋，但沒有格線。
+**Relationship solved**: `membership`
+**Unit count**: 3–5
+**One line**: Single-column horizontal bands, layered by alternating base-color shades — like zebra stripes in a table, but without grid lines.
 
-**什麼時候用它**：條目多、每條都短，而且彼此地位相等。
-**什麼時候不要用**：條目只有兩三個——交替的底色需要足夠的列數才看得出規律。
+**When to use it**: Many items, each short, all equal in status.
+**When not to use it**: Only two or three items — alternating base colors need enough rows for the pattern to read.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `banded-list.svg`。
+Full SVG: see `banded-list.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 橫條 ×N | `node`（內含 `field`） | 交替兩種底色 | — | — |
-| 關鍵詞 | `label` | | 24 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Bands ×N | `node` (containing a `field`) | alternate two base colors | — | — |
+| Keyword | `label` | | 24 chars | 1 |
 
-## 節奏
+## Rhythm
 
-橫條之間**沒有間距**（靠底色分，不靠留白分）。這是它跟 `card-wall` 最大的差別，也是它能放更多條的原因。
+**No gap between the bands** (they separate by base color, not by whitespace). That is the biggest difference from `card-wall`, and the reason it fits more items.
 
-`blueprint.shape` 寫 `banded-list`。
+Write `blueprint.shape` as `banded-list`.
 
-## 變體
+## Variants
 
-- **右對齊數值**：每條右側放一個數字，變成輕量的資料表。
-- **首條加重**：第一條用 `primary` 底色，當作重點。
+- **Right-aligned values**: a number on the right of each item turns it into a lightweight data table.
+- **Emphasize the first item**: give the first band a `primary` base color as the focal point.

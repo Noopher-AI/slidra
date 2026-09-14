@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "name": "留言處理測試簡報",
+  "name": "Comment Handling Deck",
   "canvas": { "width": 1280, "height": 720 },
   "slides": ["slides/001.svg", "slides/002.svg", "slides/003.svg"]
 }

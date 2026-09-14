@@ -1,11 +1,11 @@
 # 09 · mono-print
 
-**第一秒的感覺**：純黑白，只有一個紅。像一份還沒上色的報紙頭版——資訊優先，設計退到後面，但每個對齊都經過計算。
+**First-impression feel**: Pure black and white, with exactly one red. Like an uncolored newspaper front page — information first, design in the back, but every alignment is calculated.
 
-**適合**：調查報導、事實呈現、需要「我沒有在美化」的場合。
-**不適合**：產品發表、品牌形象。它看起來太像證據，不像邀請。
+**Suited for**: Investigative reporting, fact presentation, contexts that need "I'm not dressing this up."
+**Not suited for**: Product launches, brand image. It looks too much like evidence, not like an invitation.
 
-**為什麼是這個配色**：黑白之外只留一個紅，而且紅**只給一個地方用**（通常是一個數字或一個關鍵詞）。一頁出現兩個紅，這個風格就失效了。secondary_bg 是極淺灰，用來分區而不是裝飾。
+**Why this palette**: Outside black and white, only one red remains, and the red is **used in exactly one place** (usually one number or one keyword). Two reds on a page and this style collapses. secondary_bg is a very pale gray, used for zoning rather than decoration.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：標題襯線、內文黑體——報紙的排版邏輯。密度用 `balanced`，因為這個場合本來就會放比較多字。
+**Typography and contrast**: Headings in serif, body in gothic — newspaper typesetting logic. Density is `balanced`, because this context naturally carries more text.
 
-**間距節奏**：級距標準（8/16/24/40/64）。這個風格靠嚴格的對齊，不靠節奏變化。
+**Spacing rhythm**: Standard spacing (8/16/24/40/64). This style relies on strict alignment, not rhythm variation.
 
-**建議背景**：建議 `background: off`。要用的話 02 `dot-grid` opacity 0.2 以下。 **明亮背景**（背景庫 46–54，為淺底畫的）：48、51、54。
+**Suggested backgrounds**: `background: off` is recommended. If you must use one, 02 `dot-grid` at opacity 0.2 or below. **Light backgrounds** (background library 46–54, designed for light bases): 48, 51, 54.

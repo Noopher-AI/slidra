@@ -88,7 +88,7 @@ afterEach(async () => {
 
 async function openFreshPresentation(): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
+  const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
@@ -411,7 +411,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
       presentationId: id,
       initialAgent: { kind: "claude", source: "cli" },
       runCommand: bothAvailable,
-      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels, replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }),
+      resolveAdapter: resolveBothTo(singleCommandFixture, { models: claudeShapedModels, replies: [["conventions"], ["think"]], holdPromptOnIndex: 1 }),
     });
     expect((await postChat(server, "hi")).status).toBe(202);
     await waitForPromptCount(2);
@@ -556,7 +556,7 @@ describe("POST /api/agent/select", () => {
       resolveAdapter: resolveBothTo(singleCommandFixture),
     });
 
-    expect((await postChat(server, "第一則訊息")).status).toBe(202);
+    expect((await postChat(server, "first message")).status).toBe(202);
     const [firstPid] = await waitForPidCount(1);
     // Two session/prompt calls land for the first session: index 0 (editorial brief), index 1 (author's message).
     await waitForPromptCount(2);
@@ -566,7 +566,7 @@ describe("POST /api/agent/select", () => {
     const selectBody = (await selectResponse.json()) as { ok: boolean; current: string; source: string };
     expect(selectBody).toEqual({ ok: true, current: "codex", source: "settings" });
 
-    expect((await postChat(server, "第二則訊息")).status).toBe(202);
+    expect((await postChat(server, "second message")).status).toBe(202);
     const pids = await waitForPidCount(2);
     const secondPid = pids[1];
     expect(secondPid).not.toBe(firstPid);
@@ -595,7 +595,7 @@ describe("POST /api/agent/select", () => {
     const slidraPath = path.join(slidraDir, "extra.slidra");
     // A separate presentation so `slidra text set` has a real target
     // for the multi-command fixture's shell command.
-    const created = await runCli(["new", slidraPath, "--name", "測試簡報二"]);
+    const created = await runCli(["new", slidraPath, "--name", "Test Presentation 2"]);
     expect(created.ok).toBe(true);
     const opened = await runCli<{ id: string }>(["open", slidraPath]);
     expect(opened.ok).toBe(true);
@@ -603,11 +603,11 @@ describe("POST /api/agent/select", () => {
     // `new` creates no slides (ADR-0018): mint a page and a text box for the command to target.
     expect((await runCli(["slide", "add", lockId])).ok).toBe(true);
     const added = await runCli<{ elementId: string }>([
-      "textbox", "add", lockId, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "標題",
+      "textbox", "add", lockId, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Title",
     ]);
     expect(added.ok).toBe(true);
     const elementId = added.data!.elementId;
-    const command = `slidra text set ${lockId} slides/001.svg ${elementId} '改一次'`;
+    const command = `slidra text set ${lockId} slides/001.svg ${elementId} 'edit-once'`;
 
     const server = await serve({
       presentationId: lockId,
@@ -616,7 +616,7 @@ describe("POST /api/agent/select", () => {
       resolveAdapter: resolveBothTo(multiCommandFixture, { commandsPerTurn: [[command]], holdAfterPermissionMs: 250 }),
     });
 
-    expect((await postChat(server, "改標題")).status).toBe(202);
+    expect((await postChat(server, "change the title")).status).toBe(202);
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
@@ -628,7 +628,7 @@ describe("POST /api/agent/select", () => {
 
     // Session was never swapped: a further message still goes to the same
     // (claude) session — no second pid ever appears.
-    expect((await postChat(server, "確認還是同一個 session")).status).toBe(202);
+    expect((await postChat(server, "confirm it is still the same session")).status).toBe(202);
     await new Promise((resolve) => setTimeout(resolve, 300));
     const pids = (await readLog()).filter((line) => line.pid !== undefined);
     expect(pids).toHaveLength(1);

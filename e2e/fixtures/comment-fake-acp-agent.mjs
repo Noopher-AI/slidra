@@ -6,20 +6,17 @@
 //
 // What it does on the author's first real message (index 1; index 0 is the
 // agent's own editing-charter turn) depends on the message text:
-//   - contains "【從大綱規劃】" (the position line Plan with agent puts
-//     after `/slidra-plan`, #303 contract §4 — a literal Chinese marker
-//     left untranslated because it comes from apps/web's App.tsx, outside
-//     this file's translation scope, and must keep matching what the real
-//     app actually sends): requests permission for, then actually runs,
+//   - contains "[plan-from-outline]" (the position line Plan with agent puts
+//     after `/slidra-plan`, #303 contract §4 — must keep matching what the
+//     real app actually sends): requests permission for, then actually runs,
 //     `slidra plan set <id> outline '…'` and `plan set <id> design-spec
 //     '…'` — a minimal but valid draft plan with one page and one question
 //     (contract §1) — and replies "plan is ready". The editor's plan gate
 //     opens off that file write (ai-collab.test.ts asserts on
 //     `.plan-gate`), not off this reply.
-//   - contains "【計畫確認】" (what the gate's confirm-and-build button
+//   - contains "[plan-confirmed]" (what the gate's confirm-and-build button
 //     sends, any author message index — it is always the *second* author
-//     turn; same untranslated-marker note as above, sourced from
-//     apps/web's plan-file.ts): requests permission for `slidra slide add
+//     turn; sourced from apps/web's plan-file.ts): requests permission for `slidra slide add
 //     <id>` (append), holds for E2E_DRAFT_HOLD_MS, then actually runs it
 //     and replies "build complete" — reports `completed` only if the
 //     command succeeds, `failed` (with stdout/stderr) if it doesn't. This
@@ -126,7 +123,7 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("【從大綱規劃】")) {
+    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("[plan-from-outline]")) {
       // Contract §1 shapes, kept minimal. Single-quoted for the CLI's argv
       // rules (no `'` inside; JSON's double quotes are fine).
       const outlineFile = "```json\n" + JSON.stringify({
@@ -156,7 +153,7 @@ class CommentFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("【計畫確認】")) {
+    if (index >= AUTHOR_PROMPT_INDEX && authorText.includes("[plan-confirmed]")) {
       const command = `slidra slide add ${presentationId}`;
       const toolCallId = "e2e-slide-add";
 

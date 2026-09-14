@@ -1,28 +1,28 @@
-# 形狀語言：swiss-minimal
+# Shape language: swiss-minimal
 
-**一句話**：格線鎖死、邊緣銳利、留白兇狠、幾乎零裝飾。所有東西都對齊，多一條線都是多的。
+**One line**: Grid-locked, razor-sharp edges, aggressive whitespace, near-zero decoration. Everything is aligned; one more line would be one too many.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-直角，**完全不用圓角**。不用卡片底色——分區靠對齊與大量留白。允許的唯一裝飾是一條 2px 的規則線。
+Right angles, **no rounded corners at all**. No card base color — zoning is done by alignment and heavy whitespace. The only permitted decoration is one 2px rule line.
 
-## 字體性格
+## Type character
 
-單一無襯線、字重只用兩級（400／700）。標題左對齊、絕不置中。字距略收（-0.01em 的概念，用 `data-slidra-text-width` 稍微收窄達成）。
+A single sans-serif, two weights only (400/700). Headings are left-aligned, never centered. Letter-spacing is slightly tightened (the concept of −0.01em, achieved by narrowing with `data-slidra-text-width`).
 
-## 留白節奏
+## Whitespace rhythm
 
-**留白是主角**：`layout.spacing` 只用最大的兩級。一頁最多三個單位，寧可拆頁。邊界比預設寬一到兩級。
+**Whitespace is the protagonist**: `layout.spacing` uses only the two largest levels. At most three units per page; split into more pages if needed. Margins are one to two levels wider than the default.
 
-## 材質與層次
+## Material and depth
 
-純平面，零陰影零漸層。層次只靠位置與字級。
+Purely flat, zero shadow, zero gradient. Hierarchy only through position and type scale.
 
-**適合**：設計提案、產品哲學、建築、需要克制的專業場合。
-**不適合**：資訊密集的頁面——這個語言容不下那麼多東西。
+**Suited for**: Design proposals, product philosophy, architecture, restrained professional contexts.
+**Not suited for**: Information-dense pages — this language can't hold that much.
 
-## 怎麼做到
+## How to achieve it
 
-把 `field` 的底色拿掉，只保留 `node` 與 `label`；把 `layout.side_margin` 加大 20–40；一頁單位數減到 3 以內。
+Remove the base color from `field`, keeping only `node` and `label`; increase `layout.side_margin` by 20–40; reduce units per page to 3 or fewer.

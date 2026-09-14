@@ -1,44 +1,44 @@
 # vertical-list
 
-**畫布**：1242×1660（3:4）　**這不是 16:9 的版面**
-**解的關係**：`membership`
-**單位數**：3–6
-**一句話**：直式編號清單：一個標題加一列橫條，捲動式閱讀的知識貼文。
+**Canvas**: 1242×1660 (3:4) **This is not a 16:9 layout**
+**Relationship solved**: `membership`
+**Unit count**: 3–6
+**One line**: A vertical numbered list: one title plus a row of horizontal bars — a scrollable knowledge post.
 
-**什麼時候用它**：圖文知識貼文、清單型內容、社群長圖。
-**什麼時候不要用**：需要一眼看完的場合——這個比例預期讀者會捲動。
+**When to use it**: Illustrated knowledge posts, list-style content, long-form social posts.
+**When not to use it**: Situations where everything must be visible at a glance — this aspect ratio assumes the reader will scroll.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `vertical-list.svg`。
+Full SVG: see `vertical-list.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 12 字 | 1 |
-| 副標 | `label` | 說明這篇在講什麼 | 20 字 | 1 |
-| 橫條 ×N | `node`（`field`） | 等高 | — | — |
-| 編號 | `label` | 大號、淡色 | 2 字 | 1 |
-| 條目標題 | `label` | | 12 字 | 1 |
-| 補充 | `label` | 一行 | 16 字 | 1 |
-| 帳號出處 | `label` | | 14 字 | 1 |
+| Title | `label` | | 12 chars | 1 |
+| Subtitle | `label` | explains what this post is about | 20 chars | 1 |
+| Horizontal bars ×N | `node` (`field`) | equal height | — | — |
+| Number | `label` | large, faded | 2 chars | 1 |
+| Item title | `label` | | 12 chars | 1 |
+| Supplement | `label` | one line | 16 chars | 1 |
+| Account/source | `label` | | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-橫條等高等間距，五條是甜蜜點。**編號用大號淡色**，它是節奏標記不是重點。左右邊界比 16:9 更窄（畫面本來就窄）。
+Bars are equal height with even spacing; five is the sweet spot. **Numbers are large and faded** — they are rhythm markers, not the point. Left and right margins are narrower than 16:9 (the frame is already narrow).
 
-`blueprint.shape` 寫 `vertical-list`。
+Write `blueprint.shape` as `vertical-list`.
 
-## 怎麼設定畫布
+## Setting the canvas
 
 ```
 slidra presentation canvas set <presentation-id> --width 1242 --height 1660
 ```
 
-畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+The canvas must be set **before** creating the first page. Non-16:9 canvases **must not use `k = width ÷ 1280` for font size conversion** — that rule only holds for proportional canvases. Use the slot table directly for portrait and square layouts.
 
-## 變體
+## Variants
 
-- **加圖**：每條左側放一個小方圖。
-- **兩欄**：條目多時分兩欄，但只在 3:4 成立，9:16 太窄。
+- **Add images**: a small square image to the left of each item.
+- **Two columns**: when there are many items, split into two columns — only works at 3:4; 9:16 is too narrow.

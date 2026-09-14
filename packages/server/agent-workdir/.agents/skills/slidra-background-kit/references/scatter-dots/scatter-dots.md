@@ -1,26 +1,26 @@
 # scatter-dots
 
-**氣氛**：大小不一的圓點隨機散布在右半，像粒子或星點。輕、有隨機感，不規律所以不呆板。
+**Mood**: Dots of varying sizes randomly scattered across the right half, like particles or star specks. Light and random; the irregularity keeps it from feeling rigid.
 
-**適合**：`anchor`、`breathing`。
-**不適合**：`dense`。
+**Suited for**: `anchor`, `breathing`.
+**Not suited for**: `dense`.
 
-**建議 opacity**：0.55
+**Suggested opacity**: 0.55
 
-**做法**：十二個半徑與透明度都不同的圓，全部落在右半，左半保持乾淨。
+**Technique**: Twelve circles with different radii and opacities, all in the right half; the left half stays clean.
 
-完整 SVG：見同資料夾 `scatter-dots.svg`。
+Full SVG: see `scatter-dots.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `duotone` | 只留兩色：除了底色之外全部收斂成主色的深淺。最安靜的處理。 | `var(--accent)` → `primary` |
-| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `var(--primary)` → `muted`、`var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `duotone` | Keep only two colors: everything besides the base converges into shades of the primary. The quietest treatment. | `var(--accent)` → `primary` |
+| `low-key` | Drop a level: primary retreats to muted, accent becomes the lead. The pattern recedes further back; suited for already content-heavy pages. | `var(--primary)` → `muted`, `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：01、04、15、23。
+**Suggested styles**: 01, 04, 15, 23.

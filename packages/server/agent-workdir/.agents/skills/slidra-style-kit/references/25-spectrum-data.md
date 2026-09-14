@@ -1,11 +1,11 @@
 # 25 · spectrum-data
 
-**第一秒的感覺**：中性的淺灰底，配上一組彼此可分辨的分類色。專為「這一頁有圖表」設計——版面退到最後，數據是唯一的主角。
+**First-impression feel**: Neutral light gray base paired with a set of mutually distinguishable category colors. Designed specifically for "this page has charts" — the layout recedes to the back, data is the only star.
 
-**適合**：儀表板、資料簡報、研究數據、任何一頁不只一張圖的場合。
-**不適合**：沒有圖表的頁面。少了圖，這個配色會顯得沒有個性——那本來就是它的設計。
+**Suited for**: Dashboards, data presentations, research data, any page with more than one chart.
+**Not suited for**: Pages without charts. Without charts, this palette looks personality-less — which is by design.
 
-**為什麼是這個配色**：六個角色裡有四個是**分類色**（藍／橘／綠／紫），彼此在色相環上分得夠開，色盲friendly，而且明度接近所以沒有哪一條線看起來比較重要。背景與文字刻意極中性，不跟數據搶。
+**Why this palette**: Four of the six roles are **category colors** (blue/orange/green/purple), spaced far enough apart on the hue wheel, colorblind-friendly, with similar lightness so no single line appears more important. Background and text are deliberately neutral, not competing with data.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：數字與座標軸標籤一律用 Inter（等寬數字對齊最好）。`caption` 只有 15——圖表的軸標籤要小才不搶。
+**Typography and contrast**: Numbers and axis labels always use Inter (monospace numerals align best). `caption` is only 15 — chart axis labels need to be small to not dominate.
 
-**間距節奏**：級距密、邊界窄（72），把空間讓給圖。
+**Spacing rhythm**: Tight spacing, narrow margins (72), giving space to the charts.
 
-**建議背景**：建議 `background: off`；圖表頁面上任何背景質地都會干擾讀數。 **明亮背景**（背景庫 46–54，為淺底畫的）：48、49、52。
+**Suggested backgrounds**: `background: off` recommended; any background texture on chart pages interferes with reading data. **Light backgrounds** (background library 46–54, designed for light bases): 48, 49, 52.

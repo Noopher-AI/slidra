@@ -1,31 +1,31 @@
 ---
 name: slidra-notes
-description: 依每頁內容補上口語化、可直接念出來的簡報者備忘稿，可指定總時長或單頁時長。使用者說「補備忘稿」「寫講稿」「簡報者備忘」「全場 N 分鐘」「這頁大概要講多久」或訊息以 /slidra-notes 開頭時用
+description: Fill in colloquial, read-aloud-ready speaker notes per page, with an optional total or per-page duration. Use when the user says "add notes", "write the script", "speaker notes", "N minutes total", "about how long should this page take", or the message starts with /slidra-notes
 ---
 
-# 補簡報者備忘稿
+# Write speaker notes
 
-備忘稿是口語、第一人稱、可以直接念出來的講稿：先說主張、再說依據、最後接到下一頁；投影片文字的重抄不算講稿。
+Notes are a colloquial, first-person script you can read aloud: claim first, then evidence, then the bridge to the next page; reciting the slide's own text does not count as a script.
 
-## 輸入
+## Input
 
-- 目標：某一頁或全部頁。沒指定時先 `slidra ls <presentation-id> slides` 看現況，問使用者是哪一頁或全部，問清楚前不下任何寫入命令。
-- 選填：總時長（例如「全場 10 分鐘」）或單頁時長。
+- Target: one page or all pages. When unspecified, first `slidra ls <presentation-id> slides` to see the current state, ask the user which page or all, and issue no write commands until it's clear.
+- Optional: a total duration (e.g. "10 minutes total") or a per-page duration.
 
-## 步驟
+## Steps
 
-1. **指定的頁不存在**：回報「這份簡報只有 N 頁」，不執行。
-2. **讀取內容**：逐頁 `slidra cat <presentation-id> slides/00N.svg`，讀出標題與要點。
-3. **該頁已有備忘稿**（`cat` 輸出裡的 `<slidra:notes>` 非空）：先把現有內容給使用者看，問要覆蓋還是保留——`slide notes set` 是整份覆寫，沒有 append。
-4. **寫入備忘稿**：`slidra slide notes set <presentation-id> slides/00N.svg '<口語化講稿>'`。一頁一個命令，做完一頁確認一頁再做下一頁。講稿裡避開半形單引號（例如英文所有格改寫措辭）。
-5. **指定時長**：總秒數 ÷ 頁數估每頁秒數（單頁時長就只算該頁），講稿長度依中文口語約每分鐘 240 字換算，回報裡列出每頁的預估秒數。
-6. **要求清空**：`slidra slide notes set <presentation-id> slides/00N.svg ''`（空字串合法）。
-7. **驗證**：`cat` 讀回確認 `<slidra:notes>` 有內容。
+1. **The specified page does not exist**: report "This deck only has N pages"; do not execute.
+2. **Read the content**: `slidra cat <presentation-id> slides/00N.svg` per page; extract the title and key points.
+3. **The page already has notes** (non-empty `<slidra:notes>` in the `cat` output): show the existing content to the user first and ask whether to overwrite or keep — `slide notes set` overwrites the whole file; there is no append.
+4. **Write the notes**: `slidra slide notes set <presentation-id> slides/00N.svg '<colloquial script>'`. One command per page; confirm one page before doing the next. Avoid half-width single quotes in the script (e.g. rephrase English possessives).
+5. **A duration was given**: total seconds ÷ page count estimates seconds per page (a per-page duration counts only that page); estimate script length at roughly 240 colloquial Chinese characters per minute; list the estimated seconds per page in the report.
+6. **Asked to clear**: `slidra slide notes set <presentation-id> slides/00N.svg ''` (an empty string is legal).
+7. **Verify**: `cat` and read back to confirm `<slidra:notes>` has content.
 
-## 收尾
+## Wrap-up
 
-動完之後、回覆之前跑一次 `slidra validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+After making changes, before replying, run `slidra validate <presentation-id>` once (only that page if only one page changed) and put the result on the first line of the report; if `errors` is not empty, fix and re-validate, ending this round only at 0 errors (see "wrap-up conditions" in `AGENTS.md`).
 
-## 回報格式
+## Report format
 
-逐頁列出：頁面路徑、備忘稿內容（或摘要）、若有指定時長則附上估算秒數。某頁因既有備忘稿而暫停時，說明目前內容並等待使用者確認。
+Per page: page path, note content (or a summary), and estimated seconds when a duration was requested. When a page was paused because it already had notes, show the current content and wait for the user's confirmation.

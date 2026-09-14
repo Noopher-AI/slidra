@@ -83,7 +83,7 @@ async function openDeck(fileName: string): Promise<string> {
     "project.json": new TextEncoder().encode(
       JSON.stringify({
         formatVersion: 1,
-        name: "命令端點測試",
+        name: "command endpoint test",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg"],
       }),
@@ -176,7 +176,7 @@ it("the four new commands slide delete/duplicate/move/notes set no longer return
 
   const notes = await postCommand(server, {
     name: "slide notes set",
-    input: { slidePath: "slides/001.svg", text: "講稿" },
+    input: { slidePath: "slides/001.svg", text: "script" },
   });
   expect(notes.status).not.toBe(403);
   expect(notes.status).toBe(200);
@@ -326,12 +326,12 @@ it("element name set is in COMMAND_WHITELIST and actually changes the slide (the
 
   const { status, json } = await postCommand(server, {
     name: "element name set",
-    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], name: "封面影片" },
+    input: { slidePath: "slides/001.svg", elementIds: ["el-a"], name: "CoverVideo" },
   });
 
   expect(status).toBe(200);
   expect(json.ok).toBe(true);
-  expect(await readSlide(id)).toContain('data-slidra-name="封面影片"');
+  expect(await readSlide(id)).toContain('data-slidra-name="CoverVideo"');
 });
 
 it("template add/list/rename/delete are in COMMAND_WHITELIST and actually change project.json", async () => {
@@ -340,7 +340,7 @@ it("template add/list/rename/delete are in COMMAND_WHITELIST and actually change
 
   const added = await postCommand(server, {
     name: "template add",
-    input: { from: "slides/001.svg", name: "封面" },
+    input: { from: "slides/001.svg", name: "Cover" },
   });
   expect(added.status).toBe(200);
   expect(added.json.ok).toBe(true);
@@ -348,14 +348,14 @@ it("template add/list/rename/delete are in COMMAND_WHITELIST and actually change
 
   const listed = await postCommand(server, { name: "template list", input: {} });
   expect(listed.status).toBe(200);
-  expect(listed.json.data.templates).toEqual([{ file: templatePath, name: "封面" }]);
+  expect(listed.json.data.templates).toEqual([{ file: templatePath, name: "Cover" }]);
 
   const renamed = await postCommand(server, {
     name: "template rename",
-    input: { templatePath, newName: "封面（改）" },
+    input: { templatePath, newName: "Cover (changed)" },
   });
   expect(renamed.status).toBe(200);
-  expect((await readProjectJson(id)).templates).toEqual([{ file: templatePath, name: "封面（改）" }]);
+  expect((await readProjectJson(id)).templates).toEqual([{ file: templatePath, name: "Cover (changed)" }]);
 
   const deleted = await postCommand(server, { name: "template delete", input: { templatePath } });
   expect(deleted.status).toBe(200);
@@ -434,7 +434,7 @@ async function openTextBoxDeck(fileName: string): Promise<string> {
     "project.json": new TextEncoder().encode(
       JSON.stringify({
         formatVersion: 1,
-        name: "文字框對齊測試",
+        name: "textbox alignment test",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg"],
       }),

@@ -698,7 +698,7 @@ export function App() {
     return event.key === "[" || event.key === "{" || event.code === "BracketLeft";
   }
 
-  // ⌘A／Delete／Backspace／⌘D／⌘]／⌘[／⌘⇧]／⌘⇧[ (NOOP-90/T2 §4.4) — the
+  // ⌘A / Delete / Backspace / ⌘D / ⌘] / ⌘[ / ⌘⇧] / ⌘⇧[ (NOOP-90/T2 §4.4) — the
   // PARENT document's own half of the keyboard relay. When focus sits
   // INSIDE the sandboxed iframe (e.g. right after clicking a slide
   // element), this listener never fires at all for that keypress — the
@@ -1424,8 +1424,8 @@ export function App() {
     const count = canvasState.slides.length;
     const position =
       count === 0
-        ? "【從大綱規劃】這份簡報還沒有任何投影片。"
-        : `【從大綱規劃】目前有 ${count} 頁，新頁接在最後。`;
+        ? "[plan-from-outline] This presentation has no slides yet."
+        : `[plan-from-outline] There are ${count} pages so far; new pages will be appended at the end.`;
     await sendChatText(`/slidra-plan ${position}\n\n${outline}`);
   }
 

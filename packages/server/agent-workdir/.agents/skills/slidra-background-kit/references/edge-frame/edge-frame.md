@@ -1,26 +1,26 @@
 # edge-frame
 
-**氣氛**：距離邊界一段距離的細框，像展場的畫框或證書的邊。正式、有儀式感。
+**Mood**: A thin frame set at a distance from the edges, like a gallery picture frame or a certificate border. Formal, with a sense of ceremony.
 
-**適合**：`anchor`。開場與結尾各用一次最有效。
-**不適合**：`dense`。框會把已經很滿的頁面關起來。
+**Suited for**: `anchor`. Most effective used once at the opening and once at the close.
+**Not suited for**: `dense`. A frame closes in on an already crowded page.
 
-**建議 opacity**：0.6
+**Suggested opacity**: 0.6
 
-**做法**：兩個同心矩形細框，內框較淡；四個角各一小段加粗，模擬裱框的角件。
+**Technique**: Two concentric thin rectangular frames, the inner one fainter; a short thickened segment at each of the four corners, mimicking the corner brackets of a picture frame.
 
-完整 SVG：見同資料夾 `edge-frame.svg`。
+Full SVG: see `edge-frame.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `warm` | 全部收斂到暖色：主色與第三色都改用 accent。整張圖只剩一個色相的深淺，最熱。 | `var(--primary)` → `accent` |
-| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `var(--primary)` → `muted`、`var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `warm` | Converge everything to warm tones: both primary and tertiary switch to accent. The whole image is just one hue's depth range; the warmest. | `var(--primary)` → `accent` |
+| `low-key` | Drop a level: primary retreats to muted, accent rises to the lead. The pattern recedes further back; suited for pages that are already content-heavy. | `var(--primary)` → `muted`, `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：14、18、20、21、24。
+**Suggested styles**: 14, 18, 20, 21, 24.

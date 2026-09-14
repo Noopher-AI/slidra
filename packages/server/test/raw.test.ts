@@ -106,15 +106,15 @@ async function openPresentationWithAssets(): Promise<string> {
     "project.json": new TextEncoder().encode(
       JSON.stringify({
         formatVersion: 1,
-        name: "有資產的簡報",
+        name: "deck with assets",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg"],
       }),
     ),
     "slides/001.svg": new TextEncoder().encode('<svg><image href="../assets/photo.png"/></svg>'),
     "assets/photo.png": PNG_BYTES,
-    "assets/照片.png": PNG_BYTES,
-    "assets/notes.txt": new TextEncoder().encode("純文字資產"),
+    "assets/photo.png": PNG_BYTES,
+    "assets/notes.txt": new TextEncoder().encode("plain text asset"),
     "assets/data.bin": PNG_BYTES,
     "assets/clip.mp4": PATTERN_BYTES,
     "assets/empty.mp4": new Uint8Array(0),
@@ -160,7 +160,7 @@ describe("GET /api/raw/<virtual path>", () => {
     const id = await openPresentationWithAssets();
     const server = await serve(id);
 
-    const response = await fetch(`${server.url}/api/raw/assets/${encodeURIComponent("照片.png")}`);
+    const response = await fetch(`${server.url}/api/raw/assets/${encodeURIComponent("photo.png")}`);
     const body = Buffer.from(await response.arrayBuffer());
 
     expect(response.status).toBe(200);
@@ -185,7 +185,7 @@ describe("GET /api/raw/<virtual path>", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(body).toBe("純文字資產");
+    expect(body).toBe("plain text asset");
   });
 
   it.skipIf(isRunningAsRoot)(

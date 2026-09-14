@@ -1,11 +1,11 @@
 # 23 · sky-brief
 
-**第一秒的感覺**：很淺的天藍到白，幾乎沒有重量。像從飛機窗戶往外看——開闊、乾淨、有距離感。
+**First-impression feel**: Very light sky blue to white, almost weightless. Like looking out an airplane window — open, clean, with a sense of distance.
 
-**適合**：旅遊、航空、雲端服務、任何跟「移動」或「規模」有關的主題。
-**不適合**：需要親密感或細節的內容。它太開闊了，細節會被稀釋。
+**Suited for**: Travel, aviation, cloud services, any topic related to "movement" or "scale."
+**Not suited for**: Content requiring intimacy or detail. It's too open — details get diluted.
 
-**為什麼是這個配色**：藍的明度極高、彩度中等，所以它是「空氣」不是「品牌藍」；accent 用暖橘是地平線的顏色；文字用深藍灰而不是黑，讓整體維持在同一個色溫。
+**Why this palette**: The blue has very high lightness and medium saturation, so it reads as "air" not "brand blue"; the accent uses warm orange, the color of a horizon; text uses dark blue-gray rather than black, keeping the whole thing in the same color temperature.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：英文與數字用 Inter，中文用 Noto Sans TC。字型都選中性的——這個風格的性格來自顏色與留白，不是字體。
+**Typography and contrast**: English and numbers in Inter, Chinese in Noto Sans TC. Both fonts are neutral — this style's character comes from color and whitespace, not typeface.
 
-**間距節奏**：級距鬆、邊界 96。開闊感需要邊界。
+**Spacing rhythm**: Loose spacing, 96px margins. The sense of openness needs margins.
 
-**建議背景**：01 `soft-blobs`（opacity 0.6，像雲）。 **明亮背景**（背景庫 46–54，為淺底畫的）：46、49、50、52、53。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.6, like clouds). **Light backgrounds** (background library 46–54, designed for light bases): 46, 49, 50, 52, 53.

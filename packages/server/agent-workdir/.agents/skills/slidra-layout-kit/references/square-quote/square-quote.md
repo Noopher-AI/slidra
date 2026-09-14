@@ -1,42 +1,42 @@
 # square-quote
 
-**畫布**：1080×1080（1:1）　**這不是 16:9 的版面**
-**解的關係**：`none`
-**單位數**：1
-**一句話**：方形引用：一句話置中偏上，出處在下——最適合被轉發的單張。
+**Canvas**: 1080×1080 (1:1) **This is not a 16:9 layout**
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A square quote: one line centered slightly above, source below — the single card most suited to being shared.
 
-**什麼時候用它**：一句有力的原話、金句卡、系列語錄。
-**什麼時候不要用**：需要說明的內容。方形的空間放不下論證。
+**When to use it**: A powerful verbatim quote, a pull-quote card, a series of memorable lines.
+**When not to use it**: Content that needs explanation. Square space can't hold an argument.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `square-quote.svg`。
+Full SVG: see `square-quote.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 引號 | `garnish` | | — | — |
-| 引文 | `label` | ≤ 2 行 | 每行 10 字 | 1–2 |
-| 短線 | `garnish` | | — | — |
-| 出處 | `label` | | 14 字 | 1 |
-| 帳號 | `label` | 最下方 | 14 字 | 1 |
+| Quotation mark | `garnish` | | — | — |
+| Quotation | `label` | ≤ 2 lines | 10 chars/line | 1–2 |
+| Short line | `garnish` | | — | — |
+| Source | `label` | | 14 chars | 1 |
+| Account/handle | `label` | at the very bottom | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-引文貼左緣、垂直置中偏上（視覺中心比幾何中心高）。方形的四邊留白要一致，否則會看起來歪。
+The quote hugs the left edge, vertically centered slightly above middle (visual center is higher than geometric center). The square's margins must be uniform on all four sides, or it looks crooked.
 
-`blueprint.shape` 寫 `square-quote`。
+Write `blueprint.shape` as `square-quote`.
 
-## 怎麼設定畫布
+## Setting the canvas
 
 ```
 slidra presentation canvas set <presentation-id> --width 1080 --height 1080
 ```
 
-畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+The canvas must be set **before** creating the first page. Non-16:9 canvases **must not use `k = width ÷ 1280` for font size conversion** — that rule only holds for proportional canvases. Use the slot table directly for portrait and square layouts.
 
-## 變體
+## Variants
 
-- **置中版**：引文水平置中，更像海報。
-- **配頭像**：左上一個圓形頭像。
+- **Centered version**: quote horizontally centered, more poster-like.
+- **With portrait**: a round portrait in the upper-left.

@@ -1,33 +1,33 @@
 # before-after
 
-**解的關係**：`contrast`
-**單位數**：2
-**一句話**：上下兩塊，中間一條分界——上面是之前，下面是之後。時間感比左右更強。
+**Relationship solved**: `contrast`
+**Unit count**: 2
+**One line**: Two stacked blocks with a divider between — before on top, after on the bottom. The sense of time is stronger than a left/right split.
 
-**什麼時候用它**：同一個東西的兩個時間點（改版前後、導入前後）。
-**什麼時候不要用**：兩個不同的東西在比較——那用 `split-panel`，左右沒有時間暗示。
+**When to use it**: Two moments of the same thing (before/after a redesign, before/after rollout).
+**When not to use it**: Comparing two different things — that is `split-panel`; left/right carries no time implication.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `before-after.svg`。
+Full SVG: see `before-after.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 上下兩塊 | `node`（`field`） | 等高 | — | — |
-| 區塊名 | `label` | 「之前」「之後」或日期 | 6 字 | 1 |
-| 內容 | `label` | **兩邊條數必須一樣** | 每條 18 字 | 2–3 條 |
-| 分界線 | `garnish` | 可加一個向下的箭頭 | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Top/bottom blocks | `node` (`field`) | equal height | — | — |
+| Block name | `label` | "Before"/"After" or dates | 6 chars | 1 |
+| Content | `label` | **both sides must have the same number of items** | 18 chars each | 2–3 items |
+| Divider | `garnish` | can add a downward arrow | — | — |
 
-## 節奏
+## Rhythm
 
-上下等高、內容首行對齊。**「之後」那塊的顏色要略深或加一條 accent 邊**——不然讀者分不出哪個是結果。
+Top and bottom are equal height, first content lines aligned. **The "after" block's color should be slightly darker, or get one accent border** — otherwise readers can't tell which side is the result.
 
-`blueprint.shape` 寫 `before-after`。
+Write `blueprint.shape` as `before-after`.
 
-## 變體
+## Variants
 
-- **左右版**：改成左右，時間感減弱但更適合並排比較長的清單。
-- **三段**：之前／過程／之後，中段窄一點。
+- **Left/right version**: switch to side-by-side; the time sense weakens but it suits juxtaposing longer lists.
+- **Three segments**: before/process/after, with the middle segment slightly narrower.

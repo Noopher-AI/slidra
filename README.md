@@ -35,7 +35,7 @@ Real presentation work is iterative. Titles change. Images move. Diagrams evolve
 
 Without a structured environment, an agent may modify the deck through open-ended interpretation—deciding for itself what exists, what should change, how broadly to act, and whether the result is still valid.
 
-> Read the full rationale in [Why Slidra When AI Can Already Generate Slides](docs/why-Slidra-when-AI-can-already-generate-slides.md) ([中文](docs/why-Slidra-when-AI-can-already-generate-slides_zh.md)).
+> Read the full rationale in [Why Slidra When AI Can Already Generate Slides](docs/why-Slidra-when-AI-can-already-generate-slides.md) ([Chinese](docs/why-Slidra-when-AI-can-already-generate-slides_zh.md)).
 
 ## How It Works?
 

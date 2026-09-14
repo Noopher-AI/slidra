@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">範本頁的備忘稿。</slidra:notes></metadata>
-  <g id="el-body-title" data-slidra-name="標題">
-    <text x="80" y="110" font-family="Noto Sans TC" font-size="40">範本內容頁標題</text>
+  <metadata><slidra:notes xmlns:slidra="https://slidra.app/ns/2026">Speaker notes for the template page.</slidra:notes></metadata>
+  <g id="el-body-title" data-slidra-name="Title">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="40">Template content page title</text>
   </g>
-  <g id="el-body-bullets" data-slidra-name="要點">
-    <text x="80" y="220" font-family="Noto Sans TC" font-size="24">範本要點一</text>
+  <g id="el-body-bullets" data-slidra-name="Bullets">
+    <text x="80" y="220" font-family="Noto Sans TC" font-size="24">Template bullet one</text>
   </g>
 </svg>

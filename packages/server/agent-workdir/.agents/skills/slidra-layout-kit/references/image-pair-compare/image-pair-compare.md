@@ -1,39 +1,39 @@
 # image-pair-compare
 
-**解的關係**：`contrast`
-**單位數**：2
-**一句話**：兩張圖並排，中間一條分界——用圖比較，文字只標出兩邊是什麼。
+**Relationship solved**: `contrast`
+**Unit count**: 2
+**One line**: Two images side by side with a divider between — compare with images; text just labels what each side is.
 
-**什麼時候用它**：同一個東西的兩個狀態或兩個版本，而差異用看的最快。
-**什麼時候不要用**：兩張圖的拍攝角度或尺度不同——比較會失真，先裁成一致再用。
+**When to use it**: Two states or two versions of the same thing, where the difference is fastest to see by looking.
+**When not to use it**: The two images have different shooting angles or scales — the comparison will be distorted; crop them to match first.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-pair-compare.svg`。
+Full SVG: see `image-pair-compare.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖 ×2 | `node`（`image`） | **同尺寸同比例** | — | — |
-| 標籤 ×2 | `label` | 「之前／之後」或版本名 | 6 字 | 1 |
-| 差異說明 | `label` | 一句話點出要看哪裡 | 22 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Images ×2 | `node` (`image`) | **same size, same ratio** | — | — |
+| Labels ×2 | `label` | "Before/After" or version names | 6 chars | 1 |
+| Difference note | `label` | one sentence pointing out where to look | 22 chars | 1 |
 
-## 節奏
+## Rhythm
 
-兩圖等寬等高、頂端對齊。**差異說明必須指出「看哪裡」**——沒有它，聽眾會自己找，而且常常找錯地方。
+Both images are equal width and height, top-aligned. **The difference note must point out "where to look"** — without it, the audience will look on their own and often look in the wrong place.
 
-`blueprint.shape` 寫 `image-pair-compare`。
+Write `blueprint.shape` as `image-pair-compare`.
 
-## 怎麼放進去
+## How to place it
 
 ```
-slidra element insert image <id> slides/00N.svg --x 80 --y 176 --width 540 --height 340 --media assets/<前.jpg>
-slidra element insert image <id> slides/00N.svg --x 660 --y 176 --width 540 --height 340 --media assets/<後.jpg>
+slidra element insert image <id> slides/00N.svg --x 80 --y 176 --width 540 --height 340 --media assets/<before.jpg>
+slidra element insert image <id> slides/00N.svg --x 660 --y 176 --width 540 --height 340 --media assets/<after.jpg>
 ```
 
-## 變體
+## Variants
 
-- **上下版**：改成上下排列，時間感更強（同 17 `before-after` 的邏輯）。
-- **局部放大**：其中一張加一個放大的局部方框，指出關鍵差異。
+- **Stacked version**: switch to top/bottom arrangement; the time sense is stronger (same logic as 17 `before-after`).
+- **Local zoom-in**: add a zoomed-in inset frame on one image, pointing out the key difference.

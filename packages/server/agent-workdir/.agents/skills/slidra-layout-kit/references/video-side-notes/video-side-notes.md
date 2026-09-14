@@ -1,39 +1,39 @@
 # video-side-notes
 
-**解的關係**：`none`
-**單位數**：1 + 2–4
-**一句話**：左側影片、右側觀看重點——邊播邊講，觀眾知道該注意什麼。
+**Relationship solved**: `none`
+**Unit count**: 1 + 2–4
+**One line**: Video on the left, viewing key points on the right — watch while narrating, the audience knows what to look for.
 
-**什麼時候用它**：影片較長（超過一分鐘），需要事先說明要看哪幾件事。
-**什麼時候不要用**：影片只有幾秒——那用 31 `media-stage`，把版面讓給影片。
+**When to use it**: The video is longer than a minute and needs a pre-brief on what to watch for.
+**When not to use it**: The video is only a few seconds — use 31 `media-stage` and give the page to the video.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `video-side-notes.svg`。
+Full SVG: see `video-side-notes.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 影片 | `node`（`video`） | 16:9，左側 | — | — |
-| 重點 ×N | `label` | **看之前先講** | 每條 16 字 | 1 |
-| 長度出處 | `label`（`caption`） | | 18 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Video | `node` (`video`) | 16:9, on the left | — | — |
+| Key points ×N | `label` | **state these before the video plays** | 16 chars each | 1 |
+| Length/source | `label` (`caption`) | | 18 chars | 1 |
 
-## 節奏
+## Rhythm
 
-影片維持 16:9（640×360）。重點與影片**頂端對齊**，垂直等距。重點的字級不要大過標題。
+The video stays 16:9 (640×360). Key points are **top-aligned with the video**, vertically evenly spaced. The key points' font size must not exceed the title.
 
-`blueprint.shape` 寫 `video-side-notes`。
+Write `blueprint.shape` as `video-side-notes`.
 
-## 怎麼放進去
+## How to place it
 
 ```
-slidra asset import <id> <影片路徑>
-slidra element insert video <id> slides/00N.svg --x 80 --y 200 --width 640 --height 360 --media assets/<檔名>
+slidra asset import <id> <video path>
+slidra element insert video <id> slides/00N.svg --x 80 --y 200 --width 640 --height 360 --media assets/<filename>
 ```
 
-## 變體
+## Variants
 
-- **重點在左**：影片放右側，適合先講再看。
-- **重點加時間碼**：每個重點前面標「0:35」，讓聽眾知道何時出現。
+- **Key points on the left**: video on the right, suits "explain first, then watch."
+- **Time codes on key points**: each key point prefixed with "0:35" so the audience knows when it appears.

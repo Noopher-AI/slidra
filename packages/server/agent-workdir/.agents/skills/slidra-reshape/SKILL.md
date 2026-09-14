@@ -1,26 +1,26 @@
 ---
 name: slidra-reshape
-description: 逐則處理簡報上釘選的留言，做得到的改完刪留言，做不到的保留原文並提問。作者的訊息以 /slidra-reshape 開頭、或要你「處理留言」時用；斜線後的文字只是補充脈絡，清單來自 comment list
+description: Work through the pinned comments on the presentation one by one: do what you can, delete those comments; keep the text of what you cannot and ask. Use when the author's message starts with /slidra-reshape or asks you to "handle the comments"; text after the slash is just extra context — the list comes from comment list
 ---
 
-# 逐則處理留言
+# Handle comments one at a time
 
-留言是作者與你之間唯一的待辦紀錄：做完才刪，做不到就留著提問。
+Comments are the only todo-list between the author and you: delete when done, keep and ask when you can't.
 
-## 步驟
+## Steps
 
-1. **列出所有留言**：`slidra comment list <presentation-id>`（不帶 `slide-path` 就是全部投影片）。回「共 0 則」時回報「目前沒有釘選留言」，不做任何改動。
-2. **逐則處理，一則做完再做下一則**：
-   - 讀留言的 `target`：`page` 代表整頁的要求，其他值是元素識別碼——先 `slidra cat <presentation-id> slides/00N.svg` 確認那個 id 還存在。
-   - **能做到**（現有命令做得出來、target 還在）：用對應的命令改完，`slidra comment delete <presentation-id> slides/00N.svg <comment-id>` 刪掉這則留言。一則留言只做那一則要求的事，同一頁其他元素不動。
-   - **做不到**（target 已不存在、要求的操作沒有對應命令、或只能做出一個相近但不同的結果）：保留原文，記下要在對話裡提問。要求換一張不存在的照片時，正確的動作是提問，不是改顏色交差。
-3. **全部處理完後**：對每一則做不到的留言各提一個問題，說明做不到的原因。留言文字含半形單引號而你需要把它填進命令參數時，在提問裡說明打不進去的部分。
+1. **List all comments**: `slidra comment list <presentation-id>` (no `slide-path` means all slides). When it replies "0 total", report "No pinned comments right now" and change nothing.
+2. **Process one at a time, finish one before starting the next**:
+   - Read the comment's `target`: `page` means a whole-page request, any other value is an element identifier — first `slidra cat <presentation-id> slides/00N.svg` to confirm that id still exists.
+   - **Can do it** (an existing command covers it and the target still exists): make the change with the corresponding command, then `slidra comment delete <presentation-id> slides/00N.svg <comment-id>` to delete the comment. A comment gets exactly what it asks for; other elements on the same page stay untouched.
+   - **Cannot do it** (target no longer exists, no command covers the requested operation, or you can only produce a close-but-different result): keep the text, note that you will ask in the conversation. When the request is for a photo that doesn't exist, the right action is to ask — not to change the color to make do.
+3. **After processing all of them**: ask one question per unhandled comment, explaining why it cannot be done. When a comment contains half-width single quotes that you need to put into a command argument, explain in the question which part cannot be typed in.
 
-## 收尾
+## Wrap-up
 
-動完之後、回覆之前跑一次 `slidra validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+After making changes, before replying, run `slidra validate <presentation-id>` once (only that page if only one page changed) and put the result on the first line of the report; if `errors` is not empty, fix and re-validate, ending this round only at 0 errors (see "wrap-up conditions" in `AGENTS.md`).
 
-## 回報格式
+## Report format
 
-先列已完成的：`<comment-id>（第 N 頁）：<做了什麼> — 已刪除留言`。
-再列保留的：`<comment-id>（第 N 頁）：<留言原文> — 做不到，原因：<原因>`，每一則附一句提問。
+First list what's done: `<comment-id> (page N): <what was done> — comment deleted`.
+Then list what's kept: `<comment-id> (page N): <original text> — cannot do, reason: <reason>`, each with a one-line question attached.

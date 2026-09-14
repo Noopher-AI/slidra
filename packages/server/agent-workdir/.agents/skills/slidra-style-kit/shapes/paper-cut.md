@@ -1,28 +1,28 @@
-# 形狀語言：paper-cut
+# Shape language: paper-cut
 
-**一句話**：一層層剪下來的紙疊在一起，層與層之間有一道淺淺的影。有觸感、有手工感、每一層都看得出厚度。
+**One line**: Layers of cut paper stacked on top of each other, with a faint shadow between layers. Tactile, handmade; you can see the thickness of every layer.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-形狀可以是不規則的（撕邊、斜切角），不一定是矩形。層與層**刻意錯開**，不要對齊。每一層的邊緣加一條比它深一階的細線當作厚度。
+Shapes can be irregular (torn edges, beveled corners); not necessarily rectangles. Layers are **deliberately offset** — don't align them. Each layer's edge gets a thin line one step darker as its thickness.
 
-## 字體性格
+## Type character
 
-無襯線或圓體，字重 700 為主——紙的層次已經很多，字要簡單。
+Sans-serif or rounded, weight 700 dominant — the paper layers are already busy, so the type should be simple.
 
-## 留白節奏
+## Whitespace rhythm
 
-層與層之間的重疊約 15–25%，看得出前後關係但不遮住內容。
+The overlap between layers is about 15–25% — you can read the front/back relationship without obscuring content.
 
-## 材質與層次
+## Material and depth
 
-靠**底色的明度差**做層次，不用陰影。每往上一層就淺一階（深色風格）或深一階（淺色風格）。
+Hierarchy comes from **the base color's lightness difference**, not shadows. Each step up is one step lighter (dark styles) or darker (light styles).
 
-**適合**：手作、教育、繪本、地方文化、兒少。
-**不適合**：資料密集的頁面——不規則的形狀會讓對齊變得困難。
+**Suited for**: Handcraft, education, picture books, local culture, children.
+**Not suited for**: Data-dense pages — irregular shapes make alignment difficult.
 
-## 怎麼做到
+## How to achieve it
 
-把 `field` 改成帶斜切角的 `<path>`；相鄰兩層錯開 40–80；每層下緣加一條深一階的 2px 線。
+Change `field` to a `<path>` with beveled corners; offset adjacent layers by 40–80; add a 2px line one step darker along each layer's bottom edge.

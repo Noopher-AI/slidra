@@ -1,40 +1,40 @@
 ---
 name: slidra-animate
-description: 為指定頁或整份簡報加上依序揭露的動畫效果與頁面轉場，可指定保守或活潑。使用者說「加動畫」「依序揭露」「一個一個出現」「加轉場」或訊息以 /slidra-animate 開頭時用
+description: Add sequential-reveal animation effects and page transitions to a specific page or the whole deck; can be conservative or lively. Use when the user says "add animations", "reveal in sequence", "one by one", "add transitions", or the message starts with /slidra-animate
 ---
 
-# 加動畫效果
+# Add animation effects
 
-依序揭露的順序固定是「標題先、要點逐條、圖／表／圖表最後」，除非使用者另外指定。分段與群組的原則見 `reference/slide-design.md` 第 5 節。
+The sequential-reveal order is fixed: "title first, bullets one by one, image/table/chart last" — unless the user specifies otherwise. Principles for segmenting and grouping: section 5 of `reference/slide-design.md`.
 
-## 輸入
+## Input
 
-- 目標：某一頁（`slides/00N.svg`）或「整份」。沒指定時先 `slidra ls <presentation-id> slides` 看現況，問使用者是哪一頁或整份，問清楚前不下任何寫入命令。
-- 風格（選填）：「保守」或「活潑」；不指定時用預設值。
+- Target: a specific page (`slides/00N.svg`) or "the whole deck". When unspecified, first run `slidra ls <presentation-id> slides` to see the current state, ask the user which page or the whole deck, and issue no write commands until it's clear.
+- Style (optional): "conservative" or "lively"; when unspecified, use the defaults.
 
-## 步驟
+## Steps
 
-1. **指定的頁不存在**：回報「這份簡報只有 N 頁」，不執行、不改成最接近的一頁。
-2. **讀該頁的結構**：`slidra cat <presentation-id> slides/00N.svg`，依 `data-slidra-role`、`data-slidra-name`、`font-size`、`y` 座標排出順序：標題 → 要點逐條 → 圖／表／圖表。進不進動畫看角色（第 5.2 節）：`garnish`、`background`、頁尾，以及沒有 `data-slidra-name` 又像裝飾的元素（滿版 `<rect>`、線、圓）都留在第一格。
-3. **該頁已有效果時先看現況**：`slidra effect list <presentation-id> slides/00N.svg`，讀過才動。
-   - 使用者要「重做」：`slidra effect remove <presentation-id> slides/00N.svg <全部 1-based index，逗號分隔>`，再依步驟 4 重新加。
-   - 使用者要「補」：只對缺的元素 `effect add`，需要時用 `slidra effect move <presentation-id> slides/00N.svg <index> up|down` 把順序調對。
-4. **先分段，再加效果**：把這一頁的元素按「講者會分幾段講」分組——標題一段，之後每個要點（或每組對照）一段；標題的底線、卡片的編號、數字的說明屬於它所在的那一段。**一段一個 `on-click`**，一頁不超過 5 個。同一段已經是一個群組時直接對群組 id 下一個效果；沒有群組時段內其餘元素用 `--start with-previous`。對每個錨點跑一次 `slidra effect add`，風格對應的 family／effect／duration：
+1. **The specified page does not exist**: report "This deck only has N pages"; do not execute and do not fall back to the closest page.
+2. **Read the page structure**: `slidra cat <presentation-id> slides/00N.svg`; order elements by `data-slidra-role`, `data-slidra-name`, `font-size`, and `y` coordinate: title → bullets one by one → image/table/chart. Whether something gets an animation depends on its role (section 5.2): `garnish`, `background`, the footer, and elements without `data-slidra-name` that look decorative (full-page `<rect>`, lines, circles) all stay on the first frame.
+3. **If the page already has effects, look at the current state first**: `slidra effect list <presentation-id> slides/00N.svg`; read before acting.
+   - User wants a "redo": `slidra effect remove <presentation-id> slides/00N.svg <all 1-based indices, comma-separated>`, then re-add per step 4.
+   - User wants to "fill in" gaps: only `effect add` for the missing elements; use `slidra effect move <presentation-id> slides/00N.svg <index> up|down` when the order needs fixing.
+4. **Segment first, then add effects**: group the page's elements by "how many segments the speaker will talk it in" — title as one segment, then each bullet (or each comparison pair) as a segment; the title's underline, a card's number, and a number's caption belong to the segment they are in. **One `on-click` per segment**, no more than 5 per page. When a segment is already a group, apply one effect to the group id directly; when it isn't, use `--start with-previous` for the other elements in the segment. Run `slidra effect add` once per anchor, with the style-matched family/effect/duration:
 
-   | 風格 | 標題 | 要點 | 圖／表／圖表 | duration |
+   | Style | Title | Bullets | Image/table/chart | duration |
    |---|---|---|---|---|
-   | 預設（未指定） | `enter/fade` | `enter/fade` | `enter/fade` | `0.4` |
-   | 保守 | `enter/fade` | `enter/fade` | 不加 | `0.3` |
-   | 活潑 | `enter/zoom` | `enter/fly-up` | `enter/zoom` | `0.5` |
+   | Default (unspecified) | `enter/fade` | `enter/fade` | `enter/fade` | `0.4` |
+   | Conservative | `enter/fade` | `enter/fade` | none | `0.3` |
+   | Lively | `enter/zoom` | `enter/fly-up` | `enter/zoom` | `0.5` |
 
-5. **目標是「整份」**：逐頁重複步驟 2–4；使用者也要轉場時，跑一次 `slidra slide transition set <presentation-id> <任一頁路徑> --enter fade --enter-duration 0.4 --all`（`--all` 套用到整份）。
-6. **秒數一律用秒**：使用者說「300 毫秒」要換算成 `0.3` 再下 `--duration`／`--delay`。
-7. **驗證**：`effect list` 讀回確認順序。
+5. **Target is "the whole deck"**: repeat steps 2–4 per page; when the user also wants transitions, run `slidra slide transition set <presentation-id> <any page path> --enter fade --enter-duration 0.4 --all` once (`--all` applies to the whole deck).
+6. **Seconds are always in seconds**: when the user says "300 milliseconds", convert to `0.3` before passing `--duration`/`--delay`.
+7. **Verify**: read back with `effect list` to confirm the order.
 
-## 收尾
+## Wrap-up
 
-動完之後、回覆之前跑一次 `slidra validate <presentation-id>`（只動一頁就驗那一頁），把結果寫進回報的第一行；`errors` 不是空的就修完再驗，修到 0 錯誤才結束這一輪（見 `AGENTS.md` 的「收尾條件」）。
+After making changes, before replying, run `slidra validate <presentation-id>` once (only that page if only one page changed) and put the result on the first line of the report; if `errors` is not empty, fix and re-validate, ending this round only at 0 errors (see "wrap-up conditions" in `AGENTS.md`).
 
-## 回報格式
+## Report format
 
-逐頁列出：頁面路徑、每個錨點加了什麼效果（family/effect/start/duration），以及是否有調整轉場。「補」或「重做」既有效果時，說明改動前後的差異。
+Per page: page path, which effect each anchor got (family/effect/start/duration), and whether transitions were adjusted. When "filling in" or "redoing" existing effects, describe the before/after differences.

@@ -76,7 +76,7 @@ describe("reference/commands.md covers every slidra binary command", () => {
 });
 
 describe("reference/commands.md section structure", () => {
-  it("gives every command section a 參數 (parameters) / 用途 (purpose) / 範例 (example) field, not just a bare heading", async () => {
+  it("gives every command section a Parameters / Purpose / Example field, not just a bare heading", async () => {
     const markdown = await readCommandsReference();
     const headings = extractHeadings(markdown);
     expect(headings.length).toBeGreaterThan(0);
@@ -84,9 +84,9 @@ describe("reference/commands.md section structure", () => {
     expect(sections).toHaveLength(headings.length);
     for (const section of sections) {
       const name = section.split("\n", 1)[0].trim();
-      expect(section, `${name} 缺少 **參數**`).toMatch(/\*\*參數\*\*/);
-      expect(section, `${name} 缺少 **用途**`).toMatch(/\*\*用途\*\*/);
-      expect(section, `${name} 缺少 **範例**`).toMatch(/\*\*範例\*\*/);
+      expect(section, `${name} missing **Parameters**`).toMatch(/\*\*Parameters\*\*/);
+      expect(section, `${name} missing **Usage**`).toMatch(/\*\*Usage\*\*/);
+      expect(section, `${name} missing **Example**`).toMatch(/\*\*Example\*\*/);
     }
   });
 
@@ -121,7 +121,7 @@ describe("editorial brief and reference/commands.md stay consistent", () => {
   it("names only commands that also have a reference/commands.md section", async () => {
     const headings = new Set(extractHeadings(await readCommandsReference()));
     for (const name of commandsMentionedIn(brief)) {
-      expect(headings.has(name), `${name} 在編輯規約提到，但 reference/commands.md 沒有這一節`).toBe(true);
+      expect(headings.has(name), `${name} mentioned in the editing rules but has no section in reference/commands.md`).toBe(true);
     }
   });
 
@@ -149,7 +149,7 @@ describe("editorial brief and reference/commands.md stay consistent", () => {
     for (const text of [agentsMd, ...skillTexts]) {
       for (const name of commandsMentionedIn(text)) {
         expect(specNames.has(name)).toBe(true);
-        expect(headings.has(name), `${name} 在工作目錄文件提到，但 reference/commands.md 沒有這一節`).toBe(true);
+        expect(headings.has(name), `${name} mentioned in the workdir docs but has no section in reference/commands.md`).toBe(true);
       }
     }
   });

@@ -1,31 +1,31 @@
 # claim-field
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一句話佔滿版面，其餘全是留白——最強的一種頁面，因為它什麼都不解釋。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: One sentence fills the page, everything else is whitespace — the strongest kind of page, because it explains nothing.
 
-**什麼時候用它**：章節轉場、開場的主張、結語的結論。
-**什麼時候不要用**：需要證據或說明的內容。這個版面沒有地方放依據。
+**When to use it**: Section transitions, the opening claim, the closing conclusion.
+**When not to use it**: Content that needs evidence or explanation. This layout has no room for the "why".
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `claim-field.svg`。
+Full SVG: see `claim-field.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 短棒或標籤 | `garnish` / `label` | 可省 | 6 字 | 1 |
-| 主張 | `label`（`claim` 或 `section` 字級） | ≤ 2 行 | 22 字 | 1–2 |
-| 補充 | `label` | 可省，字級降兩級 | 20 字 | 1 |
+| Short bar or label | `garnish` / `label` | optional | 6 chars | 1 |
+| Claim | `label` (`claim` or `section` size) | ≤ 2 lines | 22 chars | 1–2 |
+| Supplement | `label` | optional, two size levels down | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-主張貼左緣、垂直置中偏上。**留白不是沒排完，是內容的一部分**——不要因為覺得空就加東西。
+The main text is flush left, vertically centered slightly above middle. **Whitespace is not unfinished layout, it is part of the content** — do not add things just because it feels empty.
 
-`blueprint.shape` 寫 `claim-field`。
+Write `blueprint.shape` as `claim-field`.
 
-## 變體
+## Variants
 
-- **置中版**：主張水平置中，更像海報。
-- **編號浮水印**：右下放一個超大的章節編號（裸 `<text>`、`garnish`、opacity 0.18）。
+- **Centered version**: the claim is horizontally centered, more poster-like.
+- **Numbered watermark**: an oversized section number in the lower-right (bare `<text>`, `garnish`, opacity 0.18).

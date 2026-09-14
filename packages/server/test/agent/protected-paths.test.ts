@@ -9,7 +9,7 @@ import { touchesProtectedPath } from "../../src/agent/protected-paths.js";
 const paths = {
   slidraHome: "/home/u/.slidra",
   agentWorkdir: "/home/u/.slidra/agent/abc",
-  sourcePath: "/home/u/decks/台灣美食.slidra",
+  sourcePath: "/home/u/decks/taiwan-food.slidra",
 };
 
 const refuses = (command: string) => touchesProtectedPath(command, paths);
@@ -24,8 +24,8 @@ describe("touchesProtectedPath: only .slidra files are CLI-exclusive", () => {
   });
 
   it("touching a .slidra file itself is refused (any one of them)", () => {
-    expect(refuses("unzip /home/u/decks/台灣美食.slidra")).toBe(true);
-    expect(refuses("cp /somewhere/else/別人的.slidra /tmp/")).toBe(true);
+    expect(refuses("unzip /home/u/decks/taiwan-food.slidra")).toBe(true);
+    expect(refuses("cp /somewhere/else/someone-elses.slidra /tmp/")).toBe(true);
   });
 
   it("using a relative path from the agent's working directory to loop back is refused", () => {

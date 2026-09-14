@@ -34,8 +34,8 @@ function splitSections(content, headingPattern) {
 /**
  * Parses `reference/commands.md`: every `## <name>` heading is a command
  * (the file contains nothing else at H2). Flags are read only from that
- * command's `**參數**` (Parameters) line — the file's own format convention
- * — not from `**用途**` (Usage)/`**範例**` (Example)/free-text notes, so a
+ * command's `**Parameters**` line — the file's own format convention
+ * — not from `**Usage**`/`**Example**`/free-text notes, so a
  * flag mentioned only in prose (e.g. a caveat about a flag that doesn't
  * exist) is never treated as a real parameter.
  */
@@ -44,7 +44,7 @@ export function extractReferenceCommands(content) {
   for (const { name, body } of splitSections(content, /^## (.+)$/gm)) {
     const flags = new Set();
     for (const line of body.split("\n")) {
-      if (line.startsWith("**參數**")) {
+      if (line.startsWith("**Parameters**")) {
         for (const match of line.matchAll(FLAG_PATTERN)) flags.add(match[0]);
       }
     }
@@ -56,11 +56,11 @@ export function extractReferenceCommands(content) {
 /**
  * Parses `docs/spec/cli.md`: only a heading of the exact form `` ## `name` ``
  * (backticks, nothing else on the line) is a command entry — every other H2
- * in the file (the 通則 (general rules) sections, appendices) deliberately
- * does not start with a backtick (see the file's own "命令條目格式說明"
- * (command entry format) section), so this pattern alone is enough to
+ * in the file (the general-rules sections, appendices) deliberately
+ * does not start with a backtick (see the file's own "command entry format"
+ * section), so this pattern alone is enough to
  * separate the two. Flags are read from the command's ENTIRE section
- * (語法/參數/成功 data/錯誤情境/範例 — syntax/parameters/success data/error
+ * (syntax/parameters/success data/error
  * cases/example — all count), matching the spec's own rule: an entry's
  * whole section must contain the flag token.
  */
@@ -87,13 +87,13 @@ export function findViolations(referenceCommands, specCommands) {
   for (const [name, flags] of referenceCommands) {
     const specFlags = specCommands.get(name);
     if (specFlags === undefined) {
-      violations.push({ message: `reference/commands.md: 命令「${name}」不在 docs/spec/cli.md` });
+      violations.push({ message: `reference/commands.md: command "${name}" is not in docs/spec/cli.md` });
       continue;
     }
     for (const flag of flags) {
       if (!specFlags.has(flag)) {
         violations.push({
-          message: `reference/commands.md: 命令「${name}」的 ${flag} 不在 docs/spec/cli.md 的對應條目`,
+          message: `reference/commands.md: command "${name}" flag ${flag} is not in the matching entry in docs/spec/cli.md`,
         });
       }
     }

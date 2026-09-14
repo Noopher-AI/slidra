@@ -1,32 +1,32 @@
 # numbered-run
 
-**解的關係**：`order`
-**單位數**：3–4
-**一句話**：很大的編號領頭，說明橫排在旁邊——最輕的順序表達，沒有線也沒有節點。
+**Relationship solved**: `order`
+**Unit count**: 3–4
+**One line**: Big numbers lead, descriptions run horizontally beside them — the lightest sequence expression, no lines and no nodes.
 
-**什麼時候用它**：步驟少、每步一句話，而且不需要強調「之間的連接」。
-**什麼時候不要用**：步驟之間有分支或回饋——那需要 `flow` 或 `chain` 的連接線。
+**When to use it**: Few steps, one sentence per step, and no need to emphasize "the connection between them."
+**When not to use it**: Steps have branches or feedback — that needs `flow` or `chain` connector lines.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `numbered-run.svg`。
+Full SVG: see `numbered-run.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 編號 ×N | `label`（`number` 字級的淡色大字） | `01`… | 2 字 | 1 |
-| 步驟名 | `label` | | 12 字 | 1 |
-| 補充 | `label` | 可省 | 18 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Numbers ×N | `label` (faded large `number` size) | `01`… | 2 chars | 1 |
+| Step name | `label` | | 12 chars | 1 |
+| Supplement | `label` | optional | 18 chars | 1 |
 
-## 節奏
+## Rhythm
 
-編號用 `number` 字級但顏色壓到 `muted`——它是節奏標記，不是重點。步驟名才是重點。等距橫排，三步最好看，四步就要縮小編號。
+Numbers use the `number` size but the color is pushed down to `muted` — it is a rhythm marker, not the point. The step name is the point. Even horizontal spacing; three steps look best, four steps needs a smaller number size.
 
-`blueprint.shape` 寫 `numbered-run`。
+Write `blueprint.shape` as `numbered-run`.
 
-## 變體
+## Variants
 
-- **直排**：編號在左、說明在右，由上而下——步驟較多或說明較長時用。
-- **編號當背景**：編號放大到 200 級、透明度 0.08，說明壓在上面。
+- **Vertical stack**: numbers on the left, descriptions on the right, top to bottom — use when there are more steps or longer descriptions.
+- **Numbers as background**: scale numbers up to ~200 at opacity 0.08, text on top.

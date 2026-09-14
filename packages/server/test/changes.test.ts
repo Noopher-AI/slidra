@@ -93,7 +93,7 @@ async function serve(presentationId: string): Promise<RunningServer> {
   return server;
 }
 
-async function openFreshPresentation(name = "測試簡報"): Promise<{ id: string; elementId: string }> {
+async function openFreshPresentation(name = "Test Presentation"): Promise<{ id: string; elementId: string }> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
@@ -164,7 +164,7 @@ describe("GET /api/events", () => {
     const server = await serve(id);
     const frameReader = await connectEvents(server);
 
-    await setText(id, elementId, "改過的標題");
+    await setText(id, elementId, "changed title");
 
     const frame = await frameReader.readFrame();
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
@@ -175,7 +175,7 @@ describe("GET /api/events", () => {
     const server = await serve(id);
     const frameReader = await connectEvents(server);
 
-    for (const text of ["第一次修改", "第二次修改", "第三次修改"]) {
+    for (const text of ["first edit", "second edit", "third edit"]) {
       await setText(id, elementId, text);
       const frame = await frameReader.readFrame();
       expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
@@ -192,7 +192,7 @@ describe("GET /api/events", () => {
     // The first tab closes its browser tab.
     await first.cancel();
 
-    await setText(id, elementId, "只有第二個分頁還在");
+    await setText(id, elementId, "only the second tab remains");
 
     const frame = await second.readFrame();
     expect(frame).toBe("event: presentation-changed\ndata: {}\n\n");
@@ -224,7 +224,7 @@ describe("GET /api/events", () => {
 
     // A real edit still gets through — the filter skips the lock, not the
     // notification path itself.
-    await setText(id, elementId, "鎖檔不算改動");
+    await setText(id, elementId, "locking a file is not a change");
     expect(await pending).toBe("event: presentation-changed\ndata: {}\n\n");
   });
 
@@ -289,7 +289,7 @@ describe("GET /api/events", () => {
         "let result;",
         'if (cmd === "cat" && rest[1] === "project.json") {',
         "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
-        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "已讀取：project.json" };',
+        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
         "} else {",
         '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
         "}",

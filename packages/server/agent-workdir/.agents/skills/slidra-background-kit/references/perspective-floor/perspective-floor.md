@@ -1,26 +1,26 @@
 # perspective-floor
 
-**氣氛**：地平線上的透視格線，往右方的消失點收斂。有空間、有縱深，而且自帶方向。
+**Mood**: Perspective grid on a horizon, converging toward a vanishing point on the right. Spatial, with depth, and self-evident direction.
 
-**適合**：`anchor`、`breathing`，以及 `order` 關係的頁面。
-**不適合**：`membership`。透視有方向，並列的內容不該有。
+**Suited for**: `anchor`, `breathing`, and pages with `order` relationships.
+**Not suited for**: `membership`. Perspective has a direction; parallel content should not.
 
-**建議 opacity**：0.6
+**Suggested opacity**: 0.6
 
-**做法**：放射線全部指向同一個消失點；橫線間距以等比遞減模擬透視。
+**Technique**: All radial lines point at the same vanishing point; horizontal line spacing decreases geometrically to simulate perspective.
 
-完整 SVG：見同資料夾 `perspective-floor.svg`。
+Full SVG: see `perspective-floor.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
-| `mono-ink` | 去彩度：全部改用文字色與 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--primary)` → `muted` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
+| `mono-ink` | Desaturate: everything uses text color and muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--primary)` → `muted` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：01、04、13、15。
+**Suggested styles**: 01, 04, 13, 15.

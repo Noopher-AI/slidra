@@ -1,32 +1,32 @@
 # audio-quote
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一段引用佔版面中央，下方一條窄波形可以播出原音——文字先讀，聲音再驗證。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A quote fills the center of the layout with a narrow playable waveform below it — read the words first, verify with the sound.
 
-**什麼時候用它**：一句有力的原話，而且有錄音可以佐證。
-**什麼時候不要用**：沒有錄音。只有文字的引用用 25 `quote-block`。
+**When to use it**: One powerful verbatim quote, with a recording that can back it up.
+**When not to use it**: There is no recording. A text-only quote uses 25 `quote-block`.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `audio-quote.svg`。
+Full SVG: see `audio-quote.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 引號 | `garnish` | 裸 `<text>` | — | — |
-| 引文 | `label`（`title`～`claim`） | **必須與錄音一字不差** | 每行 18 字，≤ 2 行 | 1–2 |
-| 出處 | `label`（`caption`） | | 18 字 | 1 |
-| 波形條 | `node`（`audio`） | 窄，放在引文下方 | — | — |
+| Quotation mark | `garnish` | bare `<text>` | — | — |
+| Quotation | `label` (`title`–`claim`) | **Must match the recording word for word** | 18 chars/line, ≤ 2 lines | 1–2 |
+| Source | `label` (`caption`) | | 18 chars | 1 |
+| Waveform strip | `node` (`audio`) | Narrow, placed below the quote | — | — |
 
-## 節奏
+## Rhythm
 
-波形條的寬度比引文窄——它是佐證，不是主角。**引文必須逐字等於錄音內容**，修飾過的引用配上原音會當場穿幫。
+The waveform strip is narrower than the quotation — it is corroboration, not the protagonist. **The quote must be verbatim equal to the recording**; an edited quote with the original audio attached exposes itself on the spot.
 
-`blueprint.shape` 寫 `audio-quote`。
+Write `blueprint.shape` as `audio-quote`.
 
-## 變體
+## Variants
 
-- **多段引用**：兩段引用上下排，各配一條窄波形。
-- **無波形**：只在角落放一個小的播放圖示，更安靜。
+- **Multiple quotes**: two quotes stacked vertically, each with its own narrow waveform.
+- **No waveform**: just a small play icon in a corner, quieter.

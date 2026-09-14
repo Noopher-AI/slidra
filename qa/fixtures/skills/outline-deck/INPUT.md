@@ -1,22 +1,22 @@
-# 產品說明會
+# Product Briefing
 
-## 產品定位
+## Product positioning
 
-- 一句話說明我們在解決什麼問題
-- 目標客群是誰
+- One sentence explaining what problem we solve
+- Who the target audience is
 
-## 核心功能
+## Core features
 
-- 功能一：快速上手
-- 功能二：與既有工具整合
-- 功能三：可觀測性
+- Feature 1: quick onboarding
+- Feature 2: integration with existing tools
+- Feature 3: observability
 
-## 定價方案
+## Pricing plans
 
-- 免費方案的限制
-- 付費方案多了什麼
+- Limitations of the free plan
+- What the paid plan adds on top
 
-## 下一步
+## Next steps
 
-- 如何申請試用
-- 聯絡窗口
+- How to apply for a trial
+- Who to contact

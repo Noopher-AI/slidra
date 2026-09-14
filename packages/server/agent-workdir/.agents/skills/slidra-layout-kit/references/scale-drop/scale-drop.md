@@ -1,32 +1,32 @@
 # scale-drop
 
-**解的關係**：`parent`
-**單位數**：3–4
-**一句話**：尺寸逐層變小的方塊，從大到小排列——層級用大小表達，不用縮排也不用線。
+**Relationship solved**: `parent`
+**Unit count**: 3–4
+**One line**: Blocks that shrink level by level, arranged large to small — hierarchy expressed by size, no indentation and no lines.
 
-**什麼時候用它**：層級同時帶有「範圍大小」的意思（市場→區隔→客群、願景→目標→任務）。
-**什麼時候不要用**：層級只是歸屬而沒有大小之分。
+**When to use it**: A hierarchy that also carries "range size" meaning (market → segment → audience, vision → goal → task).
+**When not to use it**: The hierarchy is only membership, with no size difference.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `scale-drop.svg`。
+Full SVG: see `scale-drop.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 層 ×N | `node`（`field`） | 面積逐層縮小 | — | — |
-| 層名 | `label` | 字級跟著縮小 | 10 字 | 1 |
-| 層說明 | `label` | 可省 | 20 字 | 2 |
+| Title | `label` | | 15 chars | 1 |
+| Layers ×N | `node` (`field`) | area shrinking level by level | — | — |
+| Layer name | `label` | font size shrinks along | 10 chars | 1 |
+| Layer description | `label` | optional | 20 chars | 2 |
 
-## 節奏
+## Rhythm
 
-**面積比要明顯**（下一層約為上一層的 0.6）。字級也跟著降一級——尺寸與字級要同向，否則層級會打架。垂直置中對齊。
+**The area ratio must be obvious** (each next layer ~0.6 of the previous). Font size drops a level too — size and font size must move in the same direction, or the hierarchy fights itself. Vertically centered.
 
-`blueprint.shape` 寫 `scale-drop`。
+Write `blueprint.shape` as `scale-drop`.
 
-## 變體
+## Variants
 
-- **同心版**：三個方塊改成同心排列，最外圈最大——更強調「包含」而不是「排列」。
-- **由小到大**：反過來講「從一個小點長成一個大局」。
+- **Concentric version**: three blocks become concentric, outermost largest — emphasizes "containment" rather than "sequence".
+- **Small to large**: reversed, telling "growing from a small point into a big picture."

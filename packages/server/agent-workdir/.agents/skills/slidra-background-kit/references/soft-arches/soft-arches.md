@@ -1,28 +1,28 @@
 # soft-arches
 
-**氣氛**：三道大拱門由後往前疊在右側，前緣再描一條 accent 的細邊。
+**Mood**: Three large arches stacked from back to front on the right side, with a thin accent edge stroked on the frontmost one.
 
-**明亮風格**：這是為淺底配色畫的。深色配色（01、04、07、10、13、15、18、20）用它會太弱，要把透明度整組拉高一倍以上，或直接換一個深色系的配方。
+**Light style**: This is designed for light-background palettes. Dark palettes (01, 04, 07, 10, 13, 15, 18, 20) will make it too weak — either raise the opacity across the board by at least double, or switch to a dark-background recipe.
 
-**適合**：`anchor`、`breathing`，以及 `parent` 關係的頁面（拱的層層包覆就是統轄）。
-**不適合**：`dense`。
+**Suited for**: `anchor`, `breathing`, and pages with `parent` relationships (the layered wrapping of the arches is itself enclosure).
+**Not suited for**: `dense`.
 
-**建議 opacity**：0.85
+**Suggested opacity**: 0.85
 
-**做法**：三層拱**全部同一個色相**、只差透明度；accent 只出現在最前面那條描邊。第一版讓最前面的拱用 accent 實心疊在主色拱上，在冷色配色裡混成一塊土黃。
+**Technique**: All three arches share **the same hue**, differing only in opacity; the accent appears only on the frontmost stroke. The first version made the front arch a solid accent layered over the primary arch, which blended into muddy ochre on cool palettes.
 
-完整 SVG：見同資料夾 `soft-arches.svg`。
+Full SVG: see `soft-arches.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
-| `tinted` | 底色上場：大面積改用 `secondary_bg` 這個中性色，只留最前面的一層有彩度。 | `var(--primary)` → `secondary_bg` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
+| `tinted` | Base color takes the field: the large areas switch to the neutral `secondary_bg`, leaving only the frontmost layer saturated. | `var(--primary)` → `secondary_bg` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：02、05、08、11、16、23、24。
+**Suggested styles**: 02, 05, 08, 11, 16, 23, 24.

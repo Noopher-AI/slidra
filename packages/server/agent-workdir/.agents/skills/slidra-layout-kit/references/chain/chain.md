@@ -1,32 +1,32 @@
 # chain
 
-**解的關係**：`link`
-**單位數**：3–5
-**一句話**：節點用箭頭依序連起來——跟 `spine-path` 的差別是：連接是畫出來的邊，而不是一條共用的軸。
+**Relationship solved**: `link`
+**Unit count**: 3–5
+**One line**: Nodes connected in sequence with arrows — the difference from `spine-path`: the connections are drawn edges, not a shared axis.
 
-**什麼時候用它**：每一步「導致」下一步，因果關係本身就是重點。
-**什麼時候不要用**：只是先後順序而沒有因果——箭頭會宣稱一個不存在的因果。
+**When to use it**: Each step "causes" the next, and the causality itself is the point.
+**When not to use it**: Simple sequence without causality — arrows would claim a causation that does not exist.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chain.svg`。
+Full SVG: see `chain.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 節點 ×N | `node`（`field` + `label`） | | 12 字 | 1–2 |
-| 箭頭 ×(N−1) | `edge` | **必要的連接才畫** | — | — |
-| 邊標籤 | `label` | 可省；寫「因為什麼」 | 8 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Nodes ×N | `node` (`field` + `label`) | | 12 chars | 1–2 |
+| Arrows ×(N−1) | `edge` | **draw only the necessary connections** | — | — |
+| Edge label | `label` | optional; states "because of what" | 8 chars | 1 |
 
-## 節奏
+## Rhythm
 
-節點等寬等高、水平等距。箭頭長度一致。**邊的數量必須是 N−1**，多一條就表示有分支，那要換 `flow`。
+Nodes are equal in width and height, evenly spaced horizontally. Arrows are equal length. **The edge count must be N−1** — one extra edge means there is a branch, which means switch to `flow`.
 
-`blueprint.shape` 寫 `chain`。
+Write `blueprint.shape` as `chain`.
 
-## 變體
+## Variants
 
-- **加邊標籤**：每個箭頭上方寫一個動詞，說明這一步靠什麼發生。
-- **回饋**：最後一個節點拉一條弧線回到第一個，表示循環。
+- **Edge labels**: a verb above each arrow explaining what makes that step happen.
+- **Feedback**: an arc from the last node back to the first, indicating a loop.

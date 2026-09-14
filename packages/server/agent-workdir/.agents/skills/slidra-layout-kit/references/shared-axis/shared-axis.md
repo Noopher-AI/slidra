@@ -1,33 +1,33 @@
 # shared-axis
 
-**解的關係**：`contrast`
-**單位數**：2
-**一句話**：中央一條基準軸，兩邊的項目往左右展開——共用的尺度看得最清楚。
+**Relationship solved**: `contrast`
+**Unit count**: 2
+**One line**: A central reference axis with items on both sides expanding outward — a shared scale is the clearest way to read it.
 
-**什麼時候用它**：兩邊在同一個維度上有量的差異（正負、增減、贊成反對）。
-**什麼時候不要用**：兩邊比較的是性質而不是量——那用 `split-panel`。
+**When to use it**: Both sides differ in quantity on the same dimension (positive/negative, increase/decrease, for/against).
+**When not to use it**: Both sides compare quality rather than quantity — use `split-panel` instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `shared-axis.svg`。
+Full SVG: see `shared-axis.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 中軸 | `spine` | 共用的基準 | — | — |
-| 兩側標頭 | `label` | | 6 字 | 1 |
-| 橫條 ×N | `node` | 長度反映量值 | — | — |
-| 項目名 | `label` | 放在軸的外側或條上 | 10 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Center axis | `spine` | the shared reference | — | — |
+| Side headers ×2 | `label` | | 6 chars | 1 |
+| Bars ×N | `node` | length reflects the value | — | — |
+| Item names | `label` | on the outer side of the axis or on the bar | 10 chars | 1 |
 
-## 節奏
+## Rhythm
 
-**橫條長度必須反映真實數字**。左右的列要對齊成同一排——同一列的左右兩條是同一個項目的兩個值。
+**Bar length must reflect real numbers.** Left and right rows align into the same rank — the two bars in the same rank are the two values of the same item.
 
-`blueprint.shape` 寫 `shared-axis`。
+Write `blueprint.shape` as `shared-axis`.
 
-## 變體
+## Variants
 
-- **無量值版**：兩邊改成等長，只靠位置表達歸屬——這時它退化成一個更輕的 `split-panel`。
-- **水平軸**：軸改成橫的，項目往上下展開，適合時間序的正負值。
+- **No-value version**: both sides become equal length, membership expressed by position only — it degenerates into a lighter `split-panel`.
+- **Horizontal axis**: the axis becomes horizontal, items expand up and down; suits time-ordered positive/negative values.

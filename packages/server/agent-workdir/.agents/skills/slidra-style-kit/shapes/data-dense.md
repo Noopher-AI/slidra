@@ -1,28 +1,28 @@
-# 形狀語言：data-dense
+# Shape language: data-dense
 
-**一句話**：多欄的微型圖表、側欄、來源行。資訊密度是目的，不是副作用。
+**One line**: Multi-column micro-charts, sidebars, source lines. Information density is the goal, not a side effect.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-細框或無框，靠**對齊**分區。每個區塊可以再切成更小的格。允許一頁有三到四個圖表。來源行固定在每個圖表下方。
+Thin frames or no frames, with **alignment** doing the zoning. Each block can be subdivided into smaller cells. A page may hold three or four charts. Source lines are fixed below each chart.
 
-## 字體性格
+## Type character
 
-字級整體小一級，數字用等寬字族對齊。標籤用 `caption` 級並靠 `muted` 色退到後面。
+Type scale one level smaller overall; numbers use a monospace face for alignment. Labels use the `caption` level and recede with the `muted` color.
 
-## 留白節奏
+## Whitespace rhythm
 
-**緊**：欄間距用 `layout.gutter` 但列間距收到最小級距。留白只出現在區塊之間，不在區塊內。
+**Tight**: column spacing uses `layout.gutter`, but row spacing is pushed to the smallest level. Whitespace appears only between blocks, never inside them.
 
-## 材質與層次
+## Material and depth
 
-平面。層次靠字級與顏色的明度差，不用底色塊——底色塊在密集版面裡會讓畫面變吵。
+Flat. Hierarchy is carried by type scale and color lightness difference, not by base-color blocks — base-color blocks in a dense layout make the frame noisy.
 
-**適合**：資料簡報、儀表板、研究數據、財報附錄。
-**不適合**：需要情緒或記憶點的場合。
+**Suited for**: Data presentations, dashboards, research data, financial report appendices.
+**Not suited for**: Contexts needing emotion or a memorable hook.
 
-## 怎麼做到
+## How to achieve it
 
-密度改成 `balanced` 或 `text`；`spacing` 用 [4,8,12,16,24]；每個圖表下方加一行 `caption` 級的來源。
+Density set to `balanced` or `text`; `spacing` set to [4, 8, 12, 16, 24]; a `caption`-level source line added below each chart.

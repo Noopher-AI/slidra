@@ -124,7 +124,7 @@ pub(crate) fn js_number_string(value: f64) -> String {
     }
 }
 
-/// `requireEnum` from `model.ts`: `${label} 必須是下列其中之一：{domain}（收到：{value}）`.
+/// `requireEnum` from `model.ts`: "${label} must be one of the following: {domain} (received: {value})".
 pub(crate) fn require_enum_error(value: &str, domain: &[&str], label: &str) -> SlidraError {
     SlidraError::invalid(format!(
         "{label} must be one of the following: {} (received: {value})",
@@ -330,7 +330,7 @@ fn find_table_container<'a>(parent: &'a ScannedNode, id: &str) -> Option<&'a Sca
 }
 
 /// Locates a table's container `<g>` by id within an already-scanned
-/// document. `找不到元素` when absent, a distinct message when the element
+/// document. "element not found" when absent, a distinct message when the element
 /// exists but is not a table (`InvalidRequest` either way — `failed`, not
 /// `not-found`, per `docs/spec/cli.md`'s per-command error tables).
 pub fn require_table_container<'a>(

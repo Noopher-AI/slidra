@@ -1,28 +1,28 @@
-# 形狀語言：chalkboard
+# Shape language: chalkboard
 
-**一句話**：深色板面上的粉筆字，筆畫有顆粒、邊緣不整齊。像一堂正在進行的課。
+**One line**: Chalk writing on a dark board, with grainy strokes and uneven edges. Like a class in progress.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-框線用**手繪感的線**（同一條線畫兩次、略微錯開）。箭頭與圈選是徒手的，不要用完美的幾何。可以有「擦不乾淨」的痕跡——一塊比底色略淺的區域。
+Frame lines use **hand-drawn lines** (the same line drawn twice, slightly offset). Arrows and circling are freehand — don't use perfect geometry. There can be "erase marks that didn't come off clean" — a patch slightly lighter than the base color.
 
-## 字體性格
+## Type character
 
-手寫感的字族；沒有的話用圓體配 400 字重，並把字距略微加寬。標題可以略微傾斜（±1 度）。
+A handwriting-style typeface; if none is available, use a rounded face at weight 400 with slightly wider letter-spacing. Headings can be slightly tilted (±1 degree).
 
-## 留白節奏
+## Whitespace rhythm
 
-比一般鬆——黑板上的字本來就寫得開。
+Looser than usual — chalkboard writing naturally has room to spread.
 
-## 材質與層次
+## Material and depth
 
-板面用 `background` 的深色，粉筆用 `text` 但 `opacity` 0.85（純白太銳利）。線條用兩層疊出粉筆的鬆散。
+The board uses a darker version of `background`; chalk uses `text` at `opacity` 0.85 (pure white is too sharp). Lines use two layers to create chalk's looseness.
 
-**適合**：教學、工作坊、課程、腦力激盪的紀錄。
-**不適合**：正式的對外簡報。
+**Suited for**: Teaching, workshops, courses, brainstorming records.
+**Not suited for**: Formal external presentations.
 
-## 怎麼做到
+## How to achieve it
 
-每條線畫兩次、第二條位移 1–2px 並降透明度；`opacity` 給文字 0.85；配深色風格（01、04、07）。
+Draw each line twice, the second offset by 1–2px with reduced opacity; `opacity` 0.85 for text; pair with dark styles (01, 04, 07).

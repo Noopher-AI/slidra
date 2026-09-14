@@ -1,32 +1,32 @@
 # chart-small-multiples
 
-**解的關係**：`membership`
-**單位數**：4–9
-**一句話**：同一種圖表重複多個小格，每格一個對象——形狀的差異一眼可見。
+**Relationship solved**: `membership`
+**Unit count**: 4–9
+**One line**: The same chart type repeated in small cells, one subject per cell — differences in shape are visible at a glance.
 
-**什麼時候用它**：多個對象的同一個指標（各分店、各月份、各產品線）。
-**什麼時候不要用**：對象少於四個——那不如並排兩張大圖看得清楚。
+**When to use it**: One metric across many subjects (branches, months, product lines).
+**When not to use it**: Fewer than four subjects — two big charts side by side are clearer.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chart-small-multiples.svg`。
+Full SVG: see `chart-small-multiples.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 小圖 ×N | `node`（chart） | **全部同尺度同尺寸** | — | — |
-| 小圖標籤 | `label`（`caption`） | 對象名 | 8 字 | 1 |
-| 結論 | `label` | 這組形狀告訴我們什麼 | 24 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Mini charts ×N | `node` (chart) | **all same scale, same size** | — | — |
+| Mini labels | `label` (`caption`) | subject name | 8 chars | 1 |
+| Conclusion | `label` | what this group of shapes tells us | 24 chars | 1 |
 
-## 節奏
+## Rhythm
 
-每格等大、**Y 軸範圍全部一致**——這個版面的全部價值就在「形狀可以互相比較」，尺度一不同就毀了。座標軸刻度只在左下那一格標出，其餘省略。
+All cells are equal size; **all Y-axis ranges must match** — the entire value of this layout is "shapes are comparable", and any scale difference ruins it. Axis ticks are labeled only on the bottom-left cell; omitted elsewhere.
 
-`blueprint.shape` 寫 `chart-small-multiples`。
+Write `blueprint.shape` as `chart-small-multiples`.
 
-## 變體
+## Variants
 
-- **排序**：依數值大小排列而不是依名稱，形狀的趨勢會浮出來。
-- **標出異常**：其中一兩格用 accent 邊框標記。
+- **Sorted**: order by value instead of by name; the shape trend emerges.
+- **Flag outliers**: one or two cells get an accent border.

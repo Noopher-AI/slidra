@@ -1,32 +1,32 @@
 # pyramid
 
-**解的關係**：`parent`
-**單位數**：3–5
-**一句話**：下寬上窄的層級堆疊，底層是基礎、頂層是結果。
+**Relationship solved**: `parent`
+**Unit count**: 3–5
+**One line**: A wide-at-bottom, narrow-at-top layered stack; the base is the foundation, the top is the result.
 
-**什麼時候用它**：有「必須先有下面才有上面」關係的層級（能力堆疊、價值層級、需求層次）。
-**什麼時候不要用**：各層平行並列——那是 `membership`。金字塔會宣稱一個不存在的依賴。
+**When to use it**: Hierarchies with a "the bottom must exist before the top" relationship (capability stacks, value hierarchies, levels of needs).
+**When not to use it**: The layers are parallel — that is `membership`. A pyramid would claim a dependency that does not exist.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `pyramid.svg`。
+Full SVG: see `pyramid.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 層 ×N | `node` | 由下而上變窄 | — | — |
-| 層名 | `label` | 置中 | 10 字 | 1 |
-| 層說明 | `label` | 可省，放在右側 | 18 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Layers ×N | `node` | narrowing from bottom to top | — | — |
+| Layer name | `label` | centered | 10 chars | 1 |
+| Layer description | `label` | optional, on the right side | 18 chars | 1 |
 
-## 節奏
+## Rhythm
 
-每層等高，寬度線性遞減。**頂層加深**——它是這個結構要導向的結論。層與層之間不留空隙，空隙會讓「堆疊」變成「並列」。
+Each layer is equal height; width decreases linearly. **The top layer is emphasized (darker)** — it is the conclusion this structure leads to. No gaps between layers; gaps turn a "stack" into a "row".
 
-`blueprint.shape` 寫 `pyramid`。
+Write `blueprint.shape` as `pyramid`.
 
-## 變體
+## Variants
 
-- **倒金字塔**：上寬下窄，講「從大範圍收斂到一個結論」。
-- **右側說明欄**：每層右邊配一句話，適合層數少的時候。
+- **Inverted pyramid**: wide at top, narrow at bottom, telling "converging from a broad range to one conclusion."
+- **Right-side description column**: one sentence to the right of each layer, suits few layers.

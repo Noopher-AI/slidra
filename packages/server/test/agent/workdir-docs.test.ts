@@ -20,7 +20,7 @@ const agentsMdPath = path.join(resolveAgentWorkdirSource(), "AGENTS.md");
 
 // Triggers live in the frontmatter `description` (the only part loaded
 // before a skill fires), so the body only has to carry the ordered steps.
-const REQUIRED_SKILL_SECTIONS = ["## 步驟"];
+const REQUIRED_SKILL_SECTIONS = ["## Steps"];
 
 describe("shipped work directory documentation", () => {
   it("has exactly the thirteen shipped skills, each well-formed, and reported by collectSlashCommands", async () => {

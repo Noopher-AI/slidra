@@ -405,7 +405,7 @@ it("after sending, the Send button becomes a stop button; clicking it ends the t
 /**
  * `From outline…` now goes outline → `/slidra-plan` → `plan set` (fake agent)
  * → the plan gate (`.plan-gate`, a blocking modal) → confirm and build →
- * `/slidra-build 【計畫確認】` → `slide add` (fake agent).
+ * `/slidra-build [plan-confirmed]` → `slide add` (fake agent).
  */
 async function openOutlineAndSubmit(page: Page, outline: string): Promise<void> {
   await page.getByRole("button", { name: "New" }).click();
@@ -425,7 +425,7 @@ it("planning from an outline: through the real UI entry point, the plan gate pop
 
     // What's sent is /slidra-plan plus a fixed positional line, not the old slide add prefix.
     const authored = page.locator(".chat-message-author").last();
-    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/slidra-plan 【從大綱規劃】目前有 2 頁，新頁接在最後。");
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("/slidra-plan [plan-from-outline] There are 2 pages so far; new pages will be appended at the end.");
 
     // The fake agent's `plan set` lands → live reload → the gate opens; no page refresh needed.
     const gate = page.locator(".plan-gate");
@@ -448,10 +448,10 @@ it("planning from an outline: through the real UI entry point, the plan gate pop
     await gate.locator(".plan-gate-confirm").click();
     await expect.poll(() => gate.count(), { timeout: 5000 }).toBe(0);
     const confirmMessage = page.locator(".chat-message-author").last();
-    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/slidra-build 【計畫確認】");
+    await expect.poll(() => confirmMessage.textContent(), { timeout: 5000 }).toContain("/slidra-build [plan-confirmed]");
     expect(await confirmMessage.textContent()).toContain("mode=narrative");
     expect(await confirmMessage.textContent()).toContain("mode.note=use a story arc");
-    expect(await confirmMessage.textContent()).toContain("補充：tighten it overall");
+    expect(await confirmMessage.textContent()).toContain("Supplement: tighten it overall");
 
     // The new page is really added, not just a UI event — the thumbnail row is +1 and project.json gains one more path.
     await expect.poll(() => page.locator(".overview-item").count(), { timeout: 30_000 }).toBe(3);

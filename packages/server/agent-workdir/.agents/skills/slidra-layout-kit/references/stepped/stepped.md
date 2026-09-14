@@ -1,32 +1,32 @@
 # stepped
 
-**解的關係**：`order`
-**單位數**：3–5
-**一句話**：逐階升高（或降低）的色塊，高度本身就是訊息——看得出是在增長還是收斂。
+**Relationship solved**: `order`
+**Unit count**: 3–5
+**One line**: Color blocks rising (or falling) step by step; the height itself is the message — you can see whether it's growing or converging.
 
-**什麼時候用它**：有量值變化的順序：成長、衰退、逐步逼近。
-**什麼時候不要用**：純粹的步驟（沒有量的概念）——階梯會讓人以為後面的比前面的「更大」。
+**When to use it**: A sequence with quantity change: growth, decline, gradual approach.
+**When not to use it**: Pure steps with no quantity concept — steps imply later ones are "bigger" than earlier ones.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `stepped.svg`。
+Full SVG: see `stepped.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 階梯 ×N | `node`（`field`） | 高度反映量值 | — | — |
-| 階段名 | `label` | | 10 字 | 1 |
-| 量值 | `label` | 可省，放在色塊頂端 | 8 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Steps ×N | `node` (`field`) | height reflects the value | — | — |
+| Step name | `label` | | 10 chars | 1 |
+| Value | `label` | optional, at the top of the block | 8 chars | 1 |
 
-## 節奏
+## Rhythm
 
-色塊等寬、底部對齊，**高度必須反映真實比例**——如果沒有真實數字，就不要用這個版面（那是在用視覺撒謊）。顏色隨高度加深。
+Blocks are equal width, bottom-aligned. **Height must reflect the real ratio** — if there are no real numbers, do not use this layout (it would be lying with visuals). Color darkens with height.
 
-`blueprint.shape` 寫 `stepped`。
+Write `blueprint.shape` as `stepped`.
 
-## 變體
+## Variants
 
-- **下降版**：由高到低，講收斂或成本下降。
-- **加箭頭**：最後一階右上加一個箭頭，強化「還會繼續」。
+- **Descending version**: high to low, telling convergence or cost reduction.
+- **With arrow**: a small arrow at the top-right of the final step, reinforcing "continuing."

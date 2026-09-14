@@ -1,80 +1,80 @@
 ---
 name: slidra-style-kit
-description: 從 25 種配色組與 10 種形狀語言裡各挑一種寫進 plan/design-spec.md（配色、字級表、字型、間距、形狀語言），用一句話描述想要的感覺就模糊匹配。作者的訊息以 /slidra-style-kit 開頭、或 slidra-plan 要適配風格時用
+description: Pick one of 25 color palettes and one of 10 shape languages and write them into plan/design-spec.md (palette, type scale table, fonts, spacing, shape language); a one-sentence description of the desired feel does a fuzzy match. Use when the author's message starts with /slidra-style-kit or when slidra-plan needs to fit a style
 ---
 
-# 風格庫
+# Style library
 
-風格決定這份簡報**看起來是誰在說話**。它是兩層，可以獨立換：
+Style decides **who appears to be speaking** in this deck. It has two layers, swappable independently:
 
-1. **配色組**（下面 25 種）——色碼、字級表、字型、間距錨點，每種一個檔在 `references/<編號>-<名字>.md`。
-2. **形狀語言**（`shapes/` 的 10 種）——圓角、裝飾密度、留白節奏、字體性格、材質。**它完全不含顏色**，所以任何形狀語言都可以配任何配色組；每個配色組的 JSON 宣告了一個預設的 `shape_language`。
+1. **Color palette** (the 25 below) — color codes, type scale table, fonts, spacing anchors; one file each at `references/<number>-<name>.md`.
+2. **Shape language** (the 10 in `shapes/`) — corner radii, decoration density, whitespace rhythm, font character, material. **It contains no color at all**, so any shape language can pair with any palette; each palette's JSON declares a default `shape_language`.
 
-**目錄是起點，不是白名單。** 沒有一種剛好時，挑最近的一種改，或自己配一組——只要填滿 `design-spec` 的所有欄位，並在正文寫一句它的名字與為什麼。配色是一組：拆兩組混用會失去它的邏輯；字級與間距可以微調。
+**The catalog is a starting point, not a whitelist.** When none fits exactly, take the closest one and modify it, or mix your own — as long as you fill in every `design-spec` field and write one sentence in the prose with its name and why. A palette is a set: splitting it into two and mixing them loses its logic; the type scale and spacing can be fine-tuned.
 
-## 輸入
+## Input
 
-- `/slidra-style-kit` 後面的自由文字是匹配依據：氣質、場合、產業、顏色傾向、參考對象。
-- 沒有文字時，讀 `plan/outline.md` 的主題與 `mode` 自己判斷。
-- 已經有 `plan/design-spec.md` 時，先問作者是要換掉還是微調。
+- The free text after `/slidra-style-kit` is the matching basis: temperament, occasion, industry, color leanings, reference targets.
+- Without text, read the topic and `mode` in `plan/outline.md` and judge yourself.
+- When `plan/design-spec.md` already exists, first ask the author whether to replace or fine-tune.
 
-## 步驟
+## Steps
 
-1. **讀索引**（下面兩張表），用作者的描述對「第一秒的感覺」那一欄做模糊匹配，挑出 1 個最合的、外加 2 個備選。
-2. **讀中選的那一個檔**：`references/<編號>-<名字>.md`。一次只讀一個。
-3. **確認畫布**：`slidra cat <presentation-id> project.json`。不是 1280×720 時，字級與 `layout` 錨點全部乘以 `k = width ÷ 1280`。
-4. **字型**：風格的 `typography` 指定 heading／body 兩個家族。不在簡報裡（`project.json` 的 `fonts`）時，照 `reference/fonts.md` 的清單用 `slidra font import` 匯入——`--family`、`--license`、`--source` 逐字照抄清單。匯不到就退回內建的 `Noto Sans TC`，回報裡說明少了什麼。中文家族最多 2 種。
-5. **挑形狀語言**：作者的描述提到形狀、材質或手感時（「圓一點」「像手繪」「像水墨」「更克制」），去 `shapes/` 讀對應的那一個檔換掉預設值；一份簡報只有一種形狀語言。
-6. **寫入**：`slidra plan set <presentation-id> design-spec '<全文>'`（JSON 段的欄位見 `slidra-plan`）。正文寫一句為什麼選這個配色組與這個形狀語言。
-7. **回報**：照下面的格式，附上另外兩個備選。
+1. **Read the index** (the two tables below), fuzzy-match the author's description against the "first-second feel" column, and pick the single best fit plus two alternates.
+2. **Read only the chosen file**: `references/<number>-<name>.md`. One at a time.
+3. **Confirm the canvas**: `slidra cat <presentation-id> project.json`. When it is not 1280×720, multiply every font size and `layout` anchor by `k = width ÷ 1280`.
+4. **Fonts**: the style's `typography` names two families, heading/body. When one is not in the deck (`fonts` in `project.json`), import it with `slidra font import` per the list in `reference/fonts.md` — copy `--family`, `--license`, `--source` verbatim from the list. When import fails, fall back to the built-in `Noto Sans TC` and say what's missing in the report. At most 2 CJK families.
+5. **Pick the shape language**: when the author's description mentions shape, material, or texture ("rounder", "looks hand-drawn", "like ink wash", "more restrained"), read the matching file in `shapes/` and replace the default; a deck has exactly one shape language.
+6. **Write it in**: `slidra plan set <presentation-id> design-spec '<full text>'` (JSON section fields per `slidra-plan`). Write one sentence in the prose about why this palette and this shape language.
+7. **Report**: in the format below, with the two alternates.
 
-## 10 種形狀語言
+## The 10 shape languages
 
-| 形狀語言 | 一句話 |
+| Shape language | One line |
 |---|---|
-| `plain` | 直角、無陰影、裝飾極少。預設，最不會出錯 |
-| `swiss-minimal` | 格線鎖死、邊緣銳利、留白兇狠、幾乎零裝飾 |
-| `soft-rounded` | 圓角卡片、柔和浮起、沒有尖銳的邊 |
-| `glass` | 半透明玻璃板浮在有顏色的底上，邊緣一道亮線 |
-| `paper-cut` | 一層層剪紙錯開疊放，層間有厚度 |
-| `ink-wash` | 宣紙留白、毛筆筆觸、一枚印章當唯一重點 |
-| `chalkboard` | 深板上的粉筆字，筆畫有顆粒、邊緣不整齊 |
-| `sketch-notes` | 手繪塗鴉線條、歪一點的框、隨手畫的箭頭 |
-| `brutalist` | 報紙密度、粗黑框線、原始結構 |
-| `data-dense` | 多欄微圖表、側欄、來源行，密度是目的 |
+| `plain` | Right angles, no shadows, minimal decoration. The default, hardest to get wrong |
+| `swiss-minimal` | Grid-locked, sharp edges, aggressive whitespace, near-zero decoration |
+| `soft-rounded` | Rounded cards, soft lift, no sharp edges |
+| `glass` | Translucent glass panels floating over a colored base, a bright line at the edges |
+| `paper-cut` | Layered cut paper, offset; the layers have thickness |
+| `ink-wash` | Rice-paper whitespace, brush strokes, one seal as the only accent |
+| `chalkboard` | Chalk on a dark board; strokes are grainy, edges uneven |
+| `sketch-notes` | Hand-drawn doodle lines, slightly crooked boxes, casually drawn arrows |
+| `brutalist` | Newspaper density, heavy black borders, raw structure |
+| `data-dense` | Multi-column micro-charts, sidebars, source lines; density is the point |
 
-## 25 種配色組
+## The 25 color palettes
 
-| 編號 | 名字 | 第一秒的感覺 | 適合 | 建議背景 |
+| # | Name | First-second feel | Fits | Suggested background |
 |---|---|---|---|---|
-| 01 | `editorial-tech` | 深色、精準、克制，像技術部落格的深色模式 | 產品說明、技術分享、開發者活動 | 02、03 |
-| 02 | `warm-editorial` | 奶油底配酒紅，紙感、溫度、有人味 | 飲食、文化、品牌故事、教學 | 01 |
-| 03 | `clean-brief` | 白底藍字，安靜、可信、不搶戲 | 顧問簡報、內部報告、提案 | 02／off |
-| 04 | `midnight-lab` | 近黑配螢光青，深夜實驗室的螢幕 | 研究、資料分析、監控、深度技術 | 02 |
-| 05 | `paper-craft` | 牛皮紙與褐墨，有纖維感、想伸手摸 | 工作坊、手作、在地品牌、教育現場 | 01 |
-| 06 | `nordic-calm` | 灰藍的白，低溫、安靜，留白就是內容 | 設計提案、產品哲學、需要沉住氣 | 01／off |
-| 07 | `bold-poster` | 黑底螢光黃，字大到撐破版面 | 活動宣傳、開場、口號頁 | 03 |
-| 08 | `soft-pastel` | 粉藕薄荷，圓、軟、沒有尖角 | 教學、兒少、社群 | 01 |
-| 09 | `mono-print` | 純黑白加一個紅，報紙頭版 | 調查報導、事實呈現 | off |
-| 10 | `deep-ocean` | 深海藍綠，沉穩有厚度但不冷 | 永續、能源、長期計畫 | 01 |
-| 11 | `sunset-gradient` | 珊瑚到琥珀的暖色群，傍晚的光 | 消費產品、發表會、募資 | 01 |
-| 12 | `forest-field` | 深苔綠配麥稈，被整理過的林地 | 農業、食品產地、ESG、地方創生 | 01／02 |
-| 13 | `blueprint` | 靛藍配白線，攤開的工程藍圖 | 架構說明、工程流程、建築製造 | 02 |
-| 14 | `academic` | 米白紙配暗紅襯線，印出來的論文 | 研究發表、口試、白皮書 | off |
-| 15 | `startup-neon` | 近黑配洋紅紫，晚上七點的發表會 | 產品發表、募資、招募 | 01／03 |
-| 16 | `terracotta-studio` | 陶土與沙，設計工作室的牆 | 設計提案、空間、工藝、作品集 | 01 |
-| 17 | `medical-clear` | 純白鋼藍，乾淨的診間 | 醫療、健康、公共衛生 | off |
-| 18 | `finance-slate` | 石板灰配香檳金，私人銀行的年報 | 財報、投資、法人說明 | 01 |
-| 19 | `kids-bright` | 大紅亮黃湖水藍，幼兒園教室 | 兒少教學、親子、營隊 | 01 |
-| 20 | `luxury-noir` | 全黑配香檳白，留白比內容多 | 品牌、精品、開場與結尾 | off |
-| 21 | `civic-plain` | 灰白配橄欖綠，端正的政府文宣 | 公部門、公共政策、非營利 | off |
-| 22 | `zine-punk` | 影印機的黑白加螢光，手工地下刊物 | 文化、音樂、次文化、藝術節 | 02 |
-| 23 | `sky-brief` | 極淺天藍，從飛機窗戶往外看 | 旅遊、航空、雲端、規模與移動 | 01 |
-| 24 | `archive-sepia` | 泛黃的紙與褐墨，檔案櫃裡的文件 | 歷史、博物館、品牌沿革 | 01 |
-| 25 | `spectrum-data` | 中性底配一組可分辨的分類色 | 儀表板、資料簡報、多圖表頁面 | off |
+| 01 | `editorial-tech` | Dark, precise, restrained, like a tech blog's dark mode | Product explainers, tech sharing, developer events | 02, 03 |
+| 02 | `warm-editorial` | Wine red on cream; papery, warm, human | Food, culture, brand stories, teaching | 01 |
+| 03 | `clean-brief` | Blue text on white; quiet, trustworthy, unobtrusive | Consulting decks, internal reports, proposals | 02/off |
+| 04 | `midnight-lab` | Fluorescent cyan on near-black; a late-night lab screen | Research, data analysis, monitoring, deep tech | 02 |
+| 05 | `paper-craft` | Kraft paper and brown ink; fibrous, you want to touch it | Workshops, handcraft, local brands, classroom settings | 01 |
+| 06 | `nordic-calm` | Gray-blue white; low temperature, quiet; whitespace is the content | Design proposals, product philosophy, moments that need calm | 01/off |
+| 07 | `bold-poster` | Fluorescent yellow on black; type so big it breaks the frame | Event promotion, openings, slogan pages | 03 |
+| 08 | `soft-pastel` | Pink, lotus, mint; round, soft, no sharp corners | Teaching, kids, community | 01 |
+| 09 | `mono-print` | Pure black/white plus one red; a newspaper front page | Investigative reporting, fact presentation | off |
+| 10 | `deep-ocean` | Deep blue-green; steady and deep but not cold | Sustainability, energy, long-term plans | 01 |
+| 11 | `sunset-gradient` | A warm coral-to-amber family; evening light | Consumer products, launches, fundraising | 01 |
+| 12 | `forest-field` | Deep moss green and straw; a managed woodland | Agriculture, food origins, ESG, local development | 01/02 |
+| 13 | `blueprint` | Indigo with white lines; an unrolled engineering blueprint | Architecture explainers, engineering processes, construction | 02 |
+| 14 | `academic` | Off-white paper with dark-red serif; a printed paper | Research talks, oral defenses, white papers | off |
+| 15 | `startup-neon` | Magenta-purple on near-black; a 7 p.m. launch | Product launches, fundraising, recruiting | 01/03 |
+| 16 | `terracotta-studio` | Terracotta and sand; a design studio's wall | Design proposals, space, craft, portfolios | 01 |
+| 17 | `medical-clear` | Pure white and steel blue; a clean clinic | Medical, health, public health | off |
+| 18 | `finance-slate` | Slate gray with champagne gold; a private bank's annual report | Financial reports, investment, investor briefings | 01 |
+| 19 | `kids-bright` | Bright red, yellow, lake blue; a kindergarten classroom | Kids' teaching, parent-child, camps | 01 |
+| 20 | `luxury-noir` | All black with champagne white; more whitespace than content | Brands, luxury goods, openings and closings | off |
+| 21 | `civic-plain` | Gray-white with olive green; a proper government flyer | Public sector, public policy, non-profits | off |
+| 22 | `zine-punk` | Copier black/white plus fluorescent; a handmade underground zine | Culture, music, subcultures, arts festivals | 02 |
+| 23 | `sky-brief` | A very pale sky blue; looking out an airplane window | Travel, aviation, cloud, scale and motion | 01 |
+| 24 | `archive-sepia` | Aged paper and brown ink; files in an archive drawer | History, museums, brand timelines | 01 |
+| 25 | `spectrum-data` | A neutral base with a set of distinguishable category colors | Dashboards, data decks, multi-chart pages | off |
 
-「建議背景」的編號是 `slidra-background-kit` 的配方；`off` 代表這個風格建議不要背景圖——乾淨本身就是它說服力的一部分。
+The "Suggested background" numbers are recipes in `slidra-background-kit`; `off` means this style suggests no background image — cleanliness is part of its persuasiveness.
 
-## 回報格式
+## Report format
 
-先一行：「風格：<名字>——<一句感覺>」。接著三行：配色（七個角色的色碼）、字級（`cover`／`title`／`body` 三個代表值）、字型（heading／body 家族）與形狀語言。最後一行列出兩個備選與它們的差別，說明想換的話講一聲就好。
+First line: "Style: <name> — <one-sentence feel>". Then three lines: palette (the seven role color codes), type scale (three representative values: `cover`/`title`/`body`), and fonts (heading/body families) with the shape language. The final line lists the two alternates and their differences; say that swapping them is just one request away.

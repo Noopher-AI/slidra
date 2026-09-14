@@ -1,11 +1,11 @@
 # 11 · sunset-gradient
 
-**第一秒的感覺**：珊瑚紅到琥珀黃的暖色群，底是很淺的杏色。像傍晚的光——熱、有動勢、讓人想往前。
+**First-impression feel**: A warm family from coral red to amber yellow, on a very light apricot base. Like evening light — hot, dynamic, makes you want to move forward.
 
-**適合**：消費性產品、發表會、募資、面向年輕族群。
-**不適合**：需要冷靜判斷的內容（風險、法遵、財務細節）。暖色會讓判斷失準。
+**Suited for**: Consumer products, launches, fundraising, young audiences.
+**Not suited for**: Content requiring calm judgment (risk, compliance, financial details). Warm colors skew judgment.
 
-**為什麼是這個配色**：三個暖色排成一個色階（珊瑚→橘→琥珀），所以它們並列時看起來是「同一件事的三個階段」而不是三個無關的顏色。唯一的冷色是深藍灰的文字色，用來把畫面拉回地面。
+**Why this palette**: The three warm colors form a single ramp (coral → orange → amber), so side by side they read as "three stages of one thing" rather than three unrelated colors. The only cool color is the deep blue-gray text, which anchors the frame.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：英文與數字用 Space Grotesk（幾何感配暖色不會膩），中文標題用 Noto Sans TC 700。
+**Typography and contrast**: English and numbers in Space Grotesk (the geometry doesn't feel cloying with warm colors); Chinese headings in Noto Sans TC 700.
 
-**間距節奏**：級距鬆（12/20/32/48/72）。暖色本身很滿，版面要留得開。
+**Spacing rhythm**: Loose spacing (12/20/32/48/72). Warm colors are already full; the layout needs to breathe.
 
-**建議背景**：01 `soft-blobs`（色團就是這個風格的本體，opacity 1.0）。 **明亮背景**（背景庫 46–54，為淺底畫的）：46、47、49、50、52。
+**Suggested backgrounds**: 01 `soft-blobs` (the blobs are the body of this style; opacity 1.0). **Light backgrounds** (background library 46–54, designed for light bases): 46, 47, 49, 50, 52.

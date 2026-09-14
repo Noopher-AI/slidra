@@ -114,7 +114,7 @@ function readEventIndexes(socket: net.Socket, total: number): Promise<number[]> 
   return new Promise<number[]>((resolve, reject) => {
     let buffer = "";
     const count = (text: string): number => text.split("\n\n").length - 1;
-    const timer = setTimeout(() => reject(new Error(`逾時：只收到 ${count(buffer)}/${total} 個事件`)), 10000);
+    const timer = setTimeout(() => reject(new Error(`timeout: only received ${count(buffer)}/${total} events`)), 10000);
     socket.setEncoding("utf8");
     socket.on("error", reject);
     socket.on("data", (chunk: string) => {

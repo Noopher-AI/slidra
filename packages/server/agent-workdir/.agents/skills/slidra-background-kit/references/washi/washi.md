@@ -1,28 +1,28 @@
 # washi
 
-**氣氛**：大塊極淡的色斑加上均勻的纖維點，像手抄和紙。
+**Mood**: Large, very pale color patches with evenly distributed fiber dots, like handmade washi paper.
 
-**明亮風格**：這是為淺底配色畫的。深色配色（01、04、07、10、13、15、18、20）用它會太弱，要把透明度整組拉高一倍以上，或直接換一個深色系的配方。
+**Light style**: This is designed for light-background palettes. Dark palettes (01, 04, 07, 10, 13, 15, 18, 20) will make it too weak — either raise the opacity across the board by at least double, or switch to a dark-background recipe.
 
-**適合**：任何節奏。
-**不適合**：—
+**Suited for**: Any rhythm.
+**Not suited for**: —
 
-**建議 opacity**：0.55
+**Suggested opacity**: 0.55
 
-**做法**：色斑 0.10、纖維點 0.28——兩層都比深色版濃一級。色斑只落在右側三分之二，左邊留給標題。
+**Technique**: Color patches at 0.10, fiber dots at 0.28 — both layers are one level stronger than the dark version. Color patches only occupy the right two-thirds; the left is reserved for the title.
 
-完整 SVG：見同資料夾 `washi.svg`。
+Full SVG: see `washi.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
-| `mono-ink` | 去彩度：全部改用 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--primary)` → `muted`；`var(--accent)` → `muted` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
+| `mono-ink` | Desaturate: everything uses muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--primary)` → `muted`; `var(--accent)` → `muted` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：02、05、09、14、16、24。
+**Suggested styles**: 02, 05, 09, 14, 16, 24.

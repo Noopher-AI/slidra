@@ -1,11 +1,11 @@
 # 05 · paper-craft
 
-**第一秒的感覺**：牛皮紙的底、深褐的字、一點靛藍。像一本手作工作坊的講義——有纖維感、不精緻，但讓人想伸手摸。
+**First-impression feel**: A kraft-paper base, deep brown text, a touch of indigo. Like a workshop's hand-made handbook — fibrous, not polished, but makes you want to reach out and touch it.
 
-**適合**：工作坊、手作、在地品牌、食物、教育現場。
-**不適合**：科技產品、財報、任何需要「精準」印象的場合。紙感會讓數字顯得不嚴謹。
+**Suited for**: Workshops, handcraft, local brands, food, on-site education.
+**Not suited for**: Tech products, financial reports, any context that needs a "precise" impression. The paper feel makes numbers look imprecise.
 
-**為什麼是這個配色**：底色是偏黃的牛皮色（#EFE6D5），不是米白——差在那一點灰度，白會變成「乾淨」，灰黃才是「紙」；主色深褐幾乎是墨水色；accent 用靛藍，是紙上唯一的冷色，所以重點會自己跳出來。
+**Why this palette**: The base is a yellow-leaning kraft color (#EFE6D5), not off-white — that slight gray is the difference: white reads as "clean," gray-yellow reads as "paper"; the deep-brown primary is almost ink color; the indigo accent is the only cool color on the paper, so highlights jump out on their own.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：標題用楷書（cwTeXKai），內文用黑體。楷書有筆順，一眼就有手寫的溫度——但**楷書不要用在小字**，24 以下會糊；標題與章節名以外一律黑體。
+**Typography and contrast**: Headings use kaiti (cwTeXKai), body uses gothic. Kaiti has stroke order, giving it a hand-written warmth at a glance — but **do not use kaiti at small sizes**; below 24 it becomes blurry; everything other than titles and section names should be gothic.
 
-**間距節奏**：級距鬆（12/20/32/48/72），底部留白多（`bottom_margin` 80）。手作感需要空白，不要把頁面填滿。
+**Spacing rhythm**: Loose spacing (12/20/32/48/72), with a larger bottom margin (`bottom_margin` 80). The handmade feel needs whitespace; don't fill the page.
 
-**建議背景**：01 `soft-blobs`（opacity 0.6 以下，像紙的透光）。 **明亮背景**（背景庫 46–54，為淺底畫的）：47、50、51、54。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.6 or below, like light through paper). **Light backgrounds** (background library 46–54, designed for light bases): 47, 50, 51, 54.

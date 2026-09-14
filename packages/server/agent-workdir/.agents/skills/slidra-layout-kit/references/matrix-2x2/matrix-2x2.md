@@ -1,33 +1,33 @@
 # matrix-2x2
 
-**解的關係**：`contrast`
-**單位數**：4
-**一句話**：兩軸切出四個象限，每格一個位置——同時比較兩個維度。
+**Relationship solved**: `contrast`
+**Unit count**: 4
+**One line**: Two axes cut four quadrants, one position per cell — comparing two dimensions at once.
 
-**什麼時候用它**：有兩個獨立的維度，而項目落在不同象限（成本與效益、緊急與重要）。
-**什麼時候不要用**：只有一個維度。四格會逼你硬湊出四個項目。
+**When to use it**: Two independent dimensions, with items falling into different quadrants (cost vs benefit, urgent vs important).
+**When not to use it**: Only one dimension. Four cells will force you to stretch items into four.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `matrix-2x2.svg`。
+Full SVG: see `matrix-2x2.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 兩軸 | `spine` ×2 | 各自標出方向 | — | — |
-| 軸標 ×4 | `label`（`caption`） | 高／低、各維度的名字 | 6 字 | 1 |
-| 象限 ×4 | `node`（`field`） | | — | — |
-| 象限內容 | `label` | | 16 字 | 1–2 |
+| Title | `label` | | 15 chars | 1 |
+| Two axes | `spine` ×2 | each labeled with its direction | — | — |
+| Axis labels ×4 | `label` (`caption`) | high/low, each dimension's name | 6 chars | 1 |
+| Quadrants ×4 | `node` (`field`) | | — | — |
+| Quadrant content | `label` | | 16 chars | 1–2 |
 
-## 節奏
+## Rhythm
 
-四格等大。**通常有一格是重點**（你想帶大家去的那一格），那一格加深或加 accent 邊——四格一樣重會讓人不知道要看哪。
+All four cells are equal size. **Usually one cell is the point** (the one you want to lead people to); make it darker or add an accent border — four equal-weight cells leave the audience not knowing where to look.
 
-`blueprint.shape` 寫 `matrix-2x2`。
+Write `blueprint.shape` as `matrix-2x2`.
 
-## 變體
+## Variants
 
-- **只填兩格**：只有對角的兩格有內容，強調取捨。
-- **散點版**：拿掉格線，改成在象限裡散布圓點，每點一個項目。
+- **Only two filled**: only the two diagonal cells have content, emphasizing the trade-off.
+- **Scatter version**: remove the grid lines, scatter dots within quadrants, one item per dot.

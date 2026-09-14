@@ -1,32 +1,32 @@
 # image-overlay-card
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：滿版圖上壓一張偏一側的卡片，文字在卡片裡——比 23 `image-full-bleed` 更能放多行字。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A full-bleed image with an offset card on top, text inside the card — accommodates more lines than 23 `image-full-bleed`.
 
-**什麼時候用它**：有一張氣氛很強的圖，但文字不只一句。
-**什麼時候不要用**：圖本身資訊很滿（圖表、截圖）——卡片會蓋掉重要的部分。
+**When to use it**: A highly atmospheric image, but the text is more than one line.
+**When not to use it**: The image itself is information-dense (charts, screenshots) — the card would cover important parts.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-overlay-card.svg`。
+Full SVG: see `image-overlay-card.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 圖片 | `node`（`image`） | 滿版 | — | — |
-| 卡片 | `field` | **同時是 scrim** | — | — |
-| 標題 | `label` | 在卡片裡 | 14 字 | 1 |
-| 內文 | `label` | | 每條 20 字 | 2–4 條 |
+| Image | `node` (`image`) | full-bleed | — | — |
+| Card | `field` | **doubles as the scrim** | — | — |
+| Title | `label` | inside the card | 14 chars | 1 |
+| Body | `label` | | 20 chars each | 2–4 lines |
 
-## 節奏
+## Rhythm
 
-卡片佔版面約 40%，貼一側（通常是右側，因為背景配方的亮部也在右側）。卡片與畫布邊界留一個 `side_margin`。**卡片不透明或 opacity ≥ 0.85**——半透明的卡片配上複雜的圖會讀不清楚。
+The card occupies ~40% of the layout, flush to one side (usually right, since background recipes place their highlight on the right too). One `side_margin` between the card and the canvas edge. **The card must be opaque or opacity ≥ 0.85** — a semi-transparent card over a complex image is unreadable.
 
-`blueprint.shape` 寫 `image-overlay-card`。
+Write `blueprint.shape` as `image-overlay-card`.
 
-## 變體
+## Variants
 
-- **卡片出血**：卡片貼齊右邊界，只留上下邊距，更現代。
-- **左卡片**：圖的主體在右側時改放左邊。
+- **Bleed card**: card flush to the right edge, only top/bottom margins — more modern.
+- **Left card**: when the image's subject is on the right, place the card on the left.

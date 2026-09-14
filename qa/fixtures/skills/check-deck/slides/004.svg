@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-p4-title" data-slidra-name="標題">
-    <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">下一步規劃</text>
+  <g id="el-p4-title" data-slidra-name="Title">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">Next Steps</text>
   </g>
-  <g id="el-p4-body" data-slidra-name="內文">
-    <text x="80" y="220" font-family="Noto Sans TC" font-size="20" fill="#CC0000">這一段內文的字級與顏色都跟其他頁不一樣，用來測試字級與顏色不統一這一類問題。</text>
+  <g id="el-p4-body" data-slidra-name="Body">
+    <text x="80" y="220" font-family="Noto Sans TC" font-size="20" fill="#CC0000">This paragraph has a different font size and color from the other pages, used to test inconsistency of type and color.</text>
   </g>
-  <g id="el-p4-bullets" data-slidra-name="要點">
-    <text x="80" y="320" font-family="Noto Sans TC" font-size="24" fill="#333333">這一條要點寫得非常非常長，遠遠超過一般人一口氣念完的長度，目的是刻意測試自動體檢能不能抓出要點過長這種版面問題，字數已經刻意超過八十個字元以上，確保這條規則一定會被觸發。</text>
+  <g id="el-p4-bullets" data-slidra-name="Bullets">
+    <text x="80" y="320" font-family="Noto Sans TC" font-size="24" fill="#333333">This bullet is deliberately written to be extremely long, far exceeding the length most people could read aloud in a single breath, with the purpose of intentionally testing whether automated review can detect the layout problem of an overly long bullet point.</text>
   </g>
 </svg>

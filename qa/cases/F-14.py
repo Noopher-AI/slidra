@@ -32,7 +32,7 @@ def check(label: str, ok: bool, actual: object) -> None:
 def main() -> int:
     open_deck()  # noqa: F821
     goto_slide(3)  # noqa: F821
-    select("第一點")  # noqa: F821 - any element works: this is just to flip the Object sub-tab into view
+    select("Point One")  # noqa: F821 - any element works: this is just to flip the Object sub-tab into view
 
     js("document.querySelector('[role=\"tab\"][data-tab=\"animate\"]').click()")  # noqa: F821
 

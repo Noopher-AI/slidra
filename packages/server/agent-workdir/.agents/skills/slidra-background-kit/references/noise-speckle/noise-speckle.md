@@ -1,26 +1,26 @@
 # noise-speckle
 
-**氣氛**：極細的隨機斑點，像底片顆粒或影印的雜訊。讓純色底不那麼「數位」。
+**Mood**: Very fine random speckles, like film grain or copier noise. Keeps flat-color backgrounds from feeling too "digital".
 
-**適合**：任何節奏。
-**不適合**：需要絕對乾淨的醫療與資料頁面。
+**Suited for**: Any rhythm.
+**Not suited for**: Medical and data pages that need to be absolutely clean.
 
-**建議 opacity**：0.3
+**Suggested opacity**: 0.3
 
-**做法**：一個 60px 的 pattern，裡面放七個位置不規則、大小不一的小圓。不用 `<filter>` 產生雜訊（濾鏡在匯出時不穩）。
+**Technique**: A 60px pattern containing seven small circles of irregular positions and sizes. No `<filter>` for noise (filters are unstable on export).
 
-完整 SVG：見同資料夾 `noise-speckle.svg`。
+Full SVG: see `noise-speckle.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `tinted` | 把質地染上主色：中性的紋理變成有色的紋理，跟風格綁得更緊。 | `var(--muted)` → `primary` |
-| `inked` | 把質地加深到文字色：顆粒與線條變明顯，整面更有印刷感。淺色風格上效果最好。 | `var(--muted)` → `text` |
+| `base` | As-is, use the SVG below directly | — |
+| `tinted` | Tint the texture with the primary color: the neutral texture becomes a colored texture, binding it more tightly to the style. | `var(--muted)` → `primary` |
+| `inked` | Deepen the texture to text color: grains and lines become more visible, giving the whole surface more of a print feel. Works best on light styles. | `var(--muted)` → `text` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：02、05、09、22、24。
+**Suggested styles**: 02, 05, 09, 22, 24.

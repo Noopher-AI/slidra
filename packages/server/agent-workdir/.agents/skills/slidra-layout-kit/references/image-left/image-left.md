@@ -1,31 +1,31 @@
 # image-left
 
-**解的關係**：`membership`
-**單位數**：1 + 2–4
-**一句話**：左半一張滿高的圖，右半文字——圖文各佔一半，誰都不壓過誰。
+**Relationship solved**: `membership`
+**Unit count**: 1 + 2–4
+**One line**: A full-height image on the left half, text on the right half — image and text each take half; neither dominates the other.
 
-**什麼時候用它**：有一張能說明主題的圖，而文字是它的解讀。
-**什麼時候不要用**：圖只是裝飾。半個版面的圖必須真的承載內容，否則改用 `card-wall` 把空間讓給文字。
+**When to use it**: You have one image that illustrates the topic, and the text is its interpretation.
+**When not to use it**: The image is merely decorative. A half-layout image must actually carry content; otherwise use `card-wall` and give the space to text.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-left.svg`。
+Full SVG: see `image-left.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 圖片 | `node`（`image`） | 滿高出血 | — | — |
-| 標題 | `label` | 移到右半上方 | 14 字 | 1 |
-| 要點 ×N | `label` | | 每條 18 字 | 1–2 |
+| Image | `node` (`image`) | full-height bleed | — | — |
+| Title | `label` | moved to the upper-right half | 14 chars | 1 |
+| Key points ×N | `label` | | 18 chars each | 1–2 |
 
-## 節奏
+## Rhythm
 
-圖**出血到畫布邊**（x=0、y=0、滿高），不要留邊——留邊會讓它看起來像貼上去的。文字區的左緣從圖的右緣加一個 `gutter` 起算。
+The image **bleeds to the canvas edge** (x=0, y=0, full height) — no margins. Margins make it look pasted on. The text area's left edge starts from the image's right edge plus one `gutter`.
 
-`blueprint.shape` 寫 `image-left`。
+Write `blueprint.shape` as `image-left`.
 
-## 變體
+## Variants
 
-- **右圖左文**：鏡像，適合閱讀方向要從文字開始時。
-- **三七分**：圖佔 30%，文字更多。
+- **Right image, left text**: mirrored; suits reading flow that starts with text.
+- **30/70 split**: image takes 30%, text gets more.

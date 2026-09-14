@@ -1,33 +1,33 @@
 # split-thirds
 
-**解的關係**：`membership`
-**單位數**：3
-**一句話**：三個等寬直欄，各自從頂到底——比 `card-wall` 更適合每欄放多行文字。
+**Relationship solved**: `membership`
+**Unit count**: 3
+**One line**: Three equal-width vertical columns, each running top to bottom — more suited than `card-wall` when each column holds multi-line text.
 
-**什麼時候用它**：剛好三件事，而且每件都有標題加幾行說明。
-**什麼時候不要用**：四件以上（欄會太窄）或每件只有一句話（那用 `card-wall` 更省空間）。
+**When to use it**: Exactly three items, each with a title plus a few lines of description.
+**When not to use it**: Four or more items (columns get too narrow) or each item is just one sentence (`card-wall` is more space-efficient).
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `split-thirds.svg`。
+Full SVG: see `split-thirds.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 欄 ×3 | `node`（`field`） | 等寬等高 | — | — |
-| 頂線 ×3 | `garnish` | 同色（不同色會變成對照） | — | — |
-| 欄標 ×3 | `label` | | 8 字 | 1 |
-| 欄內文 ×3 | `label` | **三欄行數要一樣** | 每條 16 字 | 2–4 條 |
+| Title | `label` | | 15 chars | 1 |
+| Columns ×3 | `node` (`field`) | equal width and height | — | — |
+| Top lines ×3 | `garnish` | same color (different colors would imply contrast) | — | — |
+| Column headers ×3 | `label` | | 8 chars | 1 |
+| Column body ×3 | `label` | **all three columns must have the same line count** | 16 chars each | 2–4 lines |
 
-## 節奏
+## Rhythm
 
-三欄等寬等高、欄標與首行基準線對齊。**頂線要同色**——顏色不同會讓人以為在比較，那是 `contrast` 不是 `membership`。
+Three columns equal in width and height; column headers and first-line baselines aligned. **Top lines must be the same color** — different colors would imply a comparison, which is `contrast`, not `membership`.
 
-`blueprint.shape` 寫 `split-thirds`。
+Write `blueprint.shape` as `split-thirds`.
 
-## 變體
+## Variants
 
-- **中欄加重**：中間一欄略寬或底色較深，當它是主推的那一個。
-- **四欄**：改成四欄，但每欄只能放標題加一句。
+- **Middle emphasis**: the middle column is slightly wider or darker, marking it as the featured one.
+- **Four columns**: switch to four, but each holds only a title and one line.

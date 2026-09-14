@@ -1,31 +1,31 @@
 # image-grid
 
-**解的關係**：`membership`
-**單位數**：3–6
-**一句話**：等大的圖片格陣，每張配一行說明——作品集、案例、產品線的標準解。
+**Relationship solved**: `membership`
+**Unit count**: 3–6
+**One line**: Equal-sized image cells, each with a one-line caption — the standard solution for portfolios, case studies, and product lines.
 
-**什麼時候用它**：有多張同性質的圖要並列。
-**什麼時候不要用**：圖的重要性不一樣，或只有一兩張——那應該給其中一張更大的空間。
+**When to use it**: Multiple images of the same kind to display side by side.
+**When not to use it**: The images have different importance, or there's only one or two — give the important one more space instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-grid.svg`。
+Full SVG: see `image-grid.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖 ×N | `node`（`image`） | **裁切成同一個比例** | — | — |
-| 說明 ×N | `label` | 在各自圖的下方 | 12 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Images ×N | `node` (`image`) | **cropped to the same aspect ratio** | — | — |
+| Captions ×N | `label` | below each respective image | 12 chars | 1 |
 
-## 節奏
+## Rhythm
 
-圖**一定要同比例同尺寸**——大小不一的格陣會讓人以為有主次。間距用 `gutter`，六張時分兩列三欄。
+Images **must be the same ratio and same size** — a grid with varying sizes implies hierarchy. Use `gutter` for spacing; for six images, use two rows of three columns.
 
-`blueprint.shape` 寫 `image-grid`。
+Write `blueprint.shape` as `image-grid`.
 
-## 變體
+## Variants
 
-- **不等格**：第一張佔兩格，其餘平分——當有一張明顯是主角時。
-- **無說明**：拿掉文字，純圖牆，適合作品集。
+- **Uneven grid**: the first image spans two cells, the rest split evenly — when one is clearly the hero.
+- **No captions**: remove text, pure image wall, suitable for portfolios.

@@ -1,11 +1,11 @@
 # 10 · deep-ocean
 
-**第一秒的感覺**：深海藍綠的底，像從水面下往上看。沉、穩、有厚度，但不冷——藍裡有綠，所以它是活的。
+**First-impression feel**: A deep blue-green base, like looking up from underwater. Heavy, steady, with depth but not cold — there is green in the blue, so it feels alive.
 
-**適合**：永續、海洋、能源、長期計畫、需要「我們想得很遠」的場合。
-**不適合**：急迫的行動呼籲。這個配色會讓一切看起來都還有時間。
+**Suited for**: Sustainability, ocean, energy, long-term plans, contexts where you want to say "we're thinking far ahead."
+**Not suited for**: Urgent calls to action. This palette makes everything feel like there's still time.
 
-**為什麼是這個配色**：底色是帶綠的深藍（#0B2F33），純藍會太企業、太冷；主色的青綠是水的顏色；accent 用珊瑚橘——水下唯一的暖色，用來標重點最自然。
+**Why this palette**: The base is a green-tinted deep blue (#0B2F33); pure blue would be too corporate and too cold; the teal primary is the color of water; accent is coral orange — the only warm color underwater, the most natural choice for highlights.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：標題襯線帶來重量，跟「深」的調性一致。內文黑體維持可讀。
+**Typography and contrast**: Serif headings bring weight, matching the "deep" temperament. Gothic body stays readable.
 
-**間距節奏**：級距中等偏鬆（8/16/28/44/72）。深色底上留白比淺色底更需要，否則會悶。
+**Spacing rhythm**: Medium-to-loose spacing (8/16/28/44/72). Dark bases need more whitespace than light ones, or the page feels suffocated.
 
-**建議背景**：01 `soft-blobs`（色團在深藍上像水中的光）。
+**Suggested backgrounds**: 01 `soft-blobs` (the blobs look like light in water on the deep blue).

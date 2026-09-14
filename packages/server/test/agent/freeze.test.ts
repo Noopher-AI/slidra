@@ -74,7 +74,7 @@ afterEach(async () => {
 
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
+  const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
@@ -83,7 +83,7 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
   const added = await runCli<{ elementId: string }>([
-    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "標題",
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Title",
   ]);
   expect(added.ok).toBe(true);
   // These tests count undo entries, and the two setup commands above leave
@@ -255,19 +255,19 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
     const commands = [
-      `slidra text set ${id} slides/001.svg ${elementId} '第一次'`,
-      `slidra text set ${id} slides/001.svg ${elementId} '第二次'`,
-      `slidra text set ${id} slides/001.svg ${elementId} '第三次'`,
+      `slidra text set ${id} slides/001.svg ${elementId} 'first'`,
+      `slidra text set ${id} slides/001.svg ${elementId} 'second'`,
+      `slidra text set ${id} slides/001.svg ${elementId} 'third'`,
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
-    const chatResponse = await postChat(server, "改三次標題");
+    const chatResponse = await postChat(server, "change the title three times");
     expect(chatResponse.status).toBe(202);
     await waitForLog((line) => line.ranCommand === commands[2]);
     await waitForFrozen(server, false);
 
     const editedContent = await readSlide(id);
-    expect(editedContent).toContain("第三次");
+    expect(editedContent).toContain("third");
     expect(editedContent).not.toBe(originalContent);
 
     const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
@@ -289,7 +289,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     ];
     const server = await serve(fakeAgent({ commandsPerTurn: [commands] }), id);
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.ranCommand === commands[1]);
     await waitForFrozen(server, false);
 
@@ -301,15 +301,15 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("two separate agent turns produce two separate undo groups", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const cmd1 = `slidra text set ${id} slides/001.svg ${elementId} '回合一'`;
-    const cmd2 = `slidra text set ${id} slides/001.svg ${elementId} '回合二'`;
+    const cmd1 = `slidra text set ${id} slides/001.svg ${elementId} 'round-one'`;
+    const cmd2 = `slidra text set ${id} slides/001.svg ${elementId} 'round-two'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[cmd1], [cmd2]] }), id);
 
-    await postChat(server, "第一次請求");
+    await postChat(server, "first request");
     await waitForLog((line) => line.ranCommand === cmd1);
     await waitForFrozen(server, false);
 
-    await postChat(server, "第二次請求");
+    await postChat(server, "second request");
     await waitForLog((line) => line.ranCommand === cmd2);
     await waitForFrozen(server, false);
 
@@ -322,7 +322,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const { id } = await openFreshPresentationWithElement();
     const server = await serve(fakeAgent({ commandsPerTurn: [], readOnlyTurns: [0] }), id);
 
-    await postChat(server, "先看看投影片");
+    await postChat(server, "take a look at the slides first");
     await waitForLog((line) => line.readOnly === true);
 
     // The turn has read the file but is still technically "in flight"
@@ -337,10 +337,10 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("AC2-c: undo is refused (409) from the first command until the turn ends, then allowed", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '改一次'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'edit-once'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.permissionOutcome !== undefined);
 
     expect((await getEditingState(server)).frozen).toBe(true);
@@ -357,13 +357,13 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("AC4: the agent's first command waits for an in-progress human edit instead of failing", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
     const originalContent = await readSlide(id);
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '人放手後才改'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'edited-after-release'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
     const beginResponse = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
     expect(beginResponse.status).toBe(200);
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     // Give the agent's first requestPermission call a chance to reach the
     // server and start waiting — long enough that, were it (wrongly) to
     // fail fast instead of waiting, the permissionOutcome/error would
@@ -378,15 +378,15 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const permissionLine = await waitForLog((line) => line.permissionOutcome !== undefined);
     expect(permissionLine.permissionOutcome).toEqual({ outcome: "selected", optionId: "allow" });
     await waitForLog((line) => line.ranCommand === command);
-    expect(await readSlide(id)).toContain("人放手後才改");
+    expect(await readSlide(id)).toContain("edited-after-release");
   });
 
   it("POST /api/editing/begin is refused with 409 while the agent holds the floor", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'change the title'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.permissionOutcome !== undefined);
 
     const beginResponse = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
@@ -405,7 +405,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
   it("POST /api/command: T2's four whitelisted commands are all refused with 409 while the agent holds the floor, then actually execute once it releases", async () => {
     const { id, elementId, moveElementId, scaleElementId, rotateElementId, textboxElementId } =
       await openFreshPresentationForCommandExecution();
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'change the title'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const slidePath = "slides/001.svg";
 
@@ -416,7 +416,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
       { name: "textbox width", input: { slidePath, elementId: textboxElementId, width: 100 } },
     ];
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
@@ -438,7 +438,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
       ),
     );
     for (const [i, response] of rejectionResponses.entries()) {
-      expect(response.status, `${payloads[i].name} 應該在凍結期間被擋下`).toBe(409);
+      expect(response.status, `${payloads[i].name} should be blocked during the freeze window`).toBe(409);
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("The agent is currently editing, please wait.");
     }
@@ -449,7 +449,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     // during this same window without that being a freeze violation.
     const rejectedSlide = await readSlide(id);
     rejectedElementIds.forEach((elId, i) => {
-      expect(extractElementBlock(rejectedSlide, elId), `${elId} 應該維持凍結前的內容`).toBe(frozenBlocks[i]);
+      expect(extractElementBlock(rejectedSlide, elId), `${elId} should retain its pre-freeze content`).toBe(frozenBlocks[i]);
     });
 
     await waitForFrozen(server, false);
@@ -463,7 +463,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, input }),
       });
-      expect(response.status, `${name} 解凍後應可正常執行`).toBe(200);
+      expect(response.status, `${name} should execute normally after unfreezing`).toBe(200);
     }
 
     const executedSlide = await readSlide(id);
@@ -477,11 +477,11 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("POST /api/asset: refused with 409 while the agent holds the floor, then actually runs once it releases", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'change the title'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
     const pngBytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
@@ -508,10 +508,10 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
   it("browsing endpoints are unaffected while frozen: GET /api/presentation and GET /api/files/* keep working", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();
-    const command = `slidra text set ${id} slides/001.svg ${elementId} '改標題'`;
+    const command = `slidra text set ${id} slides/001.svg ${elementId} 'change the title'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
 
-    await postChat(server, "改標題");
+    await postChat(server, "change the title");
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 

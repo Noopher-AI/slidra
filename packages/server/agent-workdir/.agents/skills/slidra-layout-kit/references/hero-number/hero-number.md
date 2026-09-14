@@ -1,31 +1,31 @@
 # hero-number
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一個很大的數字置中，下面一句說明——整頁只講一件事。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A very large number centered, with one line of explanation below — the entire page says one thing.
 
-**什麼時候用它**：有一個真實、來自作者的數字，而且它本身就是主張。
-**什麼時候不要用**：沒有數字，或數字需要上下文才有意義（那要先鋪陳）。**絕不編造數字**。
+**When to use it**: There is a real, author-sourced number, and it is itself the claim.
+**When not to use it**: No number, or the number needs context to make sense (establish that context first). **Never fabricate numbers.**
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `hero-number.svg`。
+Full SVG: see `hero-number.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 大數字 | `label`（`number` 字級） | 只能來自作者的大綱 | 8 字 | 1 |
-| 說明 | `label` | 這個數字代表什麼 | 24 字 | 1–2 |
-| 來源 | `label` | 可省 | 20 字 | 1 |
+| Big number | `label` (`number` size) | only from the author's outline | 8 chars | 1 |
+| Explanation | `label` | what this number represents | 24 chars | 1–2 |
+| Source | `label` | optional | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-**不放標題**——數字本身就是標題。全部置中，垂直重心略高於畫布中央（視覺中心比幾何中心高）。沒有數字、只有一句主張時，改用 `claim` 字級。
+**No title** — the number itself is the title. Everything is centered, with the vertical center of gravity slightly above the canvas center (the visual center is higher than the geometric center). When there's no number, just a claim, use the `claim` size instead.
 
-`blueprint.shape` 寫 `hero-number`。
+Write `blueprint.shape` as `hero-number`.
 
-## 變體
+## Variants
 
-- **左右分**：數字在左、說明在右，適合數字很長時。
-- **兩個數字**：並排兩個，中間一條分隔——但那其實是 `contrast`，考慮換版面。
+- **Split left/right**: number on the left, explanation on the right; suits very long numbers.
+- **Two numbers**: two side by side with a divider — but that's really `contrast`; consider a different layout.

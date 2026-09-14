@@ -1,11 +1,11 @@
 # 14 · academic
 
-**第一秒的感覺**：米白的紙、暗紅的標題、襯線字。像一篇印出來的論文——克制、有引用感、不試圖取悅。
+**First-impression feel**: Off-white paper, dark red headings, serif type. Like a printed paper — restrained, citation-heavy, not trying to please.
 
-**適合**：研究發表、學術報告、口試、白皮書。
-**不適合**：需要速度感或情緒的場合。它的節奏是慢的。
+**Suited for**: Research presentations, academic reports, oral exams, white papers.
+**Not suited for**: Contexts that need speed or emotion. Its pace is slow.
 
-**為什麼是這個配色**：主色是暗紅（oxblood），那是精裝書封與學位袍的顏色；底色米白降低長時間閱讀的疲勞；除了暗紅之外幾乎沒有彩色——學術場合的視覺重點應該是圖表，不是版面。
+**Why this palette**: The primary is oxblood red — the color of hardcover book covers and academic robes; the off-white base reduces eye fatigue during long reading sessions; aside from oxblood, there is almost no color — in academic contexts, the visual focus should be on figures and tables, not the layout.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：**整份都用襯線**（標題思源宋、內文 Noto Serif TC）——這是唯一一個內文也用襯線的風格，因為學術文本預期被「讀」而不是被「看」。密度 `text`，允許比較長的句子。
+**Typography and contrast**: **The entire deck uses serifs** (headings in Source Han Serif TC, body in Noto Serif TC) — this is the only style where body text is also serif, because academic text is expected to be "read," not just "seen." Density `text` allows longer sentences.
 
-**間距節奏**：級距標準、邊界寬（96）。頁面像書頁，不像投影片。
+**Spacing rhythm**: Standard spacing, wide margins (96). Pages look like book pages, not slides.
 
-**建議背景**：建議 `background: off`。 **明亮背景**（背景庫 46–54，為淺底畫的）：48、51、54。
+**Suggested backgrounds**: `background: off` is recommended. **Light backgrounds** (background library 46–54, designed for light bases): 48, 51, 54.

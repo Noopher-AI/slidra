@@ -38,7 +38,7 @@ const CASES: Array<{ name: string; input: Record<string, unknown>; argv: string[
   { name: "slide delete", input: { id: ID, slidePath: SLIDE }, argv: ["slide", "delete", ID, SLIDE] },
   { name: "slide duplicate", input: { id: ID, slidePath: SLIDE }, argv: ["slide", "duplicate", ID, SLIDE] },
   { name: "slide move", input: { id: ID, slidePath: SLIDE, newIndex: 0 }, argv: ["slide", "move", ID, SLIDE, "0"] },
-  { name: "slide notes set", input: { id: ID, slidePath: SLIDE, text: "備忘" }, argv: ["slide", "notes", "set", ID, SLIDE, "備忘"] },
+  { name: "slide notes set", input: { id: ID, slidePath: SLIDE, text: "notes" }, argv: ["slide", "notes", "set", ID, SLIDE, "notes"] },
   { name: "element copy", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"] }, argv: ["element", "copy", ID, SLIDE, "el-a"] },
   { name: "element cut", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"] }, argv: ["element", "cut", ID, SLIDE, "el-a"] },
   { name: "element insert", input: { id: ID, slidePath: SLIDE, kind: "rect", x: 10, y: 20, width: 30, height: 40, fill: "#000" },
@@ -57,8 +57,8 @@ const CASES: Array<{ name: string; input: Record<string, unknown>; argv: string[
     argv: ["slide", "transition", "set", ID, SLIDE, "--enter", "fade", "--enter-duration", "0.5", "--exit", "zoom", "--exit-duration", "0.3", "--all"] },
   { name: "template add", input: { id: ID, from: SLIDE, name: "tpl" }, argv: ["template", "add", ID, "--from", SLIDE, "--name", "tpl"] },
   { name: "template list", input: { id: ID }, argv: ["template", "list", ID] },
-  { name: "template rename", input: { id: ID, templatePath: "templates/001.svg", newName: "封面二" },
-    argv: ["template", "rename", ID, "templates/001.svg", "封面二"] },
+  { name: "template rename", input: { id: ID, templatePath: "templates/001.svg", newName: "Cover2" },
+    argv: ["template", "rename", ID, "templates/001.svg", "Cover2"] },
   { name: "template delete", input: { id: ID, templatePath: "templates/001.svg" }, argv: ["template", "delete", ID, "templates/001.svg"] },
   { name: "element resize", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"], width: 100, height: 50, anchor: "se", force: true },
     argv: ["element", "resize", ID, SLIDE, "el-a", "--width", "100", "--height", "50", "--anchor", "se", "--force"] },
@@ -67,18 +67,18 @@ const CASES: Array<{ name: string; input: Record<string, unknown>; argv: string[
     argv: ["element", "duplicate", ID, SLIDE, "el-a", "--dx", "5", "--dy", "5"] },
   { name: "element group", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a", "el-b"] }, argv: ["element", "group", ID, SLIDE, "el-a,el-b"] },
   { name: "element ungroup", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a", "el-b"] }, argv: ["element", "ungroup", ID, SLIDE, "el-a,el-b"] },
-  { name: "element name set", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"], name: "封面影片" },
-    argv: ["element", "name", "set", ID, SLIDE, "el-a", "封面影片"] },
+  { name: "element name set", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"], name: "CoverVideo" },
+    argv: ["element", "name", "set", ID, SLIDE, "el-a", "CoverVideo"] },
   { name: "effect add", input: { id: ID, slidePath: SLIDE, elementIds: ["el-a"], family: "enter", effect: "fade", start: "on-click", duration: 0.5, delay: 0.1, index: 1 },
     argv: ["effect", "add", ID, SLIDE, "el-a", "--family", "enter", "--effect", "fade", "--start", "on-click", "--duration", "0.5", "--delay", "0.1", "--index", "1"] },
   { name: "effect remove", input: { id: ID, slidePath: SLIDE, indices: [1, 2, 3] }, argv: ["effect", "remove", ID, SLIDE, "1,2,3"] },
   { name: "effect move", input: { id: ID, slidePath: SLIDE, index: 1, direction: "up" }, argv: ["effect", "move", ID, SLIDE, "1", "up"] },
   { name: "effect set", input: { id: ID, slidePath: SLIDE, index: 1, effect: "fade", duration: 1 },
     argv: ["effect", "set", ID, SLIDE, "1", "--effect", "fade", "--duration", "1"] },
-  { name: "comment add", input: { id: ID, slidePath: SLIDE, target: "el-a", text: "留言", author: "me" },
-    argv: ["comment", "add", ID, SLIDE, "el-a", "留言", "--author", "me"] },
-  { name: "comment edit", input: { id: ID, slidePath: SLIDE, commentId: "c-1", text: "改過的留言" },
-    argv: ["comment", "edit", ID, SLIDE, "c-1", "改過的留言"] },
+  { name: "comment add", input: { id: ID, slidePath: SLIDE, target: "el-a", text: "a comment", author: "me" },
+    argv: ["comment", "add", ID, SLIDE, "el-a", "a comment", "--author", "me"] },
+  { name: "comment edit", input: { id: ID, slidePath: SLIDE, commentId: "c-1", text: "an edited comment" },
+    argv: ["comment", "edit", ID, SLIDE, "c-1", "an edited comment"] },
   { name: "comment delete", input: { id: ID, slidePath: SLIDE, commentId: "c-1" }, argv: ["comment", "delete", ID, SLIDE, "c-1"] },
   { name: "table cell copy", input: { id: ID, slidePath: SLIDE, elementId: "el-t", range: "0,0:1,1" },
     argv: ["table", "cell", "copy", ID, SLIDE, "el-t", "--range", "0,0:1,1"] },
@@ -237,9 +237,9 @@ describe("slidra/command.ts: runJsonCommand (envelope parsing, exit-code-blind)"
   }
 
   it("ok:true envelope, exit 0 → {ok:true, data, message}", async () => {
-    await installFakeBin('{"ok":true,"data":{"id":"abc"},"message":"已開啟"}\n');
+    await installFakeBin('{"ok":true,"data":{"id":"abc"},"message":"opened"}\n');
     const result = await runJsonCommand(["open", "/tmp/x.slidra"]);
-    expect(result).toEqual({ ok: true, data: { id: "abc" }, message: "已開啟" });
+    expect(result).toEqual({ ok: true, data: { id: "abc" }, message: "opened" });
   });
 
   it("ok:false envelope with failureKind, exit 0 → {ok:false, message, failureKind}", async () => {
@@ -249,16 +249,16 @@ describe("slidra/command.ts: runJsonCommand (envelope parsing, exit-code-blind)"
   });
 
   it("ok:false envelope, exit code 0 (§3.3's known Rust/spec mismatch) — still read as ok:false, exit code never consulted", async () => {
-    await installFakeBin('{"ok":false,"message":"命令 element move 缺少參數：--dx","failureKind":"failed"}\n', 0);
+    await installFakeBin('{"ok":false,"message":"Command element move missing parameter: --dx","failureKind":"failed"}\n', 0);
     const result = await runJsonCommand(["element", "move", "p1", "s", "el-a"]);
     expect(result.ok).toBe(false);
     expect(result.failureKind).toBe("failed");
   });
 
   it("ok:true envelope but non-zero exit code — still read as ok:true (e.g. an EPIPE after real work finished)", async () => {
-    await installFakeBin('{"ok":true,"data":{},"message":"已完成打包"}\n', 1);
+    await installFakeBin('{"ok":true,"data":{},"message":"Packaging completed"}\n', 1);
     const result = await runJsonCommand(["pack", "p1", "/tmp/out.slidra"]);
-    expect(result).toEqual({ ok: true, data: {}, message: "已完成打包" });
+    expect(result).toEqual({ ok: true, data: {}, message: "Packaging completed" });
   });
 
   it("stdout is not JSON at all (panic) → ok:false, message from stderr", async () => {
@@ -354,7 +354,7 @@ describe("slidra/reads.ts: read decoding", () => {
   });
 
   it("readPresentationText decodes valid UTF-8 text", async () => {
-    const text = "純文字資產";
+    const text = "plain text asset";
     await installFakeCat(Buffer.from(text, "utf-8").toString("base64"));
     expect(await readPresentationText("p1", "notes.txt")).toBe(text);
   });

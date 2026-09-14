@@ -1,32 +1,32 @@
 # quote-block
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一段引用佔據版面，出處在下方——把別人的話當成這一頁的全部。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A quotation occupies the page, source at the bottom — someone else's words become the whole of this page.
 
-**什麼時候用它**：客戶的原話、使用者回饋、權威的判斷。**引用必須是真實的**。
-**什麼時候不要用**：自己的主張。把自己的話排成引用會顯得矯情。
+**When to use it**: A customer's exact words, user feedback, an authority's judgment. **The quotation must be real.**
+**When not to use it**: Your own claim. Setting your own words as a quote looks self-indulgent.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `quote-block.svg`。
+Full SVG: see `quote-block.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 引號 | `garnish` | 裸 `<text>` 的大引號 | — | — |
-| 引文 | `label`（`claim` 或 `title` 字級） | ≤ 3 行 | 每行 20 字 | 1–3 |
-| 分隔短線 | `garnish` | | — | — |
-| 出處 | `label`（`caption`） | 姓名與身分 | 20 字 | 1 |
+| Quotation mark | `garnish` | a large quote mark as bare `<text>` | — | — |
+| Quotation | `label` (`claim` or `title` size) | ≤ 3 lines | 20 chars/line | 1–3 |
+| Short divider | `garnish` | | — | — |
+| Source | `label` (`caption`) | name and role | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-引文縮排（左緣比標題更靠右），出處對齊引文左緣。**引號是裝飾**，不是文字框。
+The quotation is indented (left edge further right than the title), the source aligns with the quotation's left edge. **The quote mark is decoration**, not a text box.
 
-`blueprint.shape` 寫 `quote-block`。
+Write `blueprint.shape` as `quote-block`.
 
-## 變體
+## Variants
 
-- **置中版**：引文水平置中，更正式。
-- **配頭像**：左側一個圓形頭像，右側引文。
+- **Centered version**: the quotation is horizontally centered, more formal.
+- **With portrait**: a round portrait on the left, quotation on the right.

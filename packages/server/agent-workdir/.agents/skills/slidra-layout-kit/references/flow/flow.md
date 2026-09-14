@@ -1,33 +1,33 @@
 # flow
 
-**解的關係**：`link`
-**單位數**：3–5
-**一句話**：來源 → 轉換 → 結果的橫向流程，中間那一格明顯比較重要。
+**Relationship solved**: `link`
+**Unit count**: 3–5
+**One line**: A horizontal flow of source → transformation → result, where the middle cell is visibly more important.
 
-**什麼時候用它**：有輸入與輸出的過程（資料管線、製程、服務流程）。
-**什麼時候不要用**：沒有明確輸入輸出的循環或並列。
+**When to use it**: Processes with clear inputs and outputs (data pipelines, manufacturing processes, service flows).
+**When not to use it**: Cycles or parallel items without clear input/output.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `flow.svg`。
+Full SVG: see `flow.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 輸入 | `node` | | 10 字 | 1 |
-| 轉換 | `node`（**最大的那個**） | 這一頁真正要講的 | 18 字 | 2 |
-| 輸出 | `node` | | 10 字 | 1 |
-| 箭頭 | `edge` | | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Input | `node` | | 10 chars | 1 |
+| Transformation | `node` (**the largest one**) | what this page is really about | 18 chars | 2 |
+| Output | `node` | | 10 chars | 1 |
+| Arrows | `edge` | | — | — |
 
-## 節奏
+## Rhythm
 
-中間的轉換節點要明顯大（寬 1.5 倍、高 1.6 倍）——**如果三個一樣大，這就變成 `chain` 了**，那表示你其實沒有在講轉換。
+The middle transformation node should be visibly larger (1.5× width, 1.6× height) — **if all three are the same size, this is just a `chain`**, meaning you're not actually describing a transformation.
 
-`blueprint.shape` 寫 `flow`。
+Write `blueprint.shape` as `flow`.
 
-## 變體
+## Variants
 
-- **多輸入**：左側兩三個小節點各自箭頭指向中央。
-- **分岔輸出**：右側分成兩個結果，講「同一個過程的兩種結局」。
+- **Multiple inputs**: two or three small nodes on the left, each with an arrow pointing to the center.
+- **Split output**: the right side branches into two results, telling "two outcomes of the same process."

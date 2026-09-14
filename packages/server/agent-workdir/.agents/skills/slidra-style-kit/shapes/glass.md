@@ -1,28 +1,28 @@
-# 形狀語言：glass
+# Shape language: glass
 
-**一句話**：半透明的玻璃板浮在有顏色的底上，邊緣有一道亮線。現代、有深度、科技感但不冷。
+**One line**: Semi-transparent glass panels floating over a colored base, with a bright line on the edge. Modern, with depth, tech-feeling but not cold.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-圓角矩形（`rx` 12–20），填色**半透明**（`opacity` 0.7–0.85），左緣或上緣加一條 1.5px 的亮線模擬玻璃邊。板子可以互相重疊一點。
+Rounded rectangles (`rx` 12–20), filled **semi-transparent** (`opacity` 0.7–0.85), with a 1.5px bright line on the left or top edge simulating a glass edge. Panels may overlap slightly.
 
-## 字體性格
+## Type character
 
-無襯線、字重 400／700。文字一律放在玻璃板上，不直接放在漸層底上。
+Sans-serif, weight 400/700. Text always sits on the glass panels, never directly on the gradient base.
 
-## 留白節奏
+## Whitespace rhythm
 
-板與板之間留出底色的縫隙——看得到後面的顏色，玻璃感才成立。
+Leave a gap of the base color between panels — the color behind must be visible for the glass effect to work.
 
-## 材質與層次
+## Material and depth
 
-**背景必須有東西**（漸層或色團），否則玻璃是透明的但後面什麼都沒有。搭配背景庫的 `18 frosted-panel`、`31 mesh-gradient`、`32 blob-corners`。
+**The background must have something in it** (a gradient or blobs), otherwise the glass is transparent but there's nothing behind it. Pair with background library's `18 frosted-panel`, `31 mesh-gradient`, `32 blob-corners`.
 
-**適合**：產品發表、雲端與科技、需要現代感的場合。
-**不適合**：印刷輸出、需要極高對比的場合——半透明會降低文字對比。
+**Suited for**: Product launches, cloud & tech, contexts needing a modern feel.
+**Not suited for**: Print output, contexts needing very high contrast — semi-transparency reduces text contrast.
 
-## 怎麼做到
+## How to achieve it
 
-`field` 用 `background` 色加 `opacity="0.78"`；每塊板左緣加 `<rect width="1.5" fill="<text>" opacity="0.22"/>`；背景配方選會漏出顏色的那幾個。
+`field` uses the `background` color with `opacity="0.78"`; each panel's left edge gets a `<rect width="1.5" fill="<text>" opacity="0.22"/>`; pick background recipes that let color show through.

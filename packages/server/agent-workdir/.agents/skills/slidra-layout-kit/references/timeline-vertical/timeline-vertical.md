@@ -1,33 +1,33 @@
 # timeline-vertical
 
-**解的關係**：`order`
-**單位數**：4–7
-**一句話**：垂直主軸由上而下，節點在軸上、說明在右——比水平時間軸能放更多站。
+**Relationship solved**: `order`
+**Unit count**: 4–7
+**One line**: A vertical main axis top-to-bottom, nodes on the axis, descriptions to the right — fits more stops than a horizontal timeline.
 
-**什麼時候用它**：步驟或年份較多（五個以上），每站有一兩句說明。
-**什麼時候不要用**：只有三站——水平的 `spine-path` 更有氣勢。
+**When to use it**: Steps or years are numerous (five or more), each stop with one or two sentences of description.
+**When not to use it**: Only three stops — the horizontal `spine-path` has more impact.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `timeline-vertical.svg`。
+Full SVG: see `timeline-vertical.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 主軸 | `spine` | 一條，滿高 | — | — |
-| 節點 ×N | `node` | **最後一個填實** | — | — |
-| 年份／站名 | `label` | | 10 字 | 1 |
-| 說明 | `label` | 可省 | 20 字 | 1–2 |
+| Title | `label` | | 15 chars | 1 |
+| Main axis | `spine` | one line, full height | — | — |
+| Nodes ×N | `node` | **last one filled** | — | — |
+| Year/stop name | `label` | | 10 chars | 1 |
+| Description | `label` | optional | 20 chars | 1–2 |
 
-## 節奏
+## Rhythm
 
-節點等距。說明**一律在軸的同一側**——左右交錯會讓閱讀順序變得不確定。最後一個節點填實或加大，端點才分得出來。
+Nodes are evenly spaced. Descriptions go **on the same side of the axis, always** — alternating left/right makes the reading order uncertain. The last node is filled or larger so the endpoint is distinct.
 
-`blueprint.shape` 寫 `timeline-vertical`。
+Write `blueprint.shape` as `timeline-vertical`.
 
-## 變體
+## Variants
 
-- **分段**：用兩三條較粗的橫線把時間軸分成幾個時期。
-- **未來虛線**：已發生的用實線、未來的用虛線。
+- **Segmented**: two or three thicker horizontal lines divide the timeline into eras.
+- **Future dashed**: solid lines for what has happened, dashed lines for what's coming.

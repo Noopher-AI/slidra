@@ -388,7 +388,7 @@ describe("tokens.css — every var(--x) consumed by regional CSS must be defined
       const css = readFileSync(file, "utf8");
       for (const name of usedVarNames(css)) {
         if (RUNTIME_SET_TOKENS.has(name)) continue;
-        if (!declared.has(name)) missing.add(`${name}（${path.basename(file)}）`);
+        if (!declared.has(name)) missing.add(`${name} (${path.basename(file)})`);
       }
     }
     expect([...missing]).toEqual([]);
@@ -412,7 +412,7 @@ describe("tokens.css — every var(--x) consumed by regional CSS must be defined
       for (const match of content.matchAll(/getPropertyValue\(\s*["'](--[a-z0-9-]+)["']\s*\)/g)) {
         const name = match[1];
         if (RUNTIME_SET_TOKENS.has(name)) continue;
-        if (!declared.has(name)) missing.add(`${name}（${path.relative(webSrcDir, file)}）`);
+        if (!declared.has(name)) missing.add(`${name} (${path.relative(webSrcDir, file)})`);
       }
     }
     expect([...missing]).toEqual([]);

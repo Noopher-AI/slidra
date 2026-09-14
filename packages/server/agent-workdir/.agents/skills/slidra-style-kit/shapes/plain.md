@@ -1,28 +1,28 @@
-# 形狀語言：plain
+# Shape language: plain
 
-**一句話**：沒有特別的形狀主張：直角、無陰影、裝飾極少。這是預設，也是最不會出錯的一種。
+**One line**: No particular shape claim: right angles, no shadow, minimal decoration. This is the default, and the least likely to go wrong.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-矩形一律直角（`rx` 不設）。分隔用細線或留白，不用框。裝飾只有標題底線與頁尾線。
+All rectangles are right-angled (`rx` unset). Dividers use thin lines or whitespace, not frames. The only decoration is a title underline and a footer line.
 
-## 字體性格
+## Type character
 
-單一字族，靠字重與字級分層。不用斜體、不用字間加寬。
+A single typeface; hierarchy by weight and size. No italics, no letter-spacing.
 
-## 留白節奏
+## Whitespace rhythm
 
-取 `layout.spacing` 的中段級距，均勻分布。段落之間的距離一致，不做戲劇性的大跳。
+Use the middle levels of `layout.spacing`, evenly distributed. The gap between paragraphs is consistent; no dramatic jumps.
 
-## 材質與層次
+## Material and depth
 
-完全平面：沒有陰影、沒有漸層、沒有邊框。層次靠 `field` 的底色深淺。
+Completely flat: no shadow, no gradient, no border. Hierarchy is carried by the base-color depth of `field`.
 
-**適合**：任何場合。不確定時用它。
-**不適合**：需要被記住的場合——它刻意沒有個性。
+**Suited for**: Any context. Use it when unsure.
+**Not suited for**: Contexts that need to be remembered — it deliberately has no personality.
 
-## 怎麼做到
+## How to achieve it
 
-什麼都不用特別做。這是第 4 節骨架的原樣。
+Nothing special. This is the Section 4 skeleton as-is.

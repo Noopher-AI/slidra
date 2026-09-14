@@ -1,11 +1,11 @@
 # 03 · clean-brief
 
-**第一秒的感覺**：白底、深藍、幾乎沒有裝飾。像一份不想被記住外觀、只想被相信內容的顧問簡報——克制到近乎無聊，而那正是它的目的。
+**First-impression feel**: White base, deep blue, almost no decoration. Like a consulting deck that doesn't want to be remembered for its appearance — it just wants to be trusted for its content. Restrained to the point of boredom, and that is the point.
 
-**適合**：顧問簡報、內部報告、提案、董事會、任何「外觀出錯的代價大於外觀出色的收益」的場合。
-**不適合**：需要情緒與記憶點的場合（發表會、招募、品牌）。它不會給你驚喜，那是設計上的取捨。
+**Suited for**: Consulting decks, internal reports, proposals, board meetings, any context where "the cost of looking wrong is greater than the benefit of looking great."
+**Not suited for**: Contexts that need emotion and a memorable hook (keynotes, recruiting, branding). It will not surprise you; that is a design trade-off.
 
-**為什麼是這個配色**：底色是帶灰的白（#FCFCFD）而不是純白，避免與投影幕的反光打架；主色是低彩度的深藍，看起來像機構而不是品牌；accent 幾乎只用在數字與一條底線上，整份簡報的彩色面積控制在 5% 以內。
+**Why this palette**: The base is a gray-tinted white (#FCFCFD) rather than pure white, to avoid clashing with projector glare; the primary is a low-saturation deep blue that looks like an institution rather than a brand; accent is used almost exclusively on numbers and one underline, keeping total colored area under 5% of the deck.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字級對比**：整體比 01／02 小一級（標題 36、內文 22），密度改成 `balanced`——這個場合的頁面本來就會放比較多字，與其硬壓不如把字級收小、把邊界拉寬（`side_margin` 96）。
+**Type-scale contrast**: One step smaller than 01/02 overall (title 36, body 22), density changed to `balanced` — this context naturally puts more text per page; rather than squeezing, the type scale is reduced and the margins widened (`side_margin` 96).
 
-**間距節奏**：級距克制（8/16/24/32/56），沒有大跳。這個風格靠的是對齊與一致，不是節奏變化。
+**Spacing rhythm**: Spacing is restrained (8/16/24/32/56), no big jumps. This style relies on alignment and consistency, not on rhythm variation.
 
-**建議背景**：02（點陣格線，opacity 壓到 0.3 以下）。多數情況**建議 `background: off`**——這個風格的說服力來自乾淨。 **明亮背景**（背景庫 46–54，為淺底畫的）：48、52。
+**Suggested backgrounds**: 02 (dot grid, opacity kept below 0.3). In most cases **`background: off` is recommended** — this style's persuasiveness comes from cleanliness. **Light backgrounds** (background library 46–54, designed for light bases): 48, 52.

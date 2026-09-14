@@ -9,7 +9,7 @@ import { requireBuilt, startServerFor as startServerForHelper } from "./helpers/
 import { runSmoke } from "./helpers/smoke.js";
 
 /**
- * Firefox／WebKit structural smoke: cross-browser pixel parity is
+ * Firefox / WebKit structural smoke: cross-browser pixel parity is
  * explicitly not required here — this file has no `compareScreenshot`
  * import anywhere (verifiable with `grep -L compareScreenshot
  * e2e/cross-browser-smoke.test.ts`), only the structural checks in

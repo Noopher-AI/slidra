@@ -1,26 +1,26 @@
 # corner-brackets
 
-**氣氛**：四個角落各一組直角括號，像取景框或掃描的定位標記。精準、有科技感。
+**Mood**: A set of right-angle brackets in each of the four corners, like a viewfinder or scanner registration marks. Precise, with a tech feel.
 
-**適合**：任何節奏。它只佔四個角，不干涉內容區。
-**不適合**：幾乎沒有。
+**Suited for**: Any rhythm. It only occupies the four corners and doesn't interfere with the content area.
+**Not suited for**: Almost nothing.
 
-**建議 opacity**：0.6
+**Suggested opacity**: 0.6
 
-**做法**：四組兩段直線組成的直角，距離邊界 48。
+**Technique**: Four right angles made of two-line segments, placed 48px from the edges.
 
-完整 SVG：見同資料夾 `corner-brackets.svg`。
+Full SVG: see `corner-brackets.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `mono-ink` | 去彩度：全部改用文字色與 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--accent)` → `text` |
-| `cool` | 全部收斂到冷色：暖的 accent 改用第三色。同一張圖會安靜下來，適合需要冷靜的內容。 | `var(--accent)` → `secondary_accent` |
+| `base` | As-is, use the SVG below directly | — |
+| `mono-ink` | Desaturate: everything uses text color and muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--accent)` → `text` |
+| `cool` | Converge everything to cool tones: the warm accent switches to tertiary. The same image becomes quieter; suited for content that needs calm. | `var(--accent)` → `secondary_accent` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：04、07、13、22、25。
+**Suggested styles**: 04, 07, 13, 22, 25.

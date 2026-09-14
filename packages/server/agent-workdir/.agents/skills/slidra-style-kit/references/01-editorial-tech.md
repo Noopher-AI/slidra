@@ -1,11 +1,11 @@
 # 01 · editorial-tech
 
-**第一秒的感覺**：深色底、冷色主調、字級對比大。像一篇排版講究的技術文章開了深色模式——安靜、精準、不喧嘩，資訊密度可以拉很高而不亂。
+**First-impression feel**: Dark base, cool color temperature, high type-scale contrast. Like a well-typeset technical article in dark mode — quiet, precise, not flashy; information density can go high without looking chaotic.
 
-**適合**：產品說明、技術分享、開發者活動、任何「聽眾是專業人士」的場合。
-**不適合**：兒少教學、手作與食物、需要溫度與親近感的品牌故事。深色底會讓這些主題顯得疏離。
+**Suited for**: Product explanations, tech talks, developer events, any "the audience is professionals" context.
+**Not suited for**: Children's education, crafts & food, brand stories that need warmth and intimacy. The dark base makes these topics feel distant.
 
-**為什麼是這個配色**：背景不是純黑而是帶藍的深灰（#101418），純黑在投影機上會失去層次；主色是高明度的藍，在深底上仍然清楚；accent 用暖黃，冷底配暖點才有呼吸。
+**Why this palette**: The background is not pure black but a blue-tinted dark gray (#101418); pure black loses depth on a projector. The primary is a high-luminance blue that stays readable on a dark base; accent uses warm yellow — a warm point on a cool base is what creates breathing room.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字級對比**：標題 40 對內文 24，比例 1.67——中等對比，讓標題領頭但不壓過內容。大數字 140 是唯一的高音，一份簡報用一次就好。
+**Type-scale contrast**: Title 40 vs body 24, ratio 1.67 — moderate contrast; the title leads without overpowering the content. The 140 number is the only high note; use it once per deck.
 
-**間距節奏**：級距偏密（8/16/24/40/64），適合一頁放 3～5 個單位。要更鬆的話換風格，不要只改 spacing——密度是這個風格的一部分。
+**Spacing rhythm**: Spacing is on the denser side (8/16/24/40/64), suitable for 3–5 units per page. If you want more air, switch styles — don't just change the spacing; density is part of this style's identity.
 
-**建議背景**：02（點陣格線，內容頁）、03（對角光束，定錨頁）。柔焦色團在這個深底上會糊掉，不建議。
+**Suggested backgrounds**: 02 (dot grid, content pages), 03 (diagonal beams, anchor pages). Soft blobs will smudge on this dark base; not recommended.

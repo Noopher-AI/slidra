@@ -1,11 +1,11 @@
 # 04 · midnight-lab
 
-**第一秒的感覺**：近乎全黑的底，配上一道螢光青。像深夜還亮著的實驗室螢幕——專注、冷、有一點孤獨。資訊可以堆得很密而不覺得吵。
+**First-impression feel**: A near-black base with a single fluorescent cyan. Like a lab monitor still lit at midnight — focused, cold, slightly lonely. Information can be packed very dense without feeling noisy.
 
-**適合**：研究成果、資料分析、監控儀表、深度技術主題。
-**不適合**：面向一般大眾的說明、需要溫度的品牌故事。這個配色會讓人覺得「這不是講給我聽的」。
+**Suited for**: Research findings, data analysis, monitoring dashboards, deep technical topics.
+**Not suited for**: Explanations for a general audience, brand stories that need warmth. This palette makes people feel "this isn't talking to me."
 
-**為什麼是這個配色**：底色壓到 #0A0C10 才有「螢幕」的感覺；主色用高飽和的青，在近黑上是唯一能亮起來的顏色；accent 的萊姆綠只給數字與警示，面積控制在 3% 以內，多了就變成電競。
+**Why this palette**: The base is pushed down to #0A0C10 for that "screen" feel; the primary is a high-saturation cyan, the only color that glows on near-black; the accent lime green is reserved for numbers and warnings, kept under 3% of the area — more and it becomes esports.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：標題用等寬的 IBM Plex Mono，內文用 Noto Sans TC。等寬字讓標題像終端機輸出——這是這個風格的來源，也是它唯一的裝飾。**中文標題不要用 IBM Plex Mono**（它沒有中文字），中文標題改用 Noto Sans TC 700。
+**Typography and contrast**: Headings use the monospace IBM Plex Mono, body uses Noto Sans TC. Monospace makes the title look like terminal output — that is the source of this style and its only decoration. **Do not use IBM Plex Mono for Chinese titles** (it has no CJK glyphs); use Noto Sans TC 700 for Chinese headings.
 
-**間距節奏**：級距密（8/16/24/32/56），字級整體比 01 小一號。這個風格預期一頁放很多東西。
+**Spacing rhythm**: Tight spacing (8/16/24/32/56), and the type scale is one step smaller than 01 overall. This style expects a lot on one page.
 
-**建議背景**：02 `dot-grid`（最搭，格線像示波器）。色團與光束都太柔，不建議。
+**Suggested backgrounds**: 02 `dot-grid` (best match — the grid looks like an oscilloscope). Blobs and beams are too soft; not recommended.

@@ -1,11 +1,11 @@
 # 24 · archive-sepia
 
-**第一秒的感覺**：泛黃的紙、褐墨、暗金。像一份從檔案櫃裡拿出來的文件——有時間的重量，但整理得很好。
+**First-impression feel**: Yellowed paper, brown ink, dark gold. Like a document pulled from an archive drawer — it has the weight of time, but is well organized.
 
-**適合**：歷史、博物館、品牌沿革、回顧與年鑑。
-**不適合**：未來導向的內容（藍圖、預測、發表）。這個配色的時態是過去式。
+**Suited for**: History, museums, brand chronicles, retrospectives and yearbooks.
+**Not suited for**: Future-oriented content (blueprints, predictions, launches). This palette's tense is past.
 
-**為什麼是這個配色**：底色是老紙的暖黃；主色褐墨比黑軟，像褪色的墨水；暗金只用在年份與標號上。**不要加任何高飽和色**——那會立刻把年代感打掉。
+**Why this palette**: The base is warm yellow like old paper; the brown ink primary is softer than black, like faded ink; dark gold is only used for years and labels. **Do not add any high-saturation colors** — it would instantly kill the vintage feel.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：整份襯線。密度 `text`，史料類內容需要完整的句子。
+**Typography and contrast**: Serif throughout. Density `text` — historical content needs complete sentences.
 
-**間距節奏**：級距中等。
+**Spacing rhythm**: Medium spacing.
 
-**建議背景**：01 `soft-blobs`（opacity 0.4，像紙的斑駁）。 **明亮背景**（背景庫 46–54，為淺底畫的）：50、51、54。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.4, like paper mottling). **Light backgrounds** (background library 46–54, designed for light bases): 50, 51, 54.

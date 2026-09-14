@@ -219,8 +219,8 @@ fn empty_argv_reports_missing_command_name() {
 /// For every one of the 26 registered commands, a successful run must
 /// never start a `node` child process at all — proven structurally (not by
 /// inspecting output) by pointing `PATH` at a directory with no `node`
-/// binary in it. A command that still fell back would fail with "找不到
-/// node" instead of succeeding, so success here is direct evidence the
+/// binary in it. A command that still fell back would fail with "node
+/// not found" instead of succeeding, so success here is direct evidence the
 /// takeover table actually intercepted it.
 #[test]
 fn no_takeover_table_command_ever_invokes_node() {
@@ -1153,8 +1153,8 @@ fn normalize_element_ids_assigns_placeholders_in_order_of_first_appearance() {
 /// to these 26 new commands): every one of them must actually be
 /// dispatched by Rust, not merely happen to produce output that looks
 /// right because it fell through to a Node fallback that isn't even on
-/// `PATH`. `fallback::exec_node_fallback` prints the literal string "找不到
-/// node" only when `Command::new("node")` itself fails to spawn — so with
+/// `PATH`. `fallback::exec_node_fallback` prints the literal string "node
+/// not found" only when `Command::new("node")` itself fails to spawn — so with
 /// `PATH` pointed at a directory with no `node` binary, any of these 26
 /// commands producing that exact stderr would prove it fell back instead
 /// of being handled by the Rust takeover table.

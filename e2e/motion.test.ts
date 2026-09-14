@@ -219,7 +219,7 @@ for (const testCase of CATEGORY_CASES) {
         return { animation: s.animationDuration, transition: s.transitionDuration, opacity: s.opacity };
       });
       for (const d of [...parseAllSeconds(durations.animation), ...parseAllSeconds(durations.transition)]) {
-        expect(d, `${testCase.selector}（reduced motion）`).toBeLessThanOrEqual(0.001);
+        expect(d, `${testCase.selector} (reduced motion)`).toBeLessThanOrEqual(0.001);
       }
       expect(Number.parseFloat(durations.opacity), `${testCase.selector} content stays readable under reduced motion`).toBe(1);
 

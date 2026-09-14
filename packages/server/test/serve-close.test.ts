@@ -97,7 +97,7 @@ afterEach(async () => {
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-async function openFreshPresentation(name = "測試簡報"): Promise<string> {
+async function openFreshPresentation(name = "Test Presentation"): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", name]);
   if (!created.ok) throw new Error(created.message);

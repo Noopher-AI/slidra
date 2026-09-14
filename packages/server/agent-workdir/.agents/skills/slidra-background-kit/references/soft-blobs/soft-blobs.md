@@ -1,26 +1,26 @@
-# soft-blobs（柔焦色團）
+# soft-blobs
 
-**氣氛**：三團重疊的光暈從右側漫進來，邊界完全化開。像光透過紙，或一杯飲料被逆光拍下——溫暖、鬆、沒有稜角。
+**Mood**: Three overlapping glows bleeding in from the right, boundaries fully dissolved. Like light through paper, or a drink photographed against the sun — warm, loose, no hard edges.
 
-**適合**：`anchor`（封面、章節、結語）。這些頁面字少、留白多，光暈有地方可以漫。
-**不適合**：`dense`。內容頁的卡片壓在漸層上會顯得髒。
+**Suited for**: `anchor` (cover, section, closing). These pages have little text and lots of whitespace, giving the glows room to spread.
+**Not suited for**: `dense`. Cards on a gradient look dirty on content pages.
 
-**建議 opacity**：0.9（一般）／0.6（頁面底色是 `primary` 的結語頁，色團會變成同色系的層次）。
+**Suggested opacity**: 0.9 (general) / 0.6 (closing pages whose base color is `primary` — the blobs become same-hue layers).
 
-**做法**：三個徑向漸層分別用 `primary`、`accent`、`secondary_accent`，全部集中在右半；不用 `<filter>`，柔化靠漸層本身的 stop 分布。
+**Technique**: Three radial gradients using `primary`, `accent`, and `secondary_accent` respectively, all concentrated in the right half; no `<filter>`, softness comes from the gradient stop distribution.
 
-完整 SVG：見同資料夾 `soft-blobs.svg`。
+Full SVG: see `soft-blobs.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `var(--primary)` → `muted`、`var(--accent)` → `primary` |
-| `warm` | 全部收斂到暖色：主色與第三色都改用 accent。整張圖只剩一個色相的深淺，最熱。 | `var(--primary)` → `accent`、`var(--secondary_accent)` → `accent` |
+| `base` | As-is, use the SVG below directly | — |
+| `low-key` | Drop a level: primary retreats to muted, accent becomes the lead. The pattern recedes further back; suited for already content-heavy pages. | `var(--primary)` → `muted`, `var(--accent)` → `primary` |
+| `warm` | Converge everything to warm tones: both primary and tertiary switch to accent. The whole image is just one hue's depth range; the warmest. | `var(--primary)` → `accent`, `var(--secondary_accent)` → `accent` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：02 `warm-editorial`（最搭）。01 `editorial-tech` 的深底會把色團吃掉，要用的話 opacity 拉到 1.0 並把漸層的 stop-opacity 調高。
+**Suggested styles**: 02 `warm-editorial` (best fit). 01 `editorial-tech`'s dark base swallows the blobs; if you must use it, raise opacity to 1.0 and increase the gradient stop-opacity.

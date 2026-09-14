@@ -59,7 +59,7 @@ export function TablePanel({ onClose, controller, canvasSize, slidePath }: Table
       <div
         className="table-panel-grid"
         role="grid"
-        aria-label={`Table size${previewRows > 0 ? `：${previewRows} × ${previewCols}` : ""}`}
+        aria-label={`Table size${previewRows > 0 ? `: ${previewRows} × ${previewCols}` : ""}`}
         onMouseLeave={() => setHover(null)}
       >
         {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, i) => {

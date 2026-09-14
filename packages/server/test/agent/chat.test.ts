@@ -83,7 +83,7 @@ afterEach(async () => {
 
 async function openFreshPresentation(): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", "測試簡報"]);
+  const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
@@ -92,7 +92,7 @@ async function openFreshPresentation(): Promise<string> {
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
   const added = await runCli([
-    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "測試簡報",
+    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Test Presentation",
   ]);
   expect(added.ok).toBe(true);
   return id;
@@ -268,12 +268,12 @@ describe("buildCommentContext", () => {
 describe("chat: the editorial brief and prompt shape", () => {
   it("sends the editorial brief as the very first session/prompt, as a one-text-block content array", async () => {
     const id = await openFreshPresentation();
-    const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
+    const server = await serve(fakeAgent({ replies: [["(ack)"], ["ok"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const done = sse.readUntil((e) => e.event === "chat-done");
-    const response = await postChat(server, "把標題改成 Q3 財報");
+    const response = await postChat(server, "change the title to Q3 report");
     expect(response.status).toBe(202);
     await done;
     await sse.close();
@@ -281,7 +281,7 @@ describe("chat: the editorial brief and prompt shape", () => {
     const prompts = promptEntries(await readFakeAgentLog());
     expect(prompts.length).toBeGreaterThanOrEqual(2);
     expect(prompts[0].prompt).toEqual([{ type: "text", text: buildEditorialBrief(id) }]);
-    expect(prompts[1].prompt).toEqual([{ type: "text", text: "把標題改成 Q3 財報" }]);
+    expect(prompts[1].prompt).toEqual([{ type: "text", text: "change the title to Q3 report" }]);
   });
 
   it("with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
@@ -301,38 +301,38 @@ describe("chat: the editorial brief and prompt shape", () => {
     const elementId = textbox.data!.elementId;
 
     const elementComment = await runCli<{ commentId: string }>([
-      "comment", "add", id, slidePath, elementId, "把這個標題改短一點",
+      "comment", "add", id, slidePath, elementId, "shorten this title a bit",
     ]);
     expect(elementComment.ok).toBe(true);
     const pageComment = await runCli<{ commentId: string }>([
-      "comment", "add", id, slidePath, "page", "整頁重寫成三個要點",
+      "comment", "add", id, slidePath, "page", "rewrite the whole page into three bullets",
     ]);
     expect(pageComment.ok).toBe(true);
 
-    const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]] }), id);
+    const server = await serve(fakeAgent({ replies: [["(ack)"], ["ok"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "麻煩照留言處理");
+    await postChat(server, "please handle per the comments");
     await done;
     await sse.close();
 
     const prompts = promptEntries(await readFakeAgentLog());
     const sentText = (prompts[1].prompt[0] as { text: string }).text;
-    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}: 把這個標題改短一點`);
-    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}: 整頁重寫成三個要點`);
-    expect(sentText.endsWith("[The author's message]\n麻煩照留言處理")).toBe(true);
+    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}: shorten this title a bit`);
+    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}: rewrite the whole page into three bullets`);
+    expect(sentText.endsWith("[The author's message]\nplease handle per the comments")).toBe(true);
   });
 
   it("reuses the same sessionId across two separate messages", async () => {
-    const server = await serve(fakeAgent({ replies: [["(ack)"], ["第一則回覆"], ["第二則回覆"]] }));
+    const server = await serve(fakeAgent({ replies: [["(ack)"], ["first reply"], ["second reply"]] }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
-    await postChat(server, "第一則訊息");
+    await postChat(server, "first message");
     await sse.readUntil((e) => e.event === "chat-done");
 
-    await postChat(server, "第二則訊息");
+    await postChat(server, "second message");
     await sse.readUntil((e) => e.event === "chat-done");
     await sse.close();
 
@@ -346,20 +346,20 @@ describe("chat: the editorial brief and prompt shape", () => {
 describe("chat: reply streaming", () => {
   it("streams reply chunks to the client as chat-chunk events, and only for the author's own turn", async () => {
     const server = await serve(
-      fakeAgent({ replies: [["編輯規約收到，這句話絕不該讓作者看到"], ["Q3", " 財報", " 已更新"]] }),
+      fakeAgent({ replies: [["editing conventions noted, this must never reach the author"], ["Q3", " report", " updated"]] }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const events = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "把標題改成 Q3 財報");
+    await postChat(server, "change the title to Q3 report");
     const collected = await events;
     await sse.close();
 
     const chunkTexts = collected.filter((e) => e.event === "chat-chunk").map((e) => (e.data as { text: string }).text);
-    expect(chunkTexts).toEqual(["Q3", " 財報", " 已更新"]);
+    expect(chunkTexts).toEqual(["Q3", " report", " updated"]);
     // The brief-turn's own reply never reached the client.
-    expect(chunkTexts.join("")).not.toContain("編輯規約收到");
+    expect(chunkTexts.join("")).not.toContain("editing conventions noted");
 
     const done = collected.find((e) => e.event === "chat-done");
     expect((done!.data as { stopReason: string }).stopReason).toBe("end_turn");
@@ -368,14 +368,14 @@ describe("chat: reply streaming", () => {
 
 describe("chat: cancel", () => {
   it("POST /api/chat/cancel ends the running turn with chat-done stopReason=cancelled", async () => {
-    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
+    const server = await serve(fakeAgent({ replies: [["conventions"], ["think"]], holdPromptOnIndex: 1 }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     // Wait for the held turn to have produced its chunk (so it is really
     // running), then stop it and read to the end of the turn.
     const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
-    await postChat(server, "做一件很久的事");
+    await postChat(server, "do something long");
     await untilChunk;
 
     const untilDone = sse.readUntil((e) => e.event === "chat-done");
@@ -393,13 +393,13 @@ describe("chat: cancel", () => {
 
   it("late updates and permission requests after a cancelled turn are dropped and refused; the next message works normally", async () => {
     const server = await serve(
-      fakeAgent({ replies: [["規約"], ["想一下"], ["第二輪"]], holdPromptOnIndex: 1, lateActivityAfterCancel: true }),
+      fakeAgent({ replies: [["conventions"], ["think"], ["second round"]], holdPromptOnIndex: 1, lateActivityAfterCancel: true }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
-    await postChat(server, "做一件很久的事");
+    await postChat(server, "do something long");
     await untilChunk;
     const untilCancelled = sse.readUntil((e) => e.event === "chat-done");
     await fetch(`${server.url}/api/chat/cancel`, { method: "POST" });
@@ -411,12 +411,12 @@ describe("chat: cancel", () => {
     // second turn alone.
     await new Promise((resolve) => setTimeout(resolve, 400));
     const untilSecondDone = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "第二則");
+    await postChat(server, "second message");
     const secondTurn = await untilSecondDone;
     await sse.close();
 
     const chunkTexts = secondTurn.filter((e) => e.event === "chat-chunk").map((e) => (e.data as { text: string }).text);
-    expect(chunkTexts).toEqual(["第二輪"]);
+    expect(chunkTexts).toEqual(["second round"]);
     expect(secondTurn.filter((e) => e.event === "chat-command")).toHaveLength(0);
     expect((secondTurn.at(-1)!.data as { stopReason: string }).stopReason).toBe("end_turn");
     const log = await readFile(logPath, "utf-8");
@@ -424,14 +424,14 @@ describe("chat: cancel", () => {
   });
 
   it("GET /api/agent reports turnRunning=true during a held turn and false after it ends", async () => {
-    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"]], holdPromptOnIndex: 1 }));
+    const server = await serve(fakeAgent({ replies: [["conventions"], ["think"]], holdPromptOnIndex: 1 }));
     const idle = (await (await fetch(`${server.url}/api/agent`)).json()) as { turnRunning: boolean };
     expect(idle.turnRunning).toBe(false);
 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
-    await postChat(server, "做一件很久的事");
+    await postChat(server, "do something long");
     await untilChunk;
     const running = (await (await fetch(`${server.url}/api/agent`)).json()) as { turnRunning: boolean };
     expect(running.turnRunning).toBe(true);
@@ -445,15 +445,15 @@ describe("chat: cancel", () => {
   });
 
   it("stop also drops messages queued behind the running turn, and says how many", async () => {
-    const server = await serve(fakeAgent({ replies: [["規約"], ["想一下"], ["第二輪"]], holdPromptOnIndex: 1 }));
+    const server = await serve(fakeAgent({ replies: [["conventions"], ["think"], ["second round"]], holdPromptOnIndex: 1 }));
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const untilChunk = sse.readUntil((e) => e.event === "chat-chunk");
-    await postChat(server, "做一件很久的事");
+    await postChat(server, "do something long");
     await untilChunk;
     // Queued behind the held turn: never started, so stopping must throw it away.
-    await postChat(server, "排在後面的第二則");
+    await postChat(server, "queued second message");
 
     const untilDone = sse.readUntil((e) => e.event === "chat-done");
     expect((await fetch(`${server.url}/api/chat/cancel`, { method: "POST" })).status).toBe(202);
@@ -464,7 +464,7 @@ describe("chat: cancel", () => {
     expect((notice!.data as { text: string }).text).toContain("1 additional message(s) that had not started");
     // The fake agent logs every prompt it receives; the queued one never got sent.
     const log = await readFile(logPath, "utf-8");
-    expect(log).not.toContain("排在後面的第二則");
+    expect(log).not.toContain("queued second message");
   });
 
   it("POST /api/chat/cancel with no turn running is a 409, not a silent no-op", async () => {
@@ -482,7 +482,7 @@ describe("chat: not logged in", () => {
     const sse = new SseReader(stream);
 
     const events = sse.readUntil((e) => e.event === "chat-error");
-    await postChat(server, "你好");
+    await postChat(server, "hi");
     const collected = await events;
     await sse.close();
 
@@ -498,13 +498,13 @@ describe("chat: session/request_permission — presentation files must go throug
   /** Runs one permission scenario and returns the outcome the fake agent logged. */
   async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], requestPermissionOnPromptIndex: 1, ...config }),
+      fakeAgent({ replies: [["(ack)"], ["ok"]], requestPermissionOnPromptIndex: 1, ...config }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "幫我執行一個工具");
+    await postChat(server, "run a tool for me");
     await done;
     await sse.close();
 
@@ -513,13 +513,13 @@ describe("chat: session/request_permission — presentation files must go throug
   }
 
   it("allows a plain slidra command, selecting the offered allow option", async () => {
-    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra text set abc slides/001.svg el-1 新標題" });
+    const outcome = await permissionOutcomeFor({ permissionCommand: "slidra text set abc slides/001.svg el-1 New Title" });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows Codex's shell argv after validating the entire script", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: ["/bin/zsh", "-lc", "slidra text set abc slides/001.svg el-1 '新標題'"],
+      permissionCommand: ["/bin/zsh", "-lc", "slidra text set abc slides/001.svg el-1 'New Title'"],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -530,7 +530,7 @@ describe("chat: session/request_permission — presentation files must go throug
   // writing command is refused on its leading `"`.
   it("allows a slidra command codex-acp sent in its shell-quoted form", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: `"slidra text set abc slides/001.svg el-1 '新標題'"`,
+      permissionCommand: `"slidra text set abc slides/001.svg el-1 'New Title'"`,
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -550,9 +550,9 @@ describe("chat: session/request_permission — presentation files must go throug
     const outcome = await permissionOutcomeFor({
       permissionCommand: `rm -rf ${slidraHome}/work/abc`,
       permissionOptions: [
-        { kind: "allow_once", name: "允許", optionId: "allow_once" },
-        { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
-        { kind: "reject_once", name: "不跑這條，繼續", optionId: "decline" },
+        { kind: "allow_once", name: "Allow", optionId: "allow_once" },
+        { kind: "reject_once", name: "abort the whole turn", optionId: "cancel" },
+        { kind: "reject_once", name: "skip this one, continue", optionId: "decline" },
       ],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "decline" });
@@ -564,12 +564,12 @@ describe("chat: session/request_permission — presentation files must go throug
   it("turns a refused command into a suggestion sent back to the agent, and the turn continues", async () => {
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"], ["知道了，改用讀檔工具"]],
+        replies: [["(ack)"], ["ok"], ["got it, using the read tool instead"]],
         requestPermissionOnPromptIndex: 1,
         permissionCommand: `cat ${slidraHome}/work/abc/slides/001.svg`,
         permissionOptions: [
-          { kind: "allow_once", name: "允許", optionId: "allow_once" },
-          { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
+          { kind: "allow_once", name: "Allow", optionId: "allow_once" },
+          { kind: "reject_once", name: "abort the whole turn", optionId: "cancel" },
         ],
         abortTurnAfterPermission: true,
       }),
@@ -578,7 +578,7 @@ describe("chat: session/request_permission — presentation files must go throug
     const sse = new SseReader(stream);
 
     const untilDone = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下規範");
+    await postChat(server, "read the conventions");
     const collected = await untilDone;
     await sse.close();
 
@@ -597,13 +597,13 @@ describe("chat: session/request_permission — presentation files must go throug
   it("says so when a refused command took the whole turn down with it", async () => {
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         requestPermissionOnPromptIndex: 1,
         permissionRawInput: { script: `${slidraHome}/work/abc/slides/001.svg` },
         // Only the abort on offer, and the adapter aborts the turn on it.
         permissionOptions: [
-          { kind: "allow_once", name: "允許", optionId: "allow_once" },
-          { kind: "reject_once", name: "中止整個回合", optionId: "cancel" },
+          { kind: "allow_once", name: "Allow", optionId: "allow_once" },
+          { kind: "reject_once", name: "abort the whole turn", optionId: "cancel" },
         ],
         abortTurnAfterPermission: true,
       }),
@@ -612,7 +612,7 @@ describe("chat: session/request_permission — presentation files must go throug
     const sse = new SseReader(stream);
 
     const untilDone = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "幫我執行一個工具");
+    await postChat(server, "run a tool for me");
     const collected = await untilDone;
     await sse.close();
 
@@ -623,11 +623,11 @@ describe("chat: session/request_permission — presentation files must go throug
   it("forwards the adapter's own stderr to serve's log, tagged with its name", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const server = await serve(fakeAgent({ replies: [["(ack)"], ["好的"]], stderrLine: "adapter said something" }));
+      const server = await serve(fakeAgent({ replies: [["(ack)"], ["ok"]], stderrLine: "adapter said something" }));
       const stream = await fetch(`${server.url}/api/chat/stream`);
       const sse = new SseReader(stream);
       const done = sse.readUntil((e) => e.event === "chat-done");
-      await postChat(server, "隨便一句");
+      await postChat(server, "any line");
       await done;
       await sse.close();
       expect(warn.mock.calls.map(String)).toContain("[Claude Code] adapter said something");
@@ -697,14 +697,14 @@ describe("chat: session/request_permission — presentation files must go throug
 
   it("allows a double-quoted argument, which the old character grammar refused outright", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: 'slidra text set abc slides/001.svg el-1 "第三季 財報"',
+      permissionCommand: 'slidra text set abc slides/001.svg el-1 "Q3 report"',
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
 
   it("allows a single-quoted Chinese argument containing spaces", async () => {
     const outcome = await permissionOutcomeFor({
-      permissionCommand: "slidra text set abc slides/001.svg el-1 '第三季 財報 標題'",
+      permissionCommand: "slidra text set abc slides/001.svg el-1 'Q3 report Title'",
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow" });
   });
@@ -719,13 +719,13 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
   /** Runs one permission scenario and returns the outcome the fake agent logged. */
   async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], requestPermissionOnPromptIndex: 1, ...config }),
+      fakeAgent({ replies: [["(ack)"], ["ok"]], requestPermissionOnPromptIndex: 1, ...config }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "幫我執行一個工具");
+    await postChat(server, "run a tool for me");
     await done;
     await sse.close();
 
@@ -743,9 +743,9 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     const outcome = await permissionOutcomeFor({
       permissionCommand: "slidra ls abc",
       permissionOptions: [
-        { kind: "allow_once", name: "允許一次", optionId: "allow-once" },
-        { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
-        { kind: "reject_once", name: "拒絕", optionId: "reject" },
+        { kind: "allow_once", name: "Allow once", optionId: "allow-once" },
+        { kind: "allow_always", name: "Always allow", optionId: "allow-always" },
+        { kind: "reject_once", name: "Reject", optionId: "reject" },
       ],
     });
     expect(outcome).toEqual({ outcome: "selected", optionId: "allow-once" });
@@ -755,8 +755,8 @@ describe("chat: session/request_permission never accepts a persistent grant", ()
     const outcome = await permissionOutcomeFor({
       permissionCommand: "slidra ls abc",
       permissionOptions: [
-        { kind: "allow_always", name: "永遠允許", optionId: "allow-always" },
-        { kind: "reject_once", name: "拒絕", optionId: "reject" },
+        { kind: "allow_always", name: "Always allow", optionId: "allow-always" },
+        { kind: "reject_once", name: "Reject", optionId: "reject" },
       ],
     });
     expect(outcome).toEqual({ outcome: "cancelled" });
@@ -767,7 +767,7 @@ describe("chat: HTTP method gate", () => {
   it("routes POST /api/chat, and leaves every other method/path exactly as before", async () => {
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }));
 
-    const chatPost = await postChat(server, "你好");
+    const chatPost = await postChat(server, "hi");
     expect(chatPost.status).toBe(202);
 
     const otherPost = await fetch(`${server.url}/api/presentation`, { method: "POST" });
@@ -819,7 +819,7 @@ describe("chat: session cwd", () => {
     const sse = new SseReader(stream);
 
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "你好");
+    await postChat(server, "hi");
     await done;
     await sse.close();
 
@@ -846,7 +846,7 @@ describe("chat: session cwd", () => {
   it("lets the agent read the deployed CLAUDE.md via a relative path", async () => {
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "CLAUDE.md",
       }),
@@ -854,7 +854,7 @@ describe("chat: session cwd", () => {
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下你的工作手冊入口");
+    await postChat(server, "read your work manual entry");
     await done;
     await sse.close();
 
@@ -871,7 +871,7 @@ describe("chat: session cwd", () => {
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: ".claude/skills/probe/SKILL.md",
       }),
@@ -885,18 +885,18 @@ describe("chat: session cwd", () => {
     // *content* is out of scope here.
     const skillDir = path.join(slidraHome, "agent", id, ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
-    await writeFile(path.join(skillDir, "SKILL.md"), "測試用 skill 內容");
+    await writeFile(path.join(skillDir, "SKILL.md"), "skill content for testing");
 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下這個 skill");
+    await postChat(server, "read this skill");
     await done;
     await sse.close();
 
     const log = await readFakeAgentLog();
     const result = log.find((entry) => "readTextFileResult" in entry) as { readTextFileResult?: string } | undefined;
-    expect(result?.readTextFileResult).toBe("測試用 skill 內容");
+    expect(result?.readTextFileResult).toBe("skill content for testing");
   });
 });
 
@@ -924,7 +924,7 @@ describe("chat: a failed start must not leak its subprocess", () => {
     const markerPath = path.join(markerDir, "attempted");
     try {
       const server = await serve(
-        fakeAgent({ replies: [["(ack)"], ["好的"]], failFirstAttemptMarkerPath: markerPath }),
+        fakeAgent({ replies: [["(ack)"], ["ok"]], failFirstAttemptMarkerPath: markerPath }),
       );
       const stream = await fetch(`${server.url}/api/chat/stream`);
       const sse = new SseReader(stream);
@@ -932,12 +932,12 @@ describe("chat: a failed start must not leak its subprocess", () => {
       // First attempt: the fake agent fails newSession (scripted via the
       // marker file), simulating the not-logged-in path.
       const firstError = sse.readUntil((e) => e.event === "chat-error");
-      await postChat(server, "第一次嘗試");
+      await postChat(server, "first attempt");
       await firstError;
 
       // Second attempt: a fresh subprocess spawn, this time succeeding.
       const secondDone = sse.readUntil((e) => e.event === "chat-done");
-      await postChat(server, "第二次嘗試");
+      await postChat(server, "second attempt");
       await secondDone;
       await sse.close();
 
@@ -970,7 +970,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
         // once (exitOnceMarkerPath), simulating the adapter dying mid-turn.
         const server = await serve(
           fakeAgent({
-            replies: [["(ack)"], ["好的"]],
+            replies: [["(ack)"], ["ok"]],
             exitDuringPromptIndex: 1,
             exitOnceMarkerPath: markerPath,
           }),
@@ -986,7 +986,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
           wedgedTurnError.then(() => "errored" as const),
           new Promise((resolve) => setTimeout(() => resolve("timed-out" as const), 5000)),
         ]);
-        await postChat(server, "第一則訊息，agent 會在這裡掛掉");
+        await postChat(server, "first message, agent will crash here");
         expect(await raced).toBe("errored");
         const collected = await wedgedTurnError;
         const errorEvent = collected.find((e) => e.event === "chat-error");
@@ -999,7 +999,7 @@ describe("chat: an exited adapter must not deadlock the chat forever", () => {
         // will not exit again this time) must start a genuinely working
         // session, not reuse the dead one.
         const secondDone = sse.readUntil((e) => e.event === "chat-done");
-        await postChat(server, "第二則訊息，這次應該要正常運作");
+        await postChat(server, "second message, this should work normally now");
         await secondDone;
         await sse.close();
 
@@ -1029,7 +1029,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
 
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "slides/001.svg",
       }),
@@ -1038,7 +1038,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下投影片");
+    await postChat(server, "read the slides");
     await done;
     await sse.close();
 
@@ -1051,7 +1051,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "does/not/exist.svg",
       }),
@@ -1060,7 +1060,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下不存在的檔案");
+    await postChat(server, "read a non-existent file");
     await done;
     await sse.close();
 
@@ -1076,7 +1076,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "slides",
       }),
@@ -1085,7 +1085,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下 slides 目錄");
+    await postChat(server, "read the slides directory");
     await done;
     await sse.close();
 
@@ -1104,7 +1104,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     });
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "assets/pic.bin",
       }),
@@ -1113,7 +1113,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下這張圖");
+    await postChat(server, "read this image");
     await done;
     await sse.close();
 
@@ -1136,7 +1136,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     });
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "slides/001.svg",
         readTextFileLine: 2,
@@ -1147,7 +1147,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "只讀第 2、3 行");
+    await postChat(server, "read only lines 2 and 3");
     await done;
     await sse.close();
 
@@ -1170,7 +1170,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         // The fixture builds this path by calling fs.realpathSync on the
         // cwd it received — the same resolution step a real adapter
@@ -1188,7 +1188,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下投影片");
+    await postChat(server, "read the slides");
     await done;
     await sse.close();
 
@@ -1205,7 +1205,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const expected = await readPresentationTextViaCli(id, "slides/001.svg");
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFileAbsoluteUnderCwd: "slides/001.svg",
         // The exact values a real claude-code-acp 0.12.6 was probed
@@ -1219,7 +1219,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下投影片");
+    await postChat(server, "read the slides");
     await done;
     await sse.close();
 
@@ -1232,7 +1232,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "/etc/passwd",
       }),
@@ -1241,7 +1241,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下這個路徑");
+    await postChat(server, "read this path");
     await done;
     await sse.close();
 
@@ -1260,7 +1260,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const id = await openFreshPresentation();
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         readTextFileOnPromptIndex: 1,
         readTextFilePath: "slides/001.svg",
       }),
@@ -1269,7 +1269,7 @@ describe("chat: fs/read_text_file serves virtual paths, never real ones", () => 
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "讀一下投影片");
+    await postChat(server, "read the slides");
     await done;
     await sse.close();
 
@@ -1287,7 +1287,7 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
 
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
         writeTextFileOnPromptIndex: 1,
         writeTextFilePath: "slides/001.svg",
         writeTextFileContent: "<svg>hacked</svg>",
@@ -1297,7 +1297,7 @@ describe("chat: fs/write_text_file always refuses, and the refusal names the com
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "直接改一下檔案");
+    await postChat(server, "edit the file directly");
     await done;
     await sse.close();
 
@@ -1332,14 +1332,14 @@ describe("chat: the whole loop — read via the file method, request permission,
 
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["好的，我先讀一下"], ["改好了"]],
+        replies: [["(ack)"], ["ok, reading first"], ["done"]],
         readTextFileEveryPromptFrom: 1,
         readTextFilePath: "slides/001.svg",
         requestPermissionOnPromptIndex: 1,
         // Single-quoted, per the editorial brief's quoting rule:
         // double quotes are refused outright by the new allowlist grammar,
         // so a real agent following the brief would quote this way.
-        permissionCommand: `slidra text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 財報'`,
+        permissionCommand: `slidra text set ${idFromBrief} slides/001.svg ${elementId} 'Q3 report'`,
       }),
       id,
     );
@@ -1350,14 +1350,14 @@ describe("chat: the whole loop — read via the file method, request permission,
     // content it has ever seen) and is granted permission to run the
     // text-set command it read enough to construct.
     const firstDone = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "把標題改成 Q3 財報");
+    await postChat(server, "change the title to Q3 report");
     await firstDone;
 
     const logAfterFirst = await readFakeAgentLog();
     const readResult = logAfterFirst.find((entry) => "readTextFileResult" in entry) as
       | { readTextFileResult?: string }
       | undefined;
-    expect(readResult?.readTextFileResult).toContain("測試簡報"); // the original title, read before editing
+    expect(readResult?.readTextFileResult).toContain("Test Presentation"); // the original title, read before editing
     const permissionEntry = logAfterFirst.find((entry) => "permissionOutcome" in entry);
     expect(permissionEntry?.permissionOutcome).toEqual({ outcome: "selected", optionId: "allow" });
 
@@ -1367,21 +1367,21 @@ describe("chat: the whole loop — read via the file method, request permission,
     // `slidra` binary the agent's permission command names, is what the
     // agent's own Bash tool would have done once permission came back
     // "allow".
-    const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 財報"]);
+    const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 report"]);
     expect(mutation.ok).toBe(true);
 
     // Turn 2: the change is confirmed only by reading again through the ACP
     // file method — never by inspecting the work directory's real path.
     const secondDone = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "確認一下改好了嗎");
+    await postChat(server, "confirm the change is done?");
     await secondDone;
     await sse.close();
 
     const fullLog = await readFakeAgentLog();
     const readResults = fullLog.filter((entry) => "readTextFileResult" in entry) as Array<{ readTextFileResult?: string }>;
     expect(readResults).toHaveLength(2);
-    expect(readResults[1].readTextFileResult).toContain("Q3 財報");
-    expect(readResults[1].readTextFileResult).not.toContain("測試簡報");
+    expect(readResults[1].readTextFileResult).toContain("Q3 report");
+    expect(readResults[1].readTextFileResult).not.toContain("Test Presentation");
   });
 });
 
@@ -1392,7 +1392,7 @@ describe("chat: the author can see the command run", () => {
   ): Promise<Array<{ event: string; data: unknown }>> {
     const server = await serve(
       fakeAgent({
-        replies: [["(ack)"], ["現在來修改文字："]],
+        replies: [["(ack)"], ["now let me modify the text:"]],
         toolCallOnPromptIndex: 1,
         ...scenario,
       }),
@@ -1401,7 +1401,7 @@ describe("chat: the author can see the command run", () => {
     const sse = new SseReader(stream);
 
     const events = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "把標題改成新標題");
+    await postChat(server, "change the title to New Title");
     const collected = await events;
     await sse.close();
     return collected;
@@ -1427,7 +1427,7 @@ describe("chat: the author can see the command run", () => {
 
   it("relays a failed command together with its output, so the author never has to open a terminal", async () => {
     const events = await commandEventsFor({
-      toolCallCommand: "slidra text set p1 slides/001.svg el-1 '新標題'",
+      toolCallCommand: "slidra text set p1 slides/001.svg el-1 'New Title'",
       toolCallOutcome: "failed",
       toolCallOutput: "zsh: command not found: slidra\nexit code 127",
     });
@@ -1508,13 +1508,13 @@ describe("chat: the author can see the command run", () => {
 
   it("never relays commands from the editorial brief turn", async () => {
     const server = await serve(
-      fakeAgent({ replies: [["(ack)"], ["好的"]], toolCallOnPromptIndex: 0, toolCallCommand: "slidra ls p1" }),
+      fakeAgent({ replies: [["(ack)"], ["ok"]], toolCallOnPromptIndex: 0, toolCallCommand: "slidra ls p1" }),
     );
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
 
     const events = sse.readUntil((e) => e.event === "chat-done");
-    await postChat(server, "你好");
+    await postChat(server, "hi");
     const collected = await events;
     await sse.close();
 

@@ -1,34 +1,34 @@
 # cycle
 
-**解的關係**：`order`
-**單位數**：3–6
-**一句話**：閉環：節點沿圓周排列，箭頭回到起點——重點是「沒有終點」。
+**Relationship solved**: `order`
+**Unit count**: 3–6
+**One line**: A closed loop: nodes arranged around a circle, arrow returning to the start — the point is "there is no end."
 
-**什麼時候用它**：迭代、生命週期、持續改善、反覆發生的流程。
-**什麼時候不要用**：有明確終點的流程——那是 `03 spine-path` 或 `09 chain`。畫成圓會宣稱一個不存在的循環。
+**When to use it**: Iteration, lifecycle, continuous improvement, recurring processes.
+**When not to use it**: Processes with a clear endpoint — that is `03 spine-path` or `09 chain`. Drawing a circle would claim a cycle that doesn't exist.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `cycle.svg`。
+Full SVG: see `cycle.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 環形主軸 | `spine` | 虛線圓，一頁只有一條 | — | — |
-| 節點 ×N | `node` | 沿圓周等距 | — | — |
-| 節點編號 | `label` | | 4 字 | 1 |
-| 階段名 | `label` | 放在節點外側 | 10 字 | 1 |
-| 迴圈箭頭 | `edge` | **至少一個**，標出方向 | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Ring spine | `spine` | Dashed circle, one per page | — | — |
+| Nodes ×N | `node` | evenly spaced around the circle | — | — |
+| Node number | `label` | | 4 chars | 1 |
+| Phase name | `label` | placed outside the node | 10 chars | 1 |
+| Loop arrow | `edge` | **at least one**, indicating direction | — | — |
 
-## 節奏
+## Rhythm
 
-節點等距分布在同一個圓周上。**一定要有箭頭**——沒有箭頭的圓圈只是並列，看不出是循環。節點數 4 個最好看，6 個是上限。
+Nodes are evenly distributed on the same circle. **Arrows are required** — a circle without arrows is just a parallel arrangement, not a cycle. Four nodes look best; six is the upper limit.
 
-`blueprint.shape` 寫 `cycle`。
+Write `blueprint.shape` as `cycle`.
 
-## 變體
+## Variants
 
-- **加中心**：圓心放一個 `node` 當被循環驅動的東西。
-- **螺旋**：圓改成向外的螺旋，表示每一輪都比上一輪大。
+- **Add a center**: place a `node` at the circle's center representing what the cycle drives.
+- **Spiral**: change the circle to an outward spiral, indicating each round is bigger than the last.

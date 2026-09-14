@@ -1,33 +1,33 @@
 # spec-sheet
 
-**解的關係**：`membership`
-**單位數**：1 圖 + 4–8 規格
-**一句話**：左圖右規格表——產品頁的標準解，看得到東西也查得到數字。
+**Relationship solved**: `membership`
+**Unit count**: 1 image + 4–8 specs
+**One line**: Image on the left, spec table on the right — the standard product page: you can see the thing and look up the numbers.
 
-**什麼時候用它**：實體產品、方案、硬體規格。
-**什麼時候不要用**：規格只有兩三項——那用 26 `kpi-row`，表格會顯得繁瑣。
+**When to use it**: Physical products, plans, hardware specs.
+**When not to use it**: Only two or three specs — use 26 `kpi-row` instead; a table would look fussy.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `spec-sheet.svg`。
+Full SVG: see `spec-sheet.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | 產品或方案名 | 14 字 | 1 |
-| 圖 | `node`（`image`） | 左側 | — | — |
-| 規格列 ×N | `node` | 項目名 + 值 | — | — |
-| 項目名 | `label` | 用 `muted` | 8 字 | 1 |
-| 值 | `label` | 用 `text`，右側對齊 | 12 字 | 1 |
+| Title | `label` | product or plan name | 14 chars | 1 |
+| Image | `node` (`image`) | on the left | — | — |
+| Spec rows ×N | `node` | item name + value | — | — |
+| Item name | `label` | use `muted` | 8 chars | 1 |
+| Value | `label` | use `text`, right-aligned | 12 chars | 1 |
 
-## 節奏
+## Rhythm
 
-項目名與值分成兩個對齊的直欄，中間用細分隔線而不是格線。**項目名比值淡**——查表的人在找值，不是在找項目名。
+Item names and values form two aligned columns, separated by thin lines instead of grid lines. **Item names are lighter than values** — the person reading a table is looking for values, not for item names.
 
-`blueprint.shape` 寫 `spec-sheet`。
+Write `blueprint.shape` as `spec-sheet`.
 
-## 變體
+## Variants
 
-- **雙欄規格**：規格分成兩直欄，容納八項以上。
-- **無圖**：拿掉圖，規格佔滿版——但那其實就是 43 `table-full`。
+- **Two-column specs**: split the specs into two columns, fitting eight or more items.
+- **No image**: drop the image, specs take the full width — but that is really 43 `table-full`.

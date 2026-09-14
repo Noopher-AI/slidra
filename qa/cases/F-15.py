@@ -46,10 +46,10 @@ def main() -> int:
     # document coordinates, then self-check against "bullet two" -- if the mapping
     # is wrong, none of the later PASS/FAIL results can be trusted, so a failed
     # self-check aborts with a non-zero exit instead of continuing with the gestures.
-    select("第一點")  # noqa: F821
+    select("Point One")  # noqa: F821
     p1 = selection()["box"]  # noqa: F821
     goto_slide(3)  # noqa: F821
-    select("第三點")  # noqa: F821
+    select("Point Three")  # noqa: F821
     p3 = selection()["box"]  # noqa: F821
     goto_slide(3)  # noqa: F821
 
@@ -60,7 +60,7 @@ def main() -> int:
     def to_page(x: float, y: float) -> tuple[float, float]:
         return origin_x + x * scale, origin_y + y * scale
 
-    select("第二點")  # noqa: F821
+    select("Point Two")  # noqa: F821
     p2 = selection()["box"]  # noqa: F821
     goto_slide(3)  # noqa: F821
     expected_x, expected_y = to_page(640, 390)

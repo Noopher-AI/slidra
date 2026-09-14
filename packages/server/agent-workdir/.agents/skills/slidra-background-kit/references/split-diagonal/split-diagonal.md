@@ -1,26 +1,26 @@
 # split-diagonal
 
-**氣氛**：一條對角線把畫面分成深淺兩半。乾脆、有張力，而且天然適合左右對照。
+**Mood**: A diagonal line splitting the frame into a dark half and a light half. Clean, with tension, and naturally suited to left/right comparison.
 
-**適合**：`anchor`、以及 `contrast` 關係的頁面。
-**不適合**：`dense` 的卡片牆——分割線會穿過卡片。
+**Suited for**: `anchor`, and pages with `contrast` relationships.
+**Not suited for**: `dense` card walls — the split line would cut through the cards.
 
-**建議 opacity**：0.7
+**Suggested opacity**: 0.7
 
-**做法**：一個三角形 path 蓋住右下半，顏色用 `secondary_bg`；交界處加一條 accent 細線。
+**Technique**: A triangle path covering the lower-right half, colored `secondary_bg`; a thin accent line at the seam.
 
-完整 SVG：見同資料夾 `split-diagonal.svg`。
+Full SVG: see `split-diagonal.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--accent)` → `primary` |
-| `mono-ink` | 去彩度：全部改用文字色與 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--accent)` → `text` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--accent)` → `primary` |
+| `mono-ink` | Desaturate: everything uses text color and muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--accent)` → `text` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：07、09、11、15、22。
+**Suggested styles**: 07, 09, 11, 15, 22.

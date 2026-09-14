@@ -1,11 +1,11 @@
 # 08 · soft-pastel
 
-**第一秒的感覺**：粉藕、薄荷、奶油白。圓、軟、沒有一個尖角。像兒童讀物的內頁——安全、友善、看久了不累。
+**First-impression feel**: Pink lotus, mint, cream white. Round, soft, no sharp corners. Like the interior pages of a children's book — safe, friendly, easy on the eyes for a long time.
 
-**適合**：教學、兒少、社群經營、任何希望對方放下戒心的場合。
-**不適合**：專業評估、財務、危機溝通。柔軟會被讀成不夠認真。
+**Suited for**: Education, children, community building, any context where you want the audience to lower their guard.
+**Not suited for**: Professional assessments, finance, crisis communication. Softness reads as not serious enough.
 
-**為什麼是這個配色**：三個彩度都在 40% 上下、明度都高——沒有一個顏色比另一個強，所以畫面不會有壓迫的焦點。文字用深灰而不是黑，純黑在淺彩上太硬。
+**Why this palette**: All three hues sit around 40% saturation with high lightness — no color dominates another, so the frame has no oppressive focal point. Text is dark gray rather than black; pure black is too harsh on pale pastels.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：整份用圓體（jf 開源粉圓）。**圓體是這個風格的一半**——只換配色不換字型，它會變成一個普通的淺色簡報。標題靠字重（700）而不是換字族來分層。
+**Typography and contrast**: The whole deck uses a rounded gothic (JF Open 粉圓). **The rounded face is half of this style** — change only the palette and it becomes an ordinary light deck. Headings are distinguished by weight (700), not by switching families.
 
-**間距節奏**：級距鬆（12/20/32/48/72）。圓體的字面較大，內文維持 24 就夠。
+**Spacing rhythm**: Loose spacing (12/20/32/48/72). Rounded faces have larger glyph boxes; 24 body is enough.
 
-**建議背景**：01 `soft-blobs`（opacity 0.7，跟柔和的調性一致）。 **明亮背景**（背景庫 46–54，為淺底畫的）：46、47、49、50、52。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.7, matching the soft temperament). **Light backgrounds** (background library 46–54, designed for light bases): 46, 47, 49, 50, 52.

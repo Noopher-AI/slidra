@@ -1,39 +1,39 @@
 # chart-pair
 
-**解的關係**：`contrast`
-**單位數**：2
-**一句話**：兩張圖表並排，共用同一組座標與圖例——比較兩組數據時，一致的尺度是唯一重要的事。
+**Relationship solved**: `contrast`
+**Unit count**: 2
+**One line**: Two charts side by side sharing the same axes and legend — when comparing two data sets, a consistent scale is the only thing that matters.
 
-**什麼時候用它**：同一個指標的兩個對象、兩個時期、兩種情境。
-**什麼時候不要用**：兩組數據的量級差很多——同尺度會讓小的那組看不見，改用 27 `chart-focus` 分兩頁講。
+**When to use it**: Two subjects, two periods, or two scenarios of the same metric.
+**When not to use it**: The two data sets differ greatly in magnitude — a shared scale makes the smaller one invisible; use 27 `chart-focus` across two pages instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chart-pair.svg`。
+Full SVG: see `chart-pair.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖表 ×2 | `node`（chart） | **座標範圍必須一致** | — | — |
-| 標籤 ×2 | `label` | | 8 字 | 1 |
-| 結論 | `label` | 差異在哪、代表什麼 | 24 字 | 1–2 |
+| Title | `label` | | 15 chars | 1 |
+| Charts ×2 | `node` (chart) | **axis ranges must match** | — | — |
+| Labels ×2 | `label` | | 8 chars | 1 |
+| Conclusion | `label` | where the difference is, what it means | 24 chars | 1–2 |
 
-## 節奏
+## Rhythm
 
-兩張圖等寬等高。**Y 軸的範圍要手動統一**——自動縮放會讓兩張圖各自佔滿高度，那是最常見的視覺謊言。圖例只放一次（放在兩圖之間或下方）。
+The two charts are equal width and height. **The Y-axis range must be set manually** — auto-scaling lets each chart fill its own height, the most common visual lie. The legend appears once only (between the charts or below).
 
-`blueprint.shape` 寫 `chart-pair`。
+Write `blueprint.shape` as `chart-pair`.
 
-## 怎麼放進去
+## How to place it
 
 ```
 slidra chart add <id> slides/00N.svg --type bar --x 80 --y 176 --width 540 --height 340
-slidra chart data set <id> slides/00N.svg <element-id> --categories 'Q1,Q2,Q3' --series '對象A=12,18,24'
+slidra chart data set <id> slides/00N.svg <element-id> --categories 'Q1,Q2,Q3' --series 'SubjectA=12,18,24'
 ```
 
-## 變體
+## Variants
 
-- **上下版**：兩圖上下排，X 軸共用——時間序比較更清楚。
-- **疊圖**：兩組數列畫在同一張圖上（`chart axis` 的 `dual` 模式），當兩者真的該直接對照時。
+- **Stacked version**: charts stacked vertically, shared X axis — clearer for time-series comparison.
+- **Overlay**: both series drawn on one chart (`chart axis` in `dual` mode), when they truly deserve a direct overlay.

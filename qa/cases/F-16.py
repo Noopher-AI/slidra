@@ -52,7 +52,7 @@ def main() -> int:
     before_fs = font_size_of(before, "el-step-one")
     check("Setup: el-step-one has font-size=40 before resizing", before_fs == "40", before_fs)
 
-    sel = select("第一點")  # noqa: F821
+    sel = select("Point One")  # noqa: F821
     nw = sel["handles"].get("nw")
     check("Setup: the top-left handle (nw) exists", nw is not None, sel["handles"])
     if nw is None:

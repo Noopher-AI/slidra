@@ -1,32 +1,32 @@
 # cover-stack
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：標題、副標、日期講者由上而下貼左緣堆疊——封面的標準解。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: Title, subtitle, and date/speaker stacked top-down, flush left — the standard cover.
 
-**什麼時候用它**：封面。
-**什麼時候不要用**：內容頁。
+**When to use it**: Covers.
+**When not to use it**: Content pages.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `cover-stack.svg`。
+Full SVG: see `cover-stack.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 短棒 | `garnish` | accent 色 | — | — |
-| 大標 | `label`（`cover` 字級） | 大綱裡最強的一句 | 每行 15 字，≤ 2 行 | 1–2 |
-| 副標 | `label`（`subtitle`） | | 24 字 | 1 |
-| 日期講者 | `label`（`caption`） | | 20 字 | 1 |
+| Short bar | `garnish` | accent color | — | — |
+| Main title | `label` (`cover` size) | the strongest line in the outline | 15 chars/line, ≤ 2 lines | 1–2 |
+| Subtitle | `label` (`subtitle`) | | 24 chars | 1 |
+| Date/speaker | `label` (`caption`) | | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-四件貼同一條左緣，垂直間距用 `layout.spacing` 的大級距。**不放頁尾**。大標與副標之間的距離要明顯大於副標與日期之間的——那是分組。
+All four items share the same left edge; vertical gaps use the larger `layout.spacing` steps. **No footer**. The gap between the main title and subtitle must be clearly larger than the gap between subtitle and date — that is the grouping.
 
-`blueprint.shape` 寫 `cover-stack`。
+Write `blueprint.shape` as `cover-stack`.
 
-## 變體
+## Variants
 
-- **置中版**：全部水平置中，適合 `luxury-noir`、`bold-poster` 這種海報感的風格。
-- **右下角資訊**：日期講者移到右下，與大標形成對角平衡。
+- **Centered version**: everything horizontally centered; suits poster-like styles such as `luxury-noir` and `bold-poster`.
+- **Lower-right info**: move the date/speaker to the lower-right, forming a diagonal balance with the title.

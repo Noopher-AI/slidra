@@ -1,320 +1,320 @@
-# SVG 作者指南
+# SVG Authoring Guide
 
-這份文件是 agent **一頁寫一份 SVG** 的依據：舞台骨架、字級表、配色角色、元素角色、一份語法示範、動畫腳本、關係與密度規則，以及最後用 `slidra validate` 驗收。`slidra-plan` 用第 6、7 節寫計畫；`slidra-build` 與 `slidra-new-slide` 用第 0～5 節做頁面。簡報已經有範本或設計過的頁面時，**沿用既有的，不要用這份指南蓋掉它**。
+This document is the basis for the agent to **write one SVG per slide**: the stage skeleton, the type scale table, color roles, element roles, a syntax walkthrough, the animation script, relationship and density rules, and finally acceptance via `slidra validate`. `slidra-plan` uses sections 6 and 7 to write the plan; `slidra-build` and `slidra-new-slide` use sections 0–5 to build pages. When the presentation already has templates or designed pages, **follow what exists — do not overwrite it with this guide**.
 
-三個素材庫各管一段：配色與字級表在 `slidra-style-kit`、背景配方在 `slidra-background-kit`、版面與槽位在 `slidra-layout-kit`。這份指南只寫它們之間共用的規則。
+The three asset kits each own a piece: color and type-scale tables live in `slidra-style-kit`, background recipes in `slidra-background-kit`, layouts and slots in `slidra-layout-kit`. This guide only writes down the rules they share.
 
-所有數字以 **1280×720** 畫布為準（`slidra new` 的預設）。
+All numbers are based on a **1280×720** canvas (the default of `slidra new`).
 
-**同比例的畫布（16:9）**：先 `cat project.json` 讀出 `canvas.width`，算出 `k = width ÷ 1280`，把所有座標、寬度、半徑、字級都乘以 k（1920×1080 就是 ×1.5），`viewBox` 寫成畫布尺寸。
+**Proportional canvases (16:9)**: first `cat project.json` to read `canvas.width`, compute `k = width ÷ 1280`, and multiply every coordinate, width, radius, and font size by k (1920×1080 is ×1.5); write the `viewBox` as the canvas size.
 
-**不同比例的畫布**（直式、方形、A4）：**`k` 不適用**。這些畫布用版面庫裡專門為它們畫的版面（51–55），字級直接照那些檔案的槽位表——直式內容通常在手機上近距離看，字要比 16:9 更大。
+**Non-proportional canvases** (portrait, square, A4): **`k` does not apply**. These canvases use the layouts drawn specifically for them in the layout kit (51–55); use the slot tables in those files directly for font sizes — portrait content is usually read up close on a phone, so type should be larger than 16:9.
 
-| 畫布 | 尺寸 | 用途 |
+| Canvas | Size | Use |
 |---|---|---|
-| 16:9 | 1280×720（或 1920×1080） | 簡報、會議、螢幕 |
-| 4:3 | 1024×768 | 傳統投影機、學術場合 |
-| 3:4 | 1242×1660 | 圖文知識貼文 |
-| 1:1 | 1080×1080 | 方形貼文、語錄卡 |
-| 9:16 | 1080×1920 | 限時動態、短影音封面 |
-| A4 | 1240×1754 | 列印海報、單張文件 |
+| 16:9 | 1280×720 (or 1920×1080) | Presentations, meetings, screens |
+| 4:3 | 1024×768 | Legacy projectors, academic settings |
+| 3:4 | 1242×1660 | Illustrated knowledge posts |
+| 1:1 | 1080×1080 | Square posts, quote cards |
+| 9:16 | 1080×1920 | Stories, short-video covers |
+| A4 | 1240×1754 | Printed posters, single documents |
 
-畫布用 `slidra presentation canvas set <id> --width <w> --height <h>` 設定，而且要在**建第一頁之前**設好。
+Set the canvas with `slidra presentation canvas set <id> --width <w> --height <h>`, and do so **before creating the first page**.
 
-## 0. 怎麼把一頁 SVG 寫進簡報
+## 0. How to write one SVG page into the presentation
 
-- 新頁：`slidra slide add <presentation-id> --svg '<整頁 SVG>'`；要插在第 n 頁之後就加 `--at n`。整頁覆寫：`slidra slide set <presentation-id> slides/00N.svg --svg '<整頁 SVG>'`。
-- **引號規則**：整段 SVG 用單引號包住，裡面**只能用雙引號**當屬性引號，整段**不能出現任何半形單引號** `'`（命令列打不進去）；文字裡的 `&` 寫成 `&amp;`、`<` 寫成 `&lt;`。
-- 寫入時 Slidra 會：檢查根節點是 `<svg>`、補或核對 `viewBox`；把裸圖元包進 `<g>`、補 id、把 `transform` 搬上容器；拒絕 `<script>`／`<foreignObject>`；把**文字框宣告**轉成真正的文字框（下一段）。`<defs>`、漸層、濾鏡、clipPath、`path` 都可以用。
-- 成功回傳 `data.elementIds`（文件順序的所有元素 id）。**自己給 id**（`el-<語意>`，同一頁內不重複），動畫腳本才對得上；`data-slidra-name` 給人看，照給。
-- 頁面底色不寫在 SVG 裡，寫完後 `slidra slide style set <presentation-id> slides/00N.svg --background <該頁指定的角色色碼>`。
+- New page: `slidra slide add <presentation-id> --svg '<full-page SVG>'`; to insert after page n, add `--at n`. Full-page overwrite: `slidra slide set <presentation-id> slides/00N.svg --svg '<full-page SVG>'`.
+- **Quoting rules**: wrap the entire SVG in single quotes; **only double quotes** may be used as attribute quotes inside; the whole block **must not contain any single quote** `'` (the command line can't type one in); write `&` in text as `&amp;`, and `<` as `&lt;`.
+- On write, Slidra will: check that the root node is `<svg>`, add or verify the `viewBox`; wrap bare primitives into `<g>`, add ids, and lift `transform` up to the container; reject `<script>`/`<foreignObject>`; convert **text-box declarations** into real text boxes (next section). `<defs>`, gradients, filters, clipPath, and `path` are all allowed.
+- On success it returns `data.elementIds` (all element ids in document order). **Assign your own ids** (`el-<semantic>`, unique within a page) so the animation script lines up; `data-slidra-name` is for humans, use it as given.
+- The page background color is not written in the SVG; after writing, run `slidra slide style set <presentation-id> slides/00N.svg --background <the role color assigned to this page>`.
 
-### 寫入閘門：送出前自己先過這一遍
+### Write gate: run this pass yourself before submitting
 
-`slide add --svg`／`slide set --svg` **會先驗這一頁，沒過就整頁拒收**（回傳列出每一條沒過的規則，什麼都不會被寫進去）。擋的都是「只能整頁重寫才修得好」的東西——與其讓它寫進去、待會兒再整頁重寫一次，不如現在就對。**這不是作者按了拒絕**，是這一頁還沒達標。
+`slide add --svg`/`slide set --svg` **validate this page first; if it fails, the whole page is rejected** (the response lists every rule that failed, and nothing is written). What it blocks are things that "can only be fixed by rewriting the whole page" — rather than let it write it in and then rewrite the whole page later, get it right now. **This is not the author pressing reject**; it's that this page hasn't met the bar yet.
 
-送出前照著算一遍：
+Check the following in your head before submitting:
 
-1. **文字框會不會撞在一起**：文字框高度 ＝ 行數 × 1.45 × 字級，`y + 高度` 就是底。**行數要自己估**——寬度除以字級估得出一行放幾個字，中文字寬約等於字級、英數約 0.5 倍。下一個文字框的 `y` 必須大於上一個的底。（這次最常犯的錯：標題以為一行、實際折成兩行，副標就被壓住了。）
-2. **會不會出界**：文字框右緣 `x + 寬度` ≤ 1200（×k）、底 ≤ 648（×k）；頁尾那兩個 18 級的例外，可到 700（×k）。
-3. **字級與顏色**：字級只能是字級表上的值，文字色只有 text／muted（大數字與粗體標籤可 accent、結語頁可 background），色塊只用配色角色、`none` 或 `url(#…)`。
-4. **一頁一個標題**：只有一個文字框用標題級字級。
-5. **文字量**：標題、每條要點的長度與條數、整頁總字數都在第 7 節的表上。
-6. **角色要自洽**：`relationship` 不是 `none` 的頁至少一個 `node`；`label` 要有歸屬、`spine` 一頁一條、`edge` 兩端要接到 node、`garnish` 不承載意義（第 3b 節）。
-7. **圖片指得到**：`href` 寫 `../assets/<檔名>`，檔名照 `ls <presentation-id> assets` 或 `asset import` 的回傳；資產不存在就先匯入。
-8. **有背景圖時**：每個文字框（頁尾與 ≥ claim 的大字除外）都要落在一塊 scrim 面板上（第 4b 節）。
+1. **Will text boxes collide**: text-box height = lines × 1.45 × font size, and `y + height` is the bottom. **Estimate the line count yourself** — divide width by font size to estimate how many characters fit on a line; a CJK character is about one font-size wide, a Latin/digit about 0.5×. The next text box's `y` must be greater than the previous one's bottom. (The most common mistake this time: assuming a title is one line when it actually wraps to two, squashing the subtitle.)
+2. **Will it go out of bounds**: text box right edge `x + width` ≤ 1200 (×k), bottom ≤ 648 (×k); the two 18-level footer exceptions may reach 700 (×k).
+3. **Font size and color**: font size can only be a value from the type-scale table; text color is only text/muted (big numbers and bold labels may be accent, closing pages may be background); shape fills use only color roles, `none`, or `url(#…)`.
+4. **One title per page**: only one text box uses the title-level font size.
+5. **Text volume**: title length, each bullet's length and count, and total characters per page are all in the table in section 7.
+6. **Roles must be self-consistent**: a page whose `relationship` is not `none` needs at least one `node`; a `label` must have an owner, a `spine` is one per page, an `edge` must connect to a node on both ends, and `garnish` carries no meaning (section 3b).
+7. **Images must resolve**: write `href` as `../assets/<filename>`; get the filename from the return of `ls <presentation-id> assets` or `asset import`; if the asset doesn't exist, import it first.
+8. **When there is a background image**: every text box (except the footer and big text ≥ claim) must sit on a scrim panel (section 4b).
 
-**不在這裡擋**、寫進去之後再補命令即可的：轉場與進場效果、頁面底色、背景圖、備忘稿、範本登記、`blueprint`。這些缺了 `validate` 會報，但不影響這一頁寫得進去。
+**Not blocked here**, things you can add with a follow-up command after writing: transitions and enter effects, page background color, background image, notes, template registration, `blueprint`. If these are missing, `validate` will report it, but it doesn't affect whether this page writes in.
 
-### 文字框宣告
+### Text-box declaration
 
-**所有會被讀的文字**都用文字框宣告寫，才會自動換行、能加清單、可被就地編輯、被 `validate` 驗到：
+**All text that will be read** is written with a text-box declaration, so it auto-wraps, can have lists, can be edited in place, and is checked by `validate`:
 
 ```xml
-<text id="el-bullets" data-slidra-name="要點" data-slidra-text-width="1120" x="80" y="176"
+<text id="el-bullets" data-slidra-name="Bullets" data-slidra-text-width="1120" x="80" y="176"
       font-size="24" font-weight="400" fill="<text>"
-      data-slidra-text-align="left" data-slidra-list="bullet bullet bullet">第一條
-第二條
-第三條</text>
+      data-slidra-text-align="left" data-slidra-list="bullet bullet bullet">First item
+Second item
+Third item</text>
 ```
 
-- `x`／`y` 是文字框**左上角**（不是基線）。文字框高度＝行數 × 1.45 × 字級；排垂直位置用這條算。
-- 內容以換行分段，一段一條要點；`data-slidra-list` 每段一個 token（`bullet`／`number`／`none`）。
-- `font-family` 只能寫簡報已內嵌的家族（`Noto Sans TC` 內建；其他照 `reference/fonts.md` 匯入）；字重只用 400 與 700；`data-slidra-text-align` ∈ left／center／right。
-- 內容只能是純文字，`<tspan>` 由 Slidra 自己產生。
-- 沒有 `data-slidra-text-width` 的裸 `<text>` 只有一個用途：章節頁的浮水印大字，那是裝飾不是內容——而且要標 `data-slidra-role="garnish"` 說明它是裝飾，否則寫入會被拒（沒標的裸 `<text>` 一律當成「文字掉了文字框」）。
+- `x`/`y` is the text box's **top-left corner** (not the baseline). Text-box height = lines × 1.45 × font size; use this to place vertically.
+- Content is separated by newlines, one bullet per line; `data-slidra-list` has one token per line (`bullet`/`number`/`none`).
+- `font-family` may only be a family already embedded in the presentation (`Noto Sans TC` is built in; others import per `reference/fonts.md`); font weight is only 400 and 700; `data-slidra-text-align` ∈ left/center/right.
+- Content may only be plain text; `<tspan>` is produced by Slidra itself.
+- A bare `<text>` without `data-slidra-text-width` has exactly one use: the watermark big text on a section page. That is decoration, not content — and it must be marked `data-slidra-role="garnish"` to declare it's decorative, or the write is rejected (any unmarked bare `<text>` is treated as "text dropped out of a text box").
 
-## 1. 舞台骨架
+## 1. Stage skeleton
 
-每一頁共用的固定元素；**內容頁**（章節頁、要點頁、對照頁、大數字頁）都放，**封面與結語頁不放頁尾**：
+Fixed elements shared by every page; **content pages** (section pages, bullet pages, comparison pages, big-number pages) all include them, **cover and closing pages do not include the footer**:
 
-| 元素 | 寫法 |
+| Element | How to write |
 |---|---|
-| 頁尾線 | `<line id="el-footer-rule" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>` |
-| 頁尾簡報名（左下） | 文字框宣告 x=80 y=668 w=600 字級 18 muted，內容 `{{ presentation_name }}` |
-| 頁碼（右下） | 文字框宣告 x=800 y=668 w=400 字級 18 muted 靠右，內容 `{{ slide_number }} / {{ slide_total }}`（寬度要放得下模板字串本身，換行是以字面量算的） |
+| Footer rule | `<line id="el-footer-rule" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>` |
+| Footer presentation name (bottom-left) | Text-box declaration x=80 y=668 w=600 size 18 muted, content `{{ presentation_name }}` |
+| Page number (bottom-right) | Text-box declaration x=800 y=668 w=400 size 18 muted right-aligned, content `{{ slide_number }} / {{ slide_total }}` (width must fit the template string itself; wrapping is computed on the literal) |
 
-**裝飾幾何（大圓、光暈、色團、光束、對角線、格線、光點）一律住在背景圖資產裡**，頁面 SVG 只放內容元素、scrim 與頁尾。計畫 `background: off` 時才把舞台大圓 `<ellipse id="el-orb" cx="1180" cy="60" rx="420" ry="420" fill="<primary>" opacity="0.12"/>` 放進內容頁的 SVG（章節頁與大數字頁不放）。
+**Decorative geometry (big circles, glows, color blobs, beams, diagonals, grid lines, light dots) all lives in the background image asset**; the page SVG only holds content elements, scrims, and the footer. Only when the plan's `background: off` do you put the stage big circle `<ellipse id="el-orb" cx="1180" cy="60" rx="420" ry="420" fill="<primary>" opacity="0.12"/>` into a content page's SVG (not on section or big-number pages).
 
-- 內容區 x 80～1200、y 72～648；標題頂端固定 y=72、左緣固定 x=80，整份不漂移。這幾個邊界來自 `design-spec.layout`（`side_margin` / `bottom_margin` / `footer_margin`），`validate` 依它驗溢出。頁面內的間距一律取自 `layout.gutter` 與 `layout.spacing` 的級距。
-- 裝飾幾何（圓、線、path）**可以超出畫布**，這是刻意的出血；文字框不可以。
-- `{{ … }}` 是動態文字，顯示時才代換成實際值，`cat` 讀回看到的是字面。
+- Content area is x 80–1200, y 72–648; title top is fixed at y=72, left edge fixed at x=80, the whole deck doesn't drift. These bounds come from `design-spec.layout` (`side_margin` / `bottom_margin` / `footer_margin`); `validate` checks overflow against them. All spacing within a page comes from the `layout.gutter` and `layout.spacing` steps.
+- Decorative geometry (circles, lines, paths) **may extend beyond the canvas**; this is deliberate bleed. Text boxes may not.
+- `{{ … }}` is dynamic text, substituted with real values at display time; what `cat` reads back is the literal.
 
-## 2. 字級表
+## 2. Type scale
 
-一份簡報每個角色只用一個字級；同一角色在不同頁上不得忽大忽小。字級的實際數值來自 `plan/design-spec.md` 的 `type_scale`（由 `slidra-style-kit` 的風格檔提供），下表是**角色的意思**：
+A presentation uses only one size per role; the same role must not vary in size across different pages. The actual numeric values of the scale come from `type_scale` in `plan/design-spec.md` (supplied by `slidra-style-kit`'s style file); the table below is the **meaning of the roles**:
 
-| 角色（type_scale 鍵） | 預設 | 字重 | 顏色 | 用在 |
+| Role (type_scale key) | Default | Weight | Color | Used for |
 |---|---|---|---|---|
-| 封面大標（`cover`） | 72 | 700 | text | 封面，≤ 2 行、每行 ≤ 15 字 |
-| 章節名（`section`） | 56 | 700 | text | 章節頁 |
-| 大數字（`number`） | 140 | 700 | accent | 大數字頁的數字 |
-| 大主張（`claim`） | 48 | 700 | text；結語頁用 background | 大數字頁的一句話、結語頁的結論 |
-| 頁標題（`title`） | 40 | 700 | text | 要點頁、對照頁 |
-| 副標／欄標／卡片編號（`subtitle`） | 28 | 400（副標）／700（欄標、卡片編號、章節編號） | muted（副標）／text（欄標）／accent（編號） | 封面副標、對照頁欄標、要點頁卡片編號、大數字頁說明 |
-| 內文（`body`） | 24 | 400 | text | 要點頁關鍵詞、結語頁下一步 |
-| 欄內文（`column`） | 22 | 400；結語小標 700 | text；結語小標 accent | 對照頁兩欄內文、結語頁小標 |
-| 標籤／來源／頁尾（`caption`） | 18 | 400 | muted | 封面日期講者、資料來源、頁尾 |
+| Cover title (`cover`) | 72 | 700 | text | Cover, ≤ 2 lines, ≤ 15 chars per line |
+| Section name (`section`) | 56 | 700 | text | Section pages |
+| Big number (`number`) | 140 | 700 | accent | The number on a big-number page |
+| Big claim (`claim`) | 48 | 700 | text; closing pages use background | The one-liner on a big-number page, the conclusion on a closing page |
+| Page title (`title`) | 40 | 700 | text | Bullet pages, comparison pages |
+| Subtitle/column label/card number (`subtitle`) | 28 | 400 (subtitle) / 700 (column label, card number, section number) | muted (subtitle) / text (column label) / accent (number) | Cover subtitle, comparison-page column labels, bullet-page card numbers, big-number-page caption |
+| Body (`body`) | 24 | 400 | text | Bullet-page keywords, closing-page next steps |
+| Column body (`column`) | 22 | 400; closing sublabel 700 | text; closing sublabel accent | Comparison-page two-column body, closing-page sublabels |
+| Label/source/footer (`caption`) | 18 | 400 | muted | Cover date/speaker, data source, footer |
 
-## 3. 配色角色
+## 3. Color roles
 
-每份簡報**只用一組**七個角色的色碼，來自 `plan/design-spec.md` 的 `palette`（由 `slidra-style-kit` 挑）；作者指定了顏色就照作者。SVG 範例裡的 `<role>` 寫入前都要換成該組的色碼。
+Each presentation uses **only one set** of the seven role colors, from `palette` in `plan/design-spec.md` (chosen by `slidra-style-kit`); if the author specifies colors, follow the author. The `<role>` in the SVG examples must be replaced with that set's color codes before writing.
 
-| 角色 | 用在 |
+| Role | Used for |
 |---|---|
-| background | 頁面底色；結語頁的文字色 |
-| secondary_bg | 章節頁底色、卡片與面板、VS 圓 |
-| primary | 骨架色條、左欄頂線、結語頁滿版底、背景圖的大面積 |
-| accent | 大數字、短棒與底線、卡片編號、章節編號、結語小標與方塊 |
-| secondary_accent | 對照頁右欄頂線；背景圖只給線條與小面積 |
-| text | 主要文字 |
-| muted | 副標、來源、頁尾、章節浮水印 |
+| background | Page base color; closing-page text color |
+| secondary_bg | Section-page base, cards and panels, VS circle |
+| primary | Skeleton color bar, left-column top line, closing-page full-bleed background, large areas of the background image |
+| accent | Big numbers, short bars and underlines, card numbers, section numbers, closing sublabels and blocks |
+| secondary_accent | Comparison-page right-column top line; the background image gives it only lines and small areas |
+| text | Primary text |
+| muted | Subtitles, sources, footer, section watermark |
 
-- 文字顏色只用 text 與 muted；例外：大數字與粗體標籤（卡片編號、章節編號、結語小標、VS）用 accent，結語頁全部文字用 background。內文與副標用強調色會過不了對比度，`validate` 會擋。
-- 色塊與線條的顏色只用 primary／accent／secondary_accent／secondary_bg／background；半透明靠 `opacity`。
+- Text color uses only text and muted; exceptions: big numbers and bold labels (card numbers, section numbers, closing sublabels, VS) use accent, and all closing-page text uses background. Body and subtitle in accent fail the contrast check; `validate` will block it.
+- Shape and line colors use only primary/accent/secondary_accent/secondary_bg/background; translucency via `opacity`.
 
-## 3b. 元素角色：每個元素是為了什麼而存在
+## 3b. Element roles: what each element exists for
 
-座標可以為內容調整，但**每個元素扮演的角色不能含糊**。在元素上宣告 `data-slidra-role`，`validate` 就能在不管座標的前提下檢查這一頁的結構是否成立。
+Coordinates may be adjusted to fit content, but **the role each element plays must not be ambiguous**. Declare `data-slidra-role` on elements, and `validate` can check whether the page's structure holds without regard to coordinates.
 
-| 角色 | 意思 | 典型元素 |
+| Role | Meaning | Typical elements |
 |---|---|---|
-| `field` | 關係發生的區域 | 卡片底、欄位面板、色帶 |
-| `node` | 一個語意單位 | 每張卡片、對照的每一欄、流程的每一站 |
-| `spine` | 這一頁的閱讀主軸 | 章節頁的骨架色條、時間軸的主線 |
-| `edge` | 必要的連接 | 因果箭頭、依賴線 |
-| `label` | 附著在某個 owner 上的文字 | 卡片裡的要點字、節點名稱 |
-| `garnish` | 關係成立**之後**才加的裝飾 | 底線、小方塊、強調短棒 |
+| `field` | The region where the relationship happens | Card base, column panel, color band |
+| `node` | A single semantic unit | Each card, each column of a comparison, each station of a flow |
+| `spine` | This page's reading axis | Section page's skeleton color bar, a timeline's main line |
+| `edge` | A necessary connection | Causal arrow, dependency line |
+| `label` | Text attached to some owner | A card's bullet words, a node's name |
+| `garnish` | Decoration added only **after** the relationship holds | Underlines, small squares, emphasis bars |
 
-- `relationship` 不是 `none` 的頁面至少要標出一個 `node`（`role.required`）。宣告了就要自洽。
-- `background` 是 CLI 自己寫在背景圖容器上的，作者不要手寫。
-- `validate` 會擋的四件事：`garnish` 不可以是文字框（裝飾不承載意義）；一頁最多一條 `spine`；有 `edge` 就至少要有兩個 `node`；`label` 的數量不得少於當作色塊的 `node`。
-- 文字框宣告上的 `data-slidra-role` 會被帶到正規化後的元素上；寫了不在表上的角色會直接被 `slide add --svg` 拒絕。
+- A page whose `relationship` is not `none` must mark at least one `node` (`role.required`). If you declare roles, they must be self-consistent.
+- `background` is written by the CLI itself onto the background-image container; the author should not hand-write it.
+- Four things `validate` will block: `garnish` may not be a text box (decoration carries no meaning); at most one `spine` per page; if there's an `edge` there must be at least two `node`s; the count of `label`s may not be fewer than the `node`s acting as color blocks.
+- The `data-slidra-role` on a text-box declaration is carried onto the normalized element; writing a role not in the table is rejected outright by `slide add --svg`.
 
-## 4. 語法示範
+## 4. Syntax walkthrough
 
-這一頁只為了示範寫法：文字框怎麼宣告、角色怎麼標、頁尾三件怎麼放、scrim 疊在誰前面。**它不是版面建議**，版面去 `slidra-layout-kit` 挑。
+This page is only to demonstrate syntax: how to declare a text box, how to mark roles, how to place the three footer pieces, and what a scrim sits in front of. **It is not a layout suggestion** — pick a layout from `slidra-layout-kit`.
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-<rect id="el-scrim-title" data-slidra-name="標題底" data-slidra-role="field" x="80" y="64" width="1120" height="88" fill="<background>" opacity="0.7"/>
-<text id="el-title" data-slidra-name="頁標題" data-slidra-role="label" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">標題是這一頁的主張</text>
+<rect id="el-scrim-title" data-slidra-name="Title scrim" data-slidra-role="field" x="80" y="64" width="1120" height="88" fill="<background>" opacity="0.7"/>
+<text id="el-title" data-slidra-name="Page title" data-slidra-role="label" data-slidra-text-width="1120" x="80" y="72" font-size="40" font-weight="700" fill="<text>">The title is this page's claim</text>
 <g id="el-unit-1" data-slidra-role="node"><rect x="80" y="176" width="1120" height="72" fill="<secondary_bg>"/></g>
-<text id="el-point-1" data-slidra-name="要點 1" data-slidra-role="label" data-slidra-text-width="960" x="200" y="195" font-size="24" fill="<text>">一行關鍵詞，不加句號</text>
-<line id="el-footer-rule" data-slidra-name="頁尾線" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
-<text id="el-footer-name" data-slidra-name="頁尾簡報名" data-slidra-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
-<text id="el-footer-page" data-slidra-name="頁碼" data-slidra-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-slidra-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
+<text id="el-point-1" data-slidra-name="Point 1" data-slidra-role="label" data-slidra-text-width="960" x="200" y="195" font-size="24" fill="<text>">A line of keywords, no period</text>
+<line id="el-footer-rule" data-slidra-name="Footer rule" x1="80" y1="656" x2="1200" y2="656" stroke="<muted>" stroke-width="1" opacity="0.4"/>
+<text id="el-footer-name" data-slidra-name="Footer presentation name" data-slidra-text-width="600" x="80" y="668" font-size="18" fill="<muted>">{{ presentation_name }}</text>
+<text id="el-footer-page" data-slidra-name="Page number" data-slidra-text-width="400" x="800" y="668" font-size="18" fill="<muted>" data-slidra-text-align="right">{{ slide_number }} / {{ slide_total }}</text>
 </svg>
 ```
 
-從這一份要帶走的**語法事實**：
+The **syntax facts** to take from this one:
 
-- 每個元素有 `id` 與 `data-slidra-name`，語意元素再加 `data-slidra-role`（第 3b 節）。
-- scrim 就是一塊在被墊文字**之前**出現的 rect；它同時可以是那段內容的 `field`。
-- 上面的 80／1120／656 是 `side_margin: 80` 時的值，錨點不同就跟著換。
+- Every element has an `id` and `data-slidra-name`; semantic elements add `data-slidra-role` (section 3b).
+- A scrim is a rect that appears **before** the text it pads; it may simultaneously be that content's `field`.
+- The 80/1120/656 above are the values for `side_margin: 80`; change them to match if the anchors differ.
 
-## 4b. 背景圖：由你產生的 SVG 圖片，放在頁面最底層
+## 4b. Background image: an SVG image you produce, placed at the page's bottom layer
 
-背景圖是一張獨立的 SVG 資產，用 `slide background set` 放在頁面**最底層**（容器 `id="el-background"`、`data-slidra-role="background"`、鎖定，作者拖不動、`validate` 不驗它、不加動畫）。它把頁面的氣質再往上拉一層，但**不承載意義**：拿掉它，頁面的意思一個字都不少。計畫 `plan/outline.md` 的 `background` 是 `off` 時整份都不放。
+The background image is an independent SVG asset, placed at the **bottom layer** of the page with `slide background set` (container `id="el-background"`, `data-slidra-role="background"`, locked — the author can't drag it, `validate` doesn't check it, no animation added). It raises the page's character a notch but **carries no meaning**: remove it and the page's meaning loses not a single word. When the plan's `plan/outline.md` `background` is `off`, put none in the whole deck.
 
-配方來自 `slidra-background-kit`（計畫階段已經挑好，寫在背景題的 `note`）；配方檔會說它適合哪種 `rhythm`、建議的 opacity。一份簡報**最多兩種配方**（定錨頁一種、內容頁一種），同配方同色系只建一個資產，所有頁面重用同一個路徑。頁面底色是 `primary` 時（結語頁）opacity 降到 0.6 左右，色團會變成同色系的層次。
+The recipe comes from `slidra-background-kit` (already chosen at the planning stage, written in the background question's `note`); the recipe file says which `rhythm` it suits and its suggested opacity. A presentation uses **at most two recipes** (one for anchor pages, one for content pages); a recipe of the same color family builds one asset, and all pages reuse the same path. When the page background is `primary` (closing page), lower opacity to about 0.6 so the color blobs become tonal layers of the same family.
 
-### 有背景圖時的 scrim 規則
+### Scrim rules when there is a background image
 
-背景圖再暗也會降低小字的對比，所以 `validate` 的 `structure.scrim` 會要求：**頁面有背景圖時，每個文字框（頁尾除外）都要完全落在一塊「scrim 面板」上**——一個在文件順序上位於它之前、fill 是 `background` 或 `secondary_bg`、`opacity` 缺省或 ≥ 0.6 的 rect。字級 ≥ `claim`（48）的大字例外：大標、章節名、大數字、結語主張不需要 scrim，配方保證那些區域是安靜的。
+Even a dark background image lowers small-text contrast, so `validate`'s `structure.scrim` requires: **when a page has a background image, every text box (except the footer) must sit entirely on a "scrim panel"** — a rect that appears earlier in document order, whose fill is `background` or `secondary_bg`, and whose `opacity` is omitted or ≥ 0.6. Big text at font size ≥ `claim` (48) is the exception: the big title, section name, big number, and closing claim don't need a scrim; the recipe guarantees those regions are quiet.
 
-**怎麼滿足它，是這一頁的構圖決定，不是查表：**
+**How to satisfy this is a composition decision for this page, not a lookup:**
 
-- **已經有 `field` 的頁面**（卡片、面板、共同場域）——`field` 本身就是 scrim，只要它的 fill 是 `background`／`secondary_bg`、opacity ≥ 0.6，落在上面的 `label` 就過了。**先想這段文字屬於哪個 `field`，而不是先想要加哪一塊 scrim**。
-- **落在 `field` 之外的文字**（標題、頁間說明、來源）——替它加一塊 scrim rect：涵蓋該文字框的四邊、放在它之前、fill 取 `background` 或 `secondary_bg`（頁面底色是 `primary` 時取 `primary`）、`opacity` 0.65～0.7。寬高由那個文字框決定。
-- **scrim 留在安靜區**：配方保證左半與中央（x 80～760、y 72～648）安靜，亮部在右緣與右下。一塊延伸到亮部的 scrim 會在那裡露出一片灰板——寧可讓文字框窄一點。
-- `claim` 級以上的大字與頁尾不需要 scrim，多加一塊面板會讓喘息頁變擁擠。
+- **Pages that already have a `field`** (cards, panels, shared field) — the `field` itself is the scrim, as long as its fill is `background`/`secondary_bg` and opacity ≥ 0.6; the `label` sitting on it passes. **First think which `field` this text belongs to, not first think which scrim to add**.
+- **Text that falls outside a `field`** (titles, between-page explanations, sources) — add a scrim rect for it: covering that text box's four edges, placed before it, fill taken from `background` or `secondary_bg` (`primary` when the page base is `primary`), `opacity` 0.65–0.7. Its width and height are set by that text box.
+- **Keep scrims in quiet regions**: the recipe guarantees the left half and center (x 80–760, y 72–648) are quiet, with light at the right edge and bottom-right. A scrim extending into a bright region shows a gray patch there — better to make the text box narrower.
+- Big text at `claim` level or above and the footer need no scrim; adding an extra panel makes a breathing page feel crowded.
 
-scrim 是面板，但喘息頁的 `rhythm.breathing-cards` 只數 `secondary_bg` 且 ≥ 200×80 的 rect——用 `background` 色、或尺寸小於這個的 scrim 不會被算進去。
+A scrim is a panel, but a breathing page's `rhythm.breathing-cards` only counts rects that are `secondary_bg` and ≥ 200×80 — a scrim using the `background` color, or smaller than that, isn't counted.
 
-### 命令順序
+### Command order
 
-1. 同配方同色系只做一次：`slidra asset import <presentation-id> --svg '<配方 SVG，角色換成色碼>' --name bg-<配方>-<色系>.svg`（檔名只能用英數、`-`、`_`；同名已存在會被拒絕）。回傳 `data.path` 是 `assets/bg-….svg`。
-2. 寫該頁：`slidra slide add <presentation-id> --svg '<整頁 SVG>'`（含 scrim rect）。
-3. `slidra slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <配方建議值>`；要拿掉就 `--none`。
-4. 動畫照第 5 節；背景圖從第一格就在。
+1. One build per recipe and color family: `slidra asset import <presentation-id> --svg '<recipe SVG, roles replaced with color codes>' --name bg-<recipe>-<family>.svg` (filename allows only alphanumerics, `-`, `_`; an existing same name is rejected). The returned `data.path` is `assets/bg-….svg`.
+2. Write the page: `slidra slide add <presentation-id> --svg '<full-page SVG>'` (including the scrim rect).
+3. `slidra slide background set <presentation-id> slides/00N.svg --asset <data.path> --opacity <recipe-suggested value>`; to remove it use `--none`.
+4. Animation per section 5; the background image is present from the first frame.
 
-## 5. 動畫腳本
+## 5. Animation script
 
-**一次點擊＝講者講一件事，不是畫一個元素。** 一頁需要幾個 `on-click`，由這一頁要分幾段講決定（就是 `blueprint.steps`）。
+**One click = the speaker makes one point, not draws one element.** How many `on-click` a page needs is decided by how many segments this page has to be spoken in (i.e. `blueprint.steps`).
 
-計畫 `animation`：`full`（預設，逐段揭露）、`minimal`（整頁一次到齊，只留一個 on-click）、`none`（不加）。
+Plan `animation`: `full` (default, reveal step by step), `minimal` (whole page arrives at once, keep only one on-click), `none` (add nothing).
 
-### 5.1 效果下在群組上
+### 5.1 Effects go on groups
 
-先把同一段話裡的元素 `element group` 成一個群組，**再對群組 id 下一個效果**。群組就是動畫的錨點——一段一個錨點，一個錨點一個效果。
+First `element group` the elements of the same segment into a group, **then apply one effect to the group id**. The group is the animation's anchor — one anchor per segment, one effect per anchor.
 
 ```
-slidra effect add <presentation-id> slides/00N.svg <群組 id> --family enter --effect <效果> --start on-click --duration <秒>
+slidra effect add <presentation-id> slides/00N.svg <group id> --family enter --effect <effect> --start on-click --duration <seconds>
 ```
 
-- `element group` 會清掉成員既有的效果，所以**一定先 group 再套動畫**。
-- 整份做完只下一次轉場：`slidra slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all`（`animation` 為 `none` 時不下）。
+- `element group` clears members' existing effects, so **always group first, then apply animation**.
+- When the whole deck is done, apply the transition only once: `slidra slide transition set <presentation-id> slides/001.svg --enter fade --enter-duration 0.3 --all` (don't apply it when `animation` is `none`).
 
-### 5.2 哪些東西進動畫（靠角色判斷）
+### 5.2 What enters the animation (decide by role)
 
-| 角色 | 進動畫？ |
+| Role | Enters animation? |
 |---|---|
-| `node`（連同它的 `field`／`label`，通常已在同一個群組裡） | ✅ 每段一個 `on-click` |
-| `spine` | ✅ 跟它串起的第一段一起（`with-previous`），或自成第一步 |
-| `edge` | ✅ 跟它連接的後一個 node 一起 |
-| `garnish` | ❌ 裝飾是關係成立之後才加的，沒有可以講的那一步（`role.garnish-animated`） |
-| `background`（背景圖）、頁尾線、簡報名、頁碼 | ❌ 從第一格就在 |
+| `node` (together with its `field`/`label`, usually already in the same group) | ✅ one `on-click` per segment |
+| `spine` | ✅ with the first segment it strings together (`with-previous`), or as its own first step |
+| `edge` | ✅ together with the next node it connects |
+| `garnish` | ❌ decoration is added only after the relationship holds; there's no step to speak it (`role.garnish-animated`) |
+| `background` (background image), footer rule, presentation name, page number | ❌ present from the first frame |
 
-**判斷依據是角色，不是元素叫什麼名字。** 沒有標角色又看起來像裝飾的東西（純色塊、線、圓）一律不加。
+**The basis for the decision is the role, not what the element is called.** An unmarked role that looks decorative (plain color blocks, lines, circles) is never added.
 
-### 5.3 強度
+### 5.3 Intensity
 
-| `animation` | 做法 |
+| `animation` | How |
 |---|---|
-| `full` | 每個講述步驟一個 `on-click`，步數等於 `blueprint.steps` |
-| `minimal` | 整頁只有一個 `on-click`（第一個群組），其餘 `with-previous` |
-| `none` | 不加效果，也不下轉場 |
+| `full` | one `on-click` per speaking step; the step count equals `blueprint.steps` |
+| `minimal` | only one `on-click` on the whole page (the first group), the rest `with-previous` |
+| `none` | add no effects, and no transition either |
 
-- **一頁的 `on-click` 步驟不超過 5**。超過就該拆頁。
-- 可用的 enter 效果只有 `appear`、`fade`、`fly-up`、`fly-left`、`zoom`。並列用 `fade`、有方向的用 `fly-left`／`fly-up`、單一焦點用 `zoom`。
+- **A page's `on-click` steps do not exceed 5**. More than that means the page should be split.
+- The only available enter effects are `appear`, `fade`, `fly-up`, `fly-left`, `zoom`. Use `fade` for parallel items, `fly-left`/`fly-up` for directional ones, and `zoom` for a single focus.
 
-## 6. 先定關係，再選解法
+## 6. Decide the relationship first, then choose the layout
 
-**不要問「這是哪一種頁型」，要問「這一頁的內容之間是什麼關係」。** 關係決定幾何要承載什麼；頁型只是某些關係的已知解的名字。
+**Don't ask "which page type is this"; ask "what is the relationship between the content on this page".** The relationship decides what the geometry must carry; a page type is just the known-solution name for certain relationships.
 
-### 6.1 七種關係
+### 6.1 Seven relationships
 
-| 關係 | 什麼時候是它 | 幾何要承載的東西 |
+| Relationship | When it's this | What the geometry must carry |
 |---|---|---|
-| `membership` | 並列、歸屬、同一組裡的幾件事 | 共同的場域或重複的單位；**沒有方向** |
-| `order` | 順序、步驟、排名、時間 | 一條看得出方向的閱讀路徑：直線／轉折／上升；起點與終點要分得出來 |
-| `contrast` | A vs B、之前／之後、選項比較 | 共用的基準線加上分隔；兩邊的不變量要對齊才看得出差異 |
-| `parent` | 一件事統轄或分解成幾件 | 層級：縮排、巢狀、尺寸差；根要看得出來 |
-| `link` | 依賴、影響、因果、轉換 | 必要的連接；來源與目標要明確，線越少越好 |
-| `overlap` | 交集、共用的部分 | 相交的區域，共同區與各自區都要看得出來 |
-| `none` | 單一主張、一個數字、一句結論 | 沒有關係要承載——留白與尺寸就是全部 |
+| `membership` | Parallel, belonging, several things in the same group | A shared field or repeated units; **no direction** |
+| `order` | Sequence, steps, ranking, time | A readable path with visible direction: straight/turning/rising; start and end must be distinguishable |
+| `contrast` | A vs B, before/after, option comparison | A shared baseline plus a divider; the invariants on both sides must align for the difference to read |
+| `parent` | One thing governs or breaks down into several | Hierarchy: indent, nesting, size difference; the root must be visible |
+| `link` | Dependency, influence, cause and effect, transformation | The necessary connection; source and target must be clear, fewer lines the better |
+| `overlap` | Intersection, shared part | An intersecting region; both the shared zone and each side's zone must be readable |
+| `none` | A single claim, one number, one conclusion | No relationship to carry — whitespace and size are everything |
 
-**硬規則**：三件並列的事才用等分欄位；三件有先後的事要看得出方向。節點數只影響間距與換行，不構成採用對稱的理由。
+**Hard rule**: only use equal columns for three parallel things; three things with a sequence must show direction. Node count only affects spacing and wrapping; it is not a reason to adopt symmetry.
 
-### 6.2 一個關係有多種解
+### 6.2 One relationship has many solutions
 
-同一個關係可以用不同的幾何承載，解法的完整目錄（照關係分組，附槽位表與線框）在 `slidra-layout-kit`。**相鄰兩頁不要用同一個解**（`rhythm.repeated-shape` 會抓）。目錄是起點不是清單：需要目錄上沒有的解就自己組一個，並在 `blueprint.shape` 給它一個描述性的名字。
+The same relationship can be carried by different geometries; the full catalog of solutions (grouped by relationship, with slot tables and wireframes) is in `slidra-layout-kit`. **Do not use the same solution on two adjacent pages** (`rhythm.repeated-shape` will catch it). The catalog is a starting point, not a checklist: if you need a solution not in it, compose one yourself and give it a descriptive name in `blueprint.shape`.
 
-### 6.3 已知解：六種頁型
+### 6.3 Known solutions: six page types
 
-下列六個組合是**已知解**：用了它才在計畫填 `type`（`validate` 會多驗一條該頁型的簽名字級，範本也會登記）；自己組的構圖只留 `relationship`。
+The following six combinations are **known solutions**: only when you use one do you fill in `type` in the plan (`validate` adds a signature-type check for that page type, and the template is registered); a composition you compose yourself keeps only `relationship`.
 
-| `type` | 頁型 | 關係 | `blueprint.shape` | 簽名 | 頁尾 |
+| `type` | Page type | Relationship | `blueprint.shape` | Signature | Footer |
 |---|---|---|---|---|---|
-| `cover` | 封面 | `none` | `cover-stack` | `cover` 字級的大標 | 不放 |
-| `section` | 章節頁 | `none` | `claim-field` | `section` 字級的章節名；左緣 primary `spine` 色條 | 放 |
-| `bullets` | 要點頁 | `membership` | `card-wall` | `title` 字級標題＋N 個 `node` | 放 |
-| `compare` | 對照頁 | `contrast` | `split-panel` | `title` 字級標題＋左右兩個 `node` | 放 |
-| `number` | 大數字頁 | `none` | `hero-number` | `number` 字級的數字，**只能來自作者的大綱** | 放 |
-| `closing` | 結語頁 | `none` | `claim-field` | 底色滿版 `primary`、全部文字用 `background` 色、`claim` 字級的結論；一句帶得走的結論，不是「謝謝」也不是封面再放一次 | 不放 |
+| `cover` | Cover | `none` | `cover-stack` | `cover`-size big title | Omit |
+| `section` | Section page | `none` | `claim-field` | `section`-size section name; left-edge primary `spine` color bar | Include |
+| `bullets` | Bullet page | `membership` | `card-wall` | `title`-size title + N `node`s | Include |
+| `compare` | Comparison page | `contrast` | `split-panel` | `title`-size title + left and right `node` | Include |
+| `number` | Big-number page | `none` | `hero-number` | `number`-size figure, **only from the author's outline** | Include |
+| `closing` | Closing page | `none` | `claim-field` | `primary` full-bleed base, all text in `background` color, `claim`-size conclusion; a take-away conclusion, not a "thank you" and not the cover again | Omit |
 
-範本名稱：cover→`封面`、section→`章節頁`、bullets→`要點頁`、compare→`對照頁`、number→`大數字頁`、closing→`結語頁`。
+Template names: cover→`Cover`, section→`Section page`, bullets→`Bullet page`, compare→`Comparison page`, number→`Big number page`, closing→`Closing page`.
 
-`order`、`parent`、`link`、`overlap` 沒有已知解，用版面庫該關係那一組的解或第 3b 節的角色自己組——退回要點頁等於把有方向的內容講成並列的內容。
+`order`, `parent`, `link`, `overlap` have no known solution; use a solution from that relationship's group in the layout kit, or compose your own using section 3b's roles — falling back to a bullet page is the same as speaking directed content as parallel content.
 
-## 7. 內容密度：頁面只放主張與關鍵詞，說明進備忘稿
+## 7. Content density: pages hold only claims and keywords; explanation goes to the notes
 
-頁面是給台下**看**的，不是給人**讀**的；把要點寫成完整句子放上去，頁面就變成講稿。
+A page is for the audience to **look at**, not to **read**; writing bullets as full sentences on the page turns the page into a script.
 
-下表左欄是**寫作目標**，右欄是 `validate` 真正會擋的上限。門檻刻意留得寬——放不下的版面由溢出規則擋掉，字數規則只攔明顯誇張的那種。**沒有超過上限就不要為了更短而把話講不清楚。**
+The left column of the table below is the **writing target**; the right column is the limit `validate` actually enforces. The thresholds are deliberately loose — layouts that don't fit are blocked by overflow rules, and the character-count rules only catch the obviously excessive. **If you're under the limit, don't make the wording unclear just to be shorter.**
 
-| 項目 | 目標（density = presentation） | `validate` 上限 |
+| Item | Target (density = presentation) | `validate` limit |
 |---|---|---|
-| 標題（頁標題、章節名） | 15 字、1 行 | 24 字 |
-| 封面大標 | ≤ 2 行，每行 15 字 | 同標題 |
-| 每條要點／每張卡片的關鍵詞 | 18 字、**1 行**，不加句號 | 32 字、2 行 |
-| 要點條數 | 3～5 條（對照頁每欄 2～4 條） | 2～7 條（每欄 2～6） |
-| 一頁的文字總量（所有文字框加總，含卡片編號，不含頁尾與裸文字浮水印；`{{ }}` 不計） | 600 字 | 1000 字 |
-| 大數字頁的說明、結語頁的結論 | 24 字 | 32 字 |
-| 備忘稿 | 2～5 句，**這裡才放完整句子** | 不驗 |
+| Title (page title, section name) | 15 chars, 1 line | 24 chars |
+| Cover title | ≤ 2 lines, 15 chars per line | Same as title |
+| Each bullet/card's keywords | 18 chars, **1 line**, no period | 32 chars, 2 lines |
+| Bullet count | 3–5 (comparison page: 2–4 per column) | 2–7 (2–6 per column) |
+| Total text on a page (all text boxes summed, including card numbers, excluding footer and bare-text watermark; `{{ }}` not counted) | 600 chars | 1000 chars |
+| Big-number-page caption, closing-page conclusion | 24 chars | 32 chars |
+| Speaker notes | 2–5 sentences, **this is where full sentences go** | Not checked |
 
-- 一頁只講一個想法；標題是這一頁的主張（「本季營收成長 23%」），不是話題標籤（「營收」），除非作者的大綱本來就是話題式標題。
-- **擴寫的去處是備忘稿**：作者的每一條要點，頁面上以 1 行關鍵詞為目標；講完整的那一兩句寫進 `slide notes set`。先說主張、再說依據、最後接到下一頁；不要念出顏色、位置、元素名。
-- 頁面上只放作者給的內容；擴寫是把意思講完整，不是替作者發明數據、名稱、日期。
+- One page makes one point; the title is this page's claim ("Revenue up 23% this quarter"), not a topic label ("Revenue"), unless the author's outline is already topic-titled.
+- **Where expansion goes is the notes**: for the author's each bullet, the page targets one line of keywords; the full sentence or two goes into `slide notes set`. State the claim first, then the evidence, then connect to the next page; don't read out colors, positions, or element names.
+- The page holds only content the author gave; expansion makes the meaning complete, not invent data, names, or dates on the author's behalf.
 
-## 8. 一致性與禁忌
+## 8. Consistency and taboos
 
-- 同角色同字級、同顏色；標題頂端固定 y=72；左緣固定 x=80；一份簡報只用一組配色。
-- **裝飾不承載意義**：拿掉所有圓、線、色塊與背景圖，頁面的意思要一個字都不少；不畫沒有意義的連接線。
-- 喘息頁（大數字頁、章節頁）靠留白與大字：面板（secondary_bg 的大色塊）不超過 2 個。
-- rect 不加框線（`stroke`）、不加陰影；細環與對角線是 ellipse／line 的 stroke，這是允許的。
-- 不做「謝謝」頁、不做只有聯絡方式的頁、不重複封面。
-- 文字太多就縮短或拆頁，字級不動。
+- Same role, same size, same color; title top fixed at y=72; left edge fixed at x=80; a presentation uses only one color set.
+- **Decoration carries no meaning**: remove all circles, lines, color blocks, and the background image and the page's meaning must lose not a word; don't draw meaningless connector lines.
+- A breathing page (big-number page, section page) relies on whitespace and big type: panels (big `secondary_bg` blocks) no more than 2.
+- No strokes on rects (`stroke`), no shadows; thin rings and diagonals are the stroke of an ellipse/line, which is allowed.
+- No "thank you" page, no page with only contact info, no repeated cover.
+- Too much text: shorten or split the page, not the font size.
 
-## 9. 自我檢查：跑 `slidra validate`
+## 9. Self-check: run `slidra validate`
 
-規則與門檻寫在 CLI 裡，不要自己心算：`slidra validate <presentation-id> [slides/00N.svg]`。結束碼非零代表有錯誤，`data.errors[]` 每一筆有 `slide`、`element`、`rule`、`actual`、`limit`、`message`。有 `plan/design-spec.md` 時字數門檻依它的 `density`；沒有計畫檔時只驗幾何與骨架（message 尾巴會帶「沒有 plan/ 計畫檔，只驗幾何與骨架」）。
+The rules and thresholds are written into the CLI; don't calculate in your head: `slidra validate <presentation-id> [slides/00N.svg]`. A non-zero exit code means there are errors; each `data.errors[]` entry has `slide`, `element`, `rule`, `actual`, `limit`, `message`. When `plan/design-spec.md` exists, character thresholds follow its `density`; without a plan file, only geometry and skeleton are checked (the message tail will carry "no plan/ plan file, checking geometry and skeleton only").
 
-**第一頁閘門**：封面與第一張內容頁做完各跑一次 `validate`；有錯誤先改做法，確認都是 0 錯誤才做第 3 頁起，不要每頁各修各的。
+**First-page gate**: after finishing the cover and the first content page, run `validate` once each; if there are errors, fix the approach first and only proceed to page 3 onward when you've confirmed 0 errors, not fix each page individually.
 
-**標 ⛔ 的規則在 `slide add --svg`／`slide set --svg` 寫入時就會擋下整頁**（第 0 節的自檢清單），其餘的是寫入後補命令就能修的。
+**Rules marked ⛔ are blocked on `slide add --svg`/`slide set --svg` write of the whole page** (the self-check list in section 0); the rest can be fixed with follow-up commands after writing.
 
-| rule | 在驗什麼 | 怎麼修 |
+| rule | What it checks | How to fix |
 |---|---|---|
-| ⛔ `text.title-length`、`text.bullet-length`、`text.bullet-lines`、`text.bullet-count`、`text.page-total` | 第 7 節的文字量上限 | 改短、把句子搬進備忘稿；條數超過就拆頁（並用 `plan set outline` 補一頁進計畫） |
-| ⛔ `focus.single-title` | 一頁只有一個標題角色 | 合併或拆頁 |
-| ⛔ `geometry.right-overflow`、`geometry.bottom-overflow`、`geometry.text-overlap` | 文字框右緣 ≤ 1200、下緣 `y + 行數 × 1.45 × 字級 ≤ 648`、同欄文字框不重疊（裝飾幾何可以出血，不驗） | 縮短文字或減少條數；字級與座標不動 |
-| ⛔ `style.font-size`、`style.text-fill`、`style.shape-fill` | 字級在第 2 節的表上；文字色只有 text／muted（大數字與粗體標籤可 accent、結語頁可 background）；色塊色只用配色角色、`none` 或 `url(#…)` | 改回 `type_scale`／`palette` 的值（`element style set`） |
-| `structure.background`、`structure.notes`、`structure.template` | 背景已設、備忘稿非空、出現過的頁型都登記了範本 | 補 `slide style set`／`slide notes set`／`template add` |
-| ⛔ `structure.scrim` | 有背景圖的頁，每個文字框（頁尾與 ≥ claim 的大字除外）都落在一塊 scrim 面板上（第 4b 節） | 先看那段文字能不能歸進某個 `field`，不能才加一塊 scrim rect，整頁 `slide set --svg` 重寫，再重下背景圖與動畫 |
-| `structure.background-image` | 計畫 `background` 是 `on` 時每一頁都有背景圖 | 補 `slide background set --asset`，或把計畫的 `background` 改成 `off` |
-| `blueprint.required` | 計畫 `confirmed` 之後每一頁都必須寫下 `blueprint` | 補 `blueprint`（`shape`／`nodes`／`steps`），`plan set outline` 寫回 |
-| `blueprint.nodes`、`blueprint.steps` | 畫出來的 node 數與 on-click 步數要跟構圖時寫的一致 | 頁面畫錯就改頁面；構圖想錯就 `plan set outline --force` 改 blueprint 並在回報裡說明 |
-| `rhythm.repeated-shape` | 相鄰兩頁不得用同一個 `blueprint.shape` 解同一種 `relationship`、又是同樣的單位數 | 換一種構圖（版面庫同一組有別的解），或把兩頁合併 |
-| `rhythm.breathing-cards` | breathing 頁的面板 ≤ 2 | 刪面板 |
-| ⛔ `role.required` | `relationship` 不是 `none` 的頁面至少要標出一個 `node` | 替每個語意單位加 `data-slidra-role="node"` |
-| `role.garnish-animated` | `garnish` 不得有任何進場效果 | 拿掉那個效果，或這個元素其實是 `node`／`label` |
-| ⛔ `role.*` | 第 3b 節的四條自洽規則 | 改角色或補標籤 |
-| `roster.page-count`、`roster.page-type` | 頁數與每頁頁型跟 `plan/outline.md` 對得上（每種頁型有它的簽名字級） | 以計畫為準修頁面；計畫本身錯了才改計畫 |
-| `roster.relationship-variety` | 4 頁以上時，同一種 `relationship` 不得超過半數 | 回去看內容，找出其實是順序／對比／一個數字的那幾節，改它們的 `relationship` |
-| `motion.transition`、`motion.enter` | `animation` 不是 `none` 時每頁有轉場；`full` 每頁至少一個進場效果、`minimal` 封面／要點／對照頁至少一個 | 補 `effect add`／`slide transition set --all` |
-| ⛔ `asset.missing` | 頁面引用的圖片／影音在這份簡報裡不存在 | 用 `ls <presentation-id> assets` 對出真正的檔名；資產還沒匯入就先 `asset import` |
-| `taboo.thank-you`、`taboo.duplicate-cover`、`taboo.stroke` | 謝謝頁、重複封面、rect 的框線 | 刪掉 |
+| ⛔ `text.title-length`, `text.bullet-length`, `text.bullet-lines`, `text.bullet-count`, `text.page-total` | Section 7's text-volume limits | Shorten; move sentences into notes; if the count is over, split the page (and use `plan set outline` to add a page to the plan) |
+| ⛔ `focus.single-title` | One title role per page | Merge or split the page |
+| ⛔ `geometry.right-overflow`, `geometry.bottom-overflow`, `geometry.text-overlap` | Text-box right edge ≤ 1200, bottom edge `y + lines × 1.45 × font size ≤ 648`, same-column text boxes don't overlap (decorative geometry may bleed, not checked) | Shorten the text or reduce the count; leave size and coordinates alone |
+| ⛔ `style.font-size`, `style.text-fill`, `style.shape-fill` | Font size is in the section 2 table; text color is only text/muted (big numbers and bold labels may be accent, closing pages may be background); shape fills use only color roles, `none`, or `url(#…)` | Revert to `type_scale`/`palette` values (`element style set`) |
+| `structure.background`, `structure.notes`, `structure.template` | Background set, notes non-empty, every page type that appeared has a registered template | Add `slide style set`/`slide notes set`/`template add` |
+| ⛔ `structure.scrim` | On a page with a background image, every text box (except footer and big text ≥ claim) sits on a scrim panel (section 4b) | First see if that text can belong to some `field`; if not, add a scrim rect, rewrite the whole page with `slide set --svg`, then re-apply the background image and animation |
+| `structure.background-image` | When the plan's `background` is `on`, every page has a background image | Add `slide background set --asset`, or change the plan's `background` to `off` |
+| `blueprint.required` | After the plan is `confirmed`, every page must have a written `blueprint` | Fill in the `blueprint` (`shape`/`nodes`/`steps`), write it back with `plan set outline` |
+| `blueprint.nodes`, `blueprint.steps` | The drawn node count and on-click step count must match what was written at composition time | If the page is drawn wrong, fix the page; if the composition was planned wrong, `plan set outline --force` to change the blueprint and explain in the report |
+| `rhythm.repeated-shape` | Two adjacent pages must not use the same `blueprint.shape` to solve the same `relationship` with the same unit count | Use a different composition (the layout kit's same group has other solutions), or merge the two pages |
+| `rhythm.breathing-cards` | A breathing page's panels ≤ 2 | Remove panels |
+| ⛔ `role.required` | A page whose `relationship` is not `none` must mark at least one `node` | Add `data-slidra-role="node"` to each semantic unit |
+| `role.garnish-animated` | `garnish` must have no enter effect | Remove that effect, or this element is actually a `node`/`label` |
+| ⛔ `role.*` | Section 3b's four self-consistency rules | Change the role or add the label |
+| `roster.page-count`, `roster.page-type` | Page count and each page's type match `plan/outline.md` (each page type has its signature size) | Fix the pages to the plan; only change the plan if the plan itself is wrong |
+| `roster.relationship-variety` | For 4+ pages, the same `relationship` must not exceed half | Go back to the content, find the sections that are really order/contrast/one-number, and change their `relationship` |
+| `motion.transition`, `motion.enter` | When `animation` is not `none`, each page has a transition; `full` needs at least one enter effect per page, `minimal` needs at least one on cover/bullet/comparison pages | Add `effect add`/`slide transition set --all` |
+| ⛔ `asset.missing` | An image/media referenced by the page doesn't exist in this presentation | Use `ls <presentation-id> assets` to find the real filename; if the asset isn't imported yet, `asset import` first |
+| `taboo.thank-you`, `taboo.duplicate-cover`, `taboo.stroke` | Thank-you page, repeated cover, rect stroke | Remove it |
 
-**整份做完**：`validate` 整份 0 錯誤，`template list` 列得出「封面」「要點頁」等名稱。
+**When the whole deck is done**: `validate` the whole deck to 0 errors, and `template list` lists names like "Cover" and "Bullet page".

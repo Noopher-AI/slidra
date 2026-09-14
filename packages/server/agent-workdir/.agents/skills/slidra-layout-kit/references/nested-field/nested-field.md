@@ -1,33 +1,33 @@
 # nested-field
 
-**解的關係**：`parent`
-**單位數**：1 + 2–4
-**一句話**：大場域裡包著小場域——包含關係用「在裡面」直接表達，不需要線。
+**Relationship solved**: `parent`
+**Unit count**: 1 + 2–4
+**One line**: A large field containing smaller fields — the containment relationship is expressed directly as "inside", no lines needed.
 
-**什麼時候用它**：子項確實「屬於」母項的空間或範疇（一個系統內的模組、一個組織內的部門）。
-**什麼時候不要用**：子項是母項的「步驟」或「屬性」而不是「成員」——那不是包含。
+**When to use it**: Children genuinely "belong to" the parent's space or domain (modules within a system, departments within an organization).
+**When not to use it**: Children are "steps" or "attributes" of the parent rather than "members" — that is not containment.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `nested-field.svg`。
+Full SVG: see `nested-field.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 母場域 | `field` | 包住全部 | — | — |
-| 母項名 | `label` | 放在母場域左上 | 12 字 | 1 |
-| 子項 ×N | `node`（各自 `field`） | | 10 字 | 1 |
-| 子項內文 | `label` | | 每條 16 字，2–3 條 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Parent field | `field` | encloses everything | — | — |
+| Parent name | `label` | placed at the parent field's upper-left | 12 chars | 1 |
+| Children ×N | `node` (each with its own `field`) | | 10 chars | 1 |
+| Child content | `label` | | 16 chars each, 2–3 lines | 1 |
 
-## 節奏
+## Rhythm
 
-母場域的內距至少一個 `layout.spacing` 的中級距——**內距太小會讓包含關係看起來像重疊**。子項等寬等高。
+The parent field's padding is at least a mid-level `layout.spacing` — **too little padding makes containment look like overlap**. Children are equal width and height.
 
-`blueprint.shape` 寫 `nested-field`。
+Write `blueprint.shape` as `nested-field`.
 
-## 變體
+## Variants
 
-- **不等寬**：主要的子項佔 50%，其餘平分——當子項有主次時。
-- **雙層**：子項裡再包孫項，但不要超過兩層。
+- **Unequal widths**: the primary child takes 50%, the rest split evenly — when children have hierarchy.
+- **Two levels**: children contain grandchildren, but no more than two levels deep.

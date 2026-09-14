@@ -52,8 +52,8 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 describe("parseSkillFrontmatter", () => {
   it("reads name and description from frontmatter", () => {
-    const text = "---\nname: outline\ndescription: 從大綱建立投影片\n---\n\n# Outline\n";
-    expect(parseSkillFrontmatter(text, "outline-dir")).toEqual({ name: "outline", description: "從大綱建立投影片" });
+    const text = "---\nname: outline\ndescription: create slides from outline\n---\n\n# Outline\n";
+    expect(parseSkillFrontmatter(text, "outline-dir")).toEqual({ name: "outline", description: "create slides from outline" });
   });
 
   it("no frontmatter at all: name falls back to the directory name, description is empty", () => {
@@ -61,8 +61,8 @@ describe("parseSkillFrontmatter", () => {
   });
 
   it("frontmatter present but missing name: falls back to the directory name; missing description: empty string", () => {
-    const text = "---\ndescription: 只有描述\n---\n";
-    expect(parseSkillFrontmatter(text, "no-name-dir")).toEqual({ name: "no-name-dir", description: "只有描述" });
+    const text = "---\ndescription: description only\n---\n";
+    expect(parseSkillFrontmatter(text, "no-name-dir")).toEqual({ name: "no-name-dir", description: "description only" });
   });
 });
 
@@ -86,14 +86,14 @@ describe("readSkillCommands", () => {
   });
 
   it("scans every immediate subdirectory with a SKILL.md, tagging each with the given source", async () => {
-    await mkSkill(dir, "outline", "---\nname: outline\ndescription: 從大綱建立投影片\n---\n");
-    await mkSkill(dir, "review", "---\nname: review\ndescription: 檢查投影片\n---\n");
+    await mkSkill(dir, "outline", "---\nname: outline\ndescription: create slides from outline\n---\n");
+    await mkSkill(dir, "review", "---\nname: review\ndescription: check slides\n---\n");
 
     const commands = await readSkillCommands(dir, "bundled");
     expect(commands).toEqual(
       expect.arrayContaining([
-        { name: "outline", description: "從大綱建立投影片", source: "bundled" },
-        { name: "review", description: "檢查投影片", source: "bundled" },
+        { name: "outline", description: "create slides from outline", source: "bundled" },
+        { name: "review", description: "check slides", source: "bundled" },
       ]),
     );
     expect(commands).toHaveLength(2);
@@ -109,11 +109,11 @@ describe("readSkillCommands", () => {
 
   it("a skill installed as a symlink to a directory elsewhere is picked up (how skillshare installs them)", async () => {
     const elsewhere = await mkdtemp(path.join(tmpdir(), "slidra-skill-src-"));
-    await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: 透過 symlink 安裝\n---\n");
+    await mkSkill(elsewhere, "linked", "---\nname: linked\ndescription: installed via symlink\n---\n");
     await symlink(path.join(elsewhere, "linked"), path.join(dir, "linked"));
 
     const commands = await readSkillCommands(dir, "user");
-    expect(commands).toEqual([{ name: "linked", description: "透過 symlink 安裝", source: "user" }]);
+    expect(commands).toEqual([{ name: "linked", description: "installed via symlink", source: "user" }]);
     await rm(elsewhere, { recursive: true, force: true });
   });
 
@@ -132,16 +132,16 @@ describe("readSkillCommands", () => {
 
 describe("mergeSlashCommands", () => {
   it("unions groups, keeping the first occurrence of a name (agent > bundled > user priority is the caller's group order)", () => {
-    const agent: SlashCommand[] = [{ name: "outline", description: "agent 版描述", source: "agent" }];
+    const agent: SlashCommand[] = [{ name: "outline", description: "agent version description", source: "agent" }];
     const bundled: SlashCommand[] = [
-      { name: "outline", description: "bundled 版描述", source: "bundled" },
+      { name: "outline", description: "bundled version description", source: "bundled" },
       { name: "review", description: "bundled review", source: "bundled" },
     ];
     const user: SlashCommand[] = [{ name: "review", description: "user review", source: "user" }];
 
     const merged = mergeSlashCommands([agent, bundled, user]);
     expect(merged).toEqual([
-      { name: "outline", description: "agent 版描述", source: "agent" },
+      { name: "outline", description: "agent version description", source: "agent" },
       { name: "review", description: "bundled review", source: "bundled" },
     ]);
   });
@@ -183,7 +183,7 @@ describe("collectSlashCommands", () => {
   it("drops a reported command whose name normalizes to empty, without failing the rest", async () => {
     const commands = await collectSlashCommands(
       [
-        { name: "/", description: "只有斜線本身" },
+        { name: "/", description: "slash only" },
         { name: "outline", description: "x" },
       ],
       { bundled: bundledDir, user: userDir },
@@ -265,7 +265,7 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
 
   async function serve(agent: AgentAdapterConfig): Promise<RunningServer> {
     const deckPath = path.join(slidraDir, "deck.slidra");
-    const created = await runCli(["new", deckPath, "--name", "測試簡報"]);
+    const created = await runCli(["new", deckPath, "--name", "Test Presentation"]);
     expect(created.ok).toBe(true);
     const opened = await runCli<{ id: string }>(["open", deckPath]);
     expect(opened.ok).toBe(true);
@@ -283,10 +283,10 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     const server = await serve(
       fakeAgent({
         availableCommands: [
-          { name: "outline", description: "從大綱建立投影片" },
-          { name: "review", description: "檢查投影片內容" },
+          { name: "outline", description: "create slides from outline" },
+          { name: "review", description: "check slide content" },
         ],
-        replies: [["(ack)"], ["好的"]],
+        replies: [["(ack)"], ["ok"]],
       }),
     );
     // The agent subprocess is spawned lazily on the first chat message
@@ -310,8 +310,8 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { commands: SlashCommand[] };
     expect(body.commands).toEqual([
-      { name: "outline", description: "從大綱建立投影片", source: "agent" },
-      { name: "review", description: "檢查投影片內容", source: "agent" },
+      { name: "outline", description: "create slides from outline", source: "agent" },
+      { name: "review", description: "check slide content", source: "agent" },
     ]);
   });
 
@@ -319,12 +319,12 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     // A shipped skill's directory name itself carries the `slidra-` prefix
     // (the name must match what the agent registers), keeping it separate
     // from the agent's own or the user's own skills.
-    await mkSkill(bundledDir, "slidra-plan", "---\nname: slidra-plan\ndescription: 出貨版\n---\n");
-    const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent 版" }] }));
+    await mkSkill(bundledDir, "slidra-plan", "---\nname: slidra-plan\ndescription: shipped version\n---\n");
+    const server = await serve(fakeAgent({ availableCommands: [{ name: "plan", description: "agent version" }] }));
 
     const response = await fetch(`${server.url}/api/agent/commands`);
     const body = (await response.json()) as { commands: SlashCommand[] };
-    expect(body.commands).toEqual([{ name: "slidra-plan", description: "出貨版", source: "bundled" }]);
+    expect(body.commands).toEqual([{ name: "slidra-plan", description: "shipped version", source: "bundled" }]);
   });
 
   it("no agent report and no skill directories at all: GET returns 200 with an empty list, not an error", async () => {
@@ -335,15 +335,15 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
   });
 
   it("a later available_commands_update is broadcast over /api/events as 'agent-commands', with the freshly recomputed union", async () => {
-    await mkSkill(userDir, "notes", "---\nname: notes\ndescription: 個人筆記\n---\n");
+    await mkSkill(userDir, "notes", "---\nname: notes\ndescription: personal notes\n---\n");
     // Deliberately no initial `availableCommands` here — this test isolates
     // the *later* report (mid-turn, via availableCommandsUpdateOnPromptIndex)
     // so there is exactly one `agent-commands` broadcast to read, not two.
     const server = await serve(
       fakeAgent({
         availableCommandsUpdateOnPromptIndex: 1,
-        availableCommandsUpdate: [{ name: "outline", description: "更新後的描述" }],
-        replies: [["(ack)"], ["好的"]],
+        availableCommandsUpdate: [{ name: "outline", description: "updated description" }],
+        replies: [["(ack)"], ["ok"]],
       }),
     );
 
@@ -360,8 +360,8 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     const event = await eventPromise;
     expect(event.data).toEqual({
       commands: [
-        { name: "notes", description: "個人筆記", source: "user" },
-        { name: "outline", description: "更新後的描述", source: "agent" },
+        { name: "notes", description: "personal notes", source: "user" },
+        { name: "outline", description: "updated description", source: "agent" },
       ],
     });
     await sse.close();

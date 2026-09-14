@@ -1,26 +1,26 @@
 # mesh-gradient
 
-**氣氛**：四團顏色在畫面上互相滲透，邊界完全化開，像未乾的顏料。柔、有層次、沒有一條硬邊。
+**Mood**: Four color pools bleeding into each other across the frame, boundaries fully dissolved, like wet paint. Soft, layered, no hard edges.
 
-**適合**：任何節奏。這是最通用也最有質感的一個。
-**不適合**：需要絕對乾淨的資料頁面。
+**Suited for**: Any rhythm. The most general and most textural recipe.
+**Not suited for**: Data pages that need to be absolutely clean.
 
-**建議 opacity**：0.9（深色）／0.5（淺色）
+**Suggested opacity**: 0.9 (dark) / 0.5 (light)
 
-**做法**：四個徑向漸層分別放在四個象限，由外往內疊。不用 `<filter>`，柔化全靠漸層的 stop 分布。
+**Technique**: Four radial gradients, one per quadrant, layered from outside in. No `<filter>` — all softness comes from the gradient stop distribution.
 
-完整 SVG：見同資料夾 `mesh-gradient.svg`。
+Full SVG: see `mesh-gradient.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `duotone` | 只留兩色：除了底色之外全部收斂成主色的深淺。最安靜的處理。 | `var(--accent)` → `primary` |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent`、`var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `duotone` | Keep only two colors: everything besides the base converges into shades of the primary. The quietest treatment. | `var(--accent)` → `primary` |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent`, `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：全部，特別是 01、10、15、23。
+**Suggested styles**: All, especially 01, 10, 15, 23.

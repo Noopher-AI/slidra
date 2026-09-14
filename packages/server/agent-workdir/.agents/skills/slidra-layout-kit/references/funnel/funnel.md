@@ -1,33 +1,33 @@
 # funnel
 
-**解的關係**：`order`
-**單位數**：3–5
-**一句話**：上寬下窄的轉換堆疊，寬度就是量——一眼看出每一層流失多少。
+**Relationship solved**: `order`
+**Unit count**: 3–5
+**One line**: A wide-to-narrow stacked transformation; width represents quantity — you can see at a glance how much drops off at each layer.
 
-**什麼時候用它**：轉換流程（行銷漏斗、招募流程、銷售管線），而且**每一層有真實數字**。
-**什麼時候不要用**：各層之間沒有量的遞減——漏斗的形狀會宣稱一個不存在的流失。沒有真實數字時不要用。
+**When to use it**: Conversion flows (marketing funnels, recruiting pipelines, sales pipelines) where **each layer has a real number**.
+**When not to use it**: When there is no real quantity decrease between layers — the funnel shape would claim a drop-off that doesn't exist. Don't use without real numbers.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `funnel.svg`。
+Full SVG: see `funnel.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 漏斗層 ×N | `node` | **寬度反映真實數量** | — | — |
-| 層名 | `label` | | 8 字 | 1 |
-| 數值 | `label` | 右側對齊 | 8 字 | 1 |
-| 轉換率 | `label` | 可省，放在層與層之間 | 6 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Funnel layers ×N | `node` | **width reflects real quantities** | — | — |
+| Layer name | `label` | | 8 chars | 1 |
+| Value | `label` | right-aligned | 8 chars | 1 |
+| Conversion rate | `label` | optional, placed between layers | 6 chars | 1 |
 
-## 節奏
+## Rhythm
 
-每層等高，寬度依真實數字遞減。**最後一層加深**——那是這一頁真正要講的結果。層與層之間不留空隙。
+Each layer is equal height; width decreases according to real numbers. **The last layer is emphasized (darker)** — that's the result this page is really about. No gaps between layers.
 
-`blueprint.shape` 寫 `funnel`。
+Write `blueprint.shape` as `funnel`.
 
-## 變體
+## Variants
 
-- **標轉換率**：每兩層之間寫一個百分比，講流失在哪一段最嚴重。
-- **橫向**：改成由左至右變窄，適合搭配時間軸。
+- **Mark conversion rates**: write a percentage between each pair of layers, highlighting where the biggest drop-off is.
+- **Horizontal**: change to left-to-right narrowing, suitable for combining with a timeline.

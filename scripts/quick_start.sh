@@ -338,7 +338,7 @@ URL: $URL
 
 Verification checklist (covering what's done so far):
   Page navigation
-    - The screen shows page 1, "驗收用簡報" (Acceptance Test Presentation), with 1 / 4 shown at the bottom right.
+    - The screen shows page 1, "Acceptance Demo Deck", with 1 / 4 shown at the bottom right.
     - Press > or the right arrow key to move to pages 2, 3, 4; at the end the button greys out and pressing again does nothing and doesn't crash.
     - Pressing arrow keys while the cursor is in the chat input box should move the cursor, not change pages.
   Assets
@@ -349,9 +349,9 @@ Verification checklist (covering what's done so far):
         curl -si -H 'Range: bytes=99999999-' $URL/api/raw/assets/photo.svg | head -3
   Live preview
     - Edit the content from a separate terminal — the screen should update without a full reload, and should stay on whichever page you're currently viewing:
-        node_modules/.bin/slidra text set $PRESENTATION_ID slides/001.svg el-title "Q3 財報"
+        node_modules/.bin/slidra text set $PRESENTATION_ID slides/001.svg el-title "Q3 Report"
   Agent chat
-    - Type "change the title on page one to Q3 財報" in the chat box — the agent edits the file via the CLI, and the screen updates automatically.
+    - Type "change the title on page one to Q3 Report" in the chat box — the agent edits the file via the CLI, and the screen updates automatically.
     - The screen shows no tool-progress indicator while the agent runs a command — it's normal for it to look stalled until the agent replies.
   Overview
     - The left side shows real thumbnails of every page in order; clicking one jumps to that page, and the current page is visually distinguishable.
@@ -359,7 +359,7 @@ Verification checklist (covering what's done so far):
     - Go to page 1 and click "Play": press the right arrow key repeatedly from the start without leaving the screen.
     - Pages 1 and 2 have no effect list, so pressing the right arrow key once moves straight to the next page.
     - Page 3 (the one with an effect list): the screen doesn't flash the full content immediately — the three lines
-      「步驟一」「步驟二」「步驟三」(Step one/two/three) start hidden, while the title stays visible.
+      "Step One", "Step Two", "Step Three" start hidden, while the title stays visible.
       Pressing the right arrow key reveals the three lines one at a time, one per press; after all three steps, pressing
       again moves to page 4.
   - Clicking elsewhere on the screen (e.g. the chat input box) to steal focus should clearly indicate "focus is not on the player",
@@ -372,7 +372,7 @@ Verification checklist (covering what's done so far):
     - Pressing Esc or the button again returns to inline playback without leaving play mode.
   Audio/video effects (page 4)
     - After completing the three steps on page 3, pressing the right arrow key once more moves to page 4, "Media".
-    - The caption text "重點說明" (Key point) starts hidden, and fades in on the right arrow key.
+    - The caption text "Key point" starts hidden, and fades in on the right arrow key.
     - Pressing again swaps the video placeholder block for the actual playing video, aligned to where the placeholder was.
     - Pressing again starts narration audio playing next to the speaker icon (no visible change, but the browser tab's mute icon,
       or the devtools Elements panel, will show an extra <audio> element playing).
@@ -382,8 +382,8 @@ Verification checklist (covering what's done so far):
       and both the video and the narration audio disappear (not paused, fully removed), with no sound at all.
     - Press again: rewinds to the "caption fade-in" step itself, still on page 4.
     - Press again: crosses back to page 3, and page 3 appears as if it had "played all the way through" —
-      「步驟一」「步驟二」「步驟三」are all visible, not page 3's blank starting state.
-    - Pressing the left arrow key once more on page 3: only "步驟三" disappears, "步驟一" "步驟二"
+      "Step One", "Step Two", "Step Three" are all visible, not page 3's blank starting state.
+    - Pressing the left arrow key once more on page 3: only "Step Three" disappears; "Step One" and "Step Two"
       remain visible — confirming it rewinds one step at a time, not the whole page at once.
     - Continuing to press the left arrow key rewinds through pages 2 and 1 in order; a page with no effect list
       crosses in a single press.

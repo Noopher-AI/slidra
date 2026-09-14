@@ -1,34 +1,34 @@
 # chart-annotated
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一張圖表放大置中，關鍵處拉出註解線——把「你該看這裡」畫在圖上。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: One chart enlarged and centered, with callout lines on the key spot — "look here" drawn directly onto the chart.
 
-**什麼時候用它**：圖表有一個明確的轉折、異常或高點，而那正是這一頁的主張。
-**什麼時候不要用**：圖表要講的是整體趨勢而沒有特定的點——那用 27 `chart-focus`。
+**When to use it**: The chart has one clear turning point, anomaly, or peak, and that is the claim of this page.
+**When not to use it**: The chart is about the overall trend with no specific point — that is 27 `chart-focus`.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chart-annotated.svg`。
+Full SVG: see `chart-annotated.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖表 | `node`（chart） | 放大置中 | — | — |
-| 標記點 | `node` | 圈出關鍵處 | — | — |
-| 引線 | `edge` | 從標記點拉到註解 | — | — |
-| 註解 | `label` | **一頁最多兩個** | 14 字 | 1–2 |
-| 來源 | `label`（`caption`） | | 20 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Chart | `node` (chart) | enlarged, centered | — | — |
+| Marker | `node` | circles the key point | — | — |
+| Callout line | `edge` | from marker to annotation | — | — |
+| Annotation | `label` | **at most two per page** | 14 chars | 1–2 |
+| Source | `label` (`caption`) | | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-註解放在圖的留白處，引線不要穿過資料。**註解超過兩個就表示這張圖講太多事**，該拆頁。
+Annotations go in the chart's whitespace; callout lines must not cross data. **More than two annotations means this chart is saying too many things** — split the page.
 
-`blueprint.shape` 寫 `chart-annotated`。
+Write `blueprint.shape` as `chart-annotated`.
 
-## 變體
+## Variants
 
-- **區間標記**：用一塊半透明色塊圈出一段時間，而不是單點。
-- **雙註解**：一個標高點、一個標低點，講落差。
+- **Range marker**: a translucent block around a time span instead of a single point.
+- **Dual annotations**: one marking the peak, one marking the trough, showing the gap.

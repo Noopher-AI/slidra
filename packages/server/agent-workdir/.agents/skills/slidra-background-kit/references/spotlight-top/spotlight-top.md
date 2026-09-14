@@ -1,26 +1,26 @@
 # spotlight-top
 
-**氣氛**：從頂端中央打下來的一束光，往下逐漸散開。舞台感，注意力自然往上。
+**Mood**: A beam of light falling from the top center, spreading as it goes down. Stage-like; attention naturally rises.
 
-**適合**：`anchor`（封面）、`breathing`。
-**不適合**：`dense`。上亮下暗會讓後排的卡片看起來比較不重要。
+**Suited for**: `anchor` (cover), `breathing`.
+**Not suited for**: `dense`. Brighter top and darker bottom make back-row cards look less important.
 
-**建議 opacity**：0.7
+**Suggested opacity**: 0.7
 
-**做法**：一個上寬下窄的梯形 path 填線性漸層，由上往下淡出。
+**Technique**: A trapezoid path (wide at top, narrow at bottom) filled with a linear gradient that fades downward.
 
-完整 SVG：見同資料夾 `spotlight-top.svg`。
+Full SVG: see `spotlight-top.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `duotone` | 只留兩色：除了底色之外全部收斂成主色的深淺。最安靜的處理。 | `var(--accent)` → `primary` |
-| `low-key` | 降一階：主色退成 muted，accent 升為主角。圖樣退到更後面，適合內容已經很滿的頁面。 | `var(--primary)` → `muted`、`var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `duotone` | Keep only two colors: everything besides the base converges into shades of the primary. The quietest treatment. | `var(--accent)` → `primary` |
+| `low-key` | Drop a level: primary retreats to muted, accent becomes the lead. The pattern recedes further back; suited for already content-heavy pages. | `var(--primary)` → `muted`, `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：07、15、19、20。
+**Suggested styles**: 07, 15, 19, 20.
