@@ -1,31 +1,16 @@
-name: e2e
+name: ci
 
-# Trigger rules: the same commit only runs once.
-# - A PR branch only triggers via pull_request; push only runs on main (the
-#   final verification after a merge).
-#   Previously push was not branch-restricted, so every push on a PR started
-#   both a push and a pull_request run with identical content, doubling CI
-#   usage outright.
-# - concurrency cancels an in-progress older run for the same PR (or branch)
-#   when a new commit comes in; workflow_dispatch forms its own group by
-#   run_id, so regenerating baselines is never cancelled by anyone else.
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-    inputs:
-      update_baselines:
-        description: "Regenerate the appearance baseline screenshots (e2e/__screenshots__) instead of comparing against them"
-        type: boolean
-        default: false
 
 concurrency:
-  group: e2e-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test-e2e:
+  required:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,47 +23,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: Build
-        run: npm run build
-
-      - name: Run e2e tests
-        run: npm run test:e2e
-        env:
-          UPDATE_APPEARANCE_BASELINES: ${{ inputs.update_baselines && '1' || '' }}
-
-      # Baseline screenshots are cross-platform-render-sensitive data and must
-      # be generated on the same ubuntu-latest + Playwright-bundled Chromium
-      # as CI — a screenshot generated locally (especially on macOS) renders
-      # fonts differently, which makes appearance tests fail spuriously in
-      # CI. This is the only supported way to regenerate baselines: manually
-      # trigger this workflow with update_baselines checked, download the
-      # result from this artifact once it finishes, verify the screenshots
-      # look correct, then commit.
-      - name: Upload regenerated baselines
-        if: ${{ always() && inputs.update_baselines }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: appearance-baselines
-          path: e2e/__screenshots__
-
-  design-contract:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run design contract & contrast tests
-        run: npx vitest run apps/web/test/design-contract.test.ts apps/web/test/tokens.test.ts apps/web/test/contrast.test.ts
-
+      # Includes the production build plus fast behavioral, API, and design-contract tests.
       - name: Run unit test suite
         run: npm test
+
+      # This browser gate covers only cross-layer paths unit tests cannot:
+      # browser/agent edits, playback, undo/redo, and save/open persistence.
+      # The full suite remains available through npm run test:e2e.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run core browser E2E suite
+        run: npm run test:e2e:core

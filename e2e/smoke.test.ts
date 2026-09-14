@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -30,12 +31,13 @@ const rootDir = path.join(e2eDir, "..");
 const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "apps/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/editing-fake-acp-agent.mjs");
+const deckDir = path.join(e2eDir, "fixtures/export-deck");
 // Where npm's workspace linking puts the `slidra` executable. This is
 // the PATH the fake agent's shell command resolves through — the same
 // lookup that failed during #8's manual acceptance.
 const binDir = path.join(rootDir, "node_modules/.bin");
 
-const NEW_TITLE = "smoke test's changed title";
+const NEW_TITLE = "smoke-test-changed-title";
 
 let browser: Browser;
 let slidraHome: string;
@@ -63,11 +65,9 @@ beforeAll(async () => {
 
   registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  await registry.dispatch("new", { path: slidraPath, name: "Smoke Test Deck" });
+  await packDirectory(deckDir, slidraPath);
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
-  // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
-  await registry.dispatch("slide add", { id: presentationId });
 
   const agent: AgentAdapterConfig = {
     kind: "claude",
@@ -130,13 +130,13 @@ it("sending a chat message in the browser actually changes the SVG text on the c
 
   // The bundle has to boot, fetch the presentation and paint the slide for
   // this to ever resolve — a broken dist fails right here.
-  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Smoke Test Deck");
+  await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("Export Slide 1");
 
   // The send button is disabled until the chat SSE stream is open, so
   // waiting for it is also waiting for the stream.
-  await page.locator(".chat-input button:not([disabled])").waitFor({ timeout: 30_000 });
+  await page.locator('.chat-input button[type="submit"]:not([disabled])').waitFor({ timeout: 30_000 });
   await page.locator(".chat-input textarea").fill("change the title");
-  await page.locator(".chat-input button").click();
+  await page.getByRole("button", { name: "Send" }).click();
 
   // The whole chain in one assertion: POST /api/chat -> fake agent ->
   // fs/read_text_file -> permission allowlist -> `slidra text set` off

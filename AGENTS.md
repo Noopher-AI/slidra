@@ -40,17 +40,8 @@ with real output pasted in. Don't write down a command you haven't run; if you r
 write down what the failure looked like, not what you expected.
 The checklist's starting point is always `npm run verify:setup`.
 
-### Division of responsibility for visual regression gatekeeping
+### CI test scope
 
-Appearance baseline screenshots (`compareScreenshot` in `e2e/helpers/screenshot.ts`) must be produced on
-the same `ubuntu-latest` + Playwright-bundled Chromium as CI — screenshots produced locally (especially
-on macOS) render fonts differently, which causes appearance tests to fail spuriously in CI. Therefore:
+CI runs `npm test` and `npm run test:e2e:core`. The browser gate is intentionally limited to the cross-layer authoring flows that cannot be established by unit tests: browser/agent edits, playback, undo/redo, and save/open persistence.
 
-- **CI (`.github/workflows/e2e.yml`) is the authoritative gatekeeper for baseline comparisons**:
-  `npm run test:e2e` does its usual pixel-by-pixel comparison, never skipped.
-- **The only supported way to regenerate baseline screenshots**: manually trigger `e2e.yml` with
-  `update_baselines` checked, then download the results from the `appearance-baselines` artifact once
-  it finishes, verify the screenshot contents are correct, and commit them.
-- **Appearance comparison results from running `npm run test:e2e` or `npm run visual-qa` locally are
-  reference-only** (local font rendering differs from CI, so pixel-by-pixel comparison is bound to
-  fail) — they cannot serve as acceptance evidence; acceptance is based on CI's comparison results.
+`npm run test:e2e` remains the broader manual or on-demand E2E suite. The repository currently has no committed product appearance baselines, so CI does not claim a pixel-comparison gate. Add a visual gate only with explicit core screenshot coverage, a reviewed baseline-generation workflow, and corresponding policy here.

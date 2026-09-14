@@ -348,6 +348,11 @@ pub mod registry {
     /// itself or anything nested inside it — used to snapshot "the work
     /// directory's content is known to match `sourcePath` byte-for-byte"
     /// at `open`/`pack` time (`RegistryEntry.saved_at`).
+    // Filesystem timestamp updates can lag the write that triggered them by a few
+    // milliseconds. Record this margin at a known-clean boundary so Node
+    // does not immediately report an unchanged presentation as dirty.
+    pub const SAVED_AT_SETTLE_WINDOW_MS: f64 = 10.0;
+
     pub fn max_mtime_in_directory(dir: &Path) -> SlidraResult<f64> {
         let metadata = std::fs::metadata(dir)
             .map_err(|_| SlidraError::invalid("failed to read presentation content timestamp"))?;

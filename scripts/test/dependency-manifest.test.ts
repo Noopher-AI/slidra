@@ -9,13 +9,13 @@ import { describe, expect, it } from "vitest";
 
 /**
  * Guards against declaration drift: `node_modules` on disk silently
- * outliving a removed `package.json` entry. Without this, `npm run test:e2e`
+ * outliving a removed `package.json` entry. Without this, `npm run test`
  * stays green after a dependency is dropped from `package.json` as long as
  * nobody reinstalls.
  */
 
-const e2eDir = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.join(e2eDir, "..");
+const scriptsTestDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.join(scriptsTestDir, "..", "..");
 const require = createRequire(path.join(rootDir, "package.json"));
 
 const BARE_IMPORT_PATTERN =
@@ -27,8 +27,6 @@ function listTsFiles(dir: string): string[] {
     const full = path.join(dir, entry);
     const stat = statSync(full);
     if (stat.isDirectory()) {
-      // e2e/fixtures/ holds deliberately broken imports for
-      // loader-failure-guard.test.ts — not real dependency usage.
       if (entry === "fixtures") continue;
       out.push(...listTsFiles(full));
     } else if (entry.endsWith(".ts")) {
@@ -58,7 +56,7 @@ function packageNameOf(specifier: string): string {
   return specifier.startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
 }
 
-describe("e2e dependency declaration guard", () => {
+describe("E2E dependency declaration guard", () => {
   it("every bare module import in e2e source is declared in package.json and installed", () => {
     const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf-8"));
     const declared = new Set([

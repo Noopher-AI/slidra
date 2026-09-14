@@ -4059,6 +4059,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function focusPlayer(): void {
     if (destroyed || mode !== "play") return;
+    frame.focus();
     frame.contentWindow?.focus();
     // Belt-and-braces, confirmed necessary (not merely defensive) by
     // e2e/player-mode.test.ts: a bare cross-document `.focus()` call from
@@ -4067,6 +4068,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // call `window.focus()` on itself, from inside its own document, is
     // the half that actually lands.
     frame.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
+    playerHasFocus = true;
+    notify();
   }
 
   function stepPlayer(direction: "advance" | "retreat"): void {

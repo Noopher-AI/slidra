@@ -229,11 +229,14 @@ export async function workDirFor(id: string): Promise<string> {
   return entry.workDir;
 }
 
-/** The newest `mtimeMs` of `dir` itself or anything nested inside it. */
+const COORDINATION_FILE_NAME = ".slidra.lock";
+
+/** The newest content-file `mtimeMs` nested inside `dir`. Directory metadata and coordination locks are excluded. */
 export async function maxMtimeInDirectory(dir: string): Promise<number> {
-  let max = (await stat(dir)).mtimeMs;
+  let max = 0;
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.name === COORDINATION_FILE_NAME) continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       max = Math.max(max, await maxMtimeInDirectory(fullPath));

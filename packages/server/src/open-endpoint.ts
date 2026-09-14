@@ -48,6 +48,7 @@ const NEW_DECK_FILE_NAME = `${NEW_DECK_NAME}.slidra`;
 
 /** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.slidra` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
 export const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
+const SAVED_AT_SETTLE_WINDOW_MS = 10;
 
 const ILLEGAL_FILESYSTEM_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
 
@@ -136,7 +137,7 @@ async function reopenPresentationInPlace(id: string, stagedPath: string): Promis
   // its own presentation at the same moment does not lose its entry to this
   // write (or vice versa). Deliberately narrower than this whole function:
   // the `open` above shells out to the CLI, which takes this same lock.
-  const savedAt = await maxMtimeInDirectory(entry.workDir);
+  const savedAt = (await maxMtimeInDirectory(entry.workDir)) + SAVED_AT_SETTLE_WINDOW_MS;
   await withProjectsRegistryLock(async () => {
     const finalRegistry = await readProjectsRegistry();
     finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt });

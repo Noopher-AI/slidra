@@ -406,7 +406,11 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     const { id, elementId, moveElementId, scaleElementId, rotateElementId, textboxElementId } =
       await openFreshPresentationForCommandExecution();
     const command = `slidra text set ${id} slides/001.svg ${elementId} 'change the title'`;
-    const server = await serve(fakeAgent({ commandsPerTurn: [[command]] }), id);
+    // Keep the agent's lock open long enough for all four concurrent HTTP
+    // requests to reach the server. Without this deliberate fixture pause,
+    // the real release CLI can finish the agent command between the test's
+    // frozen-state assertion and the requests under full-suite contention.
+    const server = await serve(fakeAgent({ commandsPerTurn: [[command]], holdAfterPermissionMs: 200 }), id);
     const slidePath = "slides/001.svg";
 
     const payloads: Array<{ name: string; input: Record<string, unknown> }> = [

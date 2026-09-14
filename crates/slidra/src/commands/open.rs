@@ -34,7 +34,8 @@ fn open_presentation(path: &str) -> Result<String, SlidraError> {
     // disk. Every failure from here rolls it back — it must not become an
     // orphan directory nobody can reach.
     let registration = (|| -> Result<(), SlidraError> {
-        let saved_at = workspace::registry::max_mtime_in_directory(&work_dir)?;
+        let saved_at = workspace::registry::max_mtime_in_directory(&work_dir)?
+            + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
         // Read-modify-write under the lock: a concurrent `open` reading the
         // same map and writing after us would drop this brand-new entry.
         workspace::registry::with_registry_lock(&home, || {
