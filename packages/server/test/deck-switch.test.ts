@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -45,6 +45,7 @@ const fakeAgentFixture = path.join(path.dirname(fileURLToPath(import.meta.url)),
 
 let slidraHome: string;
 let slidraDir: string;
+let deckFolder: string;
 let staticRoot: string;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
@@ -52,9 +53,14 @@ let streams: Array<{ cancel: () => Promise<void> }>;
 beforeEach(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-files-"));
+  deckFolder = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-deckfolder-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-static-"));
   process.env.SLIDRA_HOME = slidraHome;
   process.env.SLIDRA_BIN = slidraBinPath;
+  // [E6.T2]: /api/new, /api/open, and GET /api/decks now resolve a real
+  // deck folder (default ~/Slidra) — pointed at an isolated temp dir so
+  // these tests never touch the real host home directory.
+  await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ deckFolder }));
   servers = [];
   streams = [];
 });
@@ -66,6 +72,7 @@ afterEach(async () => {
   delete process.env.SLIDRA_BIN;
   await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(deckFolder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -253,6 +260,31 @@ describe("no deck open (AC1)", () => {
     expect(select.status).toBe(200);
     const selectJson = await select.json();
     expect(selectJson).toEqual({ ok: true, current: "claude", source: "settings" });
+
+    // [E6.T2]: the deck lifecycle routes are deck-session-independent too —
+    // none of them touch this server's (non-existent) currently-open deck.
+    const decksGetBefore = await fetch(`${server.url}/api/decks`);
+    expect(decksGetBefore.status).toBe(200);
+    expect(await decksGetBefore.json()).toEqual({ decks: [] });
+
+    const created = await postJson(server, "/api/new", { name: "Independent" });
+    expect(created.status).toBe(200);
+    const createdJson = (await created.json()) as { ok: boolean; id: string; fileName: string };
+    expect(createdJson.ok).toBe(true);
+    expect(createdJson.fileName).toBe("Independent.slidra");
+
+    const uploadSourcePath = path.join(slidraDir, "uploaded.slidra");
+    expect((await runCli(["new", uploadSourcePath, "--name", "Uploaded"])).ok).toBe(true);
+    const uploadBytes = await readFile(uploadSourcePath);
+    const opened = await fetch(`${server.url}/api/open`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream", "x-slidra-file-name": "Uploaded.slidra" },
+      body: uploadBytes,
+    });
+    expect(opened.status).toBe(200);
+    const openedJson = (await opened.json()) as { ok: boolean; id: string };
+    expect(openedJson.ok).toBe(true);
+    expect(openedJson.id).not.toBe(createdJson.id);
   });
 });
 
