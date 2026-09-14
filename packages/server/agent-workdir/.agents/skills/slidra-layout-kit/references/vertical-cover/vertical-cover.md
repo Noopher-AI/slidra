@@ -1,42 +1,42 @@
 # vertical-cover
 
-**畫布**：1080×1920（9:16）　**這不是 16:9 的版面**
-**解的關係**：`none`
-**單位數**：1
-**一句話**：直式封面：上半滿版圖、下半白底放標題——社群貼文與短影音封面的標準解。
+**Canvas**: 1080×1920 (9:16) **This is not a 16:9 layout**
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: Portrait cover: full-bleed image on top half, title on white below — the standard for social post covers and short-video thumbnails.
 
-**什麼時候用它**：系列貼文的封面、短影音的第一幀。
-**什麼時候不要用**：內容頁。
+**When to use it**: Cover for a series of posts, the first frame of a short video.
+**When not to use it**: Content pages.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `vertical-cover.svg`。
+Full SVG: see `vertical-cover.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 圖片 | `node`（`image`） | 上半滿版出血 | — | — |
-| 短棒 | `garnish` | | — | — |
-| 大標 | `label` | 下半，≤ 2 行 | 每行 6 字 | 1–2 |
-| 副標 | `label` | | 14 字 | 1 |
-| 日期講者 | `label` | 最下方 | 14 字 | 1 |
+| Image | `node` (`image`) | upper half, full-bleed | — | — |
+| Short bar | `garnish` | | — | — |
+| Main title | `label` | lower half, ≤ 2 lines | 6 chars/line | 1–2 |
+| Subtitle | `label` | | 14 chars | 1 |
+| Date/speaker | `label` | at the very bottom | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-圖佔上半 60%，文字區佔下半。**大標要很大**（90 以上）——縮圖在動態牆上只有拇指大。不放頁尾。
+Image takes the upper 60%, text area takes the lower part. **The main title must be large** (90+) — thumbnails on social feeds are thumb-sized. No footer.
 
-`blueprint.shape` 寫 `vertical-cover`。
+Write `blueprint.shape` as `vertical-cover`.
 
-## 怎麼設定畫布
+## Setting the canvas
 
 ```
 slidra presentation canvas set <presentation-id> --width 1080 --height 1920
 ```
 
-畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+The canvas must be set **before** creating the first page. Non-16:9 canvases **must not use `k = width ÷ 1280` for font size conversion** — that rule only holds for proportional canvases. Use the slot table directly for portrait and square layouts.
 
-## 變體
+## Variants
 
-- **文字壓在圖上**：拿掉白底，文字加 scrim 壓在圖的下半。
-- **色塊底**：圖換成滿版純色，適合沒有素材時。
+- **Text over image**: remove the white base, add a scrim under the text over the lower half of the image.
+- **Color-block base**: replace the image with a full-bleed solid color, suitable when no asset is available.

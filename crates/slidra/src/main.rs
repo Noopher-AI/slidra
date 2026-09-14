@@ -321,7 +321,7 @@ fn maybe_read_stdin_csv(positional: &[String]) -> Option<String> {
 
 /// `asset`'s only subcommand is `import` — `docs/spec/cli.md`'s "asset"
 /// section (the same section that specifies `argv::asset::parse_import`'s
-/// grammar) states any other value reports `未知的子命令：asset <x>`
+/// grammar) states any other value reports "unknown subcommand: asset <x>"
 /// (single token, unlike `chart`/`table`'s two-token unknown-subcommand
 /// message — matching that section's literal wording).
 fn dispatch_asset(positional: &[String]) -> result::CommandResult {

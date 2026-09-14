@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-p1-title" data-slidra-name="標題">
-    <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">簡報介紹</text>
+  <g id="el-p1-title" data-slidra-name="Title">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="40" fill="#333333">About This Deck</text>
   </g>
-  <g id="el-p1-body" data-slidra-name="內文">
-    <text x="80" y="220" font-family="Noto Sans TC" font-size="24" fill="#333333">這份簡報說明我們這一季的重點工作與下一步規劃。</text>
+  <g id="el-p1-body" data-slidra-name="Body">
+    <text x="80" y="220" font-family="Noto Sans TC" font-size="24" fill="#333333">This deck covers our key work this quarter and the next steps we are planning.</text>
   </g>
 </svg>

@@ -1,39 +1,39 @@
 # image-caption-strip
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一張大圖佔上方三分之二，下方一條說明帶——圖是主體，文字是圖說而不是論述。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A large image takes the upper two-thirds, with a caption strip below — the image is the subject, the text is a caption, not an argument.
 
-**什麼時候用它**：一張圖本身就能說明事情（產品照、現場照、示意圖），文字只需要一兩句。
-**什麼時候不要用**：文字其實是重點——那用 22 `image-left`，把一半版面還給文字。
+**When to use it**: A single image speaks for itself (product photo, on-site photo, diagram) and the text only needs one or two sentences.
+**When not to use it**: When the text is actually the point — use 22 `image-left` instead, giving half the layout back to text.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-caption-strip.svg`。
+Full SVG: see `image-caption-strip.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖片 | `node`（`image`） | 3:1～16:9 的橫幅 | — | — |
-| 圖說 | `label` | 說明**這張圖在說什麼**，不是圖的內容 | 26 字 | 1 |
-| 出處 | `label`（`caption`） | 可省 | 20 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Image | `node` (`image`) | 3:1 to 16:9 wide banner | — | — |
+| Caption | `label` | explains **what this image conveys**, not its content | 26 chars | 1 |
+| Source | `label` (`caption`) | optional | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-圖的寬度等於安全區寬。說明帶緊貼圖的下緣（不留空隙），用 `secondary_bg` 當底——它是圖的一部分，不是獨立的區塊。
+The image width equals the safe-area width. The caption strip hugs the image's bottom edge (no gap), using `secondary_bg` as its base — it is part of the image, not a separate block.
 
-`blueprint.shape` 寫 `image-caption-strip`。
+Write `blueprint.shape` as `image-caption-strip`.
 
-## 怎麼放進去
+## How to place it
 
 ```
-slidra asset import <id> <圖片路徑或 URL>
-slidra element insert image <id> slides/00N.svg --x 80 --y 160 --width 1120 --height 380 --media assets/<檔名>
+slidra asset import <id> <image path or URL>
+slidra element insert image <id> slides/00N.svg --x 80 --y 160 --width 1120 --height 380 --media assets/<filename>
 ```
 
-## 變體
+## Variants
 
-- **說明帶壓在圖上**：把說明帶改成半透明疊在圖的下緣，更緊湊。
-- **雙圖**：上方並排兩張圖，共用同一條說明帶。
+- **Caption strip over the image**: make the caption strip semi-transparent and overlay it on the image's bottom edge — more compact.
+- **Dual images**: two images side by side above, sharing the same caption strip.

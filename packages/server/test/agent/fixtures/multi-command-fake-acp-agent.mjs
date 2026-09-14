@@ -93,15 +93,15 @@ class MultiCommandFakeAgent {
       for (const command of commands) {
         const permission = await this.connection.requestPermission({
           sessionId: params.sessionId,
-          toolCall: { toolCallId: `multi-cmd-${turn}-${command}`, title: "執行命令", rawInput: { command } },
+          toolCall: { toolCallId: `multi-cmd-${turn}-${command}`, title: "Run command", rawInput: { command } },
           options: [
-            { kind: "allow_once", name: "允許", optionId: "allow" },
-            { kind: "reject_once", name: "拒絕", optionId: "reject" },
+            { kind: "allow_once", name: "Allow", optionId: "allow" },
+            { kind: "reject_once", name: "Reject", optionId: "reject" },
           ],
         });
         log({ turn, permissionOutcome: permission.outcome });
         if (permission.outcome?.outcome !== "selected" || permission.outcome.optionId !== "allow") {
-          throw new Error(`命令未獲允許：${command}：${JSON.stringify(permission.outcome)}`);
+          throw new Error(`command not allowed: ${command}：${JSON.stringify(permission.outcome)}`);
         }
         if (config.holdAfterPermissionMs) {
           await new Promise((resolve) => setTimeout(resolve, config.holdAfterPermissionMs));
@@ -113,7 +113,7 @@ class MultiCommandFakeAgent {
 
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
-      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `完成第 ${turn} 回合` } },
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: `completed turn ${turn} turn` } },
     });
     return { stopReason: "end_turn" };
   }
@@ -125,7 +125,7 @@ function runShellCommand(command, cwd) {
   return new Promise((resolve, reject) => {
     execFile("/bin/sh", ["-c", command], { cwd }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(`命令執行失敗：${command}\n${stdout}\n${stderr}`));
+        reject(new Error(`command failed: ${command}\n${stdout}\n${stderr}`));
         return;
       }
       resolve();

@@ -1,36 +1,36 @@
 # card-wall
 
-**解的關係**：`membership`（並列、歸屬、同一組裡的幾件事）
-**單位數**：3–5
-**一句話**：等高的橫條卡片垂直排列，間距一致——最中性的並列，沒有方向、沒有主從。
+**Relationship solved**: `membership` (parallel, belonging, several items in the same group)
+**Unit count**: 3–5
+**One line**: Equal-height horizontal cards stacked vertically with even spacing — the most neutral parallel layout; no direction, no hierarchy.
 
-**什麼時候用它**：幾件事地位相等、順序可以互換。三條產品特色、四個組成要素。
-**什麼時候不要用**：只要內容其實有先後（`order`）、有對比（`contrast`）、或有層級（`parent`），卡片牆就會把那層意思抹平。**相鄰兩頁都用它是最常見的錯誤**。
+**When to use it**: Items of equal status whose order is interchangeable. Three product features, four components.
+**When not to use it**: When the content actually has sequence (`order`), contrast (`contrast`), or hierarchy (`parent`), the card wall flattens that meaning away. **Using it on two adjacent pages is the most common mistake**.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `card-wall.svg`。
+Full SVG: see `card-wall.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | 這一頁的主張 | 15 字（上限 24） | 1 |
-| 標題底線 | `garnish` | accent 短棒 | — | — |
-| 卡片 ×N | `node`（內含 `field`） | 每張一個語意單位 | — | — |
-| 編號 | `label` | `01`／`02`… | 2 字 | 1 |
-| 關鍵詞 | `label` | 這個單位在說什麼 | 18 字（上限 32） | 1 |
-| 頁尾三件 | — | 線、簡報名、頁碼 | — | — |
+| Title | `label` | the claim for this page | 15 chars (max 24) | 1 |
+| Title underline | `garnish` | accent bar | — | — |
+| Cards ×N | `node` (containing a `field`) | one semantic unit each | — | — |
+| Number | `label` | `01`/`02`… | 2 chars | 1 |
+| Keyword | `label` | what this unit is about | 18 chars (max 32) | 1 |
+| Footer trio | — | line, deck name, page number | — | — |
 
-## 節奏
+## Rhythm
 
-卡片等高、間距一致——**均勻是重點**，因為並列的內容沒有輕重之分。卡片高度與間距由 `layout.spacing` 推導；N 張卡片的總高不得越過 `bottom_margin`。
+Cards are equal height with even spacing — **uniformity is the point**, because parallel content has no emphasis. Card height and gap are derived from `layout.spacing`; the total height of N cards must not exceed `bottom_margin`.
 
-`blueprint.shape` 寫 `card-wall`；`type` 可一併填 `bullets`。
+Write `blueprint.shape` as `card-wall`; `type` can also be set to `bullets`.
 
-**動畫**：標題一步，之後每張卡片一步（1＋N）。卡片與它的編號、關鍵詞先 `element group` 成一組，效果下在群組上。
+**Animation**: one step for the title, then one step per card (1+N). Group each card with its number and keyword via `element group` first; the effect goes on the group.
 
-## 變體
+## Variants
 
-- **窄卡片**：卡片只佔左 2/3，右側留白給一張圖或大留白。
-- **無 field**：拿掉卡片底色，只留編號與關鍵詞，靠間距與細分隔線分組——更安靜，適合 `clean-brief` 這種克制的風格。
+- **Narrow cards**: cards occupy only the left two-thirds, leaving the right side for an image or generous whitespace.
+- **No field**: drop the card background, keep only number and keyword, separated by spacing and a thin divider — quieter, suits restrained styles like `clean-brief`.

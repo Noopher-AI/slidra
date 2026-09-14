@@ -1,28 +1,28 @@
-# 形狀語言：sketch-notes
+# Shape language: sketch-notes
 
-**一句話**：手繪的塗鴉線條、歪一點的框、隨手畫的箭頭。像視覺記錄師當場畫下來的。
+**One line**: Hand-drawn doodle lines, slightly crooked frames, casual arrows. Like a visual note-taker drawing live.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-框是**手繪的矩形**（四個角不完全接合、邊線微彎）。箭頭是徒手的曲線加一個三角。可以有小塗鴉（星星、驚嘆號、對話框）當作 `garnish`。
+Frames are **hand-drawn rectangles** (corners don't quite meet, edges slightly curved). Arrows are a freehand curve with a triangle. Small doodles (stars, exclamation marks, speech bubbles) can serve as `garnish`.
 
-## 字體性格
+## Type character
 
-圓體或手寫感字族。標題可以加底線塗鴉（一條來回兩次的波浪線）。
+Rounded or handwriting-style face. Headings can have a doodled underline (a wavy line drawn back and forth twice).
 
-## 留白節奏
+## Whitespace rhythm
 
-不嚴格對齊——刻意讓元素有 ±4px 的位移。但**字的基線仍然要齊**，否則會變成雜亂而不是手繪。
+Not strictly aligned — deliberately offset elements by ±4px. But **the text baselines must still align**, or it becomes cluttered rather than hand-drawn.
 
-## 材質與層次
+## Material and depth
 
-紙的底色配深色線條。完全平面。
+Paper base color with dark lines. Completely flat.
 
-**適合**：工作坊、課程紀錄、腦力激盪、給內部看的初稿。
-**不適合**：對外正式簡報、需要精確的技術內容。
+**Suited for**: Workshops, course notes, brainstorming, internal drafts.
+**Not suited for**: Formal external presentations, content requiring precision.
 
-## 怎麼做到
+## How to achieve it
 
-矩形改用四段 `<path>` 各自微彎；元素位置加 ±4 的隨機位移；箭頭用二次貝茲曲線。
+Replace rectangles with four separate `<path>` segments, each slightly curved; add a ±4 random offset to element positions; arrows use quadratic Béziers.

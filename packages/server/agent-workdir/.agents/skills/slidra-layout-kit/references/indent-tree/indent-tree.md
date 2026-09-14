@@ -1,32 +1,32 @@
 # indent-tree
 
-**解的關係**：`parent`
-**單位數**：1 + 3–6
-**一句話**：縮排的層級清單——最樸素、也最不會誤解的統轄關係。
+**Relationship solved**: `parent`
+**Unit count**: 1 + 3–6
+**One line**: An indented hierarchical list — the most minimal and least ambiguous way to show governance.
 
-**什麼時候用它**：一個東西分解成幾個子項，層數不超過三層。
-**什麼時候不要用**：層級超過三層或每層項目很多——那需要 `nested-field` 的空間感。
+**When to use it**: One thing decomposed into several sub-items, with no more than three levels.
+**When not to use it**: More than three levels, or many items per level — that needs `nested-field`'s spatial layout.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `indent-tree.svg`。
+Full SVG: see `indent-tree.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 根 | `node` | 被分解的那一個 | 12 字 | 1 |
-| 子項 ×N | `node` | | 14 字 | 1 |
-| 連接線 | `edge` | 縮排的直角線 | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Root | `node` | the thing being decomposed | 12 chars | 1 |
+| Sub-items ×N | `node` | | 14 chars | 1 |
+| Connector lines | `edge` | right-angle indent lines | — | — |
 
-## 節奏
+## Rhythm
 
-每層縮排一個 `layout.gutter`。**同層的項目左緣必須完全對齊**——層級的可讀性全靠這個。字級每下一層小一級。
+Each level is indented by one `layout.gutter`. **Items at the same level must have their left edges perfectly aligned** — readability of the hierarchy depends entirely on this. Font size decreases one level per indent.
 
-`blueprint.shape` 寫 `indent-tree`。
+Write `blueprint.shape` as `indent-tree`.
 
-## 變體
+## Variants
 
-- **無線版**：拿掉連接線，只靠縮排與字級。更安靜，但層級超過兩層就會看不清。
-- **右側說明欄**：每個子項右邊配一句說明。
+- **No lines**: remove the connector lines, rely on indentation and font size alone. Quieter, but beyond two levels it becomes unclear.
+- **Right-side description column**: one sentence to the right of each sub-item.

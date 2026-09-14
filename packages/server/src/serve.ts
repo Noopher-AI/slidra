@@ -125,7 +125,7 @@ const DEFAULT_HOST = "127.0.0.1";
  * (unknown id) happens before the socket is ever bound, so a bad startup
  * fails loudly without a half-started server left behind. A presentation
  * with no slides is valid (ADR-0018: `new` creates none) — the editor
- * shows "此簡報沒有投影片" and the first page is made from there.
+ * shows "No slides now" and the first page is made from there.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
   const { presentationId } = options;

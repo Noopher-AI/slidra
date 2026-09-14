@@ -11,9 +11,9 @@
 // own editing-charter turn, so the author's message is index 1) depends on
 // the message text (T5/NOOP-110 follow-up, e2e/freeze.test.ts):
 //   - default (any text without one of the keywords below, including the
-//     original "改標題" trigger some tests still send — a literal Chinese
-//     phrase left in place because e2e/freeze.test.ts, outside this file's
-//     translation scope, sends it verbatim): unchanged since #16/#8 —
+//     original "change the title" trigger some tests still send — the
+//     literal phrase left in place because e2e/freeze.test.ts sends it
+//     verbatim): unchanged since #16/#8 —
 //     1. reads `slides/001.svg` through the ACP client's fs/read_text_file,
 //        the same way a real agent discovers the element id;
 //     2. asks for permission to run a `slidra text set` shell command,
@@ -22,12 +22,12 @@
 //        resolving `slidra` from PATH — the exact step that was broken
 //        during #8's manual acceptance (`command not found: slidra`);
 //     4. streams one reply chunk back.
-//   - "兩步" (also a literal trigger e2e/freeze.test.ts sends, left
-//     untranslated for the same reason): same read/permission/hold dance,
+//   - "two steps" (also a literal trigger e2e/freeze.test.ts sends, left
+//     as-is for the same reason): same read/permission/hold dance,
 //     then TWO `text set` commands in the same turn (second one appends
-//     "（第二步）", also asserted verbatim by that file) — exercises one
+//     "(step 2)", also asserted verbatim by that file) — exercises one
 //     turn's several commands undoing together as a single group (US 44).
-//   - "只看" (same note — a literal e2e/freeze.test.ts trigger): reads the
+//   - "view only" (same note — a literal e2e/freeze.test.ts trigger): reads the
 //     slide, holds, replies — never runs any command, so the deck must
 //     never freeze (US 48: thinking/reading alone doesn't take the editing
 //     lock).
@@ -97,7 +97,7 @@ class EditingFakeAgent {
     });
     const elementId = extractTextElementId(slide.content);
 
-    if (authorText.includes("只看")) {
+    if (authorText.includes("view only")) {
       if (freezeHoldMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, freezeHoldMs));
       }
@@ -108,7 +108,7 @@ class EditingFakeAgent {
       return { stopReason: "end_turn" };
     }
 
-    const titles = authorText.includes("兩步") ? [newTitle, `${newTitle}（第二步）`] : [newTitle];
+    const titles = authorText.includes("two steps") ? [newTitle, `${newTitle} (step 2)`] : [newTitle];
     for (const title of titles) {
       const command = `slidra text set ${presentationId} ${SLIDE_PATH} ${elementId} '${title}'`;
       const permission = await this.connection.requestPermission({

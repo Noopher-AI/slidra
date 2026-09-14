@@ -1,28 +1,28 @@
 # dotted-arc
 
-**氣氛**：三圈由點組成的弧線從右下升起，輕盈、有方向。
+**Mood**: Three arcs made of dots rising from the lower-right; light and directional.
 
-**明亮風格**：這是為淺底配色畫的。深色配色（01、04、07、10、13、15、18、20）用它會太弱，要把透明度整組拉高一倍以上，或直接換一個深色系的配方。
+**Light style**: This is designed for light-background palettes. Dark palettes (01, 04, 07, 10, 13, 15, 18, 20) will make it too weak — either raise the opacity across the board by at least double, or switch to a dark-background recipe.
 
-**適合**：`anchor`、`breathing`，以及 `order` 關係的頁面（弧有方向）。
-**不適合**：`membership`。弧指向某處，並列的內容不該有方向。
+**Suited for**: `anchor`, `breathing`, and pages with `order` relationships (the arcs have direction).
+**Not suited for**: `membership`. Arcs point somewhere; parallel content should not have direction.
 
-**建議 opacity**：0.7
+**Suggested opacity**: 0.7
 
-**做法**：整條弧要**落在畫面裡**，不要只露出一個角。點在淺底上要 3–5px、透明度 0.3–0.75；最內圈用 accent、外兩圈用主色，層次才拉得開。
+**Technique**: Each arc must **sit inside the frame**, not just peek in at one corner. On a light background, dots need 3–5px at opacity 0.3–0.75; the innermost arc in accent, the outer two in primary, to pull the layers apart.
 
-完整 SVG：見同資料夾 `dotted-arc.svg`。
+Full SVG: see `dotted-arc.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
-| `cool` | 整張退到冷調：亮部也交給主色，只留明度差。 | `var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
+| `cool` | Push the whole image to cool tones: the bright parts also go to primary, leaving only a lightness difference. | `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：04、10、12、19、22、23。
+**Suggested styles**: 04, 10, 12, 19, 22, 23.

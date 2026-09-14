@@ -1,28 +1,28 @@
-# 形狀語言：brutalist
+# Shape language: brutalist
 
-**一句話**：報紙般的密度、粗黑的框線、原始的結構。不修飾、不討好，資訊直接攤開。
+**One line**: Newspaper-like density, thick black frames, raw structure. No ornamentation, no pandering — information laid out directly.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-**粗框**（3–5px）而不是底色分區。直角。分隔線用 2–3px 的實線。允許元素貼齊到邊界甚至出血。
+**Thick frames** (3–5px) rather than base-color zoning. Right angles. Dividers use 2–3px solid lines. Elements may sit flush to the margins or even bleed.
 
-## 字體性格
+## Type character
 
-無襯線、字重對比極大（400 對 900 的感覺，用 700 加大字級達成）。標題可以佔滿整行、甚至溢出邊界。
+Sans-serif, with extreme weight contrast (the feel of 400 vs 900, achieved with 700 plus a larger type size). Titles can fill the entire line, even overflow the margins.
 
-## 留白節奏
+## Whitespace rhythm
 
-**密**：`layout.spacing` 只用最小的兩級，邊界收窄。一頁可以放到密度上限。
+**Tight**: `layout.spacing` uses only the two smallest levels; margins are narrowed. A page can go to the density limit.
 
-## 材質與層次
+## Material and depth
 
-完全平面，零圓角零陰影。層次靠框線粗細與字級。
+Completely flat, zero corner radius, zero shadow. Hierarchy is carried by frame weight and type scale.
 
-**適合**：調查報導、事實呈現、次文化、需要「我沒有在美化」的場合。
-**不適合**：需要親和力或信任感的場合。
+**Suited for**: Investigative reporting, fact presentation, subculture, contexts that need "I'm not dressing this up."
+**Not suited for**: Contexts needing approachability or trust.
 
-## 怎麼做到
+## How to achieve it
 
-`field` 拿掉底色改成 `stroke-width="4"` 的框；`layout.side_margin` 減 16–24；`spacing` 改用 [8,12,16,24,40]。
+`field` drops its base color and becomes a `stroke-width="4"` frame; `layout.side_margin` reduced by 16–24; `spacing` changed to [8, 12, 16, 24, 40].

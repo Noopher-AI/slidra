@@ -1,31 +1,31 @@
 # video-grid
 
-**解的關係**：`membership`
-**單位數**：2–4
-**一句話**：幾段短片並排，各配一行說明——用途相同、長度都短的片段一次看完。
+**Relationship solved**: `membership`
+**Unit count**: 2–4
+**One line**: Several short clips side by side, each with a one-line description — clips of the same kind and short length, watched together.
 
-**什麼時候用它**：多段同性質的短片（各家做法、幾個使用情境、幾次測試）。
-**什麼時候不要用**：片段長度差很多——長的那段會沒時間播，變成擺設。
+**When to use it**: Multiple clips of the same nature (different implementations, several use cases, multiple test runs).
+**When not to use it**: Clips vary widely in length — the longest one will never get to play and becomes decoration.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `video-grid.svg`。
+Full SVG: see `video-grid.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 影片 ×N | `node`（`video`） | 同尺寸 | — | — |
-| 說明 ×N | `label` | 各自在下方 | 14 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Videos ×N | `node` (`video`) | same size | — | — |
+| Descriptions ×N | `label` | each below its clip | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-每段影片等大、16:9。**四段是上限**——再多就沒有人記得第一段演了什麼。
+All clips equal size, 16:9. **Four is the maximum** — beyond that, no one remembers what the first clip showed.
 
-`blueprint.shape` 寫 `video-grid`。
+Write `blueprint.shape` as `video-grid`.
 
-## 變體
+## Variants
 
-- **一大三小**：一段主片配三段短片，同 34 `image-mosaic` 的邏輯。
-- **截圖代替**：不方便現場播時，改放三張截圖並在備忘稿寫下要口述的內容。
+- **One large, three small**: one main clip plus three short ones, same logic as 34 `image-mosaic`.
+- **Screenshots instead**: when live playback isn't feasible, use three screenshots and note the narration in the speaker notes.

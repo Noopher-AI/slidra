@@ -1,28 +1,28 @@
 # edge-glow
 
-**氣氛**：右緣與上緣各一道窄而亮的光帶，中央與左側完全乾淨。
+**Mood**: A narrow bright band of light on the right edge and the top edge; the center and left are completely clean.
 
-**明亮風格**：這是為淺底配色畫的。深色配色（01、04、07、10、13、15、18、20）用它會太弱，要把透明度整組拉高一倍以上，或直接換一個深色系的配方。
+**Light style**: This is designed for light-background palettes. Dark palettes (01, 04, 07, 10, 13, 15, 18, 20) will make it too weak — either raise the opacity across the board by at least double, or switch to a dark-background recipe.
 
-**適合**：任何節奏——它是這一批裡最不干擾內容的一個。
-**不適合**：—
+**Suited for**: Any rhythm — it is the least content-interfering recipe in this batch.
+**Not suited for**: —
 
-**建議 opacity**：0.8
+**Suggested opacity**: 0.8
 
-**做法**：關鍵是**窄**。光帶在 16% 寬度內就要衰減到近乎 0；第一版讓它擴散到三分之一頁寬，在暖色配色上整個右側糊成褐色。
+**Technique**: The key is **narrow**. The light band must decay to near zero within 16% of the width; the first version let it spread to a third of the page width, and on a warm palette the entire right side smeared into brown.
 
-完整 SVG：見同資料夾 `edge-glow.svg`。
+Full SVG: see `edge-glow.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
-| `cool` | 整張退到冷調：亮部也交給主色，只留明度差。 | `var(--accent)` → `primary` |
+| `base` | As-is, use the SVG below directly | — |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
+| `cool` | Push the whole image to cool tones: the bright parts also go to primary, leaving only a lightness difference. | `var(--accent)` → `primary` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：全部。淺色風格 02、03、06、08、11、12、14、16、17、19、21、23、25 都合用。
+**Suggested styles**: All. Works on the light styles 02, 03, 06, 08, 11, 12, 14, 16, 17, 19, 21, 23, 25.

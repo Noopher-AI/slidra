@@ -1,33 +1,33 @@
 # venn
 
-**解的關係**：`overlap`
-**單位數**：2–3
-**一句話**：相交的圓，交集區被明確標示——共有與各有一眼看清。
+**Relationship solved**: `overlap`
+**Unit count**: 2–3
+**One line**: Overlapping circles with the intersection clearly marked — shared and unique at a glance.
 
-**什麼時候用它**：兩三個東西有共同的部分，而那個共同部分正是這一頁的重點。
-**什麼時候不要用**：只是比較兩者的差異——那是 `contrast`，用 `split-panel`。交集區沒有內容時不要用這個版面。
+**When to use it**: Two or three things share a common part, and that common part is the point of this page.
+**When not to use it**: Just comparing differences between two things — that is `contrast`, use `split-panel`. Don't use this layout when the intersection has no content.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `venn.svg`。
+Full SVG: see `venn.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圓 ×N | `node` | 半透明才看得到交集 | — | — |
-| 各自區標籤 | `label` | | 8 字 | 1 |
-| 交集標籤 | `label` | **這是重點** | 10 字 | 1 |
-| 交集說明 | `label` | 放在圖下方 | 24 字 | 2 |
+| Title | `label` | | 15 chars | 1 |
+| Circles ×N | `node` | semi-transparent so the intersection is visible | — | — |
+| Individual labels | `label` | | 8 chars | 1 |
+| Intersection label | `label` | **this is the key point** | 10 chars | 1 |
+| Intersection description | `label` | below the diagram | 24 chars | 2 |
 
-## 節奏
+## Rhythm
 
-圓的重疊面積約為單圓的 25%——太少看不出共有，太多看不出各有。填色要半透明（opacity 0.5 上下），否則交集不會顯色。
+The overlap area is about 25% of a single circle's area — too little and the shared part is invisible, too much and the unique parts disappear. Fills must be semi-transparent (opacity ~0.5), otherwise the intersection won't show its blended color.
 
-`blueprint.shape` 寫 `venn`。
+Write `blueprint.shape` as `venn`.
 
-## 變體
+## Variants
 
-- **三圓**：三個等距相交，中央是三者共有——但三圓的標籤位置很難擺，內容要非常短。
-- **方形版**：改用兩個相交的圓角矩形，跟其他版面的語彙更一致。
+- **Three circles**: three equally spaced overlapping circles, the center is the three-way overlap — but three-circle label placement is tricky; keep content very short.
+- **Square version**: use two overlapping rounded rectangles instead, more consistent with other layouts' visual vocabulary.

@@ -1,26 +1,26 @@
 # ripple
 
-**氣氛**：從右下角擴散出去的同心圓。有中心、有擴散，而且愈遠愈淡。
+**Mood**: Concentric circles expanding from the lower-right corner. A center, an expansion, and fading with distance.
 
-**適合**：`anchor`、`breathing`。
-**不適合**：`dense`。
+**Suited for**: `anchor`, `breathing`.
+**Not suited for**: `dense`.
 
-**建議 opacity**：0.6
+**Suggested opacity**: 0.6
 
-**做法**：二十二圈同心圓，每四圈加粗一次做出節拍。
+**Technique**: Twenty-two concentric circles, thickened every fourth ring to create a beat.
 
-完整 SVG：見同資料夾 `ripple.svg`。
+Full SVG: see `ripple.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `verdant` | 改用第三色領頭。多數配色的 secondary_accent 是另一個色系，整張圖的色溫會整個換掉。 | `var(--primary)` → `secondary_accent` |
-| `accent-led` | 主客對調：原本用主色的地方改用 accent。同一張圖會從沉穩變成明亮，適合需要熱度的頁面。 | `var(--primary)` → `accent` |
+| `base` | As-is, use the SVG below directly | — |
+| `verdant` | Switch to tertiary-led. For most palettes, secondary_accent is a different hue family, which shifts the color temperature of the whole image. | `var(--primary)` → `secondary_accent` |
+| `accent-led` | Swap primary and accent: wherever primary was used, use accent instead. The same image goes from calm to bright; suited for pages that need warmth. | `var(--primary)` → `accent` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：01、10、15、23。
+**Suggested styles**: 01, 10, 15, 23.

@@ -1,23 +1,23 @@
 ---
 name: slidra-new-slide
-description: 在簡報最後（或指定位置）新增一頁講某件事：有計畫就照 build 的六階段寫一頁 SVG 並補進計畫，沒有計畫才用範本、複製相近頁、或從版面庫寫一頁。作者說「加一頁講 X」或訊息以 /slidra-new-slide 開頭時用
+description: Add a page at the end (or a specified position) covering something: when a plan exists, write one SVG page following build's six stages and append it to the plan; only when there is no plan use a template, duplicate a similar page, or write one from the layout library. Use when the author says "add a page about X" or the message starts with /slidra-new-slide
 ---
 
-# 新增一頁投影片
+# Add a slide
 
-## 步驟
+## Steps
 
-1. **先看現有的頁**：`slidra ls <presentation-id> slides`，知道目前有幾頁、新頁會變成第幾頁。索引從 1 開始，檔名補零到三位（第 2 頁是 `slides/002.svg`）。
-2. **決定怎麼做，依序判斷**：
-   - **有計畫**（`slidra cat <presentation-id> plan/design-spec.md` 讀得到）：這一頁照 `slidra-build` 步驟 4 的六階段做（構圖→背景→前景→群組→動畫→檢視），關係依 `reference/slide-design.md` 第 6.1 節自己判，相鄰頁用過的 `blueprint.shape` 同關係就換一個；其他頁有背景圖時（`cat` 任一頁看得到 `data-slidra-role="background"`）新頁重用同一個 `assets/` 路徑，不另建資產。做完把這一頁補進 `plan/outline.md` 的 `pages`（必填 `relationship` 與 `blueprint`，用了已知解才填 `type`；`status` 維持不變）。
-   - **沒有計畫但有範本**：`slidra template list <presentation-id>`，有對應頁型的範本就 `slidra slide add <presentation-id> --template <file 路徑>`，再 `text set` 覆寫文字。
-   - **沒有計畫、沒有範本，但有結構相近的一頁**：`slidra slide duplicate <presentation-id> slides/00N.svg` 複製它，再 `text set` 改文字。
-   - **什麼都沒有**：從 `slidra-layout-kit` 挑一個解，配色用 `slidra-style-kit` 的 `03 clean-brief`，照 `slide-design.md` 第 0 節的語法 `slide add --svg` 寫一頁——送出前先過該節的自檢清單，沒過的頁面會被整頁拒收。
-   頁面只放關鍵詞（一條要點以 1 行為目標），完整句子寫進 `slidra slide notes set`。
-3. **驗收**：`slidra validate <presentation-id> slides/00N.svg` 修到 0 錯誤（沒有計畫檔時它只驗幾何與骨架，另外 `cat` 讀回確認文字真的寫進去了）。把新頁的路徑告訴使用者。
+1. **Look at the existing pages first**: `slidra ls <presentation-id> slides` — know how many pages there are and what number the new page will be. Indexing starts at 1, filenames zero-padded to three digits (page 2 is `slides/002.svg`).
+2. **Decide how to do it, in this order**:
+   - **A plan exists** (`slidra cat <presentation-id> plan/design-spec.md` succeeds): build this page per `slidra-build` step 4's six stages (compose → background → foreground → group → animate → review); judge the relationship yourself per section 6.1 of `reference/slide-design.md` — if an adjacent page used the same `blueprint.shape` for the same relationship, pick a different one; when other pages have a background image (visible via `cat` on any page as `data-slidra-role="background"`), the new page reuses the same `assets/` path, not a new asset. When done, add this page to `pages` in `plan/outline.md` (`relationship` and `blueprint` are required; fill in `type` only when using a known solution; `status` stays unchanged).
+   - **No plan but a template exists**: `slidra template list <presentation-id>`; when a template for the page type exists, `slidra slide add <presentation-id> --template <file path>`, then `text set` to overwrite the text.
+   - **No plan, no template, but a structurally similar page exists**: `slidra slide duplicate <presentation-id> slides/00N.svg` to copy it, then `text set` to change the text.
+   - **Nothing at all**: pick a solution from `slidra-layout-kit`, use `slidra-style-kit`'s `03 clean-brief` for colors, and write one page with `slide add --svg` per the syntax in section 0 of `slide-design.md` — run through that section's self-check list before submitting; a failing page is rejected whole.
+   Pages hold keywords only (a bullet targets 1 line); full sentences go into `slidra slide notes set`.
+3. **Acceptance**: `slidra validate <presentation-id> slides/00N.svg` until 0 errors (without a plan file it only checks geometry and skeleton; additionally `cat` and read back to confirm the text really landed). Tell the user the new page's path.
 
-## 容易做錯的地方
+## Common pitfalls
 
-- 沒帶 `--svg`／`--template` 的 `slide add` 是空白頁，沒有任何文字元素，接著下 `text set` 會找不到 element id。
-- 整份有背景圖，新頁也要有；整份沒有就不要單獨加——縮圖列裡會特別突兀。
-- 使用者說「加三頁」時，一頁做完並確認過再做下一頁。
+- `slide add` without `--svg`/`--template` is a blank page with no text elements at all; a following `text set` will find no element id.
+- If the whole deck has a background image, the new page needs one too; if the deck has none, don't add one to just this page — it will stand out jarringly in the thumbnail strip.
+- When the user says "add three pages", finish and confirm one page before doing the next.

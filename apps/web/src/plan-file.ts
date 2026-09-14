@@ -211,7 +211,7 @@ export function parsePlanOutline(text: string): PlanOutline | null {
   return { status, mode, pages, questions, fenceText };
 }
 
-/** Contract §4: the answers the gate sends back as one `/slidra-build 【計畫確認】` message. */
+/** Contract §4: the answers the gate sends back as one `/slidra-build [plan-confirmed]` message. */
 export interface PlanAnswers {
   /** question id → chosen option value */
   choices: Record<string, string>;
@@ -222,16 +222,16 @@ export interface PlanAnswers {
 }
 
 export function buildConfirmMessage(answers: PlanAnswers): string {
-  const lines: string[] = ["/slidra-build 【計畫確認】"];
+  const lines: string[] = ["/slidra-build [plan-confirmed]"];
   for (const [id, value] of Object.entries(answers.choices)) {
     lines.push(`${id}=${value}`);
     const note = answers.notes[id]?.trim();
     if (note) lines.push(`${id}.note=${note}`);
   }
-  lines.push(`補充：${answers.overall.trim()}`);
+  lines.push(`Supplement: ${answers.overall.trim()}`);
   return lines.join("\n");
 }
 
 export function buildRedoMessage(reason: string): string {
-  return `/slidra-plan 【重做】${reason.trim()}`;
+  return `/slidra-plan [redo]${reason.trim()}`;
 }

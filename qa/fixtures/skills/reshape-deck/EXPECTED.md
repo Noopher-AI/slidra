@@ -1,25 +1,25 @@
-頁數：3
+Page count: 3
 
-`/slidra-reshape` 開始前，`comment list <presentation-id>` 應回傳 5 則留言：`c-01`（001，`el-p1-title`）、`c-02`（002，`el-p2-bullets`）、`c-03`（003，`page`）、`c-04`（002，`page`）、`c-05`（003，`el-p3-note`）。
+Before `/slidra-reshape` starts, `comment list <presentation-id>` should return 5 comments: `c-01` (001, `el-p1-title`), `c-02` (002, `el-p2-bullets`), `c-03` (003, `page`), `c-04` (002, `page`), `c-05` (003, `el-p3-note`).
 
-## 可處理，應被改完並刪除留言
+## Processable — should be fixed and the comment deleted
 
-- **c-01**：`slides/001.svg` 的 `el-p1-title` 文字改成「第三季 財報」，`c-01` 刪除。
-- **c-02**：`slides/002.svg` 的 `el-p2-bullets` 只剩「第一點」「第三點」兩行（原本「第一點」「第二點」「第三點」三行，刪掉中間那行），`c-02` 刪除。
-- **c-03**：`slides/003.svg` 的根 `<svg>` 加上 `style="background-color:#FFFFFF"`（或等效的白色背景設定），`c-03` 刪除。
+- **c-01**: Change the text of `el-p1-title` in `slides/001.svg` to "Q3 Report", then delete `c-01`.
+- **c-02**: `el-p2-bullets` in `slides/002.svg` should only have "Point One" and "Point Three" (originally "Point One", "Point Two", "Point Three" — remove the middle line), then delete `c-02`.
+- **c-03**: Add `style="background-color:#FFFFFF"` (or equivalent white background) to the root `<svg>` in `slides/003.svg`, then delete `c-03`.
 
-## 不可處理，應保留原文並提問
+## Not processable — keep the original text and ask
 
-- **c-04**（002，`page`）：簡報裡沒有任何一張「東京拍的照片」可用，也不能無中生有匯入不存在的資產。保留原文，對話中就這一則提問。
-- **c-05**（003，`el-p3-note`）：「Q2 那份」不在這份簡報裡，拿不到參照對象。保留原文，對話中就這一則提問。
+- **c-04** (002, `page`): No "photo taken in Tokyo" exists in this deck, and it's not possible to import a non-existent asset out of thin air. Keep the original text and ask about this one in the conversation.
+- **c-05** (003, `el-p3-note`): "The Q2 one" is not in this deck; there is no reference target. Keep the original text and ask about this one in the conversation.
 
-## 結束狀態
+## End state
 
-- `comment list <presentation-id>` 執行完應恰為 2 則：`c-04`、`c-05`（順序不拘）。
-- 對話裡對 `c-04`、`c-05` 應各有一則提問。
+- After the agent finishes, `comment list <presentation-id>` should have exactly 2 comments: `c-04`, `c-05` (order doesn't matter).
+- The conversation should contain one question each for `c-04` and `c-05`.
 
-## 不算通過的樣子
+## Fail patterns
 
-- `c-04` 或 `c-05` 被刪除，或被套用了一個「將就」的替代方案（例如換成別的顏色）當作完成。
-- `c-01`／`c-02`／`c-03` 中有任一則沒有真的改動內容就被刪除留言。
-- `comment list` 執行完不是恰好 2 則。
+- `c-04` or `c-05` is deleted, or a "compromise" workaround (e.g. changing to a different color) is applied and treated as done.
+- Any of `c-01`/`c-02`/`c-03` is deleted without actually making the content change.
+- `comment list` does not end up with exactly 2 comments.

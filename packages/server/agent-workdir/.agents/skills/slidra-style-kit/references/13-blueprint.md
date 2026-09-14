@@ -1,11 +1,11 @@
 # 13 · blueprint
 
-**第一秒的感覺**：深海軍藍的底，白色細線畫出格線，像一張攤開的工程藍圖。精密、有系統、每條線都有理由。
+**First-impression feel**: Deep navy base with thin white grid lines, like an unrolled engineering blueprint. Precise, systematic — every line has a reason.
 
-**適合**：架構說明、工程流程、系統設計、建築與製造。
-**不適合**：情感訴求、品牌故事。藍圖的語言只講「它怎麼運作」，不講「它為什麼重要」。
+**Suited for**: Architecture explanations, engineering processes, system design, architecture and manufacturing.
+**Not suited for**: Emotional appeals, brand stories. The blueprint language only speaks "how it works," not "why it matters."
 
-**為什麼是這個配色**：底色是藍圖的靛藍（#12284C），線與字用接近白的淺藍——這組顏色的來源是曬圖，所以不要加第三個彩色；accent 的橘只用在「這裡要注意」的地方，面積極小。
+**Why this palette**: The base is blueprint indigo (#12284C); lines and text are near-white light blue — this palette comes from photograms, so no third color; the orange accent is only for "attention" points, minimal area.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：英文標號與數字用等寬 IBM Plex Mono（圖面標註的語言），中文用 Noto Sans TC。密度 `balanced`，架構圖本來就要放比較多標籤。
+**Typography and contrast**: Monospace IBM Plex Mono for English labels and numbers (the language of technical drawing); Chinese in Noto Sans TC. Density `balanced` — architecture diagrams need more labels.
 
-**間距節奏**：級距密（8/16/24/32/56）。格線的世界裡，間距要能被整除。
+**Spacing rhythm**: Tight spacing (8/16/24/32/56). In a world of grid lines, spacing should be divisible.
 
-**建議背景**：02 `dot-grid`（這個風格幾乎一定要它，opacity 0.6）。
+**Suggested backgrounds**: 02 `dot-grid` (this style almost requires it; opacity 0.6).

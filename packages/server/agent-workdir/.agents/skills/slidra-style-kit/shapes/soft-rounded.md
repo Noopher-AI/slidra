@@ -1,28 +1,28 @@
-# 形狀語言：soft-rounded
+# Shape language: soft-rounded
 
-**一句話**：圓角卡片、柔和的浮起、沒有一個尖銳的邊。親和、安全、看久了不累。
+**One line**: Rounded-corner cards, a soft lift, not a single sharp edge. Approachable, safe, easy to look at for a long time.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-所有矩形加圓角（`rx` 為高度的 1/4，卡片約 16–24）。`field` 一律有底色。圖示與標記用圓形而不是方形。
+All rectangles get rounded corners (`rx` is 1/4 of the height; cards about 16–24). `field` always has a base color. Icons and markers use circles rather than squares.
 
-## 字體性格
+## Type character
 
-字重用 400／700，標題可以略大。避免襯線——圓角配襯線會不協調。
+Weight 400/700; headings can be slightly larger. Avoid serifs — rounded corners and serifs don't harmonize.
 
-## 留白節奏
+## Whitespace rhythm
 
-級距偏鬆，卡片之間的間距略大於卡片內距，讓每張卡看起來是獨立的一塊。
+Spacing is on the loose side; the gap between cards is slightly larger than the padding inside them, so each card reads as a separate block.
 
-## 材質與層次
+## Material and depth
 
-柔和的浮起：卡片用比背景淺或深**一階**的底色表達層次（不要用真的陰影，SVG 陰影在匯出時不穩）。
+A soft lift: cards use a base color **one step** lighter or darker than the background to express depth (do not use real shadows — SVG shadows are unstable on export).
 
-**適合**：教學、兒少、社群、內部溝通、任何希望對方放鬆的場合。
-**不適合**：財報、法遵、危機溝通——圓角會讓內容顯得不夠嚴肅。
+**Suited for**: Education, children, community, internal communication, any context where you want the audience to relax.
+**Not suited for**: Financial reports, compliance, crisis communication — rounded corners make the content feel less serious.
 
-## 怎麼做到
+## How to achieve it
 
-每個 `rect` 加 `rx`；`field` 用 `secondary_bg`；卡片間距取 `layout.spacing` 大一級。
+Add `rx` to every `rect`; `field` uses `secondary_bg`; card spacing is one level up from `layout.spacing`.

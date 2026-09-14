@@ -1,33 +1,33 @@
 # chart-focus
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一張圖表佔據主要空間，旁邊一句結論——圖表是證據，結論才是主張。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A chart occupies the main space with one conclusion beside it — the chart is the evidence, the conclusion is the claim.
 
-**什麼時候用它**：有一組數據，而且你要說的是它顯示了什麼。
-**什麼時候不要用**：數據本身就是重點而沒有結論——那只是把表格貼上來。
+**When to use it**: You have a data set and what you want to say is what it shows.
+**When not to use it**: The data itself is the point and there is no conclusion — that is just pasting a table on a slide.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chart-focus.svg`。
+Full SVG: see `chart-focus.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 圖表 | `node`（chart 元素） | | — | — |
-| 結論 | `label`（`subtitle`～`claim`） | **這一頁真正的主張** | 18 字 | 1–2 |
-| 說明 | `label` | | 30 字 | 2–3 |
-| 來源 | `label`（`caption`） | | 20 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Chart | `node` (chart element) | | — | — |
+| Conclusion | `label` (`subtitle`–`claim`) | **the real claim of this page** | 18 chars | 1–2 |
+| Note | `label` | | 30 chars | 2–3 |
+| Source | `label` (`caption`) | | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-圖表佔約 60% 寬，結論欄 30%，中間一個 `gutter`。結論的字級要明顯大於圖表的軸標籤——**否則讀者會先讀圖再自己下結論，那就失去了這一頁的目的**。
+The chart takes ~60% width, the conclusion column 30%, one `gutter` between. The conclusion's font size must be clearly larger than the chart's axis labels — **otherwise the reader reads the chart first and draws their own conclusion, defeating the page's purpose**.
 
-`blueprint.shape` 寫 `chart-focus`。
+Write `blueprint.shape` as `chart-focus`.
 
-## 變體
+## Variants
 
-- **上圖下結論**：圖表滿寬，結論在下方一整行——適合寬型的時間序圖。
-- **雙圖**：兩張小圖並排，結論在下方。
+- **Chart on top, conclusion below**: chart at full width, conclusion in a full-width row below — suits wide time-series charts.
+- **Dual charts**: two small charts side by side, conclusion below.

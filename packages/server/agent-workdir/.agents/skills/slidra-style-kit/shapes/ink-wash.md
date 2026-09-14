@@ -1,28 +1,28 @@
-# 形狀語言：ink-wash
+# Shape language: ink-wash
 
-**一句話**：宣紙的留白、毛筆的筆觸、一枚印章當唯一的重點。安靜、有呼吸、東方。
+**One line**: Rice-paper whitespace, brush strokes, a single seal as the only emphasis. Quiet, breathing, Eastern.
 
-> 形狀語言**不含任何顏色**。顏色來自風格的 `palette`，形狀語言只管「這些形狀怎麼表現」——圓角、裝飾密度、留白節奏、字體性格、材質。所以任何一種形狀語言都可以配任何一組配色。
+> Shape language **contains no colors**. Colors come from the style's `palette`; shape language only governs "how these shapes express themselves" — corner radii, decoration density, whitespace rhythm, type character, material. So any shape language can pair with any palette.
 
-## 形狀與裝飾
+## Shapes and decoration
 
-**幾乎沒有幾何形狀**：沒有卡片、沒有框。分區靠留白與一兩道筆觸般的曲線（用 `<path>` 畫，粗細不均）。唯一的方形是印章——一個小的實心方塊配反白的字。
+**Almost no geometric shapes**: no cards, no frames. Zoning is done with whitespace and one or two brush-stroke-like curves (drawn with `<path>`, uneven thickness). The only square is the seal — a small solid block with reversed-out text.
 
-## 字體性格
+## Type character
 
-標題用襯線或楷書（`Noto Serif TC`／`cwTeXKai`），內文用黑體。**標題可以直排**（用多個文字框每行一字達成）。字級對比大，但字重都不加粗。
+Headings in serif or kaiti (`Noto Serif TC` / `cwTeXKai`), body in gothic. **Headings can be set vertically** (achieved with multiple text boxes, one character per line). Type scale contrast is large, but no weight is bold.
 
-## 留白節奏
+## Whitespace rhythm
 
-**留白佔七成**。一頁一到三個單位。內容集中在一側，另一側整片留空——那片空白是內容的一部分。
+**Whitespace occupies 70%**. One to three units per page. Content is concentrated on one side, the other side left entirely empty — that emptiness is part of the content.
 
-## 材質與層次
+## Material and depth
 
-完全平面，沒有陰影漸層。層次靠墨色的濃淡（`text` → `muted` 的階）。
+Completely flat, no shadow, no gradient. Hierarchy is carried by ink-ink darkness (the `text` → `muted` range).
 
-**適合**：文化、藝術、茶與食物、品牌故事、任何需要慢下來的場合。
-**不適合**：資料簡報、流程說明——這個語言承載不了密集的資訊。
+**Suited for**: Culture, art, tea and food, brand stories, any context that needs to slow down.
+**Not suited for**: Data presentations, process explanations — this language cannot carry dense information.
 
-## 怎麼做到
+## How to achieve it
 
-拿掉所有 `field`；用 `<path>` 畫一兩道筆觸；印章用 `<rect>` 配 `accent` 底與 `background` 色的字；`layout.spacing` 只用最大級距。
+Remove all `field` elements; draw one or two brush strokes with `<path>`; the seal uses a `<rect>` with an `accent` fill and `background`-colored text; `layout.spacing` uses only the largest levels.

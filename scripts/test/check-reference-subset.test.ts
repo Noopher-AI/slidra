@@ -29,50 +29,50 @@ describe("check-reference-subset", () => {
   });
 
   it("reports a reference command that has no entry in the spec", () => {
-    const referenceContent = "## made up command\n\n**參數**：`<presentation-id>`。\n**用途**：不存在。\n";
-    const specContent = "# slidra CLI 規格\n\n## `new`\n\n**語法**\n\n```\nslidra new <path>\n```\n";
+    const referenceContent = "## made up command\n\n**Parameters:** `<presentation-id>`.\n**Usage:** Does not exist.\n";
+    const specContent = "# slidra CLI spec\n\n## `new`\n\n**Syntax**\n\n```\nslidra new <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
     const violations = findViolations(referenceCommands, specCommands);
 
     expect(violations).toEqual([
-      { message: "reference/commands.md: 命令「made up command」不在 docs/spec/cli.md" },
+      { message: 'reference/commands.md: command "made up command" is not in docs/spec/cli.md' },
     ]);
   });
 
   it("reports a flag reference mentions that the spec's matching entry never mentions", () => {
-    const referenceContent = "## asset import\n\n**參數**：`<presentation-id>` `<source>`、`--as csv`（選填）。\n";
+    const referenceContent = "## asset import\n\n**Parameters:** `<presentation-id>` `<source>`, `--as csv` (optional).\n";
     const specContent =
-      "# slidra CLI 規格\n\n## `asset import`\n\n**語法**\n\n```\nslidra asset import <presentation-id> <source>\n```\n";
+      "# slidra CLI spec\n\n## `asset import`\n\n**Syntax**\n\n```\nslidra asset import <presentation-id> <source>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
     const violations = findViolations(referenceCommands, specCommands);
 
     expect(violations).toEqual([
-      { message: "reference/commands.md: 命令「asset import」的 --as 不在 docs/spec/cli.md 的對應條目" },
+      { message: 'reference/commands.md: command "asset import" flag --as is not in the matching entry in docs/spec/cli.md' },
     ]);
   });
 
   it("does not let a spec's --csv-asset token satisfy a reference requirement for bare --csv (no substring matching)", () => {
-    const referenceContent = "## chart data set\n\n**參數**：`<presentation-id>`、`--csv <path>`（選填）。\n";
+    const referenceContent = "## chart data set\n\n**Parameters:** `<presentation-id>`, `--csv <path>` (optional).\n";
     const specContent =
-      "# slidra CLI 規格\n\n## `chart data set`\n\n**參數**\n\n- `--csv-asset`：選填，容器內虛擬路徑。\n";
+      "# slidra CLI spec\n\n## `chart data set`\n\n**Parameters**\n\n- `--csv-asset`: optional, virtual path inside the container.\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);
     const violations = findViolations(referenceCommands, specCommands);
 
     expect(violations).toEqual([
-      { message: "reference/commands.md: 命令「chart data set」的 --csv 不在 docs/spec/cli.md 的對應條目" },
+      { message: 'reference/commands.md: command "chart data set" flag --csv is not in the matching entry in docs/spec/cli.md' },
     ]);
   });
 
-  it("ignores a flag mentioned only in reference's 用途/範例 prose, not in its 參數 line", () => {
+  it("ignores a flag mentioned only in reference's Usage/Example prose, not in its Parameters line", () => {
     const referenceContent =
-      "## cat\n\n**參數**：`<presentation-id>` `<path>`。\n**用途**：不支援 `--recursive`，未來可能加上。\n";
-    const specContent = "# slidra CLI 規格\n\n## `cat`\n\n**語法**\n\n```\nslidra cat <presentation-id> <path>\n```\n";
+      "## cat\n\n**Parameters:** `<presentation-id>` `<path>`.\n**Usage:** Does not support `--recursive`; may be added in the future.\n";
+    const specContent = "# slidra CLI spec\n\n## `cat`\n\n**Syntax**\n\n```\nslidra cat <presentation-id> <path>\n```\n";
 
     const referenceCommands = extractReferenceCommands(referenceContent);
     const specCommands = extractSpecCommands(specContent);

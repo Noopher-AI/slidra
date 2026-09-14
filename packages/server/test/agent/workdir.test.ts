@@ -97,9 +97,9 @@ describe("deployAgentWorkdir", () => {
   it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
     await deployAgentWorkdir(PRESENTATION);
     const target = agentWorkdirTarget(PRESENTATION);
-    await writeFile(path.join(target, "AGENTS.md"), "使用者亂改的內容");
-    await mkdir(path.join(target, "多出來的目錄"), { recursive: true });
-    await writeFile(path.join(target, "多出來的目錄", "多出來的檔案.md"), "不應該留下來");
+    await writeFile(path.join(target, "AGENTS.md"), "user-modified content");
+    await mkdir(path.join(target, "extra-dir"), { recursive: true });
+    await writeFile(path.join(target, "extra-dir", "extra-file.md"), "should-not-survive");
 
     await deployAgentWorkdir(PRESENTATION);
 
@@ -107,7 +107,7 @@ describe("deployAgentWorkdir", () => {
     const deployedAgentsMd = await readFile(path.join(target, "AGENTS.md"), "utf8");
     expect(deployedAgentsMd).toBe(sourceAgentsMd);
 
-    await expect(readdir(path.join(target, "多出來的目錄"))).rejects.toThrow();
+    await expect(readdir(path.join(target, "extra-dir"))).rejects.toThrow();
   });
 
   it("is idempotent: deploying twice in a row leaves the same files behind", async () => {
@@ -230,7 +230,7 @@ describe("readAgentWorkdirFile", () => {
     workdirReal = await mkdtemp(path.join(tmpdir(), "slidra-workdir-read-"));
     await writeFile(path.join(workdirReal, "CLAUDE.md"), "@AGENTS.md\n");
     await mkdir(path.join(workdirReal, "reference"));
-    await writeFile(path.join(workdirReal, "reference", "commands.md"), "# 命令參考\n");
+    await writeFile(path.join(workdirReal, "reference", "commands.md"), "# command reference\n");
   });
 
   afterEach(async () => {
@@ -239,7 +239,7 @@ describe("readAgentWorkdirFile", () => {
 
   it("reads a real file's exact content", async () => {
     expect(await readAgentWorkdirFile(workdirReal, "CLAUDE.md")).toBe("@AGENTS.md\n");
-    expect(await readAgentWorkdirFile(workdirReal, "reference/commands.md")).toBe("# 命令參考\n");
+    expect(await readAgentWorkdirFile(workdirReal, "reference/commands.md")).toBe("# command reference\n");
   });
 
   it("refuses an empty path (or one made only of '/'/'.') as not-found, never as 'not a file'", async () => {
@@ -257,7 +257,7 @@ describe("readAgentWorkdirFile", () => {
   it("refuses a symlink that points outside the work directory — excluded structurally, never followed", async () => {
     const outsideDir = await mkdtemp(path.join(tmpdir(), "slidra-workdir-outside-"));
     try {
-      await writeFile(path.join(outsideDir, "secret.txt"), "不應該讀得到");
+      await writeFile(path.join(outsideDir, "secret.txt"), "should-not-be-readable");
       await symlink(path.join(outsideDir, "secret.txt"), path.join(workdirReal, "link.txt"));
       await expect(readAgentWorkdirFile(workdirReal, "link.txt")).rejects.toMatchObject({
         message: "file not found: link.txt",

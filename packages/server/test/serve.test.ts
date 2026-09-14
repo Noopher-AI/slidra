@@ -142,7 +142,7 @@ afterEach(async () => {
   await rm(staticRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-async function openFreshPresentation(name = "測試簡報"): Promise<string> {
+async function openFreshPresentation(name = "Test Presentation"): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", name]);
   expect(created.ok).toBe(true);
@@ -167,7 +167,7 @@ async function openPresentationWithRampAsset(): Promise<string> {
     "project.json": new TextEncoder().encode(
       JSON.stringify({
         formatVersion: 1,
-        name: "有資產的簡報",
+        name: "deck with assets",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg"],
       }),
@@ -315,14 +315,14 @@ describe("startServe", () => {
   });
 
   it("serves the presentation's metadata reached only through the slidra binary", async () => {
-    const id = await openFreshPresentation("我的簡報");
+    const id = await openFreshPresentation("My Presentation");
 
     const server = await serve(id);
     const response = await fetch(`${server.url}/api/presentation`);
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.name).toBe("我的簡報");
+    expect(body.name).toBe("My Presentation");
     expect(body.slides).toEqual(["slides/001.svg"]);
   });
 
@@ -360,9 +360,9 @@ describe("startServe", () => {
         "let result;",
         'if (cmd === "cat" && rest[1] === "project.json") {',
         "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
-        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "已讀取：project.json" };',
+        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
         '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
-        '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "已讀取：slides/fake.svg" };',
+        '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "read: slides/fake.svg" };',
         "} else {",
         '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
         "}",
@@ -595,7 +595,7 @@ describe("startServe", () => {
 
   it("rejects with an explicit Traditional Chinese error at open time when project.json lacks slides", async () => {
     const message = await openMalformedPresentation(
-      JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
+      JSON.stringify({ formatVersion: 1, name: "Broken Presentation", canvas: { width: 1280, height: 720 } }),
     );
 
     expect(message).toMatch(/project\.json/);
@@ -606,7 +606,7 @@ describe("startServe", () => {
     const message = await openMalformedPresentation(
       JSON.stringify({
         formatVersion: 1,
-        name: "壞掉的簡報",
+        name: "Broken Presentation",
         canvas: { width: 1280, height: 720 },
         slides: "slides/001.svg",
       }),
@@ -620,7 +620,7 @@ describe("startServe", () => {
     const message = await openMalformedPresentation(
       JSON.stringify({
         formatVersion: 1,
-        name: "壞掉的簡報",
+        name: "Broken Presentation",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg", 42],
       }),
@@ -635,7 +635,7 @@ describe("startServe", () => {
     // (ADR-0004) — it's the user's own argument, not the work directory.
     // What must never appear is SLIDRA_HOME's hidden work directory.
     const message = await openMalformedPresentation(
-      JSON.stringify({ formatVersion: 1, name: "壞掉的簡報", canvas: { width: 1280, height: 720 } }),
+      JSON.stringify({ formatVersion: 1, name: "Broken Presentation", canvas: { width: 1280, height: 720 } }),
     );
 
     expect(message).not.toContain(slidraHome);

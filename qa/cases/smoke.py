@@ -25,7 +25,7 @@ def setup():
 
 def act():
     _state["slide_count"] = slide_count()  # noqa: F821
-    _state["select_title"] = select("標題")  # noqa: F821
+    _state["select_title"] = select("Title")  # noqa: F821
     _state["selection_after_select"] = selection()  # noqa: F821
     # active_element() only makes a claim about *this* moment — capture it
     # right after select(), before anything else moves focus elsewhere.
@@ -56,12 +56,12 @@ def assert_():
         _fail("slide_count()", 4, _state["slide_count"])
 
     chip = _state["select_title"]["chip"]
-    if chip != "Selected: 標題":
-        _fail("select('標題')['chip']", "Selected: 標題", chip)
+    if chip != "Selected: Title":
+        _fail("select('Title')['chip']", "Selected: Title", chip)
 
     sel = _state["selection_after_select"]
-    if sel["chip"] != "Selected: 標題":
-        _fail("selection()['chip']", "Selected: 標題", sel["chip"])
+    if sel["chip"] != "Selected: Title":
+        _fail("selection()['chip']", "Selected: Title", sel["chip"])
     if sel["box"] is None:
         _fail("selection()['box']", "not None", None)
     handles = set(sel["handles"].keys())

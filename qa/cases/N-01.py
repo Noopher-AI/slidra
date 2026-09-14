@@ -122,7 +122,7 @@ def _server_url() -> str:
 
 
 def _move_and_undo(label: str, next_n: int, to_point) -> int:
-    """Selects "標題" (Title), drags from its center to the endpoint computed
+    """Selects "Title" (Title), drags from its center to the endpoint computed
     by `to_point(box, from_x, from_y)`, verifies the transform changed /
     selection is preserved / it was saved, then POSTs /api/undo to restore it
     and verifies the transform reverted to its pre-drag value. `next_n` is
@@ -140,13 +140,13 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
     # position from the "previous generation" iframe, and by the time the
     # mouse events actually dispatch the new iframe is already in place and
     # the title is no longer at that position — the press lands on empty
-    # space, so the selection comes back empty instead of "標題", and no
+    # space, so the selection comes back empty instead of "Title", and no
     # transform change is measured at all. This is distinct from the actual
-    # bug's symptom (iframe never gets pointerup, selection stays "標題" but
+    # bug's symptom (iframe never gets pointerup, selection stays "Title" but
     # no element move happens) — a real repro always leaves the selection
-    # on "標題". Use this signal to tell the two apart: only treat "selection
+    # on "Title". Use this signal to tell the two apart: only treat "selection
     # came back empty" as "measured a stale generation, retry"; if the
-    # selection is still "標題" but there's no new transform, report it as
+    # selection is still "Title" but there's no new transform, report it as
     # the real FAIL it is, without retrying.
     #
     # Testing showed that not waiting at all on the first attempt
@@ -164,10 +164,10 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
     for attempt, settle_wait in enumerate((1.5, 3.0, 5.0), start=1):
         time.sleep(settle_wait)
 
-        sel = select("標題")  # noqa: F821
+        sel = select("Title")  # noqa: F821
         box = sel["box"]
         if box is None:
-            check(f"{next_n} [{label}] select('標題')['box'] is not None", False, None)
+            check(f"{next_n} [{label}] select('Title')['box'] is not None", False, None)
             return next_n + 1
 
         from_x, from_y = box["x"] + box["w"] / 2, box["y"] + box["h"] / 2
@@ -191,8 +191,8 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
     n += 1
 
     check(
-        f"{n} [{label}] selection is still 「標題」 after the drag (the context bar/status bar didn't lose the selection)",
-        after_sel["chip"] == "Selected: 標題",
+        f"{n} [{label}] selection is still "Title" after the drag (the context bar/status bar didn't lose the selection)",
+        after_sel["chip"] == "Selected: Title",
         after_sel["chip"],
     )
     n += 1
@@ -264,12 +264,12 @@ def main() -> int:
     # --- Snap guide: the DOM really does appear while dragging close to
     # another element's edge ---
     # See "Why the snap-guide assertion bypasses drag()" at the top of this
-    # file. Re-select "標題" (Title) and drag it down toward "副標"
+    # file. Re-select "Title" (Title) and drag it down toward "Subtitle"
     # (Subtitle): both are center-aligned text, so their horizontal centers
     # are already aligned, and a vertical snap guide (`.guide.guide-v`)
     # should be drawn once they line up.
     #
-    # The snap candidate's (e.g. "副標") bounds only make it into the host's
+    # The snap candidate's (e.g. "Subtitle") bounds only make it into the host's
     # elementBoundsById after selection-runtime.js's reportElementBounds()
     # sends "element-bounds" — this has to be re-reported every time the
     # iframe is rebuilt (here, the SSE reload triggered by each of the two
@@ -287,7 +287,7 @@ def main() -> int:
     # real FAIL.
     guide_seen = False
     for attempt, wait_s in enumerate((2.0, 4.0, 6.0), start=1):
-        sel2 = select("標題")  # noqa: F821
+        sel2 = select("Title")  # noqa: F821
         box2 = sel2["box"]
         fx2, fy2 = box2["x"] + box2["w"] / 2, box2["y"] + box2["h"] / 2
         tx2, ty2 = fx2, fy2 + 90

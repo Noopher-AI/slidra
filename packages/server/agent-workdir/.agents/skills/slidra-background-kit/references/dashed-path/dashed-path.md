@@ -1,26 +1,26 @@
 # dashed-path
 
-**氣氛**：一條虛線從左下彎到右上，像地圖上的路徑或流程的軌跡。有起點、有終點、有方向。
+**Mood**: A dashed line curving from the lower-left to the upper-right, like a route on a map or the trail of a process. It has a start, an end, and a direction.
 
-**適合**：`order` 關係的頁面（它會強化 `spine-path` 的方向）。
-**不適合**：`membership`。
+**Suited for**: Pages with `order` relationships (it reinforces the direction of `spine-path`).
+**Not suited for**: `membership`.
 
-**建議 opacity**：0.6
+**Suggested opacity**: 0.6
 
-**做法**：一條 `stroke-dasharray` 的曲線，兩端各一個小圓標出起點與終點。
+**Technique**: A `stroke-dasharray` curve with a small circle at each end marking the start and the finish.
 
-完整 SVG：見同資料夾 `dashed-path.svg`。
+Full SVG: see `dashed-path.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `duotone` | 只留兩色：除了底色之外全部收斂成主色的深淺。最安靜的處理。 | `var(--accent)` → `primary` |
-| `warm` | 全部收斂到暖色：主色與第三色都改用 accent。整張圖只剩一個色相的深淺，最熱。 | `var(--primary)` → `accent` |
+| `base` | As-is, use the SVG below directly | — |
+| `duotone` | Keep only two colors: everything besides the base converges into shades of the primary. The quietest treatment. | `var(--accent)` → `primary` |
+| `warm` | Converge everything to warm tones: both primary and tertiary switch to accent. The whole image is just one hue's depth range; the warmest. | `var(--primary)` → `accent` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：05、10、12、23。
+**Suggested styles**: 05, 10, 12, 23.

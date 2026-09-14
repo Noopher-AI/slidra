@@ -67,7 +67,7 @@ pub struct TemplateEntry {
 
 /// Reads and parses `project.json`, shared by every caller that needs its
 /// structure. Mirrors workspace.ts's private `readProjectJson` for the parse
-/// failure (`簡報設定檔已損毀` — that function never ran
+/// failure ("presentation config file is corrupted" — that function never ran
 /// `validateProjectJson` at all), then additionally runs the full
 /// `validateProjectJson` structural check so a caller here gets the same
 /// field-precise errors `open`/`serve` do in TS, not just "this happens to

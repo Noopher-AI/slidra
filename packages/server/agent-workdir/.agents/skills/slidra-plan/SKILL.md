@@ -1,37 +1,37 @@
 ---
 name: slidra-plan
-description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模式、關係、節奏、風格、背景），寫進 plan/ 後停下來等作者在確認視窗拍板，不動任何投影片。作者的訊息以 /slidra-plan 開頭時用（編輯器的 New → From outline… 與確認視窗的「重新規劃」送的也是這個形式）
+description: Plan an outline or article into a page-by-page plan and design spec (narrative mode, relationships, rhythm, style, background), write them into plan/ and stop to wait for the author to approve in the confirmation dialog; do not touch any slides. Use when the author's message starts with /slidra-plan (the editor's New → From outline… and the confirmation dialog's "Re-plan" send this same form)
 ---
 
-# 規劃整份簡報
+# Plan the whole presentation
 
-你是**策略師**：讀大綱、挑敘事模式、判每一頁的關係與節奏、選風格與背景、出題，寫進 `plan/outline.md` 與 `plan/design-spec.md`，然後**停下來**。動手做頁面是 `slidra-build` 的事，而且它只在作者確認計畫之後才開工。
+You are the **strategist**: read the outline, pick the narrative mode, judge each page's relationship and rhythm, choose the style and background, pose the questions, write them into `plan/outline.md` and `plan/design-spec.md`, then **stop**. Making the pages is `slidra-build`'s job, and it only starts after the author confirms the plan.
 
-## 輸入
+## Input
 
-斜線後面是一份大綱或一篇文章（條列式小節，縮排的行是上一行的要點；或整段文章，由你抓出小節）。開頭可能有一行指示，不是大綱內容：
+After the slash command comes an outline or an article (bulleted sections, where indented lines are sub-points of the line above; or a full article, from which you extract the sections). It may start with an instruction line that is not part of the outline:
 
-- 「【從大綱規劃】這份簡報還沒有任何投影片。」或「【從大綱規劃】目前有 N 頁，新頁接在最後。」——位置指示；有既有頁面時，計畫的 `pages` 只涵蓋新頁，`n` 從 N+1 起算。
-- 「【重做】<作者的話>」——作者在確認視窗按了「重新規劃」，後面那段話是他要改的地方；依它重寫計畫，其餘沿用上一版。
+- "[plan-from-outline] This presentation has no slides yet." or "[plan-from-outline] There are N pages so far; new pages will be appended at the end." — a position instruction; when existing pages are present, the plan's `pages` covers only the new pages, and `n` starts at N+1.
+- "[redo] <author's words>" — the author clicked "Re-plan" in the confirmation dialog, and the following text is what they want changed; rewrite the plan per it, keeping the rest from the previous version.
 
-## 步驟
+## Steps
 
-1. **看現況**：`slidra cat <presentation-id> project.json`（畫布尺寸、頁數）、`slidra plan list <presentation-id>`、`slidra template list <presentation-id>`。
-   - 已有 `status` 為 `confirmed` 的計畫，且輸入不是【重做】：先不要寫，問作者「已有一份確認過的計畫，要重做還是沿用」，等他回答。
-   - 輸入完全空白、或只是一句閒聊：回一句話問作者要用哪份大綱。
-2. **讀規範**：`reference/modes.md` 與 `reference/slide-design.md` 第 6、7 節。
-3. **挑敘事模式**：看內文小節的論證走向（不是看封面），依 `modes.md` 挑一種，記下一句理由（之後放進題目的 `note`）。作者的大綱明顯是話題式標題或明說了模式時，以作者為準。
-4. **逐節定關係與節奏**：每一頁**必填 `relationship`**（`slide-design.md` 第 6.1 節）。**先判關係，不要先想版面**；`type` 留白，版面是 build 依關係挑的——規劃階段寫下 `type`，build 就會直接拿那個頁型，整份退化成同一種版面重複到底。
-   節奏：封面、章節、結語是 `anchor`；一個數字的頁是 `breathing`；其餘 `dense`。6 條以上的要點拆成兩頁；沒有結論就不做結語頁；不為了頁數或節奏捏假頁。
-   **變化是硬要求**：4 頁以上時同一種關係不得超過總頁數的一半（`roster.relationship-variety`）；相鄰兩頁關係相同時先想這兩節是不是該合併、或其中一節其實是別的關係。作者的內容真的沒有變化時，在回報裡直接說出來。作者只給一句話、內容要你自己生時，刻意讓相鄰頁落在不同的關係上，整份至少涵蓋三種，並收在一個結論。
-   完成標準：每一頁都有 `relationship` 與 `rhythm`，關係分布過得了上面兩條。
-5. **寫逐頁計畫**：每一頁列出主張（一句話，15 字內為目標、上限 24 字，會成為標題）、聽眾變化（聽完這頁之前／之後有什麼不同——寫不出來的頁面就該合併或砍掉）、頁面關鍵詞（18 字內為目標、上限 32 字，這是頁面上真正會出現的字）、備忘稿要講的 2～3 句。主張、關鍵詞、備忘稿只能來自作者的大綱；缺的資料在第 6 步開 `free_text` 題問，不替作者發明數據、名稱、日期。
-6. **出題**：3～7 題。第一題固定問敘事模式；最後兩題固定問動畫（`id` 為 `animation`，`recommended` 為 `full`，選項 `full`＝完整、`minimal`＝只做標題與要點、`none`＝不加）與背景圖（`id` 為 `background`，`recommended` 為 `on`，選項 `on`／`off`；`note` 寫第 8 步挑到的配方）；中間每一題對應一個你拿不準的判斷。每題都要有 `recommended`（必須是 `options` 之一）、2～4 個 `options`、一句 `note` 寫你的觀點；需要作者補資料的題目開 `free_text`。
-7. **寫入 `plan/outline.md`**：`slidra plan set <presentation-id> outline '<全文>'`。全文＝開頭一個 ```` ```json ```` 圍欄（欄位見下方）＋ 其後每頁一節 `## 第 N 頁：<主張>`，底下四行：主張、聽眾變化、頁面關鍵詞（一行一條）、備忘稿。`status` 一律 `draft`。正文不能含半形單引號。
-8. **適配風格與背景**：照 `slidra-style-kit` 的步驟挑一種風格（含形狀語言、字型匯入、畫布 `k`）寫進 `plan/design-spec.md`；再依風格檔的「建議背景」與 `slidra-background-kit` 的索引挑一種配方，把編號、名字與一句用途寫進背景題的 `note`。風格檔建議 `off` 時，背景題的 `recommended` 就給 `off`。作者要的是社群貼文、直式或方形的單張時，先問清楚畫布，並在回報裡說明要用 `presentation canvas set` 設定。
-9. **停下來**：不下任何 `slide`、`textbox`、`element` 命令。回報時說明「計畫已寫好，編輯器會彈出確認視窗；按確認並建置就會開工」。沒有視窗的環境（作者直接在終端機對話）就把計畫表貼在對話裡，請作者回覆 `/slidra-build 【計畫確認】` 加上每題的答案。
+1. **Check the current state**: `slidra cat <presentation-id> project.json` (canvas size, page count), `slidra plan list <presentation-id>`, `slidra template list <presentation-id>`.
+   - A plan with `status` already `confirmed` exists, and the input is not [redo]: do not write yet; ask the author "There is already a confirmed plan — redo it or keep it?" and wait for the answer.
+   - The input is completely empty, or just a casual remark: reply with one sentence asking which outline to use.
+2. **Read the specs**: sections 6 and 7 of `reference/modes.md` and `reference/slide-design.md`.
+3. **Pick the narrative mode**: look at the argumentative flow of the content sections (not the cover), pick one per `modes.md`, and note a one-sentence reason (it goes into the question's `note` later). When the author's outline is clearly topic-titled or explicitly names the mode, follow the author.
+4. **Decide relationships and rhythm per section**: every page **must have a `relationship`** (section 6.1 of `slide-design.md`). **Judge the relationship first; do not think about layout first**; leave `type` blank — layout is what build picks based on the relationship; writing `type` at the planning stage makes build use that page type directly, degrading the whole deck into one repeated layout.
+   Rhythm: cover, section, and closing are `anchor`; a single-number page is `breathing`; everything else is `dense`. Split more than 6 bullets into two pages; no conclusion means no closing page; don't fabricate pages for page count or rhythm.
+   **Variety is a hard requirement**: with 4+ pages, the same relationship must not exceed half the total page count (`roster.relationship-variety`); when two adjacent pages share a relationship, first consider whether those two sections should be merged, or whether one is actually a different relationship. When the author's content genuinely has no variety, say so plainly in the report. When the author gives only one sentence and you must generate the content, deliberately place adjacent pages on different relationships, cover at least three kinds across the deck, and land on one conclusion.
+   Done when: every page has a `relationship` and a `rhythm`, and the relationship distribution passes the two rules above.
+5. **Write the page-by-page plan**: for each page list the claim (one sentence; target within 15 characters, limit 24, it becomes the title), audience change (what is different before/after hearing this page — a page you can't write this for should be merged or cut), page keywords (target within 18 characters, limit 32; these are the words that actually appear on the page), and the 2–3 sentences the notes should say. Claims, keywords, and notes may only come from the author's outline; missing material gets a `free_text` question in step 6 — don't invent data, names, or dates for the author.
+6. **Pose the questions**: 3–7 questions. The first always asks the narrative mode; the last two always ask animation (`id` is `animation`, `recommended` is `full`, options `full` = full, `minimal` = title and bullets only, `none` = none) and background image (`id` is `background`, `recommended` is `on`, options `on`/`off`; the `note` names the recipe picked in step 8); each question in between corresponds to one judgment you are unsure about. Every question needs a `recommended` (must be one of the `options`), 2–4 `options`, and a one-sentence `note` with your view; questions that need the author to supply material get `free_text`.
+7. **Write `plan/outline.md`**: `slidra plan set <presentation-id> outline '<full text>'`. Full text = one leading ```` ```json ```` fence (fields below) + one `## Page N: <claim>` section per page after it, with four lines under each: claim, audience change, page keywords (one per line), notes. `status` is always `draft`. The body must not contain half-width single quotes.
+8. **Fit the style and background**: follow `slidra-style-kit`'s steps to pick one style (including shape language, font imports, canvas `k`) and write it into `plan/design-spec.md`; then pick one recipe per the style file's "suggested background" and the `slidra-background-kit` index, and write its number, name, and a one-sentence use into the background question's `note`. When a style file suggests `off`, give the background question `recommended` `off`. When the author wants a social post, a portrait or square single sheet, first clarify the canvas and explain in the report that `presentation canvas set` will be used.
+9. **Stop**: don't issue any `slide`, `textbox`, or `element` commands. When reporting, say "The plan is written; the editor will pop up the confirmation dialog; pressing Confirm and build starts the work". In environments without a dialog (the author talks directly in the terminal), paste the plan table in the conversation and ask the author to reply with `/slidra-build [plan-confirmed]` plus each answer.
 
-## `plan/outline.md` 的 JSON 段
+## The JSON section of `plan/outline.md`
 
 ```json
 {
@@ -40,43 +40,43 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
   "animation": "full",
   "background": "on",
   "pages": [
-    { "n": 1, "relationship": "none", "rhythm": "anchor", "title": "這一頁的主張，一句話" },
-    { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "這一頁的主張，一句話" }
+    { "n": 1, "relationship": "none", "rhythm": "anchor", "title": "This page's claim, in one sentence" },
+    { "n": 2, "relationship": "membership", "rhythm": "dense", "title": "This page's claim, in one sentence" }
   ],
   "questions": [
     {
       "id": "mode",
-      "question": "這份簡報的敘事骨架",
-      "note": "你為什麼建議這個模式，一句話。",
+      "question": "The narrative skeleton of this presentation",
+      "note": "Why you recommend this mode, in one sentence.",
       "recommended": "pyramid",
-      "options": [ { "value": "pyramid", "label": "結論先行" }, { "value": "narrative", "label": "故事線" }, { "value": "briefing", "label": "中性簡報" } ],
+      "options": [ { "value": "pyramid", "label": "Conclusion first" }, { "value": "narrative", "label": "Story line" }, { "value": "briefing", "label": "Neutral briefing" } ],
       "free_text": false
     },
     {
       "id": "animation",
-      "question": "動畫強度",
-      "note": "你為什麼建議這個動畫強度，一句話。",
+      "question": "Animation intensity",
+      "note": "Why you recommend this animation intensity, in one sentence.",
       "recommended": "full",
-      "options": [ { "value": "full", "label": "完整" }, { "value": "minimal", "label": "只做標題與要點" }, { "value": "none", "label": "不加" } ],
+      "options": [ { "value": "full", "label": "Full" }, { "value": "minimal", "label": "Title and bullets only" }, { "value": "none", "label": "None" } ],
       "free_text": false
     },
     {
       "id": "background",
-      "question": "背景圖",
-      "note": "你挑的背景配方編號、名字與一句用途；不加就是純色底。",
+      "question": "Background image",
+      "note": "The number, name, and one-sentence use of the background recipe you picked; none means a plain color background.",
       "recommended": "on",
-      "options": [ { "value": "on", "label": "有背景圖" }, { "value": "off", "label": "不加" } ],
+      "options": [ { "value": "on", "label": "With background image" }, { "value": "off", "label": "None" } ],
       "free_text": false
     }
   ]
 }
 ```
 
-`animation` 只能是 `full`、`minimal`、`none`（省略視同 `full`）；`background` 只能是 `on`、`off`（省略視同 `on`）；`rhythm` 只能是 `anchor`、`dense`、`breathing`；`n` 從 1（或既有頁數 +1）連續遞增；`questions[].id` 用英數與 `-`，同一份內不重複。
+`animation` may only be `full`, `minimal`, or `none` (omitted means `full`); `background` may only be `on` or `off` (omitted means `on`); `rhythm` may only be `anchor`, `dense`, or `breathing`; `n` increments consecutively from 1 (or existing page count + 1); `questions[].id` uses alphanumerics and `-`, unique within the file.
 
-每頁另有選用的 `type` 與 `blueprint`，兩者都是 `slidra-build` 在構圖階段寫的，plan 階段留白；重新規劃時保留既有的 blueprint，除非那一頁的內容真的改了。
+Each page also has optional `type` and `blueprint`; both are written by `slidra-build` during the composition stage, left blank at the planning stage; when re-planning, keep an existing blueprint unless that page's content really changed.
 
-## `plan/design-spec.md` 的 JSON 段
+## The JSON section of `plan/design-spec.md`
 
 ```json
 {
@@ -86,12 +86,12 @@ description: 把大綱或文章規劃成逐頁計畫與設計規格（敘事模�
   "layout": { "side_margin": 80, "bottom_margin": 72, "footer_margin": 16, "gutter": 24, "spacing": [8, 16, 24, 40, 64] },
   "typography": { "heading": "Noto Sans TC", "body": "Noto Sans TC", "heading_weight": 700, "body_weight": 400 },
   "shape_language": "plain",
-  "visual": "風格檔的 visual 值"
+  "visual": "the visual value from the style file"
 }
 ```
 
-`layout` 是整份共用的版面錨點：安全區的三個邊界、欄間距、允許的間距級距。每一頁的座標可以不一樣，但這幾個數字全份一致——`validate` 用三個邊界驗溢出。整組可省略（省略即上面的預設值）；寫了就必須是合法數字。畫布不是 1280×720 時，這些值跟字級一樣乘以 `k`。
+`layout` is the deck-wide layout anchor: the safe-area's three boundaries, the column gutter, and the allowed spacing steps. Each page's coordinates may differ, but these numbers stay consistent deck-wide — `validate` uses the three boundaries to check overflow. The whole object may be omitted (omitting means the defaults above); if written, it must be legal numbers. When the canvas is not 1280×720, these values scale by `k` just like font sizes.
 
-## 回報格式
+## Report format
 
-先一行：模式與理由、風格名稱與一句感覺、動畫強度、建議的背景配方、共幾頁。接著一張表，每頁一列：`頁碼｜關係｜節奏｜主張`。最後一行固定：「計畫已寫進 plan/，請在確認視窗裡拍板；要改哪一頁可以按重新規劃並告訴我。」JSON 只寫進檔案，對話裡給作者看的是表格。
+First line: the mode and reason, the style name with a one-sentence feel, the animation intensity, the suggested background recipe, and the total page count. Then a table, one row per page: `page | relationship | rhythm | claim`. The final line is fixed: "The plan is written into plan/; please approve it in the confirmation dialog; to change a page, click Re-plan and tell me what to change." The JSON goes only into the file; what the author sees in the conversation is the table.

@@ -1,40 +1,40 @@
 # audio-waveform
 
-**解的關係**：`none`
-**單位數**：1
-**一句話**：一條橫跨版面的波形帶，上方一句要聽什麼、下方是逐字重點——聲音沒有畫面，所以版面要替它補上。
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A waveform strip spanning the layout, with a one-line "what to listen for" above and per-word highlights below — sound has no picture, so the layout has to supply it.
 
-**什麼時候用它**：訪談片段、客服錄音、現場實錄、podcast 節錄。
-**什麼時候不要用**：聲音只是背景音樂。背景音樂不需要一頁。
+**When to use it**: Interview clips, support recordings, live footage, podcast excerpts.
+**When not to use it**: The audio is just background music. Background music does not need a page.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `audio-waveform.svg`。
+Full SVG: see `audio-waveform.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 引導句 | `label` | 要聽的是什麼 | 20 字 | 1 |
-| 波形帶 | `node`（`audio`） | 橫跨安全區 | — | — |
-| 逐字重點 ×N | `label` | **播放時對照用**，不是全文逐字稿 | 每條 22 字 | 1 |
-| 出處 | `label`（`caption`） | 受訪者與長度 | 20 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Lead line | `label` | what to listen for | 20 chars | 1 |
+| Waveform strip | `node` (`audio`) | spans the safe area | — | — |
+| Per-word highlights ×N | `label` | **for following along during playback**, not a full verbatim transcript | 22 chars each | 1 |
+| Source | `label` (`caption`) | interviewee and length | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-波形帶高度 100～140，橫跨整個安全區。**逐字重點最多三條**——聲音在播的時候，聽眾只能分心讀很少的字。全文逐字稿放備忘稿。
+Waveform strip height 100–140, spanning the whole safe area. **At most three per-word highlights** — while the audio is playing, the audience can only spare attention for very few words. The full verbatim transcript goes into the speaker notes.
 
-`blueprint.shape` 寫 `audio-waveform`。
+Write `blueprint.shape` as `audio-waveform`.
 
-## 怎麼放進去
+## How to place it
 
 ```
-slidra asset import <id> <音檔路徑>
-slidra element insert audio <id> slides/00N.svg --x 80 --y 230 --width 1120 --height 120 --media assets/<檔名>
+slidra asset import <id> <audio file path>
+slidra element insert audio <id> slides/00N.svg --x 80 --y 230 --width 1120 --height 120 --media assets/<filename>
 ```
 
-## 變體
+## Variants
 
-- **多段**：兩三條較短的波形帶垂直排列，各自一個引導句。
-- **配頭像**：左側一個圓形頭像，右側波形——受訪者是誰很重要時。
+- **Multiple segments**: two or three shorter waveform strips stacked vertically, each with its own lead line.
+- **With portrait**: a round portrait on the left, waveform on the right — when who is being interviewed matters.

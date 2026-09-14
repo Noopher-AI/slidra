@@ -1,33 +1,33 @@
 # map
 
-**解的關係**：`membership`
-**單位數**：2–6
-**一句話**：地理輪廓加上標記點，右側一個圖例——空間分布本身就是訊息。
+**Relationship solved**: `membership`
+**Unit count**: 2–6
+**One line**: A geographic outline with marker points and a legend on the right — spatial distribution is itself the message.
 
-**什麼時候用它**：據點分布、市場覆蓋、區域數據、供應鏈。
-**什麼時候不要用**：資料跟地理位置無關。地圖會讓人去找空間關係，找不到就是浪費了整頁。**不要為了好看放地圖**。
+**When to use it**: Site locations, market coverage, regional data, supply chains.
+**When not to use it**: The data has nothing to do with geography. A map makes people look for spatial relationships; if there are none, the page is wasted. **Do not add a map just for looks.**
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `map.svg`。
+Full SVG: see `map.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 輪廓 | `field` | 簡化的地理形狀 | — | — |
-| 標記 ×N | `node` | 點的大小可反映量 | — | — |
-| 標記名 | `label` | 貼在點旁邊 | 8 字 | 1 |
-| 圖例 | `field` + `label` | 說明點代表什麼 | 每行 12 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Outline | `field` | simplified geographic shape | — | — |
+| Markers ×N | `node` | point size can reflect quantity | — | — |
+| Marker name | `label` | next to the point | 8 chars | 1 |
+| Legend | `field` + `label` | explains what the points represent | 12 chars/line | 1 |
 
-## 節奏
+## Rhythm
 
-輪廓佔版面約 55%，圖例放右側。**標記不要互相重疊**；密集區域改用一個大點加數字，不要擠一堆小點。輪廓用單色，不要做地形起伏——那會搶走標記。
+The outline takes ~55% of the layout; the legend goes on the right. **Markers must not overlap each other**; for dense areas use one large point with a number instead of cramming in small ones. The outline is monochrome — no topography, which would compete with the markers.
 
-`blueprint.shape` 寫 `map`。
+Write `blueprint.shape` as `map`.
 
-## 變體
+## Variants
 
-- **點大小反映量**：標記半徑對應數值，圖例要標出比例尺。
-- **區域著色**：輪廓分區上色而不是放點，適合比較區域之間的強弱。
+- **Point size reflects quantity**: marker radius maps to the value; the legend must show the scale.
+- **Regional coloring**: color the outline regions instead of placing points; suits comparing strength across regions.

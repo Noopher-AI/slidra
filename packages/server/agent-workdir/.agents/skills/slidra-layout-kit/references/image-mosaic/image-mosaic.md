@@ -1,32 +1,32 @@
 # image-mosaic
 
-**解的關係**：`membership`
-**單位數**：4–7
-**一句話**：不等大的圖片馬賽克，一張主圖配幾張小圖——比格陣有層次，適合有主次的一組圖。
+**Relationship solved**: `membership`
+**Unit count**: 4–7
+**One line**: An uneven image mosaic — one hero image plus several smaller ones — more layered than a grid; suits a group of images with hierarchy.
 
-**什麼時候用它**：一組圖裡有一張明顯是主角（主視覺、代表作、封面照）。
-**什麼時候不要用**：所有圖同等重要——那用 24 `image-grid`，等大才不會誤導。
+**When to use it**: A group of images where one is clearly the hero (key visual, representative work, cover photo).
+**When not to use it**: All images are equally important — use 24 `image-grid`; equal sizes avoid misleading.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `image-mosaic.svg`。
+Full SVG: see `image-mosaic.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 主圖 | `node`（`image`） | 約佔一半版面 | — | — |
-| 小圖 ×N | `node`（`image`） | 等大，排在右側 | — | — |
-| 圖說 | `label` | 可省；只給主圖一句 | 20 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Hero image | `node` (`image`) | ~half the layout | — | — |
+| Small images ×N | `node` (`image`) | equal size, arranged on the right | — | — |
+| Caption | `label` | optional; one line for the hero only | 20 chars | 1 |
 
-## 節奏
+## Rhythm
 
-主圖與小圖群的間距用一個 `gutter`，小圖之間用半個。**小圖一律等大**——主次只有兩級，三級會變亂。
+One `gutter` between the hero image and the small-image cluster; half a `gutter` between small images. **All small images are the same size** — hierarchy has only two levels; three levels gets messy.
 
-`blueprint.shape` 寫 `image-mosaic`。
+Write `blueprint.shape` as `image-mosaic`.
 
-## 變體
+## Variants
 
-- **左小右大**：主圖放右側，閱讀從小圖開始。
-- **橫幅主圖**：主圖改成上方滿寬，小圖排在下方一列。
+- **Small-left, large-right**: hero on the right, reading starts from the small images.
+- **Wide hero**: hero becomes a full-width top banner, small images in a row below.

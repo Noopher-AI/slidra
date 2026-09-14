@@ -1,39 +1,39 @@
 # split-panel
 
-**解的關係**：`contrast`（A vs B、之前／之後、選項比較）
-**單位數**：2
-**一句話**：左右等寬等高的面板，兩欄共用同一條基準線——差異看得出來，是因為其他東西都一樣。
+**Relationship solved**: `contrast` (A vs B, before/after, option comparison)
+**Unit count**: 2
+**One line**: Equal-width, equal-height panels on the left and right, sharing the same baseline — the difference is visible because everything else is the same.
 
-**什麼時候用它**：兩個東西在同一個維度上比較。
-**什麼時候不要用**：三個以上的東西（那是 `membership` 或要換 `shared-axis`）；兩者其實有先後（那是 `order`）。
+**When to use it**: Comparing two things on the same dimension.
+**When not to use it**: More than two items (that is `membership` or switch to `shared-axis`); or the two things actually have a before/after (that is `order`).
 
-**最容易做錯的一件事**：兩欄條數不一樣多、欄標高度不齊。**對比的力量來自不變量對齊**，一旦兩邊排版不同，讀者會先看到排版差異而不是內容差異。
+**The most common mistake**: different numbers of items per column or misaligned column headers. **The power of a comparison comes from aligning the invariants** — once the two sides have different layouts, the reader sees the layout difference before the content difference.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `split-panel.svg`。
+Full SVG: see `split-panel.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | 這一頁的主張（通常是「A vs B」） | 15 字（上限 24） | 1 |
-| 左／右面板 | `node`（內含 `field`） | 各一方 | — | — |
-| 頂線 ×2 | `garnish` | 左 `primary`、右 `secondary_accent`——**顏色是兩邊唯一該不同的東西** | — | — |
-| 欄標 ×2 | `label` | 這一欄是誰 | 8 字 | 1 |
-| 欄內文 ×2 | `label` | 條列，**兩欄條數必須一樣** | 每條 18 字（上限 32） | 2–4 條 |
-| VS 圓 | `node` 的分界（不是 `garnish`） | 可省 | 2 字 | 1 |
-| 頁尾三件 | — | | — | — |
+| Title | `label` | the claim for this page (usually "A vs B") | 15 chars (max 24) | 1 |
+| Left/right panels | `node` (containing `field`) | one per side | — | — |
+| Top bars ×2 | `garnish` | left `primary`, right `secondary_accent` — **color is the only thing that should differ between the two sides** | — | — |
+| Column headers ×2 | `label` | who this column is | 8 chars | 1 |
+| Column body ×2 | `label` | bullet list, **both columns must have the same count** | 18 chars each (max 32) | 2–4 items |
+| VS circle | `node` divider (not `garnish`) | optional | 2 chars | 1 |
+| Footer trio | — | | — | — |
 
-## 節奏
+## Rhythm
 
-兩欄等寬（各佔安全區的 40%，中間留 `gutter × 2` 以上）、等高、頂線對齊、首行基準線對齊。**條數不一樣時，補到一樣或刪到一樣**，不要留一欄空著。
+Both columns are equal width (each ~40% of the safe area, with at least `gutter × 2` between), equal height, top lines aligned, first-line baselines aligned. **When the item counts differ, pad one side or trim the other to match** — don't leave a column empty.
 
-`blueprint.shape` 寫 `split-panel`；`type` 可一併填 `compare`。
+Write `blueprint.shape` as `split-panel`; `type` can also be set to `compare`.
 
-**動畫**：3 步——標題 → 左欄整組 → 右欄整組。VS 圓跟左欄一起（它是分界，不該自成一步）。
+**Animation**: 3 steps — title → left column as a group → right column as a group. The VS circle goes with the left column (it's a divider, not a standalone step).
 
-## 變體
+## Variants
 
-- **上下對照**（`before-after`）：改成上下兩塊，中間一條分界線。適合「之前／之後」這種有時間感的對比。
-- **共用基準線**（`shared-axis`）：拿掉面板，只留中央一條垂直軸線，兩邊的項目往兩側展開——更輕，適合項目少的時候。
+- **Top/bottom** (`before-after`): switch to top/bottom blocks with a divider between. Suits time-based comparisons like "before/after."
+- **Shared baseline** (`shared-axis`): remove the panels, keep only a central vertical axis, items expand to both sides — lighter, suits fewer items.

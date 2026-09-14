@@ -1,36 +1,36 @@
-# 敘事模式與節奏
+# Narrative Modes and Rhythm
 
-一份簡報**只選一種模式**，寫進 `plan/design-spec.md` 之前先寫進 `plan/outline.md` 的 `mode` 欄位。模式決定的是骨架——標題怎麼寫、密度傾向、頁與頁之間怎麼推進——不是視覺風格；配色與字級另外在 `slide-design.md` 選。挑法看**內文頁的論證走向**，不看封面、不看大綱的第一個字。
+A presentation uses **exactly one mode**. Write it into the `mode` field of `plan/outline.md` before writing `plan/design-spec.md`. A mode decides the skeleton — how titles are written, the density tendency, how one page advances to the next — not the visual style; color and type scale are chosen separately in `slide-design.md`. Pick based on **the argumentative flow of the content pages**, not the cover and not the first word of the outline.
 
-## 五種模式
+## Five Modes
 
-| 模式 | 一句定義 | 標題怎麼寫 | 密度傾向 | 大綱長這樣就選它 |
+| Mode | One-line definition | How to write titles | Density tendency | Pick it when the outline looks like this |
 |---|---|---|---|---|
-| `pyramid` | 結論先行，再給結構化的支撐；開場用「情境→衝突→問題→答案」 | **標題就是結論**（「本季營收成長 23%，高於全球平均」），不是話題標籤 | 中：一頁一個主張加精簡證據 | 要作者做決定或接受一個建議；有取捨與判準；董事會、投資人、分析、策略 |
-| `narrative` | 故事線：情境→張力→轉折→解決，帶人與情緒 | 標題是情節節拍（「然後數字對不起來了」） | 密集頁與喘息頁交錯，跟著張力走 | 提案、案例、品牌歷程、募資——重點要先在情緒上落地 |
-| `instructional` | 先拆解再排序：由簡到繁、先備到依賴；一頁教一步 | 標題說這頁教什麼（「先分清楚範本與母片」） | 中偏高：同層概念用相同結構、相同深度 | 教學、導覽、說明、上手——理解必須一步一步疊 |
-| `showcase` | 畫面或數字主導，文字退後；一次只放大一個想法 | 短而有畫面的片語（「12 分鐘」） | 低：大量留白，講的都在備忘稿 | 發表、品牌揭露、活動開場；講者站在台上主導 |
-| `briefing` | 中性、完整、可查；主題標題、同層等重、可預期的順序 | **話題式標題**（「第三季各部門人力」） | 中：完整優先於精選 | 進度回報、參考資料、目錄、會議資料、FAQ——沒有哪個論點要壓過其他 |
+| `pyramid` | Conclusion first, then structured support; open with "situation → conflict → question → answer" | **The title is the conclusion** ("This quarter revenue grew 23%, above the global average"), not a topic label | Medium: one claim per page plus concise evidence | The author must make a decision or accept a recommendation; there are trade-offs and criteria; boards, investors, analysis, strategy |
+| `narrative` | Story line: situation → tension → turn → resolution, carrying people and emotion | Titles are story beats ("Then the numbers didn't add up") | Dense pages and breathing pages alternate, following the tension | Pitches, case studies, brand histories, fundraising — the point must land emotionally first |
+| `instructional` | Break down then order: simple to complex, prerequisites before dependencies; one page teaches one step | Titles say what this page teaches ("First, distinguish template from master") | Medium-high: same-level concepts use the same structure and depth | Teaching, walkthroughs, explanations, onboarding — understanding must be built step by step |
+| `showcase` | Images or numbers lead, text recedes; enlarge one idea at a time | Short, visual phrases ("12 minutes") | Low: lots of whitespace; the talk is in the speaker notes | Launches, brand reveals, event openings; the speaker on stage leads |
+| `briefing` | Neutral, complete, referenceable; topic titles, same-level equal weight, predictable order | **Topic-style titles** ("Q3 headcount by department") | Medium: completeness over curation | Progress reports, reference material, tables of contents, meeting materials, FAQs — no argument needs to outrank the others |
 
-**容易混淆的組合**：
-- pyramid vs briefing：要落地一個建議 → pyramid；要完整告知 → briefing。
-- narrative vs pyramid：靠故事弧線帶論點 → narrative；結論先講 → pyramid。
-- narrative vs showcase：論點靠故事推進 → narrative；靠畫面與存在感 → showcase。
-- instructional vs briefing：要建立理解 → instructional；只是攤開參考 → briefing。
+**Easily confused pairs**:
+- pyramid vs briefing: landing a recommendation → pyramid; complete information → briefing.
+- narrative vs pyramid: the argument is carried by a story arc → narrative; conclusion stated up front → pyramid.
+- narrative vs showcase: the argument advances through story → narrative; through imagery and presence → showcase.
+- instructional vs briefing: building understanding → instructional; just laying out reference material → briefing.
 
-作者的大綱本來就用話題式標題、或明說了模式時，以作者為準；模式只影響你寫標題與密度的傾向，不改作者給的順序。
+When the author's outline already uses topic-style titles, or the author explicitly names the mode, follow the author; the mode only influences your title-writing and density tendencies, not the order the author gave.
 
-## 三種節奏
+## Three Rhythms
 
-每一頁在 `plan/outline.md` 的 `pages[].rhythm` 標一種：
+Every page gets one rhythm in `pages[].rhythm` of `plan/outline.md`:
 
-| 節奏 | 是什麼 | 規則 |
+| Rhythm | What it is | Rules |
 |---|---|---|
-| `anchor` | 結構頁：封面、章節頁、結語 | **第 1 頁一定是 anchor**；封面要有一個具體的鉤子（大綱裡最強的主張、數字或衝突），不是空泛的標題；結語要有帶得走的一句話，沒有結論的大綱就不做結語頁 |
-| `dense` | 資訊頁：要點頁、對照頁 | 這是基準節奏；一頁一個想法 |
-| `breathing` | 低密度的衝擊頁：大數字頁、一句主張、章節轉場 | **禁止卡片格**（整頁色塊 `rect` 不超過 2 個）；靠留白與大字，不靠框 |
+| `anchor` | Structural pages: cover, section dividers, closing | **Page 1 must be an anchor**; the cover needs a concrete hook (the outline's strongest claim, number, or conflict), not a vague title; a closing needs a line worth taking away — don't make a closing page for an outline with no conclusion |
+| `dense` | Information pages: key-point pages, comparison pages | This is the baseline rhythm; one idea per page |
+| `breathing` | Low-density impact pages: big-number pages, one-claim pages, section transitions | **Card grids are forbidden** (full-page color-block `rect`s no more than 2); rely on whitespace and big type, not boxes |
 
-- 節奏也決定動畫的份量（`slide-design.md` 第 5 節）：anchor 頁的幾何先進、標題再上；dense 頁一張卡片一步；breathing 頁只有一個主角用 zoom，其餘 fade。`plan/outline.md` 的 `animation` 只調整強度（full／minimal／none），不改這個原則。
-- 章節開頭要看得出重置：章節頁或一張 breathing 頁。
-- 連續多頁同一節奏可以，但要是有意的；**不要為了節奏捏假頁**——喘息頁必須自己站得住，不是填充。
-- 每一節的走向：先框架、再說明或證據、最後判斷或行動；整份的最後一段要先把目標收掉，才進真正的結尾。
+- Rhythm also determines the animation weight (section 5 of `slide-design.md`): anchor pages enter their geometry first, then the title; dense pages get one card per step; breathing pages use zoom for the single protagonist and fade for everything else. The `animation` field in `plan/outline.md` only adjusts intensity (full/minimal/none), not this principle.
+- The start of a section must visibly reset: a section page or a breathing page.
+- Several consecutive pages on the same rhythm are fine, but deliberately; **don't fabricate pages for rhythm's sake** — a breathing page must stand on its own, not be filler.
+- Each section's arc: frame first, then explanation or evidence, then judgment or action; the deck's final section must resolve the goal before the real ending.

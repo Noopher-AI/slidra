@@ -1,11 +1,11 @@
 # 07 · bold-poster
 
-**第一秒的感覺**：黑底、螢光黃、字大到快要撐破版面。像一張貼在街上的活動海報——遠遠就看得到，不解釋，先讓你記住。
+**First-impression feel**: Black base, fluorescent yellow, type so large it nearly breaks the frame. Like an event poster on a street — visible from far away, no explanation, make you remember it first.
 
-**適合**：活動宣傳、開場、口號頁、需要被拍照的那一頁。
-**不適合**：資訊頁。這個風格一頁只能放一件事，硬塞三條要點會變成災難。
+**Suited for**: Event promotion, openings, slogan pages, the page that needs to be photographed.
+**Not suited for**: Information pages. This style fits only one thing per page; cramming in three key points becomes a disaster.
 
-**為什麼是這個配色**：只有兩個顏色在工作：黑與螢光黃。其餘角色都是這兩者的灰階過渡。**這是刻意的貧乏**——海報的力量來自沒有選擇。
+**Why this palette**: Only two colors are working: black and fluorescent yellow. The other roles are all grayscale transitions between the two. **This poverty is deliberate** — a poster's power comes from having no choices.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：字級全面放大一到兩級（封面 96、標題 52）。**內文也用粗體**——這個風格沒有輕的地方。英文與數字用 Space Grotesk，它的幾何感跟海報的直率一致。
+**Typography and contrast**: Type scale up by one to two levels overall (cover 96, title 52). **Body is also bold** — this style has no light places. English and numbers use Space Grotesk, whose geometry matches the poster's directness.
 
-**間距節奏**：級距大（16/32/48/80/120）。一頁 1～2 個單位。
+**Spacing rhythm**: Large spacing (16/32/48/80/120). 1–2 units per page.
 
-**建議背景**：03 `diagonal-beams`（方向感與海報的衝勁一致）。
+**Suggested backgrounds**: 03 `diagonal-beams` (the sense of direction matches the poster's charge).

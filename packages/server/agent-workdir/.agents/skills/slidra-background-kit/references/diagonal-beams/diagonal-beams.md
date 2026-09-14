@@ -1,26 +1,26 @@
-# diagonal-beams（對角光束）
+# diagonal-beams
 
-**氣氛**：三道從右上斜向左下的光束，左側被徑向漸層壓暗。**有方向、有速度**——這是這個配方最重要的性質，也是它的限制。
+**Mood**: Three beams slanting from upper-right to lower-left, with the left side darkened by a radial gradient. **Directional and fast** — that is this recipe's most important property, and its limitation.
 
-**適合**：`anchor`、`breathing`，以及 `order` 關係的頁面（光束的方向會強化閱讀方向）。
-**不適合**：`membership` 的頁面。並列的內容配上有方向的背景，背景會說錯話。
+**Suited for**: `anchor`, `breathing`, and pages with `order` relationships (the beam direction reinforces reading direction).
+**Not suited for**: `membership` pages. Parallel content with a directional background makes the background say the wrong thing.
 
-**建議 opacity**：0.7。
+**Suggested opacity**: 0.7.
 
-**做法**：兩道 `primary`、一道 `accent` 的長條 path，角度一致；左側疊一層徑向漸層把文字區壓暗。
+**Technique**: Long path bars — two in `primary`, one in `accent`, all at the same angle; a radial gradient layer on the left darkens the text area.
 
-完整 SVG：見同資料夾 `diagonal-beams.svg`。
+Full SVG: see `diagonal-beams.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `cool` | 全部收斂到冷色：暖的 accent 改用第三色。同一張圖會安靜下來，適合需要冷靜的內容。 | `var(--accent)` → `secondary_accent` |
-| `mono-ink` | 去彩度：全部改用文字色與 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--primary)` → `muted`、`var(--accent)` → `text` |
+| `base` | As-is, use the SVG below directly | — |
+| `cool` | Converge everything to cool tones: the warm accent switches to tertiary. The same image becomes quieter; suited for content that needs calm. | `var(--accent)` → `secondary_accent` |
+| `mono-ink` | Desaturate: everything uses text color and muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--primary)` → `muted`, `var(--accent)` → `text` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：01 `editorial-tech`。淺底風格上光束會太顯眼，要用的話 opacity 降到 0.3 以下。
+**Suggested styles**: 01 `editorial-tech`. On light-background styles the beams stand out too much; if you must use them, drop opacity below 0.3.

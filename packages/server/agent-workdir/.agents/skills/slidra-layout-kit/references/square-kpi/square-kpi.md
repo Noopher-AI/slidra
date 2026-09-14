@@ -1,42 +1,42 @@
 # square-kpi
 
-**畫布**：1080×1080（1:1）　**這不是 16:9 的版面**
-**解的關係**：`none`
-**單位數**：1
-**一句話**：方形數字：一個大數字置中，上有標題下有補充——單張分享的數據卡。
+**Canvas**: 1080×1080 (1:1) **This is not a 16:9 layout**
+**Relationship solved**: `none`
+**Unit count**: 1
+**One line**: A square number: one large centered number, title above, supplement below — a single-share data card.
 
-**什麼時候用它**：一個值得被單獨轉發的數字。
-**什麼時候不要用**：多個指標——方形放不下，改用 `26 kpi-row` 的橫式。
+**When to use it**: A number worth sharing as a standalone card.
+**When not to use it**: Multiple metrics — a square can't hold them; use the horizontal `26 kpi-row` instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `square-kpi.svg`。
+Full SVG: see `square-kpi.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 12 字 | 1 |
-| 大數字 | `label` | 置中，字要極大 | 6 字 | 1 |
-| 說明 | `label` | | 16 字 | 1 |
-| 補充 ×2 | `label` | 可省 | 12 字 | 1 |
-| 來源 | `label` | | 14 字 | 1 |
+| Title | `label` | | 12 chars | 1 |
+| Big number | `label` | centered, very large | 6 chars | 1 |
+| Explanation | `label` | | 16 chars | 1 |
+| Supplements ×2 | `label` | optional | 12 chars | 1 |
+| Source | `label` | | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-數字置中、佔畫面高度約 20%。**數字只能來自作者**。上下留白對稱。
+The number is centered, occupying ~20% of the frame height. **The number must come from the author.** Symmetric top and bottom whitespace.
 
-`blueprint.shape` 寫 `square-kpi`。
+Write `blueprint.shape` as `square-kpi`.
 
-## 怎麼設定畫布
+## Setting the canvas
 
 ```
 slidra presentation canvas set <presentation-id> --width 1080 --height 1080
 ```
 
-畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+The canvas must be set **before** creating the first page. Non-16:9 canvases **must not use `k = width ÷ 1280` for font size conversion** — that rule only holds for proportional canvases. Use the slot table directly for portrait and square layouts.
 
-## 變體
+## Variants
 
-- **加變化量**：數字右上角一個小的 ↑↓ 與百分比。
-- **深色底**：整張反白，在動態牆上更跳。
+- **Change indicator**: a small ↑↓ and percentage at the number's upper-right.
+- **Dark base**: invert the whole card for a bolder look on dynamic walls.

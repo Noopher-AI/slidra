@@ -1,11 +1,11 @@
 # 16 · terracotta-studio
 
-**第一秒的感覺**：陶土色、沙色、一點窯燒的黑。像一間設計工作室的牆面——有質感但不緊張，作品才是主角。
+**First-impression feel**: Terracotta, sand, and a touch of kiln-fired black. Like the walls of a design studio — textured but not tense; the work is the star.
 
-**適合**：設計提案、空間、工藝品牌、作品集。
-**不適合**：資料密集的報告。這個配色預期頁面上有圖，全是字會顯得空。
+**Suited for**: Design proposals, spatial design, craft brands, portfolios.
+**Not suited for**: Data-dense reports. This palette expects images on the page; all text would feel empty.
 
-**為什麼是這個配色**：主色是燒過的陶土紅，比磚紅暗、比酒紅暖；secondary_bg 的沙色與底色差很少，分區靠的是邊界不是對比；黑只用在文字，不當色塊——工作室的牆不會有純黑。
+**Why this palette**: The primary is fired terracotta red — darker than brick, warmer than wine; the sand secondary_bg is very close to the base, so zoning relies on borders rather than contrast; black is only for text, never as a color block — a studio wall would never be pure black.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：英文標題用 Playfair Display（高對比襯線，工作室的招牌感），中文用 Noto Serif TC 700。內文黑體。
+**Typography and contrast**: English headings in Playfair Display (high-contrast serif, studio signature feel); Chinese in Noto Serif TC 700. Body in gothic.
 
-**間距節奏**：級距鬆、邊界 88。這個風格需要大量留白給圖片。
+**Spacing rhythm**: Loose spacing, 88px margins. This style needs lots of whitespace for images.
 
-**建議背景**：01 `soft-blobs`（opacity 0.5）。 **明亮背景**（背景庫 46–54，為淺底畫的）：46、47、50、51、54。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.5). **Light backgrounds** (background library 46–54, designed for light bases): 46, 47, 50, 51, 54.

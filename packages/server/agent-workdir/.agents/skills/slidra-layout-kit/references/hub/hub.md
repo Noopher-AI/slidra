@@ -1,32 +1,32 @@
 # hub
 
-**解的關係**：`link`
-**單位數**：1 + 3–6
-**一句話**：中心一個節點，其餘放射排列並各自連回中心——一眼看出誰是核心。
+**Relationship solved**: `link`
+**Unit count**: 1 + 3–6
+**One line**: One central node with the others radiating outward, each connecting back to the center — instantly clear who is at the core.
 
-**什麼時候用它**：一個東西連結／支撐其他所有東西（平台與應用、核心團隊與專案）。
-**什麼時候不要用**：各項目彼此也有關係——放射會宣稱「它們只跟中心有關」。
+**When to use it**: One thing links/supports all the others (platform and apps, core team and projects).
+**When not to use it**: When the items also relate to each other — a radial layout would claim "they only relate to the center."
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `hub.svg`。
+Full SVG: see `hub.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 中心 | `node` | 核心的那一個 | 8 字 | 1 |
-| 外圍 ×N | `node` | | 10 字 | 1 |
-| 連線 ×N | `edge` | 每條都連回中心 | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Center | `node` | the core one | 8 chars | 1 |
+| Periphery ×N | `node` | | 10 chars | 1 |
+| Connecting lines ×N | `edge` | each connects back to the center | — | — |
 
-## 節奏
+## Rhythm
 
-外圍節點**等距分布在同一個圓周上**，不要上下左右隨意擺。中心節點明顯大於外圍——大小差就是主從。
+Peripheral nodes are **evenly distributed on the same circle** — do not scatter them arbitrarily. The center node is visibly larger than the periphery — size difference is hierarchy.
 
-`blueprint.shape` 寫 `hub`。
+Write `blueprint.shape` as `hub`.
 
-## 變體
+## Variants
 
-- **半放射**：只往右半邊展開，左邊留給標題與說明。
-- **雙中心**：兩個核心各自帶幾個外圍，中間再連一條——講兩個系統如何整合。
+- **Half-radial**: only expand to the right half, leaving the left for the title and description.
+- **Dual center**: two cores each with their own peripherals, connected by a line between them — showing how two systems integrate.

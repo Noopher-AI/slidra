@@ -25,8 +25,8 @@ export interface PlanGateModalProps {
  * and its `questions`; this dialog shows the page plan read-only, one block
  * per question with the agent's recommendation preselected, and three
  * exits (contract §4): "Confirm and build" →
- * `/slidra-build 【計畫確認】…`, "Redo" →
- * `/slidra-plan 【重做】…` (a reason is required), "Discard" →
+ * `/slidra-build [plan-confirmed]…`, "Redo" →
+ * `/slidra-plan [redo]…` (a reason is required), "Discard" →
  * `plan delete`. Deliberately blocking: no close button, Esc does nothing,
  * focus stays inside — a plan must be answered, not dismissed; "Discard" is
  * the one exit that needs no agent.

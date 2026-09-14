@@ -1,11 +1,11 @@
 # 22 · zine-punk
 
-**第一秒的感覺**：影印機吃掉一層灰的黑白，加一塊螢光。像一本手工釘起來的地下刊物——粗糙、偏移、故意不對齊。
+**First-impression feel**: Xerox-eaten grayscale plus a hit of fluorescent. Like a hand-stapled underground zine — rough, misaligned, deliberately off-kilter.
 
-**適合**：文化、音樂、次文化、實驗性內容、藝術節。
-**不適合**：需要信任的場合（醫療、金融、法律）。粗糙會被讀成不可靠。
+**Suited for**: Culture, music, subculture, experimental content, art festivals.
+**Not suited for**: Contexts requiring trust (medical, finance, legal). Roughness reads as unreliable.
 
-**為什麼是這個配色**：底色是影印紙的灰白（不是白）；黑是影印黑（#1A1A1A，不是純黑）；螢光粉是唯一的彩色，模擬螢光筆畫過的痕跡。**這個配色的重點是髒一點**。
+**Why this palette**: The base is xerox-paper gray-white (not white); black is xerox black (#1A1A1A, not pure black); fluorescent pink is the only color, simulating a highlighter mark. **The point of this palette is that it should look a bit dirty.**
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：字級大、邊界窄（64）——刊物的版面是擠的。標題可以壓到邊界甚至出血，這是這個風格少數允許破格的地方。
+**Typography and contrast**: Large type sizes, narrow margins (64) — zine layouts are cramped. Titles can press against the margins or even bleed; this is one of the few styles where breaking the rules is allowed.
 
-**間距節奏**：級距不規則（8/16/28/44/72），刻意不成等比。
+**Spacing rhythm**: Irregular spacing (8/16/28/44/72), deliberately not proportional.
 
-**建議背景**：02 `dot-grid`（opacity 0.5，像網點印刷）。 **明亮背景**（背景庫 46–54，為淺底畫的）：47、49、52、53。
+**Suggested backgrounds**: 02 `dot-grid` (opacity 0.5, like halftone print). **Light backgrounds** (background library 46–54, designed for light bases): 47, 49, 52, 53.

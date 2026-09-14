@@ -73,7 +73,7 @@ def main() -> int:
 
     # A0 (the acceptance criteria's original scenario, restored verbatim): slide 1,
     # click the subtitle's coordinates right after selecting the title. Remeasured
-    # at 1440x900 right after `select("標題")`: the context bar sits at
+    # at 1440x900 right after `select("Title")`: the context bar sits at
     # (442,378)-(1092,414), the subtitle's box is at y 394.25-419.25, overlapping by
     # 23.6px on the y axis; the subtitle's center point (656,406.8) hits a
     # `BUTTON.context-bar-item` via `elementFromPoint` on base -- so the reported
@@ -81,11 +81,11 @@ def main() -> int:
     # mentioned earlier was measured against the row that appears below the subtitle
     # once it's already selected, not this scenario).
     goto_slide(1)  # noqa: F821
-    select("標題")  # noqa: F821
+    select("Title")  # noqa: F821
     time.sleep(0.5)  # let the context bar actually render and settle before measuring, to avoid mid-animation coordinates
-    select("副標")  # noqa: F821
-    chip_a0 = wait_selection_chip("Selected: 副標")
-    check("A0 slide 1: clicking the subtitle's coordinates right after selecting the title moves selection to the subtitle", chip_a0 == "Selected: 副標", chip_a0)
+    select("Subtitle")  # noqa: F821
+    chip_a0 = wait_selection_chip("Selected: Subtitle")
+    check("A0 slide 1: clicking the subtitle's coordinates right after selecting the title moves selection to the subtitle", chip_a0 == "Selected: Subtitle", chip_a0)
 
     # A: slide 3, non-additive click -- with "bullet one" selected, "bullet two"'s
     # position falls within the context bar's bounds; on base this click hits the
@@ -94,11 +94,11 @@ def main() -> int:
     # through by default, so the click reaches the iframe and selection moves to
     # "bullet two".
     goto_slide(3)  # noqa: F821
-    select("第一點")  # noqa: F821
+    select("Point One")  # noqa: F821
     time.sleep(0.5)  # let the context bar actually render and settle before measuring, to avoid mid-animation coordinates
-    select("第二點")  # noqa: F821
-    chip_a = wait_selection_chip("Selected: 第二點")
-    check("A non-additive click passes through the context bar and selects bullet two", chip_a == "Selected: 第二點", chip_a)
+    select("Point Two")  # noqa: F821
+    chip_a = wait_selection_chip("Selected: Point Two")
+    check("A non-additive click passes through the context bar and selects bullet two", chip_a == "Selected: Point Two", chip_a)
 
     # B: same slide again, this time additive (shift-click) -- "bullet two" is
     # likewise covered by the context bar; on base this click lands on the context
@@ -106,9 +106,9 @@ def main() -> int:
     # turns into something else, never "2 elements"); on the branch the additive
     # selection succeeds.
     goto_slide(3)  # noqa: F821
-    select("第一點")  # noqa: F821
+    select("Point One")  # noqa: F821
     time.sleep(0.5)
-    select("第二點", additive=True)  # noqa: F821
+    select("Point Two", additive=True)  # noqa: F821
     chip_b = wait_selection_chip("Selected: 2 elements")
     check("B additive (shift-click) passes through the context bar and adds to selection ('2 elements')", chip_b == "Selected: 2 elements", chip_b)
 
@@ -119,7 +119,7 @@ def main() -> int:
     # delete the element. Uses slide 1 (see the note above: its context bar isn't
     # wide enough to get partially covered by the Chat panel).
     goto_slide(1)  # noqa: F821
-    select("標題")  # noqa: F821
+    select("Title")  # noqa: F821
     time.sleep(0.5)
     cb = context_bar()  # noqa: F821
     check("C context bar exists and is a ghost (not solid) before hover", cb["present"] and not cb["solid"], cb)

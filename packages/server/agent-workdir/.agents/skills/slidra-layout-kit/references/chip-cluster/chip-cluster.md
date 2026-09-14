@@ -1,30 +1,30 @@
 # chip-cluster
 
-**解的關係**：`membership`
-**單位數**：5–12
-**一句話**：大小不一的標籤散落成一群，沒有對齊格線——像一面貼滿便利貼的牆。
+**Relationship solved**: `membership`
+**Unit count**: 5–12
+**One line**: Varying-size tags scattered into a cluster with no grid alignment — like a wall covered in sticky notes.
 
-**什麼時候用它**：項目很多、每個都很短（關鍵詞、技能、標籤、工具名）。
-**什麼時候不要用**：項目需要被逐一講解。這個版面適合「一次看完整片」，不適合逐個揭露。
+**When to use it**: Many items, each very short (keywords, skills, tags, tool names).
+**When not to use it**: Items that need to be explained one by one. This layout is for "see the whole picture at once", not sequential reveal.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `chip-cluster.svg`。
+Full SVG: see `chip-cluster.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 標籤 ×N | `node`（圓角 `field` + `label`） | 一個關鍵詞 | 8 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Chips ×N | `node` (rounded `field` + `label`) | one keyword each | 8 chars | 1 |
 
-## 節奏
+## Rhythm
 
-**不要對齊成格線**——對齊會讓它變成一個很醜的表格。標籤寬度隨字長，高度一致，換行時左緣錯開。重要的標籤可以放大一級，但一頁最多兩個放大的。
+**Do not align to a grid** — alignment turns it into an ugly table. Chip width follows text length, height is uniform; when wrapping, offset the left edge. Important chips can be bumped up one size level, but at most two per page.
 
-`blueprint.shape` 寫 `chip-cluster`。
+Write `blueprint.shape` as `chip-cluster`.
 
-## 變體
+## Variants
 
-- **分組**：用兩三個留白帶把標籤分成幾群，每群上方一個小標。
-- **實心／外框混用**：已有的用實心、規劃中的用外框。
+- **Grouped**: two or three whitespace bands divide the chips into clusters, each with a small heading.
+- **Mixed fill/stroke**: existing items filled, planned items outlined.

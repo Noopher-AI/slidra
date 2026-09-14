@@ -244,14 +244,14 @@ class FakeAgent {
       }
     }
 
-    const replies = config.replies?.[index] ?? [`回覆第 ${index} 則訊息`];
+    const replies = config.replies?.[index] ?? [`reply to message ${index} `];
 
     if (config.requestPermissionOnPromptIndex === index) {
       const response = await this.connection.requestPermission({
         sessionId: params.sessionId,
         toolCall: {
           toolCallId: "fake-tool-call",
-          title: "測試工具呼叫",
+          title: "test tool call",
           // permissionOmitCommand scripts a tool call whose rawInput carries
           // no `command` key at all — the "cannot determine the command"
           // case the allowlist must fail closed on.
@@ -266,8 +266,8 @@ class FakeAgent {
         // `allow_always` (no `allow_once`), which the client must refuse
         // rather than accept as a persistent grant.
         options: config.permissionOptions ?? [
-          { kind: "allow_once", name: "允許", optionId: "allow" },
-          { kind: "reject_once", name: "拒絕", optionId: "reject" },
+          { kind: "allow_once", name: "Allow", optionId: "allow" },
+          { kind: "reject_once", name: "Reject", optionId: "reject" },
         ],
       });
       log({ permissionOutcome: response.outcome });
@@ -310,12 +310,12 @@ class FakeAgent {
         update: {
           sessionUpdate: "tool_call",
           toolCallId,
-          title: "執行命令",
+          title: "Run command",
           kind: "execute",
           status: "pending",
           rawInput: config.toolCallOmitCommand
             ? { description: "not a shell command" }
-            : { command: config.toolCallCommand ?? "slidra text set --id p1 --element-id el-1 --text 新標題" },
+            : { command: config.toolCallCommand ?? "slidra text set --id p1 --element-id el-1 --text New Title" },
         },
       });
       // permissionForToolCall: ask permission for *this* tool call, between
@@ -326,11 +326,11 @@ class FakeAgent {
         const response = await this.connection.requestPermission({
           sessionId: params.sessionId,
           toolCall: config.permissionForToolCallOmitInput
-            ? { toolCallId, title: "執行命令" }
-            : { toolCallId, title: "執行命令", rawInput: { command: config.toolCallCommand } },
+            ? { toolCallId, title: "Run command" }
+            : { toolCallId, title: "Run command", rawInput: { command: config.toolCallCommand } },
           options: [
-            { kind: "allow_once", name: "允許", optionId: "allow" },
-            { kind: "reject_once", name: "拒絕", optionId: "reject" },
+            { kind: "allow_once", name: "Allow", optionId: "allow" },
+            { kind: "reject_once", name: "Reject", optionId: "reject" },
           ],
         });
         log({ permissionOutcome: response.outcome });
@@ -404,7 +404,7 @@ class FakeAgent {
         // `session/cancel` — updates and a permission request arrive
         // with no prompt in flight. Fired after this response is sent.
         setTimeout(async () => {
-          for (const text of ["遲到的", "更新"]) {
+          for (const text of ["late", "update"]) {
             await this.connection.sessionUpdate({
               sessionId: params.sessionId,
               update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
@@ -415,7 +415,7 @@ class FakeAgent {
             update: {
               sessionUpdate: "tool_call",
               toolCallId: "late-call",
-              title: "遲到的命令",
+              title: "late command",
               kind: "execute",
               status: "pending",
               rawInput: { command: "slidra ls late" },
@@ -423,10 +423,10 @@ class FakeAgent {
           });
           const response = await this.connection.requestPermission({
             sessionId: params.sessionId,
-            toolCall: { toolCallId: "late-call", title: "遲到的命令", rawInput: { command: "slidra ls late" } },
+            toolCall: { toolCallId: "late-call", title: "late command", rawInput: { command: "slidra ls late" } },
             options: [
-              { kind: "allow_once", name: "允許", optionId: "allow" },
-              { kind: "reject_once", name: "拒絕", optionId: "reject" },
+              { kind: "allow_once", name: "Allow", optionId: "allow" },
+              { kind: "reject_once", name: "Reject", optionId: "reject" },
             ],
           });
           log({ latePermissionOutcome: response.outcome });

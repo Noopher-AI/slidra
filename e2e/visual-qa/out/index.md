@@ -1,28 +1,28 @@
-# 視覺 QA 場景清單
+# Visual QA Scenario List
 
-執行時間：2026-09-01T01:48:39.678Z　Chromium：151.0.7922.34
+Run time: 2026-09-01T01:48:39.678Z  Chromium: 151.0.7922.34
 
-| 場景 id | 操作 | 截圖 | 備註 |
+| Scenario id | Action | Screenshot | Notes |
 | --- | --- | --- | --- |
-| arrange-align-left | 多選新矩形與背景後選「靠左對齊」，矩形貼齊背景左緣 | arrange-align-left.png | — |
-| arrange-menu | 新增一個矩形，多選它與背景後點「排列」，開啟排列選單（中間狀態不判讀） | arrange-menu.png | — |
-| copy | 選取「標題」→ 複製（不改檔案，看有無視覺回饋） | copy.png | — |
-| cut | 選取「副標」→ 剪下，該頁少一個元素 | cut.png | — |
-| insert-audio | 插入分頁匯入音訊，畫面出現對應媒體佔位 | insert-audio.png | — |
-| insert-image | 插入分頁匯入圖片，畫面出現對應圖片 | insert-image.png | — |
-| insert-shape-ellipse | 插入分頁選單選「橢圓」新增橢圓圖案 | insert-shape-ellipse.png | — |
-| insert-shape-menu | 插入分頁點「圖案」，開啟圖案選單（中間狀態不判讀） | insert-shape-menu.png | — |
-| insert-textbox | 插入分頁新增文字方塊 | insert-textbox.png | — |
-| insert-video | 插入分頁匯入影片，畫面出現對應媒體佔位 | insert-video.png | — |
-| new-slide-blank | 選單選「空白」後新增一張投影片 | new-slide-blank.png | — |
-| new-slide-menu | 常用分頁點「新增投影片」，開啟樣板選單（僅「空白」一項，中間狀態不判讀） | new-slide-menu.png | — |
-| paste | 選取「標題」→ 複製 → 貼上，該頁多出一個元素 | paste.png | — |
-| play-from-current | 先切到第 3 頁，再從目前投影片開始播放 | play-from-current.png | — |
-| play-from-start | 從頭播放投影片 | play-from-start.png | — |
-| shape-menu | 常用分頁點「圖案」，開啟圖案選單（中間狀態不判讀） | shape-menu.png | — |
-| shape-rect | 選單選「矩形」新增矩形圖案 | shape-rect.png | — |
-| slide-number | 插入分頁新增頁碼變數，畫面顯示第 1 頁的頁碼 | slide-number.png | — |
-| textbox | 常用分頁新增文字方塊 | textbox.png | — |
-| toggle-fullscreen | 點「全螢幕」切換至全螢幕模式 | toggle-fullscreen.png | — |
-| transition-fade | 切換分頁設定轉場效果為「淡入淡出」 | transition-fade.png | — |
-| transition-none | 切換分頁設定轉場效果為「無」 | transition-none.png | — |
+| arrange-align-left | Multi-select a new rectangle and the background, choose "Align Left", rectangle aligns to the background's left edge | arrange-align-left.png | — |
+| arrange-menu | Add a rectangle, multi-select it with the background then click "Arrange" to open the arrange menu (intermediate state, no interpretation) | arrange-menu.png | — |
+| copy | Select "Title" → copy (no file change, check for visual feedback) | copy.png | — |
+| cut | Select "Subtitle" → cut, the page has one fewer element | cut.png | — |
+| insert-audio | Insert audio from the imported assets, a corresponding media placeholder appears on the canvas | insert-audio.png | — |
+| insert-image | Insert an image from the imported assets, the corresponding image appears on the canvas | insert-image.png | — |
+| insert-shape-ellipse | Insert → shape menu → "Ellipse", adds an ellipse shape | insert-shape-ellipse.png | — |
+| insert-shape-menu | Insert page clicks "Shape", opens the shape menu (intermediate state, no interpretation) | insert-shape-menu.png | — |
+| insert-textbox | Insert a text box on the slide | insert-textbox.png | — |
+| insert-video | Insert a video from the imported assets, a corresponding media placeholder appears on the canvas | insert-video.png | — |
+| new-slide-blank | Menu select "Blank" to add a new slide | new-slide-blank.png | — |
+| new-slide-menu | Common toolbar clicks "New Slide", opens the template menu (only "Blank" option, intermediate state, no interpretation) | new-slide-menu.png | — |
+| paste | Select "Title" → copy → paste, the page gains one element | paste.png | — |
+| play-from-current | Switch to page 3 first, then start playback from the current slide | play-from-current.png | — |
+| play-from-start | Play slides from the beginning | play-from-start.png | — |
+| shape-menu | Common toolbar clicks "Shape", opens the shape menu (intermediate state, no interpretation) | shape-menu.png | — |
+| shape-rect | Menu select "Rectangle" to add a rectangle shape | shape-rect.png | — |
+| slide-number | Insert a slide number variable, the canvas shows the page number for page 1 | slide-number.png | — |
+| textbox | Common toolbar adds a text box | textbox.png | — |
+| toggle-fullscreen | Click "Full Screen" to switch to fullscreen mode | toggle-fullscreen.png | — |
+| transition-fade | Switch slide transition effect to "Fade" | transition-fade.png | — |
+| transition-none | Switch slide transition effect to "None" | transition-none.png | — |

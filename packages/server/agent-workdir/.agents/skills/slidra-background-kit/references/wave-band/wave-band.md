@@ -1,26 +1,26 @@
 # wave-band
 
-**氣氛**：畫面下緣一道起伏的波形帶，像水面或聲波。柔軟、有流動感，而且只佔底部。
+**Mood**: A wave-shaped band along the bottom edge of the frame, like a water surface or sound wave. Soft and fluid, occupying only the bottom.
 
-**適合**：`anchor`、`breathing`。內容區完全不受影響。
-**不適合**：`dense` 且內容延伸到底部時。
+**Suited for**: `anchor`, `breathing`. The content area is completely unaffected.
+**Not suited for**: `dense` when content extends to the bottom.
 
-**建議 opacity**：0.7
+**Suggested opacity**: 0.7
 
-**做法**：兩條錯開的波形 path 填滿下緣，後面那條較淡。
+**Technique**: Two offset wave-shaped paths filling the bottom edge; the back one is lighter.
 
-完整 SVG：見同資料夾 `wave-band.svg`。
+Full SVG: see `wave-band.svg` in the same folder.
 
-## 另外兩種色系
+## Two alternative color schemes
 
-同一張圖換一組角色去填，就是另一個色系——顏色仍然全部來自這份簡報自己的配色，所以不會跟風格打架。寫入資產時把 `var(--role)` 換成**對應後**的角色色碼即可，SVG 本身完全不用改。
+Swapping the role assignments on the same image produces another color scheme — colors still all come from this deck's own palette, so nothing clashes with the style. When writing the asset, replace `var(--role)` with the **mapped** role color code; the SVG itself needs no changes.
 
-| 色系 | 效果 | 角色對應 |
+| Scheme | Effect | Role mapping |
 |---|---|---|
-| `base` | 原樣，下面 SVG 直接用 | — |
-| `mono-ink` | 去彩度：全部改用文字色與 muted。最克制的處理，幾乎只剩明暗，適合資料頁與克制的風格。 | `var(--primary)` → `muted`、`var(--secondary_accent)` → `muted` |
-| `verdant` | 改用第三色領頭。多數配色的 secondary_accent 是另一個色系，整張圖的色溫會整個換掉。 | `var(--primary)` → `secondary_accent` |
+| `base` | As-is, use the SVG below directly | — |
+| `mono-ink` | Desaturate: everything uses text color and muted. The most restrained treatment, nearly just light and dark; suited for data pages and restrained styles. | `var(--primary)` → `muted`, `var(--secondary_accent)` → `muted` |
+| `verdant` | Switch to tertiary-led. For most palettes, secondary_accent is a different hue family, which shifts the color temperature of the whole image. | `var(--primary)` → `secondary_accent` |
 
-一份簡報**最多用兩種色系**（通常是 `base` 給內容頁、另一種給定錨頁）；三種以上會讓整份看起來像拼貼。資產名字帶上色系，例如 `bg-<配方>-<配色代號>-accent-led.svg`。
+A deck uses **at most two color schemes** (typically `base` for content pages, the other for anchor pages); three or more make the whole deck look like a collage. Include the scheme in the asset name, e.g. `bg-<recipe>-<palette-code>-accent-led.svg`.
 
-**建議風格**：10、12、23、08。
+**Suggested styles**: 10, 12, 23, 08.

@@ -1,33 +1,33 @@
 # infographic
 
-**解的關係**：`membership`
-**單位數**：2–5
-**一句話**：平行的直欄，每欄一個圖示、一個編號、一句極簡標籤——資訊圖的標準解。
+**Relationship solved**: `membership`
+**Unit count**: 2–5
+**One line**: Parallel vertical columns, each with an icon, a number, and a minimal label — the standard infographic layout.
 
-**什麼時候用它**：幾件並列的事，而且每件都能用一個圖示代表（步驟摘要、KPI 概覽、要素清單）。
-**什麼時候不要用**：每件事需要兩行以上的說明——圖示會變成裝飾，改用 `30 split-thirds`。
+**When to use it**: Several parallel items, each representable by one icon (step summaries, KPI overviews, element checklists).
+**When not to use it**: Each item needs more than two lines of explanation — icons become mere decoration; use `30 split-thirds` instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `infographic.svg`。
+Full SVG: see `infographic.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 欄 ×N | `node`（`field`） | 等寬等高 | — | — |
-| 圖示 | `node` | 每欄一個，同一套圖示庫 | — | — |
-| 編號 | `label` | | 2 字 | 1 |
-| 標籤 | `label` | **極簡**，一行 | 10 字 | 1 |
+| Title | `label` | | 15 chars | 1 |
+| Columns ×N | `node` (`field`) | equal width and height | — | — |
+| Icon | `node` | one per column, from the same icon set | — | — |
+| Number | `label` | | 2 chars | 1 |
+| Label | `label` | **minimal**, one line | 10 chars | 1 |
 
-## 節奏
+## Rhythm
 
-欄等寬等高、圖示垂直位置一致。**標籤要極簡**——這個版面的價值在於一眼掃完，一旦文字變多就失去意義。四欄是甜蜜點，五欄是上限。
+Columns are equal width and height, icons at the same vertical position. **Labels must be minimal** — this layout's value is being scannable at a glance; once text grows, it loses meaning. Four columns is the sweet spot; five is the maximum.
 
-`blueprint.shape` 寫 `infographic`。
+Write `blueprint.shape` as `infographic`.
 
-## 變體
+## Variants
 
-- **無框**：拿掉欄的底色，只靠圖示與間距分組。
-- **加數值**：標籤下面再放一個數字，變成 KPI 概覽。
+- **No frames**: remove the column backgrounds, group by icons and spacing only.
+- **Add values**: a number below each label, turning it into a KPI overview.

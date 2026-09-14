@@ -1,11 +1,11 @@
 # 12 · forest-field
 
-**第一秒的感覺**：深苔綠配麥稈色。像走進一片被整理過的林地——有生命、有秩序，不是野生也不是人工。
+**First-impression feel**: Deep moss green with straw tones. Like stepping into a tended woodland — alive, ordered; neither wild nor artificial.
 
-**適合**：農業、食品產地、ESG、戶外品牌、地方創生。
-**不適合**：都會科技、金融。綠色在這些主題裡會被讀成「環保口號」而不是主體。
+**Suited for**: Agriculture, food origin, ESG, outdoor brands, local revitalization.
+**Not suited for**: Urban tech, finance. Green reads as "an environmental slogan" in these topics rather than a subject.
 
-**為什麼是這個配色**：主色是深苔綠（不是草綠——草綠太亮太塑膠）；accent 用麥稈黃，兩者是同一片土地上會同時出現的顏色，所以並置不吵；背景用極淺的米綠，白底會讓綠色浮起來像貼紙。
+**Why this palette**: The primary is deep moss green (not grass green — grass green is too bright and too plastic); the accent is straw yellow; the two are colors that appear on the same piece of land, so they sit together without clashing; the base is a very pale off-green — on a white base, green floats like a sticker.
 
 ```json
 {
@@ -19,8 +19,8 @@
 }
 ```
 
-**字型與對比**：標題襯線，有一點土地的老派感。內文黑體保持清楚。
+**Typography and contrast**: Serif headings carry a slightly old-fashioned, earthy feel. Gothic body stays clear.
 
-**間距節奏**：級距鬆（12/20/32/48/72）。
+**Spacing rhythm**: Loose spacing (12/20/32/48/72).
 
-**建議背景**：01 `soft-blobs` 或 02 `dot-grid`（opacity 0.3，像織紋）。 **明亮背景**（背景庫 46–54，為淺底畫的）：52、53。
+**Suggested backgrounds**: 01 `soft-blobs` or 02 `dot-grid` (opacity 0.3, like a weave). **Light backgrounds** (background library 46–54, designed for light bases): 52, 53.

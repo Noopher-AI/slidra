@@ -1,26 +1,26 @@
 # 19 · kids-bright
 
-**第一秒的感覺**：大紅、亮黃、湖水藍，全部飽和。像一間幼兒園的教室——直接、快樂、沒有灰階。
+**First-impression feel**: Big red, bright yellow, lake blue, all fully saturated. Like a kindergarten classroom — direct, joyful, no grays.
 
-**適合**：兒少教學、親子活動、營隊、繪本導讀。
-**不適合**：任何成人專業場合。這不是「活潑一點」，這是為小孩設計的。
+**Suited for**: Kids' education, parent-child events, camps, picture-book read-alouds.
+**Not suited for**: Any adult or professional context. This is not "a bit livelier"; it is designed for children.
 
-**為什麼是這個配色**：三個原色等強，沒有主從——小孩的視覺偏好是「都很亮」而不是「有層次」。文字用深藍而不是黑，黑在高飽和底上太銳利。
+**Why this palette**: Three primaries at equal strength, no hierarchy — children's visual preference is "everything is bright," not "there are layers." Text is deep blue rather than black; black is too sharp on a high-saturation base.
 
 ```json
 {
   "density": "presentation",
-  "palette": {"background": "#FFFDF5", "secondary_bg": "#FFF0C7", "primary": "#E63946", "accent": "#FFC300", "secondary_accent": "#2A9D8F", "text": "#22333B", "muted": "#7B8A8B"},
-  "type_scale": {"cover": 76, "section": 60, "number": 160, "claim": 52, "title": 44, "subtitle": 30, "body": 26, "column": 24, "caption": 20},
-  "layout": {"side_margin": 80, "bottom_margin": 80, "footer_margin": 16, "gutter": 32, "spacing": [16, 24, 40, 56, 80]},
-  "typography": {"heading": "jf open 粉圓", "body": "jf open 粉圓", "heading_weight": 700, "body_weight": 400},
+  "palette": { "background": "#FFFDF5", "secondary_bg": "#FFF0C7", "primary": "#E63946", "accent": "#FFC300", "secondary_accent": "#2A9D8F", "text": "#22333B", "muted": "#7B8A8B" },
+  "type_scale": { "cover": 76, "section": 60, "number": 160, "claim": 52, "title": 44, "subtitle": 30, "body": 26, "column": 24, "caption": 20 },
+  "layout": { "side_margin": 80, "bottom_margin": 80, "footer_margin": 16, "gutter": 32, "spacing": [16, 24, 40, 56, 80] },
+  "typography": { "heading": "jf open 粉圓", "body": "jf open 粉圓", "heading_weight": 700, "body_weight": 400 },
   "shape_language": "soft-rounded",
   "visual": "editorial-tech"
 }
 ```
 
-**字型與對比**：整份圓體，字級整體放大（內文 26）。小孩的閱讀距離與識字量都需要更大的字。
+**Typography and contrast**: The whole deck uses a rounded face; the type scale is enlarged overall (body 26). Children's reading distance and literacy both need bigger type.
 
-**間距節奏**：級距大（16/24/40/56/80）。一頁 2～3 個單位就好。
+**Spacing rhythm**: Large spacing (16/24/40/56/80). Two to three units per page is enough.
 
-**建議背景**：01 `soft-blobs`（opacity 0.8）。 **明亮背景**（背景庫 46–54，為淺底畫的）：46、49、52、53。
+**Suggested backgrounds**: 01 `soft-blobs` (opacity 0.8). **Light backgrounds** (background library 46–54, drawn for light bases): 46, 49, 52, 53.

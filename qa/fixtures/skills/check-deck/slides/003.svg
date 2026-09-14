@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
-  <g id="el-p3-title" data-slidra-name="標題">
-    <text x="80" y="110" font-family="Noto Sans TC" font-size="28" fill="#333333">團隊組成</text>
+  <g id="el-p3-title" data-slidra-name="Title">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="28" fill="#333333">Team Composition</text>
   </g>
-  <g id="el-p3-body" data-slidra-name="內文">
-    <text x="80" y="220" font-family="Noto Sans TC" font-size="24" fill="#333333">目前團隊由三個小組組成，分別負責前端、後端與設計。</text>
+  <g id="el-p3-body" data-slidra-name="Body">
+    <text x="80" y="220" font-family="Noto Sans TC" font-size="24" fill="#333333">The team currently has three groups, responsible for frontend, backend, and design.</text>
   </g>
 </svg>

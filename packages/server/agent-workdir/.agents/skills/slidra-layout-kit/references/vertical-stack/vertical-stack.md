@@ -1,41 +1,41 @@
 # vertical-stack
 
-**畫布**：1080×1920（9:16）　**這不是 16:9 的版面**
-**解的關係**：`none`
-**單位數**：1 + 2–4
-**一句話**：直式堆疊：主張在上、一張圖在中、重點在下——手機直握時一屏看完。
+**Canvas**: 1080×1920 (9:16) **This is not a 16:9 layout**
+**Relationship solved**: `none`
+**Unit count**: 1 + 2–4
+**One line**: A vertical stack: claim on top, image in the middle, key points at the bottom — readable in one screen on a phone held in portrait.
 
-**什麼時候用它**：限時動態、短影音封面、手機優先的單頁說明。
-**什麼時候不要用**：橫式簡報。這個版面的比例只在直立畫面成立。
+**When to use it**: Stories, short-video covers, mobile-first single-page explanations.
+**When not to use it**: Horizontal presentations. This layout's aspect ratio only makes sense on a portrait screen.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `vertical-stack.svg`。
+Full SVG: see `vertical-stack.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 主張 | `label` | 最上方，字要夠大 | 每行 10 字，≤ 2 行 | 1–2 |
-| 圖或影片 | `node` | 中段，接近方形 | — | — |
-| 重點 ×N | `label` | 下段，一行一個 | 14 字 | 1 |
-| 帳號出處 | `label` | 最下方 | 14 字 | 1 |
+| Claim | `label` | at the top, large enough to read | 10 chars/line, ≤ 2 lines | 1–2 |
+| Image or video | `node` | middle section, nearly square | — | — |
+| Key points ×N | `label` | bottom section, one per line | 14 chars | 1 |
+| Account/source | `label` | at the very bottom | 14 chars | 1 |
 
-## 節奏
+## Rhythm
 
-**字級不要用 `k` 換算**：直式畫面通常在手機上近距離看，主張要 80 以上才有力道。三段（主張／圖／重點）各佔約三分之一，段與段之間留一個大級距。
+**Do not use `k` for font size**: portrait screens are usually viewed up close on a phone; the claim needs 80+ to have impact. The three sections (claim / image / key points) each take about a third, with a large spacing between sections.
 
-`blueprint.shape` 寫 `vertical-stack`。
+Write `blueprint.shape` as `vertical-stack`.
 
-## 怎麼設定畫布
+## Setting the canvas
 
 ```
 slidra presentation canvas set <presentation-id> --width 1080 --height 1920
 ```
 
-畫布要在建第一頁**之前**設定。非 16:9 的畫布**不要用 `k = width ÷ 1280` 換算字級**——那個規則只在同比例時成立。直式與方形的字級直接照上面的槽位表。
+The canvas must be set **before** creating the first page. Non-16:9 canvases **must not use `k = width ÷ 1280` for font size conversion** — that rule only holds for proportional canvases. Use the slot table directly for portrait and square layouts.
 
-## 變體
+## Variants
 
-- **無圖**：拿掉中段，主張放大到佔一半。
-- **圖在最上**：圖出血到頂端，主張壓在圖下方。
+- **No image**: remove the middle section, let the claim occupy half the frame.
+- **Image at top**: the image bleeds to the top edge, the claim sits below it.

@@ -1,156 +1,156 @@
 ---
 name: slidra-layout-kit
-description: 從 55 種版面裡挑一種來排某一頁，每種都附線框 SVG、槽位的字數預算與角色標記，並聲明它解的是哪一種內容關係；也是 slidra-build 逐頁挑版面的目錄。作者的訊息以 /slidra-layout-kit 開頭、或要你「排版」「換個版面」時用
+description: Pick one of 55 layouts for a page; each ships a wireframe SVG, per-slot character budgets and role markers, and declares which content relationship it solves; also the catalog slidra-build uses when choosing a layout page by page. Use when the author's message starts with /slidra-layout-kit or asks to "lay this out" or "change the layout"
 ---
 
-# 版面庫
+# Layout library
 
-版面回答的是：**這一頁的內容之間是什麼關係，該用什麼幾何承載**。每一種版面都聲明它解哪一種 `relationship`，並把每個槽位該放多少字、用什麼角色標記講清楚。
+A layout answers: **what is the relationship between this page's content, and what geometry should carry it**. Every layout declares which `relationship` it solves, and spells out how many characters each slot holds and which role marker to use.
 
-**目錄是起點，不是白名單。** 可以改欄數、改比例、混兩種、或自己組——自己組的時候 `blueprint.shape` 給一個描述性的名字。
+**The catalog is a starting point, not a whitelist.** You may change column counts, change proportions, mix two, or compose your own — when you compose one, give `blueprint.shape` a descriptive name.
 
-## 輸入
+## Input
 
 ```
-/slidra-layout-kit 三個並排的重點
-/slidra-layout-kit 左圖右文 3
-/slidra-layout-kit                  ← 依這一頁的 relationship 自己挑
+/slidra-layout-kit three parallel points
+/slidra-layout-kit image left, text right 3
+/slidra-layout-kit                  ← pick yourself from this page's relationship
 ```
 
-- 自由文字是匹配依據：欄數、圖文關係、方向感、參考對象。
-- 尾巴的頁碼限定要排哪一頁；沒給就問作者是哪一頁。
-- **這一頁的 `relationship` 優先於作者的描述**：描述說「三欄」但關係是 `order` 時，選有方向的解，並在回報裡說明為什麼；作者堅持再照他的。
+- Free text is the matching basis: column count, image/text relationship, sense of direction, reference targets.
+- A trailing page number constrains which page to lay out; when none is given, ask the author which page.
+- **This page's `relationship` outranks the author's description**: when the description says "three columns" but the relationship is `order`, pick a solution with direction and explain why in the report; if the author insists, follow them.
 
-## 步驟
+## Steps
 
-1. **讀關係**：`slidra cat <presentation-id> plan/outline.md`，取這一頁的 `relationship`。沒有計畫時依內容自己判斷（`reference/slide-design.md` 第 6.1 節）。
-2. **讀風格**：`slidra cat <presentation-id> plan/design-spec.md`，取配色、字級表與 `layout` 錨點。版面的座標一律由錨點推導並乘以 `k`；檔案裡的示意數字是用 `side_margin: 80` 的 1280×720 算的。
-3. **看上一頁用了什麼**：相鄰兩頁關係相同時必須換一個版面（`rhythm.repeated-shape`）。
-4. **讀索引**挑一個，只讀中選的那一個檔：`references/<名字>/<名字>.md`。
-5. **對槽位**：把內容塞進槽位表，超過字數預算就改短或減少單位；塞不下就減少單位或拆頁，字級不動。
-6. **寫頁面**：依骨架寫整頁 SVG（`slide add --svg` 或 `slide set --svg`），每個語意單位標 `data-slidra-role`。線框的**比例可以照抄**（它用真實字級畫，內容填滿安全區 y 176～616）；線框的**顏色與文字不抄**——顏色一律取自 `design-spec` 的配色角色，「圖片」「node 1」這類示意文字換成這一頁真正的內容，灰色與 `#CCCCCC` 邊框不進投影片。背景類型的裝飾（大圓、光暈、格線）是背景圖的事，版面裡不放。
-7. **寫回 blueprint**：`shape` 填這個版面的名字，`nodes`／`steps` 填實際值。
-8. **檢查**：`slidra validate <presentation-id> slides/00N.svg` 要 0 錯誤。
+1. **Read the relationship**: `slidra cat <presentation-id> plan/outline.md`, take this page's `relationship`. Without a plan, judge it from the content yourself (section 6.1 of `reference/slide-design.md`).
+2. **Read the style**: `slidra cat <presentation-id> plan/design-spec.md`, take the palette, type scale table and `layout` anchors. Layout coordinates are always derived from the anchors and multiplied by `k`; the illustrative numbers in the files were computed for a 1280×720 with `side_margin: 80`.
+3. **See what the previous page used**: when two adjacent pages share a relationship, a different layout is required (`rhythm.repeated-shape`).
+4. **Read the index**, pick one, and read only that one file: `references/<name>/<name>.md`.
+5. **Fit the slots**: put content into the slot table; over the character budget, shorten or reduce units; when it doesn't fit, reduce units or split the page — don't change font sizes.
+6. **Write the page**: write the full-page SVG per the skeleton (`slide add --svg` or `slide set --svg`), marking `data-slidra-role` on every semantic unit. The wireframe's **proportions may be copied** (it is drawn with real font sizes, content filling the safe area y 176–616); do **not** copy the wireframe's colors or text — colors always come from the `design-spec` palette roles, placeholder text like "image" or "node 1" gets replaced with this page's real content, and gray and `#CCCCCC` borders do not go into slides. Background-type decoration (big circles, glows, grid lines) belongs to the background image; layouts don't carry it.
+7. **Write back the blueprint**: fill `shape` with this layout's name, `nodes`/`steps` with the actual values.
+8. **Check**: `slidra validate <presentation-id> slides/00N.svg` must reach 0 errors.
 
-## 55 種版面
+## The 55 layouts
 
-**先看關係，再看名字。** 索引照關係分組——這一頁的 `relationship` 決定你該看哪一組，作者的描述只在組內幫你挑。
+**Look at the relationship first, then the name.** The index is grouped by relationship — this page's `relationship` decides which group to look in; the author's description only helps you choose within the group.
 
-### `membership`（並列／歸屬）
+### `membership` (parallel/belonging)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 01 | `card-wall` | 等高橫條卡片垂直排列，最中性的並列 | 3–5 |
-| 04 | `shared-field` | 全部放在同一塊場域，靠分隔線分開 | 3–6 |
-| 05 | `banded-list` | 單欄橫條，底色交替分層 | 3–5 |
-| 06 | `chip-cluster` | 大小不一的標籤散成一群 | 5–12 |
-| 22 | `image-left` | 左半滿高圖，右半文字 | 1 + 2–4 |
-| 24 | `image-grid` | 等大的圖片格陣，各配一行說明 | 3–6 |
-| 26 | `kpi-row` | 一排大數字並列，各配一個標籤 | 3–4 |
-| 30 | `split-thirds` | 三個等寬直欄，各放多行 | 3 |
-| 49 | `infographic` | 平行直欄，每欄一個圖示加極簡標籤 | 2–5 |
-| 50 | `map` | 地理輪廓加標記點與圖例 | 2–6 |
-| 34 | `image-mosaic` | 主圖配幾張小圖的馬賽克，有主次 | 4–7 |
-| 40 | `chart-small-multiples` | 同一種圖表重複多格，形狀可比較 | 4–9 |
-| 43 | `table-full` | 一張表格佔滿內容區，用來查 | 1 表 |
-| 45 | `spec-sheet` | 左圖右規格表，產品頁的標準解 | 1 圖 + 4–8 |
-| 37 | `video-grid` | 幾段短片並排，各配一行說明 | 2–4 |
+| 01 | `card-wall` | Equal-height horizontal cards stacked vertically, the most neutral parallel layout | 3–5 |
+| 04 | `shared-field` | Everything in one shared field, separated by dividers | 3–6 |
+| 05 | `banded-list` | Single-column horizontal bands, alternating base color | 3–5 |
+| 06 | `chip-cluster` | Varying-size tags scattered into a cluster | 5–12 |
+| 22 | `image-left` | Full-height image on the left half, text on the right half | 1 + 2–4 |
+| 24 | `image-grid` | Grid of equal image cells, each with a one-line caption | 3–6 |
+| 26 | `kpi-row` | A row of big numbers side by side, each with one label | 3–4 |
+| 30 | `split-thirds` | Three equal-width vertical columns, each holding multiple lines | 3 |
+| 49 | `infographic` | Parallel vertical columns, each with one icon and a minimal label | 2–5 |
+| 50 | `map` | Geographic outline with marker points and a legend | 2–6 |
+| 34 | `image-mosaic` | A hero image plus a mosaic of smaller ones, with hierarchy | 4–7 |
+| 40 | `chart-small-multiples` | The same chart type repeated in several cells, shapes comparable | 4–9 |
+| 43 | `table-full` | One table filling the content area, for looking things up | 1 table |
+| 45 | `spec-sheet` | Image left, spec table right — the standard product-page solution | 1 image + 4–8 |
+| 37 | `video-grid` | Several short clips side by side, each with a one-line caption | 2–4 |
 
-### `order`（順序）
+### `order` (sequence)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 03 | `spine-path` | 一條主軸串起節點，看得出方向與端點 | 3–5 |
-| 07 | `numbered-run` | 大編號領頭，說明橫排在旁 | 3–4 |
-| 08 | `stepped` | 逐階升高的色塊，高度就是訊息 | 3–5 |
-| 29 | `timeline-vertical` | 垂直主軸，節點在軸上說明在右 | 4–7 |
-| 46 | `cycle` | 閉環，箭頭回到起點 | 3–6 |
-| 47 | `funnel` | 上寬下窄，寬度就是量 | 3–5 |
+| 03 | `spine-path` | A main axis strings the nodes together; direction and endpoints are visible | 3–5 |
+| 07 | `numbered-run` | Big numbers lead, descriptions run horizontally beside them | 3–4 |
+| 08 | `stepped` | Color blocks rising step by step; height is the message | 3–5 |
+| 29 | `timeline-vertical` | Vertical main axis, nodes on the axis, descriptions to the right | 4–7 |
+| 46 | `cycle` | A closed loop, the arrow returns to the start | 3–6 |
+| 47 | `funnel` | Wide at top, narrow at bottom; width is the quantity | 3–5 |
 
-### `contrast`（對比）
+### `contrast` (comparison)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 02 | `split-panel` | 左右等寬面板，共用基準線 | 2 |
-| 17 | `before-after` | 上下兩塊，中間一條分界 | 2 |
-| 18 | `shared-axis` | 中央基準軸，兩邊往左右展開 | 2 |
-| 28 | `matrix-2x2` | 兩軸切出四象限 | 4 |
-| 33 | `image-pair-compare` | 兩張圖並排，中間一條分界 | 2 |
-| 38 | `chart-pair` | 兩張圖表並排，共用同一組尺度 | 2 |
-| 44 | `table-highlight` | 表格裡標出一欄，並說明為什麼 | 1 表 + 1 |
+| 02 | `split-panel` | Equal-width left/right panels sharing a baseline | 2 |
+| 17 | `before-after` | Two blocks top and bottom, one dividing line between | 2 |
+| 18 | `shared-axis` | A central reference axis, both sides expanding outward | 2 |
+| 28 | `matrix-2x2` | Two axes cutting out four quadrants | 4 |
+| 33 | `image-pair-compare` | Two images side by side, one dividing line between | 2 |
+| 38 | `chart-pair` | Two charts side by side sharing the same scale | 2 |
+| 44 | `table-highlight` | Highlight one column in a table and explain why | 1 table + 1 |
 
-### `parent`（統轄／分解）
+### `parent` (governance/decomposition)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 12 | `indent-tree` | 縮排的層級清單 | 1 + 3–6 |
-| 13 | `nested-field` | 大場域裡包小場域 | 1 + 2–4 |
-| 14 | `scale-drop` | 尺寸逐層變小，大小即層級 | 3–4 |
-| 48 | `pyramid` | 下寬上窄的層級堆疊 | 3–5 |
+| 12 | `indent-tree` | An indented hierarchical list | 1 + 3–6 |
+| 13 | `nested-field` | Small fields nested inside a large field | 1 + 2–4 |
+| 14 | `scale-drop` | Sizes shrink level by level; size is hierarchy | 3–4 |
+| 48 | `pyramid` | Wide-at-bottom, narrow-at-top hierarchical stacking | 3–5 |
 
-### `link`（依賴／因果）
+### `link` (dependency/cause)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 09 | `chain` | 節點用箭頭依序連起，強調因果 | 3–5 |
-| 10 | `hub` | 中心一個，其餘放射連回 | 1 + 3–6 |
-| 11 | `flow` | 來源 → 轉換 → 結果，中間最大 | 3–5 |
+| 09 | `chain` | Nodes linked in sequence with arrows, emphasizing causality | 3–5 |
+| 10 | `hub` | One in the center, the rest radiating back to it | 1 + 3–6 |
+| 11 | `flow` | Source → transformation → result, largest in the middle | 3–5 |
 
-### `overlap`（交集）
+### `overlap` (intersection)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 15 | `venn` | 相交的圓，交集被標示出來 | 2–3 |
-| 16 | `layered` | 錯開疊放的方塊，共同區在最上 | 2–4 |
+| 15 | `venn` | Overlapping circles, the intersection marked | 2–3 |
+| 16 | `layered` | Offset stacked blocks, the shared zone on top | 2–4 |
 
-### `none`（單一主張）
+### `none` (single claim)
 
-| 編號 | 名字 | 一句話 | 單位數 |
+| # | Name | One line | Unit count |
 |---|---|---|---|
-| 19 | `hero-number` | 一個大數字置中，下面一句說明 | 1 |
-| 20 | `claim-field` | 一句話佔滿版面，其餘留白 | 1 |
-| 21 | `cover-stack` | 標題副標日期由上而下貼左緣 | 1 |
-| 23 | `image-full-bleed` | 整頁一張圖，文字壓在 scrim 上 | 1 |
-| 25 | `quote-block` | 一段引用佔據版面，出處在下 | 1 |
-| 27 | `chart-focus` | 圖表佔主要空間，旁邊一句結論 | 1 |
-| 31 | `media-stage` | 影片或音訊佔舞台中央，上方說明要看什麼 | 1 |
-| 32 | `image-caption-strip` | 大圖配下方一條說明帶 | 1 |
-| 35 | `image-overlay-card` | 滿版圖上壓一張文字卡片 | 1 |
-| 36 | `video-side-notes` | 左影片右觀看重點 | 1 + 2–4 |
-| 39 | `chart-annotated` | 圖表拉出註解線，指出看哪裡 | 1 |
-| 41 | `audio-waveform` | 波形帶配逐字重點 | 1 |
-| 42 | `audio-quote` | 引用配一條可播的窄波形 | 1 |
+| 19 | `hero-number` | One big number centered, a one-line explanation below | 1 |
+| 20 | `claim-field` | One sentence fills the layout, the rest is whitespace | 1 |
+| 21 | `cover-stack` | Title, subtitle, date stacked top-down, flush left | 1 |
+| 23 | `image-full-bleed` | One image for the whole page, text on a scrim | 1 |
+| 25 | `quote-block` | A quotation occupies the layout, source at the bottom | 1 |
+| 27 | `chart-focus` | A chart takes the main space, one conclusion beside it | 1 |
+| 31 | `media-stage` | A video or audio at the center of the stage, an explanation above of what to watch | 1 |
+| 32 | `image-caption-strip` | A big image with a caption strip below | 1 |
+| 35 | `image-overlay-card` | A text card over a full-bleed image | 1 |
+| 36 | `video-side-notes` | Video on the left, viewing points on the right | 1 + 2–4 |
+| 39 | `chart-annotated` | A chart with callout lines pointing to what to look at | 1 |
+| 41 | `audio-waveform` | A waveform strip with per-word highlights | 1 |
+| 42 | `audio-quote` | A quotation with a thin playable waveform | 1 |
 
-### 直式與方形畫布
+### Portrait and square canvases
 
-這五個**不是 16:9**，各自標了畫布尺寸。挑到它們時要先 `presentation canvas set` 設好畫布，而且字級直接照檔案的槽位表，不用 `k` 換算——那個規則只在同比例時成立。
+These five are **not 16:9**; each carries its own canvas size. When you pick one, set the canvas first with `presentation canvas set`, and take font sizes directly from the file's slot table without the `k` conversion — that rule only holds for proportional canvases.
 
-| 編號 | 名字 | 畫布 | 一句話 |
+| # | Name | Canvas | One line |
 |---|---|---|---|
-| 51 | `vertical-stack` | 1080×1920 | 主張在上、圖在中、重點在下，手機一屏看完 |
-| 52 | `vertical-list` | 1242×1660 | 直式編號清單，捲動式的知識貼文 |
-| 53 | `vertical-cover` | 1080×1920 | 上半滿版圖、下半標題的直式封面 |
-| 54 | `square-quote` | 1080×1080 | 方形引用，最適合被轉發的單張 |
-| 55 | `square-kpi` | 1080×1080 | 方形數字卡 |
+| 51 | `vertical-stack` | 1080×1920 | Claim on top, image in the middle, key points at the bottom; one phone screen |
+| 52 | `vertical-list` | 1242×1660 | A vertical numbered list, a scrollable knowledge post |
+| 53 | `vertical-cover` | 1080×1920 | A portrait cover: full-bleed image on top, title below |
+| 54 | `square-quote` | 1080×1080 | A square quote, the single sheet most likely to be shared |
+| 55 | `square-kpi` | 1080×1080 | A square number card |
 
-### 依素材找版面
+### Find a layout by material
 
-**素材類版面（22–27、31–45）都需要真實的素材**：`image-*` 要匯入的圖片、`video-*`／`media-stage` 要影片（`element insert video --media assets/<檔名>`，外部平台用 `--embed`）、`audio-*` 要音檔、`chart-*` 要一組數據、`table-*`／`spec-sheet` 要欄位內容、`quote-block`／`audio-quote` 要真實的引用，`kpi-row`／`hero-number` 的數字只能來自作者。素材不存在時換一個不需要素材的版面，等素材到了再 `slide set --svg` 換回來——灰色佔位框與編出來的數字都不是版面。
+**Material layouts (22–27, 31–45) all require real material**: `image-*` needs an imported image, `video-*`/`media-stage` need a video (`element insert video --media assets/<filename>`, external platforms use `--embed`), `audio-*` needs an audio file, `chart-*` needs a data set, `table-*`/`spec-sheet` need column content, `quote-block`/`audio-quote` need a real quotation, and the numbers in `kpi-row`/`hero-number` may only come from the author. When the material doesn't exist, use a layout that doesn't need it, and swap it back with `slide set --svg` once the material arrives — gray placeholder boxes and made-up numbers are not a layout.
 
-| 手上有什麼 | 可用的版面 |
+| What you have | Usable layouts |
 |---|---|
-| 一張圖 | 22 `image-left`、23 `image-full-bleed`、32 `image-caption-strip`、35 `image-overlay-card` |
-| 多張圖 | 24 `image-grid`（等重）、34 `image-mosaic`（有主次）、33 `image-pair-compare`（兩張比較） |
-| 一段影片 | 31 `media-stage`（純播）、36 `video-side-notes`（邊播邊講） |
-| 多段短片 | 37 `video-grid` |
-| 一段音檔 | 41 `audio-waveform`（有重點要對照）、42 `audio-quote`（一句原話） |
-| 一組數據 | 27 `chart-focus`、39 `chart-annotated`（有關鍵點）、26 `kpi-row`（幾個指標） |
-| 兩組數據 | 38 `chart-pair` |
-| 多組同型數據 | 40 `chart-small-multiples` |
-| 一張表 | 43 `table-full`、44 `table-highlight`（要推薦其中一欄） |
-| 產品圖＋規格 | 45 `spec-sheet` |
-| 循環、漏斗、金字塔、地理分布 | 46 `cycle`、47 `funnel`、48 `pyramid`、50 `map` |
+| One image | 22 `image-left`, 23 `image-full-bleed`, 32 `image-caption-strip`, 35 `image-overlay-card` |
+| Several images | 24 `image-grid` (equal weight), 34 `image-mosaic` (with hierarchy), 33 `image-pair-compare` (two to compare) |
+| One video | 31 `media-stage` (just play), 36 `video-side-notes` (play while narrating) |
+| Several short clips | 37 `video-grid` |
+| One audio file | 41 `audio-waveform` (has highlights to align), 42 `audio-quote` (one quoted line) |
+| One data set | 27 `chart-focus`, 39 `chart-annotated` (has key points), 26 `kpi-row` (a few metrics) |
+| Two data sets | 38 `chart-pair` |
+| Several same-shape data sets | 40 `chart-small-multiples` |
+| One table | 43 `table-full`, 44 `table-highlight` (you want to recommend one column) |
+| Product image + specs | 45 `spec-sheet` |
+| Cycle, funnel, pyramid, geographic distribution | 46 `cycle`, 47 `funnel`, 48 `pyramid`, 50 `map` |
 
-## 回報格式
+## Report format
 
-先一行：「第 N 頁：<版面名字>（解 <關係>）——<一句話>，<單位數> 個單位、<步數> 步」。接著逐槽位一行：槽位名、放了什麼、幾個字（超過預算要標出來）。最後一行列出兩個備選版面。
+First line: "Page N: <layout name> (solves <relationship>) — <one sentence>, <unit count> units, <step count> steps". Then one line per slot: slot name, what was placed, how many characters (flag any over budget). The final line lists two alternate layouts.

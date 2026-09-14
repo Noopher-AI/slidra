@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <metadata>
     <slidra:comments xmlns:slidra="https://slidra.app/ns/2026">
-      <slidra:comment id="c-01" target="el-p1-title" author="作者" created="2026-09-01T00:00:00.000Z">標題改成「第三季 財報」</slidra:comment>
+      <slidra:comment id="c-01" target="el-p1-title" author="author" created="2026-09-01T00:00:00.000Z">Change the title to "Q3 Report"</slidra:comment>
     </slidra:comments>
   </metadata>
-  <g id="el-p1-title" data-slidra-name="標題">
-    <text x="80" y="110" font-family="Noto Sans TC" font-size="40">第二季 財報</text>
+  <g id="el-p1-title" data-slidra-name="Title">
+    <text x="80" y="110" font-family="Noto Sans TC" font-size="40">Q2 Report</text>
   </g>
 </svg>

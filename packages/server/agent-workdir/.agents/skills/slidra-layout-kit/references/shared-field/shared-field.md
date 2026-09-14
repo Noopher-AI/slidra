@@ -1,34 +1,34 @@
 # shared-field
 
-**解的關係**：`membership`
-**單位數**：3–6
-**一句話**：所有單位放在同一塊大場域裡，靠細分隔線或留白分開——沒有個別的卡片，所以看起來是「一件事的幾個面向」而不是「幾件事」。
+**Relationship solved**: `membership`
+**Unit count**: 3–6
+**One line**: All units in one large field, separated by thin dividers or whitespace — no individual cards, so it reads as "several facets of one thing" rather than "several things".
 
-**什麼時候用它**：幾件事同屬一個更大的東西（一個系統的幾個模組、一份計畫的幾個面向）。
-**什麼時候不要用**：幾件事其實各自獨立——那用 `card-wall`，個別的卡片才會讓它們看起來可以分開談。
+**When to use it**: Several items that all belong to one bigger thing (modules in a system, facets of a plan).
+**When not to use it**: The items are actually independent — use `card-wall`; separate cards make them look individually discussable.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `shared-field.svg`。
+Full SVG: see `shared-field.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | 這一頁的主張 | 15 字 | 1 |
-| 大場域 | `field` | 涵蓋全部單位 | — | — |
-| 單位 ×N | `node` | 每個一列 | — | — |
-| 編號 | `label` | `01`… | 2 字 | 1 |
-| 關鍵詞 | `label` | | 18 字 | 1–2 |
-| 分隔線 | `garnish` | 單位之間，**最後一個之後不加** | — | — |
+| Title | `label` | the claim for this page | 15 chars | 1 |
+| Large field | `field` | covers all units | — | — |
+| Units ×N | `node` | one per row | — | — |
+| Number | `label` | `01`… | 2 chars | 1 |
+| Keyword | `label` | | 18 chars | 1–2 |
+| Divider | `garnish` | between units, **none after the last one** | — | — |
 
-## 節奏
+## Rhythm
 
-單位等高、分隔線落在中間。場域的高度由單位數決定，不要留一大塊空白在底部——寧可把場域縮短。
+Units are equal height; dividers fall in the middle. The field's height is determined by the unit count — do not leave a big blank at the bottom; shrink the field instead.
 
-`blueprint.shape` 寫 `shared-field`。
+Write `blueprint.shape` as `shared-field`.
 
-## 變體
+## Variants
 
-- **無線版**：拿掉分隔線，只靠留白分組，更安靜。
-- **左標右文**：編號與關鍵詞分成左右兩欄，適合關鍵詞較長時。
+- **No dividers**: remove the lines, group by whitespace only — quieter.
+- **Label left, text right**: numbers and keywords split into two columns; suits longer keywords.

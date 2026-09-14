@@ -86,10 +86,10 @@ def main() -> int:
         )
         press("Escape")  # noqa: F821
 
-    sel_result = select("第一點")  # noqa: F821
+    sel_result = select("Point One")  # noqa: F821
     plain_box = sel_result["box"]
     if plain_box is None:
-        print("FAIL: select('第一點')['box'] expected=not None actual=None")
+        print("FAIL: select('Point One')['box'] expected=not None actual=None")
         return 1
     plain_x, plain_y = plain_box["x"] + plain_box["w"] / 2, plain_box["y"] + plain_box["h"] / 2
 

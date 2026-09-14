@@ -1,32 +1,32 @@
 # kpi-row
 
-**解的關係**：`membership`
-**單位數**：3–4
-**一句話**：一排大數字並列，每個配一行標籤——儀表板的第一行。
+**Relationship solved**: `membership`
+**Unit count**: 3–4
+**One line**: A row of large numbers side by side, each with a one-line label — the first row of a dashboard.
 
-**什麼時候用它**：幾個同等重要的指標要一起看。**每個數字都要是真的。**
-**什麼時候不要用**：指標之間有因果或順序——那要換 `flow` 或 `spine-path`。
+**When to use it**: Several equally important metrics to view together. **Every number must be real.**
+**When not to use it**: The metrics have causal or sequential relationships — use `flow` or `spine-path` instead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `kpi-row.svg`。
+Full SVG: see `kpi-row.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 數字 ×N | `node`（`label`，`claim`～`number` 字級） | | 6 字 | 1 |
-| 標籤 ×N | `label`（`caption`） | 數字代表什麼 | 10 字 | 1 |
-| 分隔線 | `garnish` | 數字之間，可省 | — | — |
+| Title | `label` | | 15 chars | 1 |
+| Numbers ×N | `node` (`label`, `claim`–`number` size) | | 6 chars | 1 |
+| Labels ×N | `label` (`caption`) | what the number represents | 10 chars | 1 |
+| Divider | `garnish` | between numbers, optional | — | — |
 
-## 節奏
+## Rhythm
 
-數字**基線對齊**（不是置中對齊）——位數不同時基線對齊才整齊。等距分布，標籤緊貼數字下方。
+Numbers are **baseline-aligned** (not center-aligned) — when digit counts differ, baseline alignment looks correct. Evenly spaced; labels hug the number below.
 
-`blueprint.shape` 寫 `kpi-row`。
+Write `blueprint.shape` as `kpi-row`.
 
-## 變體
+## Variants
 
-- **加變化量**：每個數字右上角一個小的 ↑↓ 與變化百分比。
-- **兩列**：六個指標分兩列三欄。
+- **Add delta**: a small ↑↓ and percentage change at each number's upper-right.
+- **Two rows**: six metrics split into two rows of three columns.

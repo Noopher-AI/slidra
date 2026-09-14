@@ -116,16 +116,16 @@ describe("plan/outline.md's JSON fence", () => {
 });
 
 describe("gate messages (contract §4)", () => {
-  it("builds the 【計畫確認】 message one answer per line, notes only when given", () => {
+  it("builds the [plan-confirmed] message one answer per line, notes only when given", () => {
     const text = buildConfirmMessage({
       choices: { mode: "pyramid", "page-5": "number" },
       notes: { mode: "  ", "page-5": "Make the number bigger" },
       overall: "Trim the whole thing down",
     });
-    expect(text).toBe("/slidra-build 【計畫確認】\nmode=pyramid\npage-5=number\npage-5.note=Make the number bigger\n補充：Trim the whole thing down");
+    expect(text).toBe("/slidra-build [plan-confirmed]\nmode=pyramid\npage-5=number\npage-5.note=Make the number bigger\nSupplement: Trim the whole thing down");
   });
 
-  it("builds the 【重做】 message", () => {
-    expect(buildRedoMessage(" too many pages ")).toBe("/slidra-plan 【重做】too many pages");
+  it("builds the [redo] message", () => {
+    expect(buildRedoMessage(" too many pages ")).toBe("/slidra-plan [redo]too many pages");
   });
 });

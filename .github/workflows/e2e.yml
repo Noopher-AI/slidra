@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       update_baselines:
-        description: "重新產生外觀基準截圖（e2e/__screenshots__），而不是比對它們"
+        description: "Regenerate the appearance baseline screenshots (e2e/__screenshots__) instead of comparing against them"
         type: boolean
         default: false
 

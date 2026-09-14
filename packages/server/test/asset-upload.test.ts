@@ -92,7 +92,7 @@ async function openDeck(fileName: string): Promise<string> {
     "project.json": new TextEncoder().encode(
       JSON.stringify({
         formatVersion: 1,
-        name: "資產上傳測試",
+        name: "asset upload test",
         canvas: { width: 1280, height: 720 },
         slides: ["slides/001.svg"],
       }),

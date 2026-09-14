@@ -1,35 +1,35 @@
 ---
 name: slidra-validate
-description: 審閱整份或指定頁：跑 slidra validate，再通讀補抓命令驗不到的錯字與動畫順序，把每個問題釘成留言並解讀給作者；只留言不動手。作者的訊息以 /slidra-validate 開頭、或要你「檢查」「體檢」「驗證」簡報時用
+description: Review the whole deck or a specified page: run slidra validate, then read through for typos and animation order the commands can't catch, pin each problem as a comment and interpret it for the author; comment only, never edit. Use when the author's message starts with /slidra-validate or asks to "check", "give a health check", or "validate" the deck
 ---
 
-# 審閱投影片
+# Review slides
 
-你是**審閱者**。真正算規則的是 `slidra validate` 命令（門檻與規則寫在 CLI 裡，不靠你目測）；你的工作是跑它、把 `errors[]` 翻成作者看得懂的話、釘成留言，再通讀一次補抓命令看不到的兩類問題。**只回報與留言，不修改任何內容**——要修由作者決定，或由 `slidra-build` 自己修。
+You are the **reviewer**. The rules that actually count are the `slidra validate` command (thresholds and rules live in the CLI, not in your eye); your job is to run it, translate `errors[]` into words the author understands, pin them as comments, then read through once to catch the two kinds of problems commands cannot see. **Report and comment only; do not modify any content** — fixing is the author's decision, or `slidra-build` fixes it itself.
 
-## 輸入
+## Input
 
-- 目標：頁碼（`3`）、頁碼範圍（`2-5`），或省略＝整份。
-- 選填：「不留言」——只在對話裡回報，不 `comment add`。
+- Target: a page number (`3`), a range (`2-5`), or omitted = the whole deck.
+- Optional: "no comments" — report in the conversation only, no `comment add`.
 
-## 步驟
+## Steps
 
-1. `slidra ls <presentation-id> slides` 確認目標頁存在；不存在就回「這份簡報只有 N 頁」並停下。
-2. **跑驗證**：整份 `slidra validate <presentation-id>`；指定頁就逐頁 `slidra validate <presentation-id> slides/00N.svg`。結束碼非零代表**有錯誤**，不是命令壞了；`data` 長這樣：
+1. `slidra ls <presentation-id> slides` to confirm the target page exists; if not, reply "This deck only has N pages" and stop.
+2. **Run validation**: whole deck `slidra validate <presentation-id>`; a specified page means `slidra validate <presentation-id> slides/00N.svg` per page. A non-zero exit code means **there are errors**, not that the command is broken; `data` looks like:
 
    ```json
-   { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "37 字", "limit": "≤ 32 字", "message": "第 2 頁要點第 3 條 37 字，上限 32 字" } ] }
+   { "checked": 6, "errors": [ { "slide": "slides/002.svg", "element": "el-abc", "rule": "text.bullet-length", "actual": "37 chars", "limit": "≤ 32 chars", "message": "Page 2 bullet 3 is 37 chars, limit 32" } ] }
    ```
 
-   message 尾巴帶「（沒有 plan/ 計畫檔，只驗幾何與骨架）」時，文字量與字級配色沒有驗到，在回報裡說明作者要完整驗證得先跑 `/slidra-plan`。
-3. **通讀**：逐頁 `slidra cat <presentation-id> slides/00N.svg` 與 `slidra effect list <presentation-id> slides/00N.svg`（結束碼非零代表這頁沒有動畫，不是錯誤），只抓命令驗不到的兩類：
-   - **錯字**：文字內容裡明顯的錯別字或漏字。
-   - **動畫順序與版面順序不合**：效果的播放順序與元素在畫面上由上到下、由左到右的視覺順序不一致。
-   規則類的判斷一律以 `errors[]` 為準；命令沒報的不算違規。
-4. **留言**：每一筆 `slidra comment add <presentation-id> <slide> <element 或 page> '<rule>：<actual> vs 門檻 <limit>'`（通讀抓到的寫 `錯字：…`／`動畫順序：…`）；`element` 是 `null` 或抓不到特定元素就用 `page`。作者說「不留言」時跳過。留言文字不能含半形單引號。既有留言一律不動。
-5. **回報**：照下面的格式。每個 `rule` 在驗什麼、作者通常該怎麼修，見 `reference/slide-design.md` 第 9 節那張表；依 `rule` 的前綴分類指出最該先修哪一類——通常是 `text.`。
+   When the message tail carries "(no plan/ plan file, only geometry and skeleton checked)", text volume and type/color were not validated; note in the report that full validation requires running `/slidra-plan` first.
+3. **Read through**: `slidra cat <presentation-id> slides/00N.svg` and `slidra effect list <presentation-id> slides/00N.svg` per page (a non-zero exit code means this page has no animation, not an error). Catch only the two kinds the commands can't:
+   - **Typos**: obvious misspellings or dropped characters in text content.
+   - **Animation order disagrees with layout order**: the effects' playback order doesn't match the visual top-to-bottom, left-to-right order of the elements on screen.
+   For rule-based judgments, `errors[]` is always authoritative; what the command didn't report is not a violation.
+4. **Comment**: one per finding, `slidra comment add <presentation-id> <slide> <element or page> '<rule>: <actual> vs limit <limit>'` (for read-through findings write `typo: …` / `animation order: …`); when `element` is `null` or no specific element can be found, use `page`. When the author said "no comments", skip this. Comment text must not contain half-width single quotes. Never touch existing comments.
+5. **Report**: in the format below. What each `rule` checks and how the author usually fixes it: see the table in section 9 of `reference/slide-design.md`; group by the `rule` prefix and point out which kind to fix first — usually `text.`.
 
-## 回報格式
+## Report format
 
-逐頁一行：`第 N 頁（slides/00N.svg）：通過` 或 `第 N 頁（slides/00N.svg）：不通過——<rule>：<actual> vs 門檻 <limit>；…`（直接用 `message` 的文字也可以）。
-最後一行：`共 N 頁，M 頁通過；不通過最多的是 <rule 前綴>`，加一句最該先修什麼。一個問題都沒有時回報「審閱完成，沒有發現問題」。沒有計畫檔時多一句說明驗證範圍。
+One line per page: `Page N (slides/00N.svg): pass` or `Page N (slides/00N.svg): fail — <rule>: <actual> vs limit <limit>; …` (using `message`'s text directly is fine).
+Final line: `N pages total, M passed; most failures are <rule prefix>`, plus one sentence on what to fix first. When nothing was found, report "Review complete, no problems found". Without a plan file, add a sentence stating the validation scope.

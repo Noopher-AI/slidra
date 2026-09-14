@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "name": "結構體檢測試簡報",
+  "name": "Structure Check Deck",
   "canvas": { "width": 1280, "height": 720 },
   "slides": ["slides/001.svg", "slides/002.svg", "slides/003.svg", "slides/004.svg", "slides/005.svg"]
 }

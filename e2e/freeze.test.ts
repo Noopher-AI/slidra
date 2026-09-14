@@ -304,7 +304,7 @@ it("can still navigate slides and enter/exit play mode while frozen; the title h
 
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
-    await sendChatMessage(page, "改標題");
+    await sendChatMessage(page, "change the title");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
 
     // Navigating slides: freezing doesn't block browsing.
@@ -343,7 +343,7 @@ it("Ctrl/Cmd+Z works once unfrozen and undoes what the agent's turn just did (gr
 
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
-    await sendChatMessage(page, "改標題");
+    await sendChatMessage(page, "change the title");
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(NEW_TITLE);
     // The turn is over by now (currentSlideText already observed its final
     // effect), so this Ctrl+Z exercises the ordinary, unfrozen path.
@@ -368,9 +368,9 @@ it("a single Ctrl/Cmd+Z undoes every command from an agent's turn: both steps co
 
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
 
-    await sendChatMessage(page, "兩步");
+    await sendChatMessage(page, "two steps");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(false);
-    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(`${NEW_TITLE}（第二步）`);
+    await expect.poll(currentSlideText, { timeout: 30_000 }).toBe(`${NEW_TITLE} (step 2)`);
 
     const isMac = process.platform === "darwin";
     await page.keyboard.press(isMac ? "Meta+z" : "Control+z");
@@ -395,7 +395,7 @@ it("editing freezes while the agent is acting, the author can see the frozen sta
     await expect.poll(currentSlideText, { timeout: 30_000 }).toBe("First Slide");
     expect(await banner.isVisible()).toBe(false);
 
-    await sendChatMessage(page, "改標題");
+    await sendChatMessage(page, "change the title");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
     await expect.poll(() => banner.isVisible()).toBe(true);
     expect(await banner.textContent()).toBe("Agent editing · undo/redo paused");
@@ -447,7 +447,7 @@ it("does not freeze when the agent only reads/thinks without issuing any command
     const before = await readSlide(registry, presentationId);
     expect(readTranslate(before, "el-a")).toEqual({ x: 100, y: 100 });
 
-    await sendChatMessage(page, "只看");
+    await sendChatMessage(page, "view only");
 
     let sawFrozenDuringDrag = false;
     await dragBy(
@@ -487,7 +487,7 @@ it("attempting to drag while frozen: the drag is blocked and the presentation fi
   try {
     const { page, pageErrors } = await openAppDrag(server);
 
-    await sendChatMessage(page, "改標題");
+    await sendChatMessage(page, "change the title");
     await expect.poll(() => editingFrozen(page), { timeout: 30_000 }).toBe(true);
 
     const duringFreeze = await readSlide(registry, presentationId);
@@ -520,7 +520,7 @@ it("when the user is dragging as the agent is about to issue its first command: 
           // The mouse button is still down here (gesture-start already fired
           // its `POST /api/editing/begin`) — the author's message arrives
           // while the human lease is held, exactly the race this test covers.
-          await sendChatMessageViaApi(page, "改標題");
+          await sendChatMessageViaApi(page, "change the title");
           // Sample repeatedly rather than once: a single sample landing
           // between two ticks would silently pass even if the wait were
           // broken.

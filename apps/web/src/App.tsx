@@ -1424,8 +1424,8 @@ export function App() {
     const count = canvasState.slides.length;
     const position =
       count === 0
-        ? "【從大綱規劃】這份簡報還沒有任何投影片。"
-        : `【從大綱規劃】目前有 ${count} 頁，新頁接在最後。`;
+        ? "[plan-from-outline] This presentation has no slides yet."
+        : `[plan-from-outline] There are ${count} pages so far; new pages will be appended at the end.`;
     await sendChatText(`/slidra-plan ${position}\n\n${outline}`);
   }
 

@@ -1,38 +1,38 @@
 # table-highlight
 
-**解的關係**：`contrast`
-**單位數**：1（表格）+ 1 強調
-**一句話**：表格裡有一欄（或一列）被明顯標出——表是背景，被標的那一格才是主張。
+**Relationship solved**: `contrast`
+**Unit count**: 1 (table) + 1 emphasis
+**One line**: One column (or row) in a table is clearly marked — the table is the background; the highlighted cell is the claim.
 
-**什麼時候用它**：在一組選項裡推薦其中一個，或指出一個異常值。
-**什麼時候不要用**：沒有要推薦或指出任何東西——那用 43 `table-full`，強調會誤導。
+**When to use it**: Recommending one option from a set, or pointing out an outlier.
+**When not to use it**: Nothing to recommend or flag — that's just `43 table-full`; the emphasis would mislead.
 
-## 線框
+## Wireframe
 
-完整 SVG：見同資料夾 `table-highlight.svg`。
+Full SVG: see `table-highlight.svg` in the same folder.
 
-## 槽位
+## Slots
 
-| 槽位 | 角色 | 內容 | 字數預算 | 行數 |
+| Slot | Role | Content | Char budget | Lines |
 |---|---|---|---|---|
-| 標題 | `label` | | 15 字 | 1 |
-| 表格 | `node`（table） | | — | — |
-| 強調欄／列 | `node` | 底色加深或加 accent 邊框 | — | — |
-| 理由 | `label` | **為什麼是它** | 24 字 | 1–2 |
+| Title | `label` | | 15 chars | 1 |
+| Table | `node` (table) | | — | — |
+| Highlighted col/row | `node` | darker base or accent border | — | — |
+| Reason | `label` | **why this one** | 24 chars | 1–2 |
 
-## 節奏
+## Rhythm
 
-**一頁只強調一處**。強調用底色或邊框二選一，不要同時用。理由那一行是必要的——被標記的格子自己不會說明為什麼。
+**Highlight exactly one spot per page.** Use base color OR border for emphasis, not both. The reason line is essential — a highlighted cell doesn't explain itself.
 
-`blueprint.shape` 寫 `table-highlight`。
+Write `blueprint.shape` as `table-highlight`.
 
-## 怎麼放進去
+## How to place it
 
 ```
 slidra table cell style set <id> slides/00N.svg <element-id> --row 0 --col 2 --fill '<secondary_bg>'
 ```
 
-## 變體
+## Variants
 
-- **標一列**：橫向強調某一個項目在各方案下的表現。
-- **打叉**：不推薦的欄位用 `muted` 淡化而不是強調推薦的那欄——反向的做法有時更有說服力。
+- **Highlight a row**: emphasize how one item performs across all options (horizontal emphasis).
+- **Cross out**: fade the non-recommended columns with `muted` instead of emphasizing the recommended one — the reverse approach can be more persuasive sometimes.

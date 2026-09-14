@@ -25,10 +25,10 @@
 //!   registered sequence that is a literal prefix of argv — not a
 //!   family-prefix match — specifically so that an unregistered subcommand
 //!   of a known family (e.g. `element frobnicate`) matches NOTHING and
-//!   falls all the way through to `main.rs`'s final "未知的命令：
+//!   falls all the way through to `main.rs`'s final "unknown command:
 //!   <argv[0]>" branch. A family-prefix match would instead require Rust to
 //!   reproduce every family's own "unknown subcommand" error text
-//!   (`未知的子命令：<family> <sub>`) itself, which is exactly the extra
+//!   ("unknown subcommand: <family> <sub>") itself, which is exactly the extra
 //!   error-surface this design avoids.
 //!
 //! `main.rs`'s `dispatch` tries the newer mechanism (`resolve_takeover`)
