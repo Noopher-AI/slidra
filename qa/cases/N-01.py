@@ -191,7 +191,7 @@ def _move_and_undo(label: str, next_n: int, to_point) -> int:
     n += 1
 
     check(
-        f"{n} [{label}] selection is still "Title" after the drag (the context bar/status bar didn't lose the selection)",
+        f"{n} [{label}] selection is still 'Title' after the drag (the context bar/status bar didn't lose the selection)",
         after_sel["chip"] == "Selected: Title",
         after_sel["chip"],
     )
