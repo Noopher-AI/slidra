@@ -238,4 +238,16 @@ describe("runServeCli", () => {
     errorSpy.mockRestore();
     logSpy.mockRestore();
   });
+
+  it("no presentation-id argument at all: serve still starts, exits 0, and GET /api/deck reports no deck open (NOOP-433)", async () => {
+    const cli = await startCli(["--port", "0"]);
+    try {
+      expect(cli.logs[0]).toContain("Slidra started:");
+      const response = await fetch(`${cli.url}/api/deck`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ deck: null });
+    } finally {
+      expect(await cli.shutdown()).toBe(0);
+    }
+  });
 });

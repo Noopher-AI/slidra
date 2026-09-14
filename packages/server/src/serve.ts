@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SlidraError, SlidraInvalidRequestError } from "./slidra/errors.js";
+import { SlidraError, SlidraInvalidRequestError, SlidraNotFoundError } from "./slidra/errors.js";
 import { runJsonCommand } from "./slidra/command.js";
 import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
 import { readSaveState } from "./slidra/save-state.js";
@@ -35,6 +35,7 @@ import {
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
+import { createDeckSession, DeckSwitchConflictError, type DeckIdentity, type DeckSession } from "./deck-switch.js";
 
 /**
  * `slidra serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -44,8 +45,19 @@ import { exportFileName } from "./export/output-name.js";
  * directly.
  */
 export interface ServeOptions {
-  /** Opaque id of an already-opened presentation (see `slidra open`). */
-  presentationId: string;
+  /**
+   * Opaque id of an already-opened presentation (see `slidra open`) to
+   * start already bound to.
+   *
+   * NOOP-433: no longer required — "no deck open" is now a fully supported
+   * startup state (every route answers coherently, see `deck-switch.ts`),
+   * not a startup failure. Omitted means serve starts with no deck; one is
+   * bound later via `POST /api/deck/switch`. The field itself keeps its
+   * name and shape (never renamed, per NOOP-433 §7 decision 7) — every
+   * existing test suite and `e2e/helpers/launch.ts` already construct one
+   * this way and must keep working unchanged.
+   */
+  presentationId?: string;
   /**
    * Port to bind. Defaults to 5173. Tests must always pass 0 (let the OS
    * assign a free port) and read the actual port back from the result —
@@ -128,12 +140,19 @@ const DEFAULT_HOST = "127.0.0.1";
  * shows "No slides now" and the first page is made from there.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
-  const { presentationId } = options;
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
-  await loadProject(presentationId);
-  const agentWorkdir = await deployAgentWorkdir(presentationId);
+  // NOOP-433: the startup path never goes through `DeckSession.bind` —
+  // deliberately, to keep this diff the smallest it can be (NOOP-433 §3's
+  // own note): when a presentationId is given, this is exactly the
+  // pre-NOOP-433 startup sequence, just wrapped in "only when given".
+  let initialDeck: DeckIdentity | null = null;
+  let initialWorkdir: string | null = null;
+  if (options.presentationId !== undefined) {
+    initialDeck = await resolveDeckIdentity(options.presentationId);
+    initialWorkdir = await deployAgentWorkdir(options.presentationId);
+  }
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -152,7 +171,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // changes.ts) — creating the handle itself touches no filesystem, so no
   // rollback is needed if listen() below fails. Built before the manager
   // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
-  const changeBroadcaster = createChangeBroadcaster(presentationId);
+  const changeBroadcaster = createChangeBroadcaster(initialDeck?.id ?? null);
   disposers.push(() => changeBroadcaster.dispose());
 
   // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
@@ -169,9 +188,9 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     ((kind: AgentKind): AgentAdapterConfig =>
       fallbackAgent && kind === fallbackAgent.kind ? fallbackAgent : resolveAdapterConfig(kind));
   const manager = new AgentManager({
-    presentationId,
+    presentationId: initialDeck?.id ?? null,
     editingLock,
-    workdir: agentWorkdir,
+    workdir: initialWorkdir,
     initial: initialAgent,
     runCommand: options.agentManager?.runCommand,
     resolveAdapter,
@@ -252,9 +271,38 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const exportJobManager = new ExportJobManager();
   const serverAddress = { host, port: 0 };
 
+  // NOOP-433: owns the currently-bound deck's identity and the switch
+  // sequence (`deck-switch.ts`'s own docstring has the fixed order). `bind`/
+  // `unbind` are exactly `startServe`'s own startup wiring above, replayed
+  // per switch — `deployAgentWorkdir` → `manager.retarget` → the
+  // broadcaster's `retarget` for `bind`; the broadcaster first, then the
+  // manager, for `unbind` (NOOP-433 §3).
+  const deckSession = createDeckSession({
+    initial: initialDeck,
+    resolveDeck: resolveDeckIdentity,
+    guard: () => {
+      if (editingLock.getState() !== "idle") {
+        return { reason: "editing", message: new AgentSwitchLockedError().message };
+      }
+      if (exportJobManager.hasActiveJob()) {
+        return { reason: "exporting", message: "An export job is already in progress" };
+      }
+      return null;
+    },
+    unbind: async (_outgoing) => {
+      await changeBroadcaster.retarget(null);
+      await manager.retarget(null);
+    },
+    bind: async (incoming) => {
+      const workdir = await deployAgentWorkdir(incoming.id);
+      await manager.retarget({ id: incoming.id, workdir });
+      await changeBroadcaster.retarget(incoming.id);
+    },
+  });
+
   const server = http.createServer((req, res) => {
     void handleRequest(
-      presentationId,
+      deckSession,
       staticDir,
       manager,
       chatStreams,
@@ -296,6 +344,29 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   };
 }
 
+/**
+ * Resolves `id` to its public identity (NOOP-433's `deck-switch.ts` injects
+ * this as `resolveDeck`) — `loadProject` alone already throws the exact
+ * `SlidraNotFoundError` message ("no presentation found for id: <id>") an
+ * unknown id must report (NOOP-433 §4's table); `readProjectsRegistry` is
+ * consulted separately only for `sourcePath`, since `loadProject`'s own
+ * `ProjectJson` never carries a real filesystem path (ADR-0004). A registry
+ * entry with no `sourcePath` (or, in principle, no entry at all for an id
+ * `loadProject` otherwise accepts) is legal — `sourcePath` is just `null`,
+ * never a reason to refuse the switch (NOOP-433 §4's table, "合法但奇怪" row).
+ */
+async function resolveDeckIdentity(id: string): Promise<DeckIdentity> {
+  const project = await loadProject(id);
+  const registry = await readProjectsRegistry();
+  const entry = registry.get(id);
+  return { id, name: project.name, sourcePath: entry?.sourcePath ?? null };
+}
+
+/** `DeckIdentity` -> the shape sent over the wire — never `sourcePath` itself (ADR-0004, NOOP-433 §7 decision 2), only its basename. */
+function toPublicDeck(deck: DeckIdentity): { id: string; name: string | null; fileName: string | null } {
+  return { id: deck.id, name: deck.name, fileName: deck.sourcePath !== null ? path.basename(deck.sourcePath) : null };
+}
+
 function listen(server: http.Server, port: number, host: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const onError = (error: NodeJS.ErrnoException) => {
@@ -319,7 +390,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 }
 
 async function handleRequest(
-  presentationId: string,
+  deckSession: DeckSession,
   staticDir: string,
   manager: AgentManager,
   chatStreams: ChatStreamRegistry,
@@ -368,6 +439,15 @@ async function handleRequest(
 
     if (req.method === "POST") {
       if (url.pathname === "/api/chat") {
+        // NOOP-433 §4's table: no-deck is checked here, before the existing
+        // unset/unauthenticated gate below — a kind can be selected with no
+        // deck open (AgentManager builds no session either way), and
+        // without this check that would fall through to `sendMessage`'s own
+        // "No agent selected" error, which is simply the wrong reason.
+        if (deckSession.currentId() === null) {
+          sendJson(res, 409, { error: "No deck is open", reason: "no-deck" });
+          return;
+        }
         await handleChatPost(manager, req, res);
         return;
       }
@@ -409,6 +489,13 @@ async function handleRequest(
         }
         return;
       }
+      if (url.pathname === "/api/deck/switch") {
+        // NOOP-433: never gated on `requireDeck` below — switching is the
+        // one write route that must work with no deck open (entering a
+        // deck for the first time) as well as with one already open.
+        await handleDeckSwitchPost(deckSession, changeBroadcaster, req, res);
+        return;
+      }
       if (url.pathname === "/api/command") {
         // NOOP-91 §4.9: the front end's only write path. Whitelisting and
         // the server-owned presentation id both live inside the handler,
@@ -416,11 +503,15 @@ async function handleRequest(
         // the same call-site level as /api/undo and /api/redo below: agent
         // holding the floor refuses with 409, idle/human pass through
         // unchanged — this route never blocks the agent's own commands.
+        // NOOP-433 §4's table: the no-deck guard is checked first, ahead of
+        // the editing-lock gate.
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleCommandPost(presentationId, req, res);
+        await handleCommandPost(deckId, req, res);
         return;
       }
       if (url.pathname === "/api/asset") {
@@ -428,40 +519,48 @@ async function handleRequest(
         // /api/command, at the same call-site level — a Ribbon-driven
         // asset upload is a human write, not exempt from the single-editor
         // lock just because it does not spawn the slidra binary.
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleAssetPost(presentationId, req, res);
+        await handleAssetPost(deckId, req, res);
         return;
       }
       if (url.pathname === "/api/open") {
         // NOOP-93 §4.1: the GUI's Open action is a human write like
         // /api/asset above — same "agent holds the floor" 409 gate, same
         // call-site level.
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleOpenPost(presentationId, changeBroadcaster, req, res);
+        await handleOpenPost(deckId, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/new") {
         // Replaces this id's whole content, so it sits behind the same
         // "agent holds the floor" gate /api/open does.
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleNewPost(presentationId, changeBroadcaster, req, res);
+        await handleNewPost(deckId, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/save") {
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleSavePost(presentationId, changeBroadcaster, res);
+        await handleSavePost(deckId, changeBroadcaster, res);
         return;
       }
       if (url.pathname === "/api/export") {
@@ -470,15 +569,21 @@ async function handleRequest(
         // of the single-editor lock's "who may write right now" story
         // (unlike /api/open, /api/save, /api/command, and /api/asset
         // above). Do not "helpfully" add this gate later.
-        await handleExportPost(exportJobManager, presentationId, serverAddress, changeBroadcaster, req, res);
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
+        await handleExportPost(exportJobManager, deckId, serverAddress, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/undo") {
-        await handleUndoRedoPost(editingLock, presentationId, runUndo, res);
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
+        await handleUndoRedoPost(editingLock, deckId, runUndo, res);
         return;
       }
       if (url.pathname === "/api/redo") {
-        await handleUndoRedoPost(editingLock, presentationId, runRedo, res);
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
+        await handleUndoRedoPost(editingLock, deckId, runRedo, res);
         return;
       }
       if (url.pathname === "/api/editing/begin") {
@@ -521,12 +626,22 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/deck") {
+      // NOOP-433: the one way a page (re)load learns which deck, if any, is
+      // currently open — there is no other route this can be inferred from.
+      const deck = deckSession.current();
+      sendJson(res, 200, { deck: deck ? toPublicDeck(deck) : null });
+      return;
+    }
+
     if (url.pathname === "/api/save-state") {
       // NOOP-93 §4.2: no-replay SSE (sse.ts) means the *initial* state on
       // load/reconnect must come from a plain GET, same pattern as
       // /api/editing above — never inferred from the last `save-state`
       // event, which a fresh page load never saw.
-      const state = await readSaveState(presentationId);
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
+      const state = await readSaveState(deckId);
       sendJson(res, 200, state);
       return;
     }
@@ -549,24 +664,32 @@ async function handleRequest(
     }
 
     if (url.pathname === "/api/presentation") {
-      await handlePresentationRoute(presentationId, res);
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
+      await handlePresentationRoute(deckId, res);
       return;
     }
 
     if (url.pathname === "/api/assets") {
-      await handleAssetsRoute(presentationId, res);
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
+      await handleAssetsRoute(deckId, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/files/")) {
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(presentationId, virtualPath, res);
+      await handleFilesRoute(deckId, virtualPath, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/effects/")) {
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
       const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
-      await handleEffectsRoute(presentationId, virtualPath, res);
+      await handleEffectsRoute(deckId, virtualPath, res);
       return;
     }
 
@@ -592,6 +715,8 @@ async function handleRequest(
       // video/image bytes dumped into its context. Browsers, not agents,
       // need this route, so it calls `cat` directly (`readPresentationBytes`)
       // rather than through any agent-reachable command.
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
       let virtualPath: string;
       try {
         virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
@@ -603,7 +728,7 @@ async function handleRequest(
       // handed on as a plain value: handleRawRoute stays a function of
       // (path, response, range) rather than growing a dependency on the
       // whole request object it has no other use for (ticket #13).
-      await handleRawRoute(presentationId, virtualPath, res, req.headers.range);
+      await handleRawRoute(deckId, virtualPath, res, req.headers.range);
       return;
     }
 
@@ -616,6 +741,74 @@ async function handleRequest(
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
+}
+
+/**
+ * NOOP-433 §4's table: every deck-scoped route 409s with `reason: "no-deck"`
+ * while no deck is bound, checked ahead of every other guard that route
+ * already had (editing-lock included). Writes the response and returns
+ * null when there is no deck to hand back; a route handler's job is then
+ * just `if (deckId === null) return;`.
+ */
+function requireDeck(deckSession: DeckSession, res: ServerResponse): string | null {
+  const id = deckSession.currentId();
+  if (id === null) {
+    sendJson(res, 409, { error: "No deck is open", reason: "no-deck" });
+    return null;
+  }
+  return id;
+}
+
+/**
+ * `POST /api/deck/switch` (NOOP-433) — body `{ id: string }`. Body
+ * validation happens here, before `DeckSession.switchTo` is ever called;
+ * every other outcome (conflict, unknown id, a `bind` failure) is
+ * `switchTo`'s own to throw and this route's own to translate to HTTP
+ * (§4's table). The `deck-changed`/`presentation-changed`/`save-state`
+ * broadcast only fires when a switch actually happened — the same-id
+ * short-circuit rebuilds nothing, so there is nothing to announce.
+ */
+async function handleDeckSwitchPost(
+  deckSession: DeckSession,
+  changeBroadcaster: ChangeBroadcaster,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const id = (body as { id?: unknown } | null)?.id;
+  if (typeof id !== "string" || id === "") {
+    sendJson(res, 400, { error: "id must be a non-empty string" });
+    return;
+  }
+
+  let result: { deck: DeckIdentity; switched: boolean };
+  try {
+    result = await deckSession.switchTo(id);
+  } catch (error) {
+    if (error instanceof DeckSwitchConflictError) {
+      sendJson(res, 409, { error: error.message, reason: error.reason });
+      return;
+    }
+    if (error instanceof SlidraNotFoundError) {
+      sendJson(res, 404, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to switch deck" });
+    return;
+  }
+
+  if (result.switched) {
+    changeBroadcaster.broadcast("deck-changed", { deck: toPublicDeck(result.deck) });
+    changeBroadcaster.broadcast("presentation-changed", {});
+    await broadcastSaveState(changeBroadcaster, result.deck.id);
+  }
+  sendJson(res, 200, { ok: true, switched: result.switched, deck: toPublicDeck(result.deck) });
 }
 
 /**

@@ -8,7 +8,8 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ServerResponse } from "node:http";
+import http, { type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
@@ -359,5 +360,52 @@ describe("GET /api/events", () => {
     expect(response.status).toBe(500);
     expect(body.error).not.toContain(workDir);
     expect(body.error).not.toContain(slidraHome);
+  });
+
+  it("retarget(): an already-open connection starts reacting to the new id's changes and stops reacting to the old one's, with no reconnect", async () => {
+    // Driven directly against `createChangeBroadcaster` (NOOP-433's own
+    // seam), on a bare `http.Server` rather than through `startServe` — the
+    // same "real bytes on the wire, no serve.ts/AgentManager involved"
+    // pattern sse.test.ts's own `startServer` helper uses. This is exactly
+    // what `serve.ts`'s `unbind`/`bind` call on a deck switch, isolated
+    // from everything else that happens during one.
+    const a = await openFreshPresentation("Deck A");
+    const b = await openFreshPresentation("Deck B");
+    const broadcaster = createChangeBroadcaster(a.id);
+    const httpServer = http.createServer((_req, res) => {
+      void broadcaster.handleConnection(res).catch((error) => {
+        res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: String(error) }));
+      });
+    });
+    await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+    const port = (httpServer.address() as AddressInfo).port;
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}`);
+      const frameReader = createFrameReader(response);
+      streams.push(frameReader);
+
+      await setText(a.id, a.elementId, "edited while the broadcaster targets A");
+      expect(await frameReader.readFrame()).toBe("event: presentation-changed\ndata: {}\n\n");
+
+      await broadcaster.retarget(b.id);
+
+      // A change to A, now unbound, must never reach this still-open
+      // connection — proven by racing the read against a timeout well past
+      // the watcher's 100ms debounce, the same idiom the .slidra.lock test
+      // above uses for "nothing arrives".
+      const pending = frameReader.readFrame();
+      const timeout = (ms: number) => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
+      await setText(a.id, a.elementId, "A keeps changing but the connection no longer watches it");
+      expect(await Promise.race([pending, timeout(400)])).toBe(null);
+
+      // A change to B, now bound, reaches the exact same connection —
+      // retarget() rebinds the watcher without the client ever reconnecting.
+      await setText(b.id, b.elementId, "now watching B");
+      expect(await pending).toBe("event: presentation-changed\ndata: {}\n\n");
+    } finally {
+      await broadcaster.dispose();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
   });
 });

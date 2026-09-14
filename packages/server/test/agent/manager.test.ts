@@ -4,9 +4,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManager, AgentSwitchLockedError } from "../../src/agent/manager.js";
 import { EditingLock } from "../../src/editing-lock.js";
+import { AgentChatSession } from "../../src/agent/session.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
 import type { CommandOutcome, CommandRunner } from "../../src/agent/probe.js";
@@ -263,5 +264,58 @@ describe("AgentManager", () => {
 
     await manager.dispose();
     await expect(manager.dispose()).resolves.toBeUndefined();
+  });
+
+  it("retarget(): disposes the previous session, re-subscribes the persistent external-listener forwarding on the fresh one, and rebuilds only when a kind is selected (NOOP-433)", async () => {
+    const { resolveAdapter, calls } = trackingResolveAdapter();
+    const { runCommand } = runCommandReturning(loggedInOutcome);
+    // Real prototype methods, spied (not mocked) — `vi.spyOn` calls through
+    // to the original implementation by default, so this observes retarget's
+    // actual effect on a real `AgentChatSession` rather than faking one.
+    const disposeSpy = vi.spyOn(AgentChatSession.prototype, "dispose");
+    const attachSpy = vi.spyOn(AgentChatSession.prototype, "attachStream");
+    try {
+      const manager = new AgentManager({
+        presentationId: "p1",
+        workdir: "/tmp/deck-switch-test-wd1",
+        editingLock: new EditingLock(),
+        initial: { kind: "claude", source: "cli" },
+        runCommand,
+        resolveAdapter,
+      });
+      // `AgentManager.attachStream` (the `/api/chat/stream` registration) is
+      // a *manager*-level Set `rewireSession` never touches — only the
+      // session-level `AgentChatSession.attachStream` spied on above is
+      // re-subscribed per swap. Attaching here proves the manager-level
+      // registration survives the retargets below (a session swap must
+      // never require `/api/chat/stream` to reconnect).
+      manager.attachStream(() => {});
+      expect(attachSpy).toHaveBeenCalledTimes(1); // constructor's own rewireSession
+
+      // A session exists, bound to p1 (never warmed) — cancel() reaches it
+      // and reports "no turn in flight", the distinct message from "no
+      // session at all" below.
+      await expect(manager.cancel()).rejects.toThrow("There is no turn currently in progress to stop");
+
+      await manager.retarget({ id: "p2", workdir: "/tmp/deck-switch-test-wd2" });
+
+      expect(disposeSpy).toHaveBeenCalledTimes(1); // the p1 session was torn down
+      expect(attachSpy).toHaveBeenCalledTimes(2); // re-subscribed on the fresh (p2) session
+      expect(calls).toEqual(["claude", "claude"]); // rebuilt via resolveAdapter for the new deck
+      // A fresh session exists, now bound to p2 — same "no turn in flight"
+      // shape as before, proving retarget rebuilt a real session rather
+      // than leaving the disposed one in place.
+      await expect(manager.cancel()).rejects.toThrow("There is no turn currently in progress to stop");
+
+      await manager.retarget(null);
+
+      expect(disposeSpy).toHaveBeenCalledTimes(2); // the p2 session was torn down too
+      expect(attachSpy).toHaveBeenCalledTimes(2); // no deck, no session to (re)build or attach
+      expect(calls).toEqual(["claude", "claude"]); // no rebuild attempt with no deck bound
+      await expect(manager.cancel()).rejects.toThrow("No agent selected, there is no turn to stop");
+    } finally {
+      disposeSpy.mockRestore();
+      attachSpy.mockRestore();
+    }
   });
 });

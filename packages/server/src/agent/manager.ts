@@ -58,10 +58,11 @@ export class AgentSwitchLockedError extends SlidraError {
 }
 
 export interface AgentManagerOptions {
-  presentationId: string;
+  /** Null exactly while `serve` has no deck bound (NOOP-433) — `retarget()` is how this changes later. */
+  presentationId: string | null;
   editingLock: EditingLock;
-  /** The deployed agent working directory (NOOP-231) every session runs in. */
-  workdir: string;
+  /** The deployed agent working directory (NOOP-231) every session runs in. Null in lockstep with `presentationId`. */
+  workdir: string | null;
   /** What `serve` started with — the queryable "why is `current` what it is" (§4.3's `source` field). */
   initial: { kind: AgentKind | null; source: AgentSource };
   /** Injected for tests — see `probe.ts`. Defaults to actually spawning `claude`/`codex`. */
@@ -109,9 +110,10 @@ export interface AgentManagerOptions {
  * `status()`/`probe()`/`select()`/`sendMessage()` here.
  */
 export class AgentManager {
-  private readonly presentationId: string;
+  /** Mutable — `retarget()` (NOOP-433) is how these change after construction; both are null in lockstep, exactly while no deck is bound. */
+  private presentationId: string | null;
+  private workdir: string | null;
   private readonly editingLock: EditingLock;
-  private readonly workdir: string;
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
   private readonly onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
@@ -150,14 +152,20 @@ export class AgentManager {
     this.source = options.initial.source;
 
     if (this.current !== null) {
-      this.session = this.buildSession(this.current);
+      this.session = this.maybeBuildSession(this.current);
       this.rewireSession(this.session);
     }
   }
 
-  private buildSession(kind: AgentKind): AgentChatSession {
+  /** `buildSession`, but only when a deck is actually bound (NOOP-433) — a kind can be selected with no deck open, and that must leave `session` undefined rather than construct one with a null presentation id. */
+  private maybeBuildSession(kind: AgentKind): AgentChatSession | undefined {
+    if (this.presentationId === null || this.workdir === null) return undefined;
+    return this.buildSession(this.presentationId, this.workdir, kind);
+  }
+
+  private buildSession(presentationId: string, workdir: string, kind: AgentKind): AgentChatSession {
     const config = this.resolveAdapter(kind);
-    return new AgentChatSession(config, this.presentationId, this.editingLock, this.workdir, this.preferredModels[kind] ?? null);
+    return new AgentChatSession(config, presentationId, this.editingLock, workdir, this.preferredModels[kind] ?? null);
   }
 
   /** Forwards one session's events to every currently attached `/api/chat/stream` listener. */
@@ -261,7 +269,7 @@ export class AgentManager {
     if (previousSession) {
       await previousSession.dispose();
     }
-    const nextSession = this.buildSession(kind);
+    const nextSession = this.maybeBuildSession(kind);
     this.session = nextSession;
     this.current = kind;
     this.source = "settings";
@@ -288,7 +296,11 @@ export class AgentManager {
     if (this.editingLock.getState() === "agent") {
       throw new AgentSwitchLockedError();
     }
-    if (this.current === null) {
+    // Covers both "no kind selected" and "a kind is selected but no deck is
+    // open" (NOOP-433) — `!this.session` alone already catches the second
+    // case, `this.current === null` keeps the message accurate for the
+    // first. Same reused message, same 409 path, for either reason.
+    if (this.current === null || !this.session) {
       throw new SlidraError("No agent selected, there is no conversation to restart");
     }
 
@@ -296,7 +308,7 @@ export class AgentManager {
     if (previousSession) {
       await previousSession.dispose();
     }
-    const nextSession = this.buildSession(this.current);
+    const nextSession = this.maybeBuildSession(this.current);
     this.session = nextSession;
     this.rewireSession(nextSession);
 
@@ -379,5 +391,26 @@ export class AgentManager {
     if (this.session) {
       await this.session.dispose();
     }
+  }
+
+  /**
+   * Re-points this manager at a different deck (NOOP-433's `unbind`/`bind`),
+   * or at none. The current session (if any) is always disposed first —
+   * its `presentationId`/`workdir` belong to the deck being left — then a
+   * fresh one is built only when both a kind is selected and `next` is not
+   * null (`maybeBuildSession`'s own rule); `externalListeners`
+   * (`/api/chat/stream` connections) are never touched, only re-pointed by
+   * `rewireSession`, exactly like `select()`/`newSession()` above.
+   */
+  async retarget(next: { id: string; workdir: string } | null): Promise<void> {
+    const previousSession = this.session;
+    if (previousSession) {
+      await previousSession.dispose();
+    }
+    this.presentationId = next?.id ?? null;
+    this.workdir = next?.workdir ?? null;
+    const nextSession = this.current !== null ? this.maybeBuildSession(this.current) : undefined;
+    this.session = nextSession;
+    this.rewireSession(nextSession);
   }
 }

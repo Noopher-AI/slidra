@@ -51,6 +51,17 @@ export interface ChangeBroadcaster {
   broadcast(event: string, data: unknown): void;
   /** Stops watching (if ever started) and closes every currently open stream. Idempotent. */
   dispose(): Promise<void>;
+  /**
+   * Re-points this broadcaster at `nextId` (NOOP-433 §3's `unbind`/`bind`):
+   * stops the current watcher, if any, and — when `nextId` is not null and
+   * at least one stream is already connected — starts a fresh one
+   * immediately, so an already-open `/api/events` tab starts seeing the
+   * new deck's changes without needing to reconnect. `null` (unbinding)
+   * always just stops watching; the next connection then finds nothing to
+   * lazily start. The connected `streams` set itself is never touched —
+   * only what they get notified about changes.
+   */
+  retarget(nextId: string | null): Promise<void>;
 }
 
 /**
@@ -60,8 +71,12 @@ export interface ChangeBroadcaster {
  * next change) rather than needing its own disconnect wiring —
  * `EventStream.send` is already a no-op on a closed stream, so `closed` is
  * just used to stop tracking it.
+ *
+ * `presentationId` is null exactly while `serve` has no deck bound
+ * (NOOP-433): `handleConnection` then opens a stream with nothing watching
+ * it yet, and `retarget` is how it later gets pointed at a real id.
  */
-export function createChangeBroadcaster(presentationId: string): ChangeBroadcaster {
+export function createChangeBroadcaster(presentationId: string | null): ChangeBroadcaster {
   const streams = new Set<EventStream>();
   let watcherPromise: Promise<PresentationWatcher> | null = null;
   // Set once dispose() has been called, and once more if the watcher dies
@@ -72,10 +87,13 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
   let disposed = false;
   let fatalError: Error | null = null;
 
+  // Only ever called from a call site that has already checked
+  // `presentationId !== null` (`handleConnection` below and `retarget`'s own
+  // eager restart) — never on its own while unbound.
   function ensureWatcher(): Promise<PresentationWatcher> {
     if (!watcherPromise) {
       watcherPromise = watchPresentation(
-        presentationId,
+        presentationId!,
         () => {
           for (const stream of streams) {
             if (stream.closed) {
@@ -114,16 +132,21 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
         // wait on forever.
         throw new SlidraError("Server is shutting down");
       }
-      await ensureWatcher();
-      if (disposed) {
-        // dispose() ran while this connection was awaiting the lazy
-        // watcher start — the exact race this fix closes. dispose() has
-        // already seen no live streams and torn the watcher down; opening
-        // one now would leave a stream server.close() waits on forever.
-        throw new SlidraError("Server is shutting down");
-      }
-      if (fatalError) {
-        throw fatalError;
+      // No deck bound yet (NOOP-433 AC1): the stream still opens — the
+      // route table promises "opens fine, just nothing watching" — there is
+      // simply no watcher to start until `retarget` binds a real id.
+      if (presentationId !== null) {
+        await ensureWatcher();
+        if (disposed) {
+          // dispose() ran while this connection was awaiting the lazy
+          // watcher start — the exact race this fix closes. dispose() has
+          // already seen no live streams and torn the watcher down; opening
+          // one now would leave a stream server.close() waits on forever.
+          throw new SlidraError("Server is shutting down");
+        }
+        if (fatalError) {
+          throw fatalError;
+        }
       }
       const stream = openEventStream(res);
       streams.add(stream);
@@ -165,6 +188,27 @@ export function createChangeBroadcaster(presentationId: string): ChangeBroadcast
         // reject instead of tearing resources down promptly.
         const watcher = await watcherPromise.catch(() => null);
         await watcher?.close();
+      }
+    },
+
+    retarget: async (nextId: string | null): Promise<void> => {
+      if (watcherPromise) {
+        // Same "failure was already reported, don't re-throw it during
+        // teardown" reasoning as dispose() above — the old watcher (if any)
+        // is simply stopped, never re-surfaced as this call's own failure.
+        const watcher = await watcherPromise.catch(() => null);
+        await watcher?.close();
+      }
+      watcherPromise = null;
+      fatalError = null;
+      presentationId = nextId;
+      // A stream opened before this switch is still connected and must
+      // start seeing the new id's changes without reconnecting — it will
+      // never call ensureWatcher() itself, since handleConnection only runs
+      // once, at connection time. A switch with nobody connected leaves
+      // this lazy, same as a fresh broadcaster.
+      if (presentationId !== null && streams.size > 0) {
+        await ensureWatcher();
       }
     },
   };
