@@ -216,8 +216,6 @@ describe("no deck open (AC1)", () => {
       { method: "POST", path: "/api/undo" },
       { method: "POST", path: "/api/redo" },
       { method: "POST", path: "/api/export" },
-      { method: "POST", path: "/api/open" },
-      { method: "POST", path: "/api/new" },
       { method: "POST", path: "/api/chat" },
     ];
 
