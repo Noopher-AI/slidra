@@ -9,6 +9,14 @@ import { ChatLog } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
 import { writeAgentModel, writeAgentSelection } from "./settings.js";
+import { getActiveLauncher } from "../sandbox/launcher.js";
+
+/** `AgentStatus.writeIsolation` (AC7): whether this server's write sandbox is actually enforcing, and why not when it isn't. */
+export interface WriteIsolationStatus {
+  active: boolean;
+  /** Non-null exactly when `active` is false — mirrors `SandboxLauncher.degradedReason`'s own invariant. */
+  reason: string | null;
+}
 
 /** Where the currently-selected agent kind came from (NOOP-230 §4.3). */
 export type AgentSource = "cli" | "settings" | "none";
@@ -49,6 +57,8 @@ export interface AgentStatus {
   modelId: string | null;
   /** Every model the current session can switch to (`POST /api/agent/model`); `[]` with no session or an adapter that reports none. */
   models: readonly AgentModelChoice[];
+  /** AC7: whether the write sandbox is actually enforcing right now, and why not when it isn't (forced off, Windows, or a dependency/init failure). */
+  writeIsolation: WriteIsolationStatus;
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
@@ -282,6 +292,10 @@ export class AgentManager {
       model: this.session?.getModel() ?? null,
       modelId: this.session?.getModelId() ?? null,
       models: this.session?.getModelChoices() ?? [],
+      writeIsolation: {
+        active: getActiveLauncher()?.active ?? false,
+        reason: getActiveLauncher()?.degradedReason ?? "write isolation has not been initialized for this server",
+      },
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
