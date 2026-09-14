@@ -23,12 +23,12 @@ const agentsMdPath = path.join(resolveAgentWorkdirSource(), "AGENTS.md");
 const REQUIRED_SKILL_SECTIONS = ["## Steps"];
 
 describe("shipped work directory documentation", () => {
-  it("has exactly the thirteen shipped skills, each well-formed, and reported by collectSlashCommands", async () => {
+  it("has exactly the fourteen shipped skills, each well-formed, and reported by collectSlashCommands", async () => {
     const entries = await readdir(bundledSkillDir, { withFileTypes: true });
     const dirNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     // The `slidra-` namespace lives in the directory name itself, so the
     // name an author types is the name the agent registered.
-    expect(dirNames.sort()).toEqual(["slidra-animate", "slidra-background-kit", "slidra-build", "slidra-chart", "slidra-layout-kit", "slidra-new-slide", "slidra-notes", "slidra-plan", "slidra-reshape", "slidra-style", "slidra-style-kit", "slidra-table", "slidra-validate"]);
+    expect(dirNames.sort()).toEqual(["slidra-animate", "slidra-apply-master", "slidra-background-kit", "slidra-build", "slidra-chart", "slidra-layout-kit", "slidra-new-slide", "slidra-notes", "slidra-plan", "slidra-reshape", "slidra-style", "slidra-style-kit", "slidra-table", "slidra-validate"]);
 
     for (const dirName of dirNames) {
       const text = await readFile(path.join(bundledSkillDir, dirName, "SKILL.md"), "utf8");
@@ -43,7 +43,7 @@ describe("shipped work directory documentation", () => {
     const emptyUserDir = await mkdtemp(path.join(tmpdir(), "slidra-user-skills-"));
     try {
       const commands = await collectSlashCommands([], { bundled: bundledSkillDir, user: emptyUserDir });
-      expect(commands.map((c) => c.name)).toEqual(["slidra-animate", "slidra-background-kit", "slidra-build", "slidra-chart", "slidra-layout-kit", "slidra-new-slide", "slidra-notes", "slidra-plan", "slidra-reshape", "slidra-style", "slidra-style-kit", "slidra-table", "slidra-validate"]);
+      expect(commands.map((c) => c.name)).toEqual(["slidra-animate", "slidra-apply-master", "slidra-background-kit", "slidra-build", "slidra-chart", "slidra-layout-kit", "slidra-new-slide", "slidra-notes", "slidra-plan", "slidra-reshape", "slidra-style", "slidra-style-kit", "slidra-table", "slidra-validate"]);
       for (const command of commands) {
         expect(command.description.length).toBeGreaterThan(0);
         expect(command.source).toBe("bundled");
