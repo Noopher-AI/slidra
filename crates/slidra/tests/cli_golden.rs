@@ -1980,7 +1980,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
 /// Reads `docs/spec/cli.md` directly rather than shelling out — this test
 /// IS the parser, not a caller of one.
 #[test]
-fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
+fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
     let spec_path = repo_root().join("docs/spec/cli.md");
     let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
 
@@ -2022,8 +2022,8 @@ fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
     // independent extraction pass).
     let all_backtick_headings = heading_starts.len();
     assert_eq!(
-        all_backtick_headings, 89,
-        "docs/spec/cli.md must have exactly 89 backtick-H2 command headings, found {all_backtick_headings}"
+        all_backtick_headings, 91,
+        "docs/spec/cli.md must have exactly 91 backtick-H2 command headings, found {all_backtick_headings}"
     );
 
     let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
@@ -2035,6 +2035,7 @@ fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
                 .chain(commands::text::TAKEOVER.iter())
                 .chain(commands::textbox::TAKEOVER.iter())
                 .chain(commands::comment::TAKEOVER.iter())
+                .chain(commands::deck::TAKEOVER.iter())
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
@@ -2046,9 +2047,10 @@ fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
     let takeover_total = commands::element::TAKEOVER.len()
         + commands::text::TAKEOVER.len()
         + commands::textbox::TAKEOVER.len()
-        + commands::comment::TAKEOVER.len();
-    assert_eq!(takeover_total, 29, "the four TAKEOVER tables must total 29");
-    assert_eq!(rust_names.len(), 89, "60 + 29 must equal 89");
+        + commands::comment::TAKEOVER.len()
+        + commands::deck::TAKEOVER.len();
+    assert_eq!(takeover_total, 31, "the five TAKEOVER tables must total 31");
+    assert_eq!(rust_names.len(), 91, "60 + 31 must equal 91");
 
     let rust_set: std::collections::BTreeSet<&str> =
         rust_names.iter().map(String::as_str).collect();
@@ -2056,8 +2058,8 @@ fn cli_md_lists_exactly_the_89_rust_dispatched_commands() {
         spec_entries.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
         spec_entries.len(),
-        89,
-        "docs/spec/cli.md must have exactly 89 command entries"
+        91,
+        "docs/spec/cli.md must have exactly 91 command entries"
     );
 
     let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
@@ -2173,10 +2175,11 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
                 .chain(commands::text::TAKEOVER.iter())
                 .chain(commands::textbox::TAKEOVER.iter())
                 .chain(commands::comment::TAKEOVER.iter())
+                .chain(commands::deck::TAKEOVER.iter())
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
-    assert_eq!(rust_names.len(), 89);
+    assert_eq!(rust_names.len(), 91);
 
     for name in &rust_names {
         let tokens: Vec<&str> = name.split(' ').collect();
@@ -2205,7 +2208,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
         // under this test process's own cwd.
         if !matches!(
             tokens[0],
-            "open" | "pack" | "extract" | "template" | "presentation"
+            "open" | "pack" | "extract" | "template" | "presentation" | "deck"
         ) {
             args.push("slides/001.svg");
         }

@@ -6,6 +6,9 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { SlidraError, SlidraNotFoundError } from "./errors.js";
+import { deckFileMtime } from "../storage/deck-folder.js";
+
+export { deckFileMtime };
 
 /**
  * `packages/server`'s own reader for `<SLIDRA_HOME>/projects.json` —
@@ -243,9 +246,4 @@ export async function deckPathFor(id: string): Promise<string> {
     throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   }
   return entry.deckPath;
-}
-
-/** The deck file's own `mtimeMs` — a single `stat`, not a directory walk: the deck IS the file now. */
-export async function deckFileMtime(deckPath: string): Promise<number> {
-  return (await stat(deckPath)).mtimeMs;
 }

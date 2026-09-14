@@ -60,6 +60,7 @@ pub mod cat;
 pub mod chart;
 pub mod comment;
 pub mod convert;
+pub mod deck;
 pub mod effect;
 pub mod element;
 pub mod extract;
@@ -95,13 +96,14 @@ const CORE_TAKEOVER: &[CommandTokens] = &[&["undo"], &["redo"]];
 /// Every family's token-sequence list under the newer mechanism, in the
 /// fixed order the combined table is defined in. A `const fn`/array (not a
 /// `Vec`) so `resolve_takeover` allocates nothing on the hot path.
-fn takeover_families() -> [&'static [CommandTokens]; 5] {
+fn takeover_families() -> [&'static [CommandTokens]; 6] {
     [
         CORE_TAKEOVER,
         element::TAKEOVER,
         text::TAKEOVER,
         textbox::TAKEOVER,
         comment::TAKEOVER,
+        deck::TAKEOVER,
     ]
 }
 
@@ -150,6 +152,7 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
         "text" => text::dispatch(tokens, args),
         "textbox" => textbox::dispatch(tokens, args),
         "comment" => comment::dispatch(tokens, args),
+        "deck" => deck::dispatch(tokens, args),
         _ => unreachable!("resolve_takeover only ever returns entries from this table"),
     }
 }

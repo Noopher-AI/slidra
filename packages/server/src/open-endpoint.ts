@@ -2,61 +2,40 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { randomBytes } from "node:crypto";
-import { SlidraError } from "./slidra/errors.js";
-import { runJsonCommand } from "./slidra/command.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
 import {
-  readProjectsRegistry,
-  resolveSlidraHome,
-  withProjectsRegistryLock,
-  writeProjectsRegistry,
-} from "./slidra/home.js";
-import { readSaveState } from "./slidra/save-state.js";
-import type { ChangeBroadcaster } from "./changes.js";
-import { broadcastSaveState } from "./save-state.js";
+  DeckBoundError,
+  DeckNameConflictError,
+  ImportConfirmationRequiredError,
+  type DeckStore,
+} from "./storage/deck-store.js";
 
 /**
- * `POST /api/open` (NOOP-93, §4.1) — the GUI's Open action. A browser's
- * `<input type="file">` only ever hands over bytes, never a real filesystem
- * path (§2 point 6, §7 decision 6), so this is the same "raw body + a
- * filename header" shape `POST /api/asset` already established.
+ * The deck lifecycle HTTP routes ([E6.T2], NOOP-448): `POST /api/new`,
+ * `POST /api/open`, `POST /api/deck/import`, `POST /api/deck/rename`,
+ * `POST /api/deck/delete`, `GET /api/decks`. Every one of these is
+ * deck-session-independent (NOOP-433's `DeckSession`/`requireDeck` play no
+ * part here) — they create/import/list/rename/delete a deck FILE, never
+ * the presentation this `serve` process happens to be showing right now.
  *
- * The uploaded bytes are staged under `<SLIDRA_HOME>/opened/<opaque>/`
- * and become the presentation's new `sourcePath` — Save from here on
- * writes back to that staged copy, never to wherever the file actually
- * lives on the author's own machine, because this server was never told
- * that path (§7 decision 6's documented limitation).
+ * This supersedes this module's previous "reopen the currently-bound
+ * presentation in place" behavior entirely: `POST /api/new`/`POST /api/open`
+ * used to swap the served presentation's own content out from under it
+ * (`reopenPresentationInPlace`, staged under `<SLIDRA_HOME>/opened/<opaque>/`).
+ * A newly created or opened deck now lands directly in the configured deck
+ * folder (AC1) and is handed back as its own `{id, fileName}` — nothing
+ * about the currently-served presentation changes, and nothing switches to
+ * it, until a caller explicitly does that through `POST /api/deck/switch`
+ * ([E6.T4]'s job, not this one).
  *
- * [E4.T9]/F7: there is no CLI command that swaps an existing id's content
- * while keeping the id itself (every route, the change broadcaster, and
- * the agent chat session are all bound to the id `serve` started on).
- * `slidra open <staged-file> --json` always mints a *new* id, so this
- * module implements "reopen in place" itself (plan §3.8): open into a
- * throwaway id, then move that id's on-disk content into the real id's
- * work directory, then discard the throwaway id and the old undo history.
+ * Every deck file operation here goes through `storage/`'s `DeckStore` — no
+ * `node:fs` import in this file at all (AC7's mechanical check:
+ * `rg -n "node:fs" packages/server/src --glob '!storage/**'`).
  */
 
 const FILE_NAME_HEADER = "x-slidra-file-name";
-const DISCARD_UNSAVED_HEADER = "x-slidra-discard-unsaved";
-const UNNAMED_FALLBACK = "Untitled.slidra";
-/** The deck `POST /api/new` creates: no slides, and a name the author is meant to replace. */
-const NEW_DECK_NAME = "Untitled";
-const NEW_DECK_FILE_NAME = `${NEW_DECK_NAME}.slidra`;
-
-/** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.slidra` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead (§4.1's table). */
-export const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
-const SAVED_AT_SETTLE_WINDOW_MS = 10;
-
-const ILLEGAL_FILESYSTEM_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
-
-/** Ported verbatim from `packages/core`'s `asset-import.ts` (§3.7) — this file's only private copy, used to turn the uploaded file's display name into a safe on-disk staging name. */
-function sanitizeAssetBaseName(sourceName: string): string {
-  const withoutExtension = sourceName.replace(/\.[^./]+$/, "");
-  const sanitized = withoutExtension.replace(ILLEGAL_FILESYSTEM_CHARS, "_").trim();
-  return sanitized.length > 0 ? sanitized : "asset";
-}
+/** Same order-of-magnitude headroom as asset-upload.ts's own limit, halved: a `.slidra` with no large embedded media is far smaller than this; a bigger one should go through the CLI instead. */
+const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -86,129 +65,85 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
   });
 }
 
-/**
- * Replaces presentation `id`'s deck content in place with `stagedPath`'s,
- * without changing `id` itself — plan §3.8, ported from `packages/core`'s
- * `reopenPresentationInPlace`, with the actual unpack/migration moved into
- * the Rust binary: `slidra open <stagedPath> --json` does the ZIP-to-SQLite
- * migration (if needed) and validation, minting a fresh, throwaway id
- * `id2`; this function only moves bytes around afterwards.
- *
- * The real deck file (`entry.deckPath`) is never deleted or renamed over —
- * its bytes are truncated and rewritten in place — because
- * `fs.watch(deckPath)` (`watch.ts`) holds a handle on that exact inode;
- * swapping the inode out from under a live `serve` watcher would kill it.
- * `id2`'s staged file and its `projects.json` entry are removed once the
- * swap is durable.
- */
-async function reopenPresentationInPlace(id: string, stagedPath: string): Promise<void> {
-  const home = resolveSlidraHome();
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  if (!entry) {
-    throw new SlidraError(`no presentation found for id: ${id}`);
-  }
-
-  const opened = await runJsonCommand<{ id: string }>(["open", stagedPath]);
-  if (!opened.ok) {
-    throw new SlidraError(opened.message);
-  }
-  const id2 = opened.data?.id;
-  if (typeof id2 !== "string") {
-    throw new SlidraError("open returned malformed data");
-  }
-
-  const registryAfterOpen = await readProjectsRegistry();
-  const stagedEntry = registryAfterOpen.get(id2);
-  if (!stagedEntry) {
-    throw new SlidraError(`no presentation found for id: ${id2}`);
-  }
-
-  // Truncate + write, never rename — see this function's own doc comment
-  // on why the inode must survive.
-  const stagedBytes = await readFile(stagedEntry.deckPath);
-  await writeFile(entry.deckPath, stagedBytes);
-
-  // Read-modify-write under the lock, so a `slidra` process registering
-  // its own presentation at the same moment does not lose its entry to this
-  // write (or vice versa). Deliberately narrower than this whole function:
-  // the `open` above shells out to the CLI, which takes this same lock.
-  const savedAt = (await stat(entry.deckPath)).mtimeMs + SAVED_AT_SETTLE_WINDOW_MS;
-  await withProjectsRegistryLock(async () => {
-    const finalRegistry = await readProjectsRegistry();
-    finalRegistry.set(id, { ...entry, sourcePath: stagedPath, savedAt });
-    finalRegistry.delete(id2);
-    await writeProjectsRegistry(finalRegistry);
+function readTextBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
   });
-
-  await rm(path.dirname(stagedEntry.deckPath), { recursive: true, force: true }).catch(() => {});
-  await rm(path.join(home, "history", id), { recursive: true, force: true }).catch(() => {});
 }
 
-/**
- * `POST /api/new` — the GUI's New action, the sibling of Open. Makes a
- * brand-new presentation with no slides at all (`slidra new` writes
- * `"slides": []`) and swaps it into this server's own id through the very
- * same `reopenPresentationInPlace` Open uses: `serve` is bound to one id
- * for its whole lifetime (routes, change broadcaster, agent session), so
- * "new" can only ever mean "this id, emptied", never a second id.
- *
- * Takes no request body. The unsaved-changes gate is Open's, verbatim —
- * discarding the author's work is exactly as destructive here.
- */
-export async function handleNewPost(
-  presentationId: string,
-  changeBroadcaster: ChangeBroadcaster,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
-  if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
-    const saveState = await readSaveState(presentationId);
-    if (saveState.known && saveState.dirty) {
-      sendJson(res, 409, { error: "The current presentation has unsaved changes" });
-      return;
-    }
+/** Maps a `DeckStore` rejection to its HTTP shape — the one place every route below translates a thrown error, so the mapping cannot drift between them. */
+function sendStoreError(res: ServerResponse, error: unknown, fallbackMessage: string): void {
+  if (error instanceof ImportConfirmationRequiredError) {
+    sendJson(res, 409, { error: error.message, reason: "confirm-import", sourcePath: error.sourcePath });
+    return;
   }
+  if (error instanceof DeckNameConflictError) {
+    sendJson(res, 409, { error: error.message, reason: "name-conflict" });
+    return;
+  }
+  if (error instanceof DeckBoundError) {
+    sendJson(res, 409, { error: error.message, reason: "deck-bound" });
+    return;
+  }
+  if (error instanceof SlidraNotFoundError) {
+    sendJson(res, 404, { error: error.message });
+    return;
+  }
+  if (error instanceof SlidraError) {
+    sendJson(res, 400, { error: error.message });
+    return;
+  }
+  sendJson(res, 500, { error: error instanceof Error ? error.message : fallbackMessage });
+}
 
-  const home = resolveSlidraHome();
-  const opaqueId = randomBytes(9).toString("hex");
-  const stagedDir = path.join(home, "opened", opaqueId);
-  const stagedPath = path.join(stagedDir, NEW_DECK_FILE_NAME);
-  await mkdir(stagedDir, { recursive: true });
-
-  const created = await runJsonCommand<unknown>(["new", stagedPath, "--name", NEW_DECK_NAME]);
-  if (!created.ok) {
-    await rm(stagedDir, { recursive: true, force: true }).catch(() => {});
-    sendJson(res, 400, { error: created.message });
+/** `POST /api/new` — the GUI's New action: creates a brand-new, no-slides deck in the deck folder (AC1). Body: `{ name?: string, owner?: string }`. */
+export async function handleNewPost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let parsed: unknown;
+  try {
+    const raw = await readTextBody(req);
+    parsed = raw.trim().length > 0 ? JSON.parse(raw) : {};
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    sendJson(res, 400, { error: "Request body must be a JSON object" });
+    return;
+  }
+  const { name, owner } = parsed as { name?: unknown; owner?: unknown };
+  if (name !== undefined && typeof name !== "string") {
+    sendJson(res, 400, { error: "name must be a string" });
+    return;
+  }
+  if (owner !== undefined && typeof owner !== "string") {
+    sendJson(res, 400, { error: "owner must be a string" });
     return;
   }
 
   try {
-    await reopenPresentationInPlace(presentationId, stagedPath);
+    const created = await store.create({ name, owner });
+    sendJson(res, 200, { ok: true, id: created.id, fileName: created.fileName });
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Create failed" });
-    return;
+    sendStoreError(res, error, "Create failed");
   }
-
-  sendJson(res, 200, { ok: true, fileName: NEW_DECK_FILE_NAME });
-  // Same pair of broadcasts, for the same reason, as handleOpenPost's.
-  changeBroadcaster.broadcast("presentation-changed", {});
-  await broadcastSaveState(changeBroadcaster, presentationId);
 }
 
 /**
- * Runs one `POST /api/open` against this server's own presentation id — the
- * presentation id is never read from the request, same rule every other
- * route in this file family follows (`handleAssetPost`, `handleCommandPost`).
+ * `POST /api/open` — the GUI's Open action. A browser's `<input
+ * type="file">` only ever hands over bytes, never a real filesystem path,
+ * so this keeps its existing raw-body + `x-slidra-file-name` header shape
+ * (the same one `POST /api/asset` uses) rather than becoming a `sourcePath`
+ * import. The uploaded bytes are written straight into the deck folder
+ * (AC1) under a conflict-free name, then validated by registering them the
+ * same way `create`/`deck/import` do — an invalid upload leaves no file
+ * behind.
  */
-export async function handleOpenPost(
-  presentationId: string,
-  changeBroadcaster: ChangeBroadcaster,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
+export async function handleOpenPost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const fileNameHeader = req.headers[FILE_NAME_HEADER];
-  let displayName = UNNAMED_FALLBACK;
+  let displayName: string | undefined;
   if (typeof fileNameHeader === "string" && fileNameHeader.trim() !== "") {
     try {
       displayName = decodeURIComponent(fileNameHeader);
@@ -234,40 +169,101 @@ export async function handleOpenPost(
     return;
   }
 
-  if (req.headers[DISCARD_UNSAVED_HEADER] !== "1") {
-    const saveState = await readSaveState(presentationId);
-    if (saveState.known && saveState.dirty) {
-      sendJson(res, 409, { error: "The current presentation has unsaved changes" });
-      return;
-    }
-  }
-
-  const home = resolveSlidraHome();
-  const opaqueId = randomBytes(9).toString("hex");
-  const safeName = `${sanitizeAssetBaseName(displayName)}.slidra`;
-  const stagedDir = path.join(home, "opened", opaqueId);
-  const stagedPath = path.join(stagedDir, safeName);
-  await mkdir(stagedDir, { recursive: true });
-  await writeFile(stagedPath, body);
-
   try {
-    // Validates the uploaded bytes (a real zip, a valid project.json, a
-    // supported formatVersion) before touching the live work directory —
-    // see reopenPresentationInPlace's own comment. Its SlidraError
-    // messages (relayed from `slidra open`'s own JSON message) are
-    // relayed verbatim, matching §4.1's table.
-    await reopenPresentationInPlace(presentationId, stagedPath);
+    const created = await store.openUpload(body, displayName);
+    sendJson(res, 200, { ok: true, id: created.id, fileName: created.fileName });
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Open failed" });
+    sendStoreError(res, error, "Open failed");
+  }
+}
+
+/** `POST /api/deck/import` — brings an external `.slidra` into the deck folder (AC3). Body: `{ sourcePath: string, disposition?: "move" | "copy" }`. */
+export async function handleImportPost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readTextBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const body = (typeof parsed === "object" && parsed !== null ? parsed : {}) as {
+    sourcePath?: unknown;
+    disposition?: unknown;
+  };
+  if (typeof body.sourcePath !== "string" || body.sourcePath === "") {
+    sendJson(res, 400, { error: "sourcePath must be a non-empty string" });
+    return;
+  }
+  if (body.disposition !== undefined && body.disposition !== "move" && body.disposition !== "copy") {
+    sendJson(res, 400, { error: 'disposition must be "move" or "copy"' });
     return;
   }
 
-  sendJson(res, 200, { ok: true, fileName: safeName });
-  // "presentation-changed and save-state (dirty:false) are broadcast in the
-  // same turn" — called directly here rather than left to changes.ts's own debounced
-  // fs.watch pickup, which would (a) only fire once some browser tab has
-  // opened /api/events at all (ensureWatcher() starts lazily) and (b) lag
-  // by its 100ms debounce. Both events share the one existing broadcaster.
-  changeBroadcaster.broadcast("presentation-changed", {});
-  await broadcastSaveState(changeBroadcaster, presentationId);
+  try {
+    const created = await store.importExternal({ sourcePath: body.sourcePath, disposition: body.disposition });
+    sendJson(res, 200, { ok: true, id: created.id, fileName: created.fileName });
+  } catch (error) {
+    sendStoreError(res, error, "Import failed");
+  }
+}
+
+/** `POST /api/deck/rename` — AC5. Body: `{ id: string, name: string }`. Refuses with 409 `{reason:"deck-bound"}` for the currently-open deck (the store's own `getCurrentDeckId` check) without touching any file. */
+export async function handleRenamePost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readTextBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const body = (typeof parsed === "object" && parsed !== null ? parsed : {}) as { id?: unknown; name?: unknown };
+  if (typeof body.id !== "string" || body.id === "") {
+    sendJson(res, 400, { error: "id must be a non-empty string" });
+    return;
+  }
+  if (typeof body.name !== "string" || body.name === "") {
+    sendJson(res, 400, { error: "name must be a non-empty string" });
+    return;
+  }
+
+  try {
+    await store.rename(body.id, body.name);
+    sendJson(res, 200, { ok: true });
+  } catch (error) {
+    sendStoreError(res, error, "Rename failed");
+  }
+}
+
+/** `POST /api/deck/delete` — AC4. Body: `{ id: string }`. Refuses with 409 `{reason:"deck-bound"}` for the currently-open deck (the store's own `getCurrentDeckId` check) without touching any file. */
+export async function handleDeletePost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readTextBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const id = typeof parsed === "object" && parsed !== null ? (parsed as { id?: unknown }).id : undefined;
+  if (typeof id !== "string" || id === "") {
+    sendJson(res, 400, { error: "id must be a non-empty string" });
+    return;
+  }
+
+  try {
+    await store.remove(id);
+    sendJson(res, 200, { ok: true });
+  } catch (error) {
+    sendStoreError(res, error, "Delete failed");
+  }
+}
+
+/** `GET /api/decks?owner=` — AC6. Every entry is scanned directly out of the deck folder (`storage/`'s one Rust subprocess call), never out of the registry — a deck that has never been opened still shows up here. */
+export async function handleDecksGet(store: DeckStore, url: URL, res: ServerResponse): Promise<void> {
+  const owner = url.searchParams.has("owner") ? (url.searchParams.get("owner") ?? "") : undefined;
+  try {
+    const decks = await store.list(owner);
+    sendJson(res, 200, { decks });
+  } catch (error) {
+    sendStoreError(res, error, "Failed to list decks");
+  }
 }

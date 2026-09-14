@@ -21,7 +21,15 @@ import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleCommandPost } from "./command-endpoint.js";
 import { handleAssetPost } from "./asset-upload.js";
-import { handleNewPost, handleOpenPost } from "./open-endpoint.js";
+import {
+  handleDecksGet,
+  handleDeletePost,
+  handleImportPost,
+  handleNewPost,
+  handleOpenPost,
+  handleRenamePost,
+} from "./open-endpoint.js";
+import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
 import { broadcastSaveState } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
@@ -300,9 +308,16 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     },
   });
 
+  // [E6.T2]: built once per server, injected into every deck lifecycle
+  // route in `open-endpoint.ts` — no route constructs its own.
+  // `getCurrentDeckId` closes over `deckSession` (declared above) so
+  // rename/delete refuse the deck this server currently has bound.
+  const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
+
   const server = http.createServer((req, res) => {
     void handleRequest(
       deckSession,
+      deckStore,
       staticDir,
       manager,
       chatStreams,
@@ -391,6 +406,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 
 async function handleRequest(
   deckSession: DeckSession,
+  deckStore: DeckStore,
   staticDir: string,
   manager: AgentManager,
   chatStreams: ChatStreamRegistry,
@@ -496,6 +512,31 @@ async function handleRequest(
         await handleDeckSwitchPost(deckSession, changeBroadcaster, req, res);
         return;
       }
+      if (url.pathname === "/api/new") {
+        // [E6.T2]: deck-independent (never gated on `requireDeck`/the
+        // editing-lock below) — creates a new deck in the deck folder, does
+        // not switch to it and does not touch whichever deck this server
+        // currently has open, if any.
+        await handleNewPost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/open") {
+        // [E6.T2]: same "deck-independent" contract as /api/new above.
+        await handleOpenPost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/deck/import") {
+        await handleImportPost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/deck/rename") {
+        await handleRenamePost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/deck/delete") {
+        await handleDeletePost(deckStore, req, res);
+        return;
+      }
       if (url.pathname === "/api/command") {
         // NOOP-91 §4.9: the front end's only write path. Whitelisting and
         // the server-owned presentation id both live inside the handler,
@@ -526,31 +567,6 @@ async function handleRequest(
           return;
         }
         await handleAssetPost(deckId, req, res);
-        return;
-      }
-      if (url.pathname === "/api/open") {
-        // NOOP-93 §4.1: the GUI's Open action is a human write like
-        // /api/asset above — same "agent holds the floor" 409 gate, same
-        // call-site level.
-        const deckId = requireDeck(deckSession, res);
-        if (deckId === null) return;
-        if (editingLock.getState() === "agent") {
-          sendJson(res, 409, { error: new EditingLockConflictError().message });
-          return;
-        }
-        await handleOpenPost(deckId, changeBroadcaster, req, res);
-        return;
-      }
-      if (url.pathname === "/api/new") {
-        // Replaces this id's whole content, so it sits behind the same
-        // "agent holds the floor" gate /api/open does.
-        const deckId = requireDeck(deckSession, res);
-        if (deckId === null) return;
-        if (editingLock.getState() === "agent") {
-          sendJson(res, 409, { error: new EditingLockConflictError().message });
-          return;
-        }
-        await handleNewPost(deckId, changeBroadcaster, req, res);
         return;
       }
       if (url.pathname === "/api/save") {
@@ -631,6 +647,14 @@ async function handleRequest(
       // currently open — there is no other route this can be inferred from.
       const deck = deckSession.current();
       sendJson(res, 200, { deck: deck ? toPublicDeck(deck) : null });
+      return;
+    }
+
+    if (url.pathname === "/api/decks") {
+      // [E6.T2]: deck-independent, like /api/new and /api/open above —
+      // scans the deck folder directly, regardless of whether this server
+      // currently has a deck open.
+      await handleDecksGet(deckStore, url, res);
       return;
     }
 

@@ -44,12 +44,14 @@ interface Harness {
   slidraPath: string;
   slidraHome: string;
   slidraDir: string;
+  deckFolder: string;
   staticDir: string;
 }
 
 async function startHarness(): Promise<Harness> {
   const slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home-"));
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-files-"));
+  const deckFolder = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-deckfolder-"));
   const staticDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-static-"));
   process.env.SLIDRA_HOME = slidraHome;
   // slidra serve now spawns the Rust binary for every read/write.
@@ -61,9 +63,15 @@ async function startHarness(): Promise<Harness> {
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
+  // [E6.T2]: POST /api/open now lands the uploaded deck in the configured
+  // deck folder (default ~/Slidra) rather than reopening the current
+  // presentation in place — pointed at an isolated temp dir so this test
+  // never touches the real host home directory.
+  await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ deckFolder }));
+
   const server = await startServe({ presentationId, port: 0, agent: fakeAgent, staticDir });
 
-  return { server, registry, presentationId, slidraPath, slidraHome, slidraDir, staticDir };
+  return { server, registry, presentationId, slidraPath, slidraHome, slidraDir, deckFolder, staticDir };
 }
 
 async function stopHarness(harness: Harness): Promise<void> {
@@ -72,6 +80,7 @@ async function stopHarness(harness: Harness): Promise<void> {
   delete process.env.SLIDRA_BIN;
   await rm(harness.slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.slidraDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(harness.deckFolder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(harness.staticDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
@@ -168,11 +177,25 @@ describe("file round-trip via POST /api/save", () => {
 });
 
 describe("POST /api/open", () => {
-  it("replaces the served presentation in place, clears undo history, and keeps the same id", async () => {
+  it("creates an independent new deck in the deck folder without switching or touching the currently served presentation's unsaved changes", async () => {
     harness = await startHarness();
-    const { server, presentationId } = harness;
+    const { server, presentationId, deckFolder } = harness;
 
-    // Build a second, distinct .slidra to open on top of the running server.
+    // An unsaved edit on the currently served presentation, made before the
+    // upload — [E6.T2] retired /api/open's old "reopen the served
+    // presentation in place" behavior (and, with it, the discard-unsaved
+    // gate that protected against exactly that): the upload below must
+    // neither touch nor require discarding this edit.
+    const setResponse = await fetch(`${server.url}/api/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "text set",
+        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "should survive open" },
+      }),
+    });
+    expect(setResponse.status).toBe(200);
+
     const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other-"));
     try {
       const otherSlidraPath = path.join(otherDir, "other.slidra");
@@ -188,101 +211,28 @@ describe("POST /api/open", () => {
         body: otherBytes,
       });
       expect(openResponse.status).toBe(200);
-      const openBody = (await openResponse.json()) as { ok: true; fileName: string };
+      const openBody = (await openResponse.json()) as { ok: true; id: string; fileName: string };
       expect(openBody.ok).toBe(true);
+      expect(openBody.id).not.toBe(presentationId);
 
+      // The currently served presentation is unchanged: still the harness's
+      // own deck, and the pre-upload unsaved edit is still there (dirty,
+      // never discarded — there is no discard-unsaved header any more).
       const presentationResponse = await fetch(`${server.url}/api/presentation`);
-      const presentation = (await presentationResponse.json()) as { name: string; slides: string[] };
-      expect(presentation.name).toBe("Acceptance Demo Deck");
-      expect(presentation.slides).toHaveLength(4);
-
+      const presentation = (await presentationResponse.json()) as { name: string };
+      expect(presentation.name).toBe("Export test deck");
       const stateResponse = await fetch(`${server.url}/api/save-state`);
-      await expect(stateResponse.json()).resolves.toEqual({ known: true, dirty: false, fileName: openBody.fileName });
+      await expect(stateResponse.json()).resolves.toMatchObject({ known: true, dirty: true });
 
-      // Undo history for this id must have been cleared by the reopen.
-      const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
-      expect(undoResponse.status).toBe(400);
-      const undoBody = (await undoResponse.json()) as { error: string };
-      expect(undoBody.error).toContain("no operation to undo");
-
-      // The presentation id served did not change.
-      expect(await deckPathFor(presentationId)).toBeTruthy();
+      // The uploaded deck exists as its own, independently openable deck
+      // file inside the configured deck folder (AC1) — never touching
+      // presentationId's own deck file.
+      const uploadedDeckPath = await deckPathFor(openBody.id);
+      expect(path.dirname(uploadedDeckPath)).toBe(deckFolder);
+      expect(uploadedDeckPath).not.toBe(await deckPathFor(presentationId));
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
-  });
-
-  it("refuses with 409 when there are unsaved changes and no discard header, then succeeds once the header is set", async () => {
-    harness = await startHarness();
-    const { server } = harness;
-
-    const setResponse = await fetch(`${server.url}/api/command`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "text set",
-        input: { slidePath: "slides/001.svg", elementId: "el-title", newText: "unsaved change" },
-      }),
-    });
-    expect(setResponse.status).toBe(200);
-
-    const otherDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-other2-"));
-    try {
-      const otherSlidraPath = path.join(otherDir, "other.slidra");
-      await packDirectory(path.join(rootDir, "docs/demo"), otherSlidraPath);
-      const otherBytes = await readFile(otherSlidraPath);
-
-      const refused = await fetch(`${server.url}/api/open`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-slidra-file-name": encodeURIComponent("other.slidra"),
-        },
-        body: otherBytes,
-      });
-      expect(refused.status).toBe(409);
-
-      const forced = await fetch(`${server.url}/api/open`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-slidra-file-name": encodeURIComponent("other.slidra"),
-          "x-slidra-discard-unsaved": "1",
-        },
-        body: otherBytes,
-      });
-      expect(forced.status).toBe(200);
-    } finally {
-      await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
-  });
-
-  it("400s on a corrupt upload without touching the work directory's existing content", async () => {
-    harness = await startHarness();
-    const { server, presentationId } = harness;
-    const before = await readDeckFileText(await deckPathFor(presentationId), "project.json");
-
-    const response = await fetch(`${server.url}/api/open`, {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream", "x-slidra-file-name": "broken.slidra" },
-      body: Buffer.from("not a zip file"),
-    });
-    expect(response.status).toBe(400);
-
-    const after = await readDeckFileText(await deckPathFor(presentationId), "project.json");
-    expect(after).toBe(before);
-  });
-
-  it("400s on an empty body", async () => {
-    harness = await startHarness();
-    const response = await fetch(`${harness.server.url}/api/open`, {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: new Uint8Array(0),
-    });
-    expect(response.status).toBe(400);
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toBe("No file content received");
   });
 });
 
