@@ -41,9 +41,25 @@ When extracting a `.slidra` archive, all entry paths are validated **before** an
 - If validation fails, the entire extraction is aborted and no partial files are left behind.
 - Missing required directories (`slides/`, `assets/`, `fonts/`) are created automatically.
 
----
+### 1.4 Undo/redo history tables ([E6.T6], `formatVersion` 5 only)
 
-## 2. `project.json`
+Three additional tables sit alongside `content` in the same SQLite file, created lazily (`CREATE TABLE IF NOT EXISTS`) the first time a deck's history is touched — a deck migrated from a legacy ZIP, or a fresh `new` deck, has none of these tables until then, and their absence is read as an empty undo/redo history, not a format error. They are not covered by `user_version`/`application_id` and packing (`slidra pack`) copies them like any other part of the file, which is the entire mechanism behind AC2 ("copying the deck file carries its undo history with it").
+
+```sql
+history_group(id INTEGER PRIMARY KEY, group_id TEXT NOT NULL,
+              stack INTEGER NOT NULL,     -- 0=undo 1=redo 2=open group
+              position INTEGER NOT NULL)  -- ascending oldest-to-newest within the same `stack` value
+history_entry(id INTEGER PRIMARY KEY, group_rowid INTEGER NOT NULL,
+              position INTEGER NOT NULL, virtual_path TEXT NOT NULL,
+              snapshot_id TEXT)           -- NULL = this path did not exist before the edit
+history_snapshot(snapshot_id TEXT PRIMARY KEY, data BLOB NOT NULL)
+```
+
+No `FOREIGN KEY`/`CASCADE` between the three — the Rust crate deletes rows explicitly, on its own eviction/finalize schedule. `group_rowid` references `history_group.id`.
+
+Two caps apply to every push onto the `undo` array (via `redo`, or via a content edit outside an open group): at most 500 groups (`UNDO_STACK_CAP`), and at most 64 MiB of total `history_snapshot.data` bytes (`UNDO_SNAPSHOT_BYTES_CAP`, summed across the whole table — undo, redo, and any open group share the same budget). Exceeding either cap evicts the oldest undo group(s) and deletes the snapshot rows they orphaned, but never evicts the last remaining undo group even if it alone exceeds the byte cap — a single oversized snapshot is legal, not an error. `redo`'s own push (from `undo`) is not capped by either limit, so the actual worst-case total footprint is roughly 2x the byte cap.
+
+The container's editing model (RFC 0001 §4: no `VACUUM`, no `auto_vacuum`) applies here too — trimming evicted history frees pages for reuse but does not shrink the file.
 
 The presentation's root metadata file. UTF-8 encoded JSON.
 
