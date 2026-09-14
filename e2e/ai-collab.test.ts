@@ -35,6 +35,7 @@ const slidraBin = path.join(rootDir, "target/release/slidra");
 const webDistIndex = path.join(rootDir, "packages/web/dist/index.html");
 const agentFixture = path.join(e2eDir, "fixtures/comment-fake-acp-agent.mjs");
 const deckDir = path.join(e2eDir, "fixtures/ai-collab-deck");
+const applyMasterDeckDir = path.join(e2eDir, "fixtures/apply-master-deck");
 const presentationFontDir = path.join(rootDir, "assets/fonts");
 const binDir = path.join(rootDir, "node_modules/.bin");
 
@@ -69,6 +70,11 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 async function startServerFor(
   agentEnv: Record<string, string> = {},
   skills: { bundled?: Record<string, string>; user?: Record<string, string> } = {},
+  // Master-mode's own AC3/AC4 test needs a deck with a registered template
+  // and two slides with editable text — `ai-collab-deck`'s slide 2 is
+  // deliberately empty for a different scenario, so that one test points
+  // this at its own fixture instead of growing the shared deck.
+  deckDirOverride?: string,
 ): Promise<{
   server: RunningServer;
   registry: CommandRegistry;
@@ -101,7 +107,7 @@ async function startServerFor(
   // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
-  await cp(deckDir, deckStagingDir, { recursive: true });
+  await cp(deckDirOverride ?? deckDir, deckStagingDir, { recursive: true });
   await mkdir(path.join(deckStagingDir, "fonts"), { recursive: true });
   await cp(presentationFontDir, path.join(deckStagingDir, "fonts"), { recursive: true });
 
@@ -546,6 +552,60 @@ it("after the agent writes via the comment command, without a refresh the GUI's 
 // The `/` slash-command menu. This suite already starts a real
 // server+browser with a fake agent that can echo prompts verbatim, exactly
 // what these two scenarios need.
+
+it("master mode: \"Let the agent update the slides\" saves first, names the changed template in the agent's prompt, and the agent's sweep across slides undoes as one step (AC3/AC4)", async () => {
+  const { server, registry, presentationId, cleanup } = await startServerFor({}, {}, applyMasterDeckDir);
+  try {
+    const page = await openApp(server, { waitForAgent: true });
+
+    const requestOrder: string[] = [];
+    await page.route("**/api/save", (route) => {
+      requestOrder.push("save");
+      void route.continue();
+    });
+    await page.route("**/api/chat", (route) => {
+      requestOrder.push("chat");
+      void route.continue();
+    });
+
+    await page.getByRole("button", { name: "Edit template" }).click();
+    await expect.poll(() => page.locator(".overview-item").count()).toBe(1);
+
+    const before1 = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
+    const before2 = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/002.svg" })).data!.content;
+
+    await page.getByRole("button", { name: "Let the agent update the slides" }).click();
+
+    // AC3(i): the save landed before the dispatch.
+    await expect.poll(() => requestOrder).toEqual(["save", "chat"]);
+
+    // AC3(ii): the agent's prompt names the template that changed.
+    const authored = page.locator(".chat-message-author").last();
+    await expect.poll(() => authored.textContent(), { timeout: 5000 }).toContain("templates/001.svg");
+    expect(await authored.textContent()).toContain("Content");
+
+    // AC4: the fake agent (comment-fake-acp-agent.mjs's own
+    // /slidra-apply-master branch) sweeps both slides in this one turn.
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent(), { timeout: 30_000 }).toBe("applied to 2 slides");
+    const after1 = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content;
+    const after2 = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/002.svg" })).data!.content;
+    expect(after1).toContain("swept from the template");
+    expect(after2).toContain("swept from the template");
+
+    // One Undo press restores BOTH slides — proof the sweep landed as a
+    // single history-group step, not two.
+    await page.locator('.titlebar-icon-button[aria-label="Undo"]').click();
+
+    await expect
+      .poll(async () => (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/001.svg" })).data!.content)
+      .toBe(before1);
+    const restored2 = (await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "slides/002.svg" })).data!.content;
+    expect(restored2).toBe(before2);
+  } finally {
+    await cleanup();
+  }
+});
 
 it("slash commands: list, up/down arrow selection, Enter to complete, Esc to close, live-updates on report changes", async () => {
   const { server, cleanup } = await startServerFor({

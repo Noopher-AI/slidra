@@ -86,6 +86,64 @@
   color: var(--ink-300);
 }
 
+/* The master-mode toggle — its own full-width row below `.rail-actions`,
+   not a third item inside it (see Rail.tsx's own comment: "New"/
+   "Templates" already fill that row's width at two). */
+.rail-master-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  margin: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-700);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+}
+.rail-master-toggle:hover:not(:disabled) {
+  border-color: var(--ink-300);
+}
+.rail-master-toggle[aria-pressed="true"] {
+  border-color: var(--brand-red);
+  color: var(--brand-red);
+}
+.rail-master-toggle:disabled {
+  color: var(--ink-300);
+}
+
+/* Master mode's own explanatory strip + dispatch action (AC3/AC5),
+   rendered between the "Templates" label and the (reused) thumbnail rail
+   while `pageSource === "templates"`. Same shape as the outline/save-
+   template modals' cancel/submit pair, minus the modal chrome. */
+.master-mode-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-6) var(--space-4);
+}
+.master-mode-bar-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-500);
+}
+.master-mode-bar-apply {
+  height: var(--control-h);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: var(--brand-red);
+  border: 0;
+  color: var(--surface-white);
+}
+.master-mode-bar-apply:disabled {
+  background: var(--ink-200);
+  color: var(--surface-white);
+}
+
 .overview {
   flex: 1;
   min-height: 0;

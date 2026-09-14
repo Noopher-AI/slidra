@@ -243,6 +243,13 @@ export interface CanvasState {
    * `pageStyle` (`currentIndex === -1`).
    */
   backgroundImage: BackgroundImage | null;
+  /**
+   * Which page list `slides`/`currentIndex` currently index — `"slides"`
+   * normally, `"templates"` while master mode
+   * (`.dev_docs/adr/0013-templates-not-masters.md`) is active. Only
+   * `setPageSource` changes this.
+   */
+  pageSource: "slides" | "templates";
 }
 
 /**
@@ -261,6 +268,26 @@ export type ImportAssetResult = { ok: true; message: string; data: ImportedAsset
 
 export interface CanvasController {
   reload: () => Promise<void>;
+  /**
+   * Switches the page list `CanvasState.slides`/`currentIndex` index
+   * between the deck's slides and its templates (master-mode
+   * `.dev_docs/adr/0013-templates-not-masters.md`) — the one seam every
+   * other read/write path (`showSlide`, `runCommand`, every
+   * `slides[currentIndex]` call site) stays unaware of. A no-op when
+   * already on the requested source. Resets `currentIndex` to the head of
+   * the new list — there is no meaningful correspondence between a slide
+   * index and a template index — so a caller that needs to land on a
+   * specific page (leaving master mode back to the slide the author was
+   * looking at) calls `showSlide` afterwards.
+   */
+  setPageSource: (source: "slides" | "templates") => Promise<void>;
+  /**
+   * `project.slides.length`, independent of `pageSource` — while master
+   * mode has swapped `CanvasState.slides` over to the template list, the
+   * "Let the agent update the slides" prompt (AC3) still needs to say how
+   * many real slides exist.
+   */
+  readonly deckSlideCount: number;
   /**
    * Throws when the index is out of range — that is a programming error,
    * not user input. `selectAfter` re-selects these element ids
@@ -583,6 +610,39 @@ interface ProjectJson {
    * fetch and parse the exact font bytes `wrapText` needs (§4.4).
    */
   fonts?: { file: string; family: string }[];
+  /**
+   * The deck's templates (spec §2.4). A legacy entry is a bare string; a
+   * current one is `{file, name}` — both may appear in the same array.
+   * Only present when the deck declares at least one. `setPageSource`'s
+   * `"templates"` branch is the only reader.
+   */
+  templates?: (string | { file: string; name: string })[];
+}
+
+/**
+ * Normalizes `project.json`'s `templates` field (bare strings and
+ * `{file, name}` objects, possibly mixed — spec §2.4) into the plain path
+ * list `reload()` treats as the page list while master mode is active. An
+ * entry that is neither a string nor an object with a string `file` is a
+ * project.json format error: counted here so the caller can report it
+ * once, never silently dropped and never given a fabricated path.
+ */
+function normalizeTemplatePaths(templates: (string | { file: string; name: string })[] | undefined): {
+  paths: string[];
+  invalidCount: number;
+} {
+  const paths: string[] = [];
+  let invalidCount = 0;
+  for (const entry of templates ?? []) {
+    if (typeof entry === "string") {
+      paths.push(entry);
+    } else if (entry !== null && typeof entry === "object" && typeof (entry as { file?: unknown }).file === "string") {
+      paths.push((entry as { file: string }).file);
+    } else {
+      invalidCount += 1;
+    }
+  }
+  return { paths, invalidCount };
 }
 
 /**
@@ -1178,6 +1238,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // state. React subscribes to read it and issues commands to change it.
   let slides: string[] = [];
   let currentIndex = -1;
+  // Master mode's own page-source switch (`setPageSource`). `slides` above
+  // holds whichever list this is set to; `deckSlides` always holds the
+  // deck's real slide list regardless, so `deckSlideCount` stays correct
+  // while `slides` has been swapped to the template list.
+  let pageSource: "slides" | "templates" = "slides";
+  let deckSlides: string[] = [];
   // The page currently on screen's own enter/exit transition,
   // read fresh from its markup by renderPlay() (or migrateLegacyTransition
   // vintage — every slide has a resolved value even when it never set one
@@ -3442,7 +3508,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Before any slide document is built from this load: the deck's own
     // embedded faces (#305).
     setPresentationFonts(project.fonts);
-    slides = project.slides;
+    deckSlides = project.slides;
+    if (pageSource === "templates") {
+      const { paths, invalidCount } = normalizeTemplatePaths(project.templates);
+      slides = paths;
+      if (invalidCount > 0) {
+        error = `project.json format error: ${invalidCount} template ${invalidCount === 1 ? "entry is" : "entries are"} not a string or {file,name} and were skipped`;
+      }
+    } else {
+      slides = project.slides;
+    }
     // Live reload calls reload() on every external edit. Staying on the
     // slide the author is looking at is the whole point — jumping back to
     // the first one because an agent changed a word elsewhere is a bug.
@@ -3475,6 +3550,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     } else {
       await render(thisGeneration);
     }
+  }
+
+  /** See `CanvasController.setPageSource`'s own doc comment. */
+  async function setPageSource(source: "slides" | "templates"): Promise<void> {
+    if (destroyed || pageSource === source) return;
+    pageSource = source;
+    // A fresh page list — a slide index has no correspondence to a
+    // template index — so this always starts at the head, never carries
+    // the previous list's position over. reload()'s own clamp turns this
+    // into -1 when the new list is empty.
+    currentIndex = 0;
+    await reload();
   }
 
   /**
@@ -4210,6 +4297,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
       backgroundImage: currentSlideModel?.backgroundImage ?? null,
+      pageSource,
     };
     for (const listener of listeners) listener(state);
   }
@@ -4231,6 +4319,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       dragSignal,
       pageStyle: currentSlideModel?.pageStyle ?? null,
       backgroundImage: currentSlideModel?.backgroundImage ?? null,
+      pageSource,
     });
     return () => {
       listeners.delete(listener);
@@ -4242,6 +4331,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   return {
     reload,
     showSlide,
+    setPageSource,
+    get deckSlideCount() {
+      return deckSlides.length;
+    },
     next,
     previous,
     subscribe,

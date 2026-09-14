@@ -20,7 +20,10 @@ function fakeCanvas(
   runCommandCalls: Array<{ name: string; input: Record<string, unknown> }>;
 } {
   const listeners = new Set<(state: CanvasState) => void>();
-  let state = initial;
+  // Every call site in this file predates `pageSource` (master mode) and
+  // only ever sets the fields it cares about — defaulted here, once, rather
+  // than adding `pageSource: "slides"` to every literal in this file.
+  let state = { pageSource: "slides", ...initial } as CanvasState;
   const showSlideCalls: number[] = [];
   const runCommandCalls: Array<{ name: string; input: Record<string, unknown> }> = [];
   const runCommandResult = options.runCommandResult ?? { ok: true, message: "ok" };
@@ -52,8 +55,8 @@ function fakeCanvas(
   return {
     controller,
     setState: (next) => {
-      state = next;
-      for (const listener of listeners) listener(next);
+      state = { pageSource: "slides", ...next } as CanvasState;
+      for (const listener of listeners) listener(state);
     },
     showSlideCalls,
     runCommandCalls,

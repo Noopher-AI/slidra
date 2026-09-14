@@ -23,6 +23,7 @@ import { PlayChrome } from "./shell/PlayChrome.js";
 import { PlanGateModal } from "./shell/PlanGateModal.js";
 import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
+import { buildApplyMasterMessage } from "./shell/master-mode/master-prompt.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
@@ -139,6 +140,7 @@ export function App() {
     dragSignal: 0,
     pageStyle: null,
     backgroundImage: null,
+    pageSource: "slides",
   });
   // Ticket #5 fix round: a dead watcher used to fail silently — the SSE
   // stream closed, EventSource retried forever against a server that would
@@ -618,6 +620,11 @@ export function App() {
   // change just to see the current mode.
   const canvasStateRef = useRef(canvasState);
   canvasStateRef.current = canvasState;
+  // Master mode's own "remember where I was" (AC1) — the slide index at
+  // the moment `enterMasterMode` switches `pageSource` away from
+  // `"slides"`, so `exitMasterMode` can restore it. `null` between visits;
+  // a plain ref because it drives no render of its own.
+  const preMasterIndexRef = useRef<number | null>(null);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       // Space is play-mode-only (§4.5's own scope — "→ / Space /
@@ -1102,24 +1109,32 @@ export function App() {
     }
   }
 
-  /** `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this one path. Frozen guard matches runUndoRedo's: no request, no 409 to report, same as undo/redo. */
-  async function handleSave(): Promise<void> {
-    if (editingFrozenRef.current) return;
+  /**
+   * `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this
+   * one path. Frozen guard matches runUndoRedo's: no request, no 409 to
+   * report, same as undo/redo. Returns whether the save actually
+   * succeeded — master mode's "Let the agent update the slides" (AC3)
+   * must not dispatch the agent over a template that failed to save; the
+   * two pre-existing call sites below ignore the return value.
+   */
+  async function handleSave(): Promise<boolean> {
+    if (editingFrozenRef.current) return false;
     setOpenError(null);
     let response: Response;
     try {
       response = await fetch("/api/save", { method: "POST" });
     } catch {
       setOpenError("Failed to save: connection lost");
-      return;
+      return false;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       setOpenError(body.error ?? "Failed to save");
-      return;
+      return false;
     }
     // The server broadcasts save-state itself (serve.ts's handleSavePost) —
     // no client-side refetch needed on success.
+    return true;
   }
 
   /**
@@ -1424,6 +1439,59 @@ export function App() {
         ? "[plan-from-outline] This presentation has no slides yet."
         : `[plan-from-outline] There are ${count} pages so far; new pages will be appended at the end.`;
     await sendChatText(`/slidra-plan ${position}\n\n${outline}`);
+  }
+
+  /**
+   * Rail's mode toggle, entering (AC1) — remembers the slide the author
+   * was looking at, then hands `canvasState.slides`/`currentIndex` over to
+   * the deck's templates. Frozen guard matches Save/undo/redo's own.
+   */
+  async function enterMasterMode(): Promise<void> {
+    if (editingFrozenRef.current) return;
+    const controller = controllerRef.current;
+    if (!controller) return;
+    preMasterIndexRef.current = canvasStateRef.current.currentIndex;
+    await controller.setPageSource("templates");
+  }
+
+  /**
+   * Leaving restores the slide view and the previously selected slide
+   * (AC1). The remembered index is clamped to the deck's current slide
+   * count rather than trusted outright: `showSlide` throws on an
+   * out-of-range index, and nothing rules out a concurrent external edit
+   * shortening the deck while this tab sat in master mode.
+   */
+  async function exitMasterMode(): Promise<void> {
+    const controller = controllerRef.current;
+    if (!controller) return;
+    const from = preMasterIndexRef.current;
+    preMasterIndexRef.current = null;
+    await controller.setPageSource("slides");
+    const slideCount = canvasStateRef.current.slides.length;
+    if (from !== null && from >= 0 && slideCount > 0) {
+      await controller.showSlide(Math.min(from, slideCount - 1));
+    }
+  }
+
+  /**
+   * "Let the agent update the slides" (AC3): saves the template first —
+   * the agent reads the change off disk, not off whatever this tab still
+   * has in memory — then dispatches `buildApplyMasterMessage` through the
+   * exact same `sendChatText` path `draftWithAgent` above uses. A failed
+   * save does not dispatch (`handleSave`'s own `setOpenError` already
+   * reported why); `sendChatText`'s existing honest-refusal handles a
+   * `streamReady === false` race on its own — the save already happened
+   * either way, and is never rolled back.
+   */
+  async function applyTemplateToSlides(templateName: string | null): Promise<void> {
+    if (editingFrozenRef.current) return;
+    const controller = controllerRef.current;
+    const state = canvasStateRef.current;
+    if (!controller || state.pageSource !== "templates" || state.currentIndex === -1) return;
+    const templatePath = state.slides[state.currentIndex];
+    const saved = await handleSave();
+    if (!saved) return;
+    await sendChatText(buildApplyMasterMessage({ templatePath, templateName, slideCount: controller.deckSlideCount }));
   }
 
   /**
@@ -1740,6 +1808,11 @@ export function App() {
             contextMenuRequest={contextMenuRequest}
             onCloseContextMenu={() => setContextMenuRequest(null)}
             onDraftWithAgent={(outline) => void draftWithAgent(outline)}
+            pageSource={canvasState.pageSource}
+            editingFrozen={editingFrozen}
+            onEnterMasterMode={() => void enterMasterMode()}
+            onExitMasterMode={() => void exitMasterMode()}
+            onApplyTemplateToSlides={(templateName) => void applyTemplateToSlides(templateName)}
           />
         )}
         <div className="main">

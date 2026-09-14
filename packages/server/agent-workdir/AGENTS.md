@@ -100,3 +100,4 @@ The three asset libraries (`style-kit`, `background-kit`, `layout-kit`) are part
 | `/slidra-style-kit` | `slidra-style-kit` | Pick one from the style library and write it into `plan/design-spec.md` |
 | `/slidra-background-kit` | `slidra-background-kit` | Pick a recipe from the background library, build it into an asset, and apply it to the page |
 | `/slidra-layout-kit` | `slidra-layout-kit` | Pick one from the layout library to lay out a given page |
+| `/slidra-apply-master` | `slidra-apply-master` | Sweep a template's just-saved change onto every existing slide made from it |
