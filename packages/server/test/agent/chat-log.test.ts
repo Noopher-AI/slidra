@@ -92,6 +92,33 @@ describe("ChatLog: a command's status update upserts the same row", () => {
       meta: { toolCallId: "call-1", status: "failed", cli: true, output: "zsh: command not found: slidra" },
     });
   });
+
+  // [Review NOOP-458] The case above keeps both events inside ONE debounce
+  // window, which is not what production does: the 500ms timer starts at
+  // whichever event opened the batch, so a command whose `tool_call_update`
+  // arrives after that timer already fired has its start row flushed and
+  // dropped from `pending`. `recordCommandUpdate` then rebuilds the row
+  // from `pending` alone (`text: existing?.text ?? ""`), and the deck's
+  // `ON CONFLICT(entry_id) DO UPDATE SET text = excluded.text` overwrites
+  // the stored command with the empty string — a restored thread (AC1)
+  // shows a command card with no command in it.
+  it("keeps the command text and cli flag when the status update lands after the start row was already flushed", async () => {
+    const { log, calls } = fakeLog();
+
+    log.recordCommand("call-1", "slidra text set p1 slides/001.svg el-1 'Q3'", "pending", true);
+    await log.flush();
+    log.recordCommandUpdate("call-1", { status: "completed", output: "ok" });
+    await log.flush();
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0]).toEqual({
+      entryId: "cmd-call-1",
+      kind: "command",
+      at: "2026-01-01T00:00:00.000Z",
+      text: "slidra text set p1 slides/001.svg el-1 'Q3'",
+      meta: { toolCallId: "call-1", status: "completed", cli: true, output: "ok" },
+    });
+  });
 });
 
 describe("ChatLog: a burst of writes flushes as a single append call (debounced)", () => {
