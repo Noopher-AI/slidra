@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { undoGroupCount } from "./helpers/deck.js";
 import { packDirectory } from "./helpers/pack.js";
+import { deckPathFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
@@ -231,16 +233,9 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-/** `<SLIDRA_HOME>/history/<presentationId>/stack.json`'s `undo` array length (history.ts) — a direct read of the invariant that dragging 100 times must not produce 100 history entries; each drag is exactly one entry. `startServerFor` sets `process.env.SLIDRA_HOME` for the whole test's lifetime. A never-edited presentation has no `stack.json` at all (history.ts's own documented "genuinely missing file" case) — treated as 0, not an error. */
+/** The deck's undo stack depth (`e2e/helpers/deck.js`'s `undoGroupCount`) — a direct read of the invariant that dragging 100 times must not produce 100 history entries; each drag is exactly one entry. `startServerFor` sets `process.env.SLIDRA_HOME` for the whole test's lifetime. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.SLIDRA_HOME!;
-  try {
-    const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
-    return (JSON.parse(raw).undo ?? []).length;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw error;
-  }
+  return undoGroupCount(await deckPathFor(presentationId));
 }
 
 /**

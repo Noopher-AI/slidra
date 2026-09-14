@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { deckPathFor } from "../packages/server/src/slidra/home.js";
-import { readDeckFileText } from "./helpers/deck.js";
+import { readDeckFileText, undoGroupCount } from "./helpers/deck.js";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
@@ -91,16 +91,9 @@ async function catSlide(registry: Awaited<ReturnType<typeof newTableDeck>>["regi
   return result.data!.content;
 }
 
-/** `<SLIDRA_HOME>/history/<presentationId>/stack.json`'s `undo` array length — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses, for "single history entry" assertions without depending on the Undo button's own UI state. */
+/** The deck's undo stack depth — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses (`e2e/helpers/deck.js`'s `undoGroupCount`), for "single history entry" assertions without depending on the Undo button's own UI state. */
 async function undoCount(presentationId: string): Promise<number> {
-  const home = process.env.SLIDRA_HOME!;
-  try {
-    const raw = await readFile(path.join(home, "history", presentationId, "stack.json"), "utf8");
-    return (JSON.parse(raw).undo ?? []).length;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw error;
-  }
+  return undoGroupCount(await deckPathFor(presentationId));
 }
 
 /** The single cell `<g data-slidra-cell="row,col">…</g>` block's raw markup, for regex assertions against a `cat` dump. */
