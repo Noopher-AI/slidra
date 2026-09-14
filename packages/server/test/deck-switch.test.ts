@@ -13,7 +13,7 @@ import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity } from "../src/deck-switch.js";
-import { readProjectsRegistry, resolveSlidraHome } from "../src/slidra/home.js";
+import { readProjectsRegistry } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
@@ -162,15 +162,19 @@ async function fingerprintFile(filePath: string): Promise<string> {
  * file itself, so `deckDir` (which fingerprints every file in the deck's
  * directory, including that file's own bytes) and `slidraFile` already
  * cover it; a dedicated field would just duplicate that coverage.
+ *
+ * NOOP-425 D4: `agentWorkdir` now lives under this server's own sandbox
+ * root, not `<SLIDRA_HOME>/agent/<id>` — the caller passes
+ * `server.agentSandboxRoot` explicitly rather than this function resolving
+ * `SLIDRA_HOME` itself.
  */
-async function fingerprintDeck(id: string, slidraPath: string): Promise<Record<string, string>> {
+async function fingerprintDeck(id: string, slidraPath: string, sandboxRoot: string): Promise<Record<string, string>> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
   if (!entry) throw new Error(`test fixture: registry has no entry for ${id}`);
-  const home = resolveSlidraHome();
   return {
     deckDir: await fingerprintDir(path.dirname(entry.deckPath)),
-    agentWorkdir: await fingerprintDir(path.join(home, "agent", id)),
+    agentWorkdir: await fingerprintDir(path.join(sandboxRoot, id)),
     slidraFile: await fingerprintFile(slidraPath),
   };
 }
@@ -340,17 +344,24 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect((await presentation.json()).name).toBe("deck-b");
   });
 
-  it("④ A's fingerprints (work dir, agent workdir, .slidra file) are byte-for-byte unchanged after switching to B", async () => {
+  it("④ A's deck dir and .slidra file are byte-for-byte unchanged after switching to B, and its agent sandbox subdirectory is gone (NOOP-425 AC9, switching decks)", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");
     const server = await serve({ presentationId: a.id });
-    const before = await fingerprintDeck(a.id, a.slidraPath);
+    const before = await fingerprintDeck(a.id, a.slidraPath, server.agentSandboxRoot);
+    // Deployed at startup — a fingerprint of "<absent>" here would make the
+    // assertion below vacuous.
+    expect(before.agentWorkdir).not.toBe("<absent>");
 
     const response = await switchTo(server, b.id);
     expect(response.status).toBe(200);
 
-    const after = await fingerprintDeck(a.id, a.slidraPath);
-    expect(after).toEqual(before);
+    const after = await fingerprintDeck(a.id, a.slidraPath, server.agentSandboxRoot);
+    expect(after.deckDir).toBe(before.deckDir);
+    expect(after.slidraFile).toBe(before.slidraFile);
+    // AC9: switching decks leaves no agent working files from the previous
+    // deck inside the sandbox.
+    expect(after.agentWorkdir).toBe("<absent>");
   });
 
   it("⑤ switching to a deck that was just created leaves the previously open deck's file unchanged", async () => {
@@ -420,7 +431,7 @@ describe("switching (AC3/AC4/AC5)", () => {
 
     const cwdLog = await waitForLogLine(logPath, (entry) => entry.newSessionCwd !== undefined);
     const newSessionEntry = cwdLog.find((entry) => entry.newSessionCwd !== undefined)!;
-    const bAgentWorkdir = path.join(resolveSlidraHome(), "agent", b.id);
+    const bAgentWorkdir = path.join(server.agentSandboxRoot, b.id);
     expect(newSessionEntry.newSessionCwd).toBe(await realWorkdir(bAgentWorkdir));
 
     // `prompt` is logged by the fixture's `prompt()` handler, a separate

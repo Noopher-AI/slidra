@@ -12,6 +12,7 @@ import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
+import { createSandboxRoot } from "./sandbox/sandbox-root.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
 import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
@@ -133,6 +134,8 @@ export interface ServeOptions {
 export interface RunningServer {
   port: number;
   url: string;
+  /** This server's own sandbox root (NOOP-425 D4) — where the agent's deployed work directory (and, once write isolation is active, the shim wrapper) lives. Never under `SLIDRA_HOME` any more. */
+  agentSandboxRoot: string;
   close: () => Promise<void>;
 }
 
@@ -156,16 +159,25 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // pre-NOOP-433 startup sequence, just wrapped in "only when given".
   let initialDeck: DeckIdentity | null = null;
   let initialWorkdir: string | null = null;
-  if (options.presentationId !== undefined) {
-    initialDeck = await resolveDeckIdentity(options.presentationId);
-    initialWorkdir = await deployAgentWorkdir(options.presentationId);
-  }
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
   // Resources started alongside the HTTP server. close() tears them down in
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
+
+  // NOOP-425 D4: this serve process's own scratch tree for the agent's
+  // deployed work directory — created unconditionally (even with no deck
+  // bound yet) since a later deck switch's `bind` needs it too. Disposed
+  // wholesale on shutdown, and one presentation at a time on `unbind`
+  // below (AC9).
+  const sandboxRoot = await createSandboxRoot();
+  disposers.push(() => sandboxRoot.disposeAll());
+
+  if (options.presentationId !== undefined) {
+    initialDeck = await resolveDeckIdentity(options.presentationId);
+    initialWorkdir = await deployAgentWorkdir(sandboxRoot.path, options.presentationId);
+  }
 
   // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
   // lifecycle (AgentManager -> AgentChatSession) and the human editing
@@ -323,12 +335,15 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       }
       return null;
     },
-    unbind: async (_outgoing) => {
+    unbind: async (outgoing) => {
       await changeBroadcaster.retarget(null);
       await manager.retarget(null);
+      // AC9, "switching decks": the outgoing deck's agent working files
+      // never persist inside the sandbox past the switch.
+      await sandboxRoot.disposePresentation(outgoing.id);
     },
     bind: async (incoming) => {
-      const workdir = await deployAgentWorkdir(incoming.id);
+      const workdir = await deployAgentWorkdir(sandboxRoot.path, incoming.id);
       await manager.retarget({ id: incoming.id, workdir });
       await changeBroadcaster.retarget(incoming.id);
       // Flushes whatever is still pending on the OUTGOING deck (this
@@ -370,6 +385,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   return {
     port: actualPort,
     url: `http://${host}:${actualPort}`,
+    agentSandboxRoot: sandboxRoot.path,
     close: async () => {
       for (const dispose of disposers) {
         await dispose();
