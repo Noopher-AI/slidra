@@ -477,6 +477,34 @@ it("planning from an outline: through the real UI entry point, the plan gate pop
     expect(slides).toHaveLength(3);
     // The same draft doesn't pop the gate again on a later presentation-changed event (the agent hasn't marked it confirmed yet).
     expect(await gate.count()).toBe(0);
+
+    // [E6.T7] AC1: chat history now persists to the deck's own file
+    // (`chat_history` table, `ChatLog`), so a mid-conversation reload must
+    // restore the full thread — including the command this turn ran and its
+    // final status — not the empty chat panel a fresh mount used to show.
+    const reply = page.locator(".chat-message-agent").last();
+    await expect.poll(() => reply.textContent().catch(() => null), { timeout: 30_000 }).toBe("build complete");
+    await expect.poll(() => page.locator(".chat-command-completed").count(), { timeout: 30_000 }).toBe(1);
+    const commandTextBeforeReload = await page.locator(".chat-command-text").last().textContent();
+    const authorMessageBeforeReload = await confirmMessage.textContent();
+
+    // `ChatLog` (packages/server/src/agent/chat-log.ts) batches/debounces
+    // its writes to the deck's own file (500ms) — the turn already ended
+    // on screen by this point, but the server may not have flushed yet.
+    // There is no DOM signal for "the write landed", so this waits out the
+    // one documented interval rather than racing it.
+    await page.waitForTimeout(600);
+
+    await page.reload();
+    const slideTextAfterReload = page.frameLocator("iframe.slide-frame").locator("svg text").first();
+    await expect.poll(() => slideTextAfterReload.textContent().catch(() => null), { timeout: 30_000 }).not.toBeNull();
+
+    await expect
+      .poll(() => page.locator(".chat-message-author").last().textContent().catch(() => null), { timeout: 30_000 })
+      .toBe(authorMessageBeforeReload);
+    await expect.poll(() => page.locator(".chat-command-completed").count(), { timeout: 30_000 }).toBe(1);
+    expect(await page.locator(".chat-command-text").last().textContent()).toBe(commandTextBeforeReload);
+    expect(await page.locator(".chat-message-agent").last().textContent()).toBe("build complete");
   } finally {
     await cleanup();
   }

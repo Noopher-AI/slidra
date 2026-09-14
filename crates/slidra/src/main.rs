@@ -200,9 +200,26 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
         positional.pop();
     }
 
-    let _lock = match hold_presentation_lock(&positional) {
-        Ok(lock) => lock,
-        Err(code) => return code,
+    // `chat-history` is deliberately exempt from the per-deck advisory
+    // lock every other command here takes: that lock exists to serialise
+    // read-modify-write races on the `content` table's SVG files
+    // (`workspace::lock`'s own doc comment) — `chat_history` is a
+    // different table, appended to in small, frequent, debounced bursts by
+    // the server's `ChatLog` while an agent turn is still writing real
+    // slide content through this very lock. Taking it here would queue
+    // every background history write behind the agent's own edit commands
+    // (and vice versa), for a table those commands never touch. SQLite's
+    // own per-transaction file locking (`deck.rs`'s `busy_timeout`) is
+    // already what keeps two concurrent `chat_history` writers from
+    // corrupting each other — this lock would be redundant for this
+    // command, not merely unnecessary.
+    let _lock = if command == "chat-history" {
+        None
+    } else {
+        match hold_presentation_lock(&positional) {
+            Ok(lock) => lock,
+            Err(code) => return code,
+        }
     };
 
     let (command_result, renderer): (slidra::result::CommandResult, Option<Renderer<'_>>) =
@@ -238,6 +255,10 @@ fn dispatch_legacy_takeover(command: &str, rest: &[OsString]) -> i32 {
                 commands::cat::run(&positional, json_flag),
                 Some(&commands::cat::render as Renderer<'_>),
             ),
+            "chat-history" => {
+                let stdin_body = maybe_read_stdin_chat_history(&positional);
+                (commands::chat_history::run(&positional, stdin_body), None)
+            }
             "slide" => {
                 let renderer: Option<Renderer<'_>> =
                     if positional.first().map(String::as_str) == Some("render") {
@@ -313,6 +334,30 @@ fn maybe_read_stdin_csv(positional: &[String]) -> Option<String> {
         .windows(2)
         .any(|pair| pair[0] == "--csv" && pair[1] == "-");
     if !has_csv_dash {
+        return None;
+    }
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf).ok()?;
+    Some(buf)
+}
+
+/// `chat-history --append -`'s stdin substitution: the same entry-layer
+/// technique `maybe_read_stdin_csv` uses for `chart data set --csv -`, for
+/// the identical reason (`cli.md`: substitution must happen at the process
+/// entry layer, never inside argv parsing, since a future `serve` mode
+/// bypasses argv entirely). Scans for a literal `--append` immediately
+/// followed by `-` anywhere in `positional` — safe unconditionally for
+/// every `chat-history` invocation, since `--append` has no other meaning
+/// for this command. Reads ALL of stdin as UTF-8; a read failure (stdin not
+/// valid UTF-8, or genuinely empty with no data available) is treated as
+/// "no stdin substitution" and left to `commands::chat_history::run`'s own
+/// "--append - requires a JSON array on stdin" fallback rather than
+/// surfacing a raw I/O error here.
+fn maybe_read_stdin_chat_history(positional: &[String]) -> Option<String> {
+    let has_append_dash = positional
+        .windows(2)
+        .any(|pair| pair[0] == "--append" && pair[1] == "-");
+    if !has_append_dash {
         return None;
     }
     let mut buf = String::new();

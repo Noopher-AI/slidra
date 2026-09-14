@@ -180,6 +180,65 @@ export function appendCommandMessage(
   return [...messages, { id, role: "command", toolCallId, command, status, cli }];
 }
 
+/** One row `GET /api/chat/history` returns — the server-flattened shape of `crates/slidra/src/chat_history.rs`'s `ChatEntry`, a `command` entry's meta fields (`toolCallId`/`status`/`cli`/`output`/`blocked`/`interrupted`) already lifted up to the entry's own top level. */
+export interface PersistedChatEntry {
+  entryId: string;
+  seq: number;
+  kind: "author" | "agent" | "command" | "divider";
+  at: string;
+  text: string;
+  toolCallId?: string;
+  status?: CommandStatus;
+  cli?: boolean;
+  output?: string;
+  blocked?: true;
+  interrupted?: true;
+}
+
+export interface RestoredChat {
+  messages: ChatMessage[];
+  /** The next id to hand out — one past the highest this restore used, so a fresh message appended right after never collides with a restored one. */
+  nextId: number;
+}
+
+/**
+ * Rebuilds a `ChatMessage[]` from what `GET /api/chat/history` returned —
+ * how a page reload (AC1) and reopening a deck the next day (AC2) restore
+ * the thread. `startId` is normally `0` (a fresh mount); ids are assigned
+ * in entry order, so `nextId` picks up exactly where this restore left off,
+ * the same "never recomputed from position, always handed out fresh"
+ * contract every other id in this module already follows.
+ *
+ * A `divider` entry restores as a `SystemMessage` — the exact mechanism an
+ * agent switch/"New chat" reset already used live (§7 decision 4/5): the
+ * server built its text once, at the moment it happened, and this is that
+ * same text read back, not recomputed.
+ */
+export function restoreChatMessages(entries: readonly PersistedChatEntry[], startId: number): RestoredChat {
+  let nextId = startId;
+  const messages: ChatMessage[] = entries.map((entry): ChatMessage => {
+    const id = nextId++;
+    if (entry.kind === "author" || entry.kind === "agent") {
+      return { id, role: entry.kind, text: entry.text };
+    }
+    if (entry.kind === "divider") {
+      return { id, role: "system", text: entry.text };
+    }
+    return {
+      id,
+      role: "command",
+      toolCallId: entry.toolCallId ?? entry.entryId,
+      command: entry.text,
+      status: entry.status ?? "completed",
+      cli: entry.cli ?? true,
+      ...(entry.output !== undefined ? { output: entry.output } : {}),
+      ...(entry.blocked ? { blocked: true as const } : {}),
+      ...(entry.interrupted ? { interrupted: true as const } : {}),
+    };
+  });
+  return { messages, nextId };
+}
+
 /**
  * Patches the command message ACP identifies by `toolCallId`. Addressed by
  * identity for the same reason `appendChunkToMessage` is: by the time a

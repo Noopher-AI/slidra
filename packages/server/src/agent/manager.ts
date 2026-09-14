@@ -5,6 +5,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { SlidraError } from "../slidra/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
+import { ChatLog } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
 import { writeAgentModel, writeAgentSelection } from "./settings.js";
@@ -137,6 +138,17 @@ export class AgentManager {
   /** Listeners for "the agent reported a fresh command list" — persists across a session swap, like `externalListeners`. */
   private readonly commandsListeners = new Set<() => void>();
 
+  /**
+   * Persists the conversation into the open deck's own file — one instance
+   * per bound deck, `retarget()`'d (never rebuilt) across a session swap,
+   * since the conversation it records outlives any one `AgentChatSession`
+   * (§7 decision 3). `undefined` in lockstep with `presentationId`/
+   * `workdir`: no deck bound, nothing to persist into.
+   */
+  private chatLog: ChatLog | undefined;
+  /** Detaches the internal chat-log-recording subscription from whichever session is currently live — re-pointed alongside `detachFromSession`, never touched by `externalListeners`. */
+  private detachChatLogFromSession: (() => void) | undefined;
+
   constructor(options: AgentManagerOptions) {
     this.presentationId = options.presentationId;
     this.editingLock = options.editingLock;
@@ -150,6 +162,7 @@ export class AgentManager {
 
     this.current = options.initial.kind;
     this.source = options.initial.source;
+    this.chatLog = this.presentationId !== null ? new ChatLog(this.presentationId) : undefined;
 
     if (this.current !== null) {
       this.session = this.maybeBuildSession(this.current);
@@ -173,10 +186,50 @@ export class AgentManager {
     for (const send of this.externalListeners) send(event, data);
   };
 
+  /**
+   * Mirrors one session's turn events into `chatLog` — a second,
+   * independent `attachStream` subscription alongside `forwardToExternal`
+   * (session.ts's `EventEmitter` supports any number of listeners), so
+   * persistence never depends on whether a browser tab happens to be
+   * connected to `/api/chat/stream` right now. `chat-notice`/`chat-error`
+   * are deliberately not recorded (§2 scope: only `author`/`agent`/
+   * `command`/`divider` are facts about the presentation, not about one
+   * browser connection).
+   */
+  private readonly recordToChatLog: ChatStreamSend = (event, data) => {
+    const log = this.chatLog;
+    if (!log) return;
+    switch (event) {
+      case "chat-chunk": {
+        const { text } = data as { text: string };
+        log.recordAgentChunk(text);
+        return;
+      }
+      case "chat-command": {
+        const { toolCallId, command, status, cli } = data as { toolCallId: string; command: string; status: acp.ToolCallStatus; cli: boolean };
+        log.recordCommand(toolCallId, command, status, cli);
+        return;
+      }
+      case "chat-command-update": {
+        const { toolCallId, status, output, blocked } = data as { toolCallId: string; status: acp.ToolCallStatus; output?: string; blocked?: true };
+        log.recordCommandUpdate(toolCallId, { status, ...(output === undefined ? {} : { output }), ...(blocked ? { blocked } : {}) });
+        return;
+      }
+      case "chat-done":
+      case "chat-error":
+        log.endTurn();
+        return;
+      default:
+        return;
+    }
+  };
+
   /** Re-points the internal forwarding subscription at `nextSession` (or nothing, if undefined). External listeners are never touched — this is the whole point of the facade (§4.5). */
   private rewireSession(nextSession: AgentChatSession | undefined): void {
     this.detachFromSession?.();
     this.detachFromSession = nextSession?.attachStream(this.forwardToExternal);
+    this.detachChatLogFromSession?.();
+    this.detachChatLogFromSession = nextSession?.attachStream(this.recordToChatLog);
     // `available-commands` is session-level, not turn-scoped, so it rides its
     // own subscription rather than `attachStream` (see the session's own
     // docstring). Re-pointed here for the same reason the stream is: the `/`
@@ -267,6 +320,7 @@ export class AgentManager {
 
     const previousSession = this.session;
     if (previousSession) {
+      this.chatLog?.markUnfinishedInterrupted();
       await previousSession.dispose();
     }
     const nextSession = this.maybeBuildSession(kind);
@@ -277,8 +331,34 @@ export class AgentManager {
 
     const spec = adapterSpecFor(kind);
     this.onAgentChanged?.({ kind, label: spec.label });
+    // §7 decision 5: only when there was a live conversation to switch
+    // FROM — the very first agent pick (no `previousSession`) has no prior
+    // thread to mark the boundary of.
+    if (previousSession && this.chatLog) {
+      const text = this.buildDividerText("switch", spec.label);
+      this.chatLog.recordDivider(text);
+      this.forwardToExternal("chat-divider", { text });
+    }
 
     return this.status();
+  }
+
+  /**
+   * The divider text inserted into the conversation on an agent switch or
+   * "New chat" reset (§7 decisions 4/5) — built here, not in the browser
+   * (`App.tsx` used to compose "Switched to X..." itself), so the exact
+   * same text is what gets persisted to `chat_history` and what every
+   * connected tab sees. Always names `slidra chat-history` (AC4's own
+   * wording requirement) — a fresh session has no memory of anything above
+   * this line, and this is how it (or the author, reading back later) finds
+   * it again.
+   */
+  private buildDividerText(kind: "switch" | "new-chat", label?: string): string {
+    const start =
+      kind === "switch"
+        ? `Switched to ${label}. It will handle messages from here.`
+        : "Started a new conversation.";
+    return `${start} Above is the conversation before it joined — the agent has no memory of it; it can read it back with \`slidra chat-history\` if it needs to.`;
   }
 
   /**
@@ -306,11 +386,18 @@ export class AgentManager {
 
     const previousSession = this.session;
     if (previousSession) {
+      this.chatLog?.markUnfinishedInterrupted();
       await previousSession.dispose();
     }
     const nextSession = this.maybeBuildSession(this.current);
     this.session = nextSession;
     this.rewireSession(nextSession);
+
+    if (this.chatLog) {
+      const text = this.buildDividerText("new-chat");
+      this.chatLog.recordDivider(text);
+      this.forwardToExternal("chat-divider", { text });
+    }
 
     return this.status();
   }
@@ -343,11 +430,18 @@ export class AgentManager {
     return this.status();
   }
 
-  /** Sends the author's message on the current session. Throws if no agent is selected — callers must gate with a 409 first (§4.4). */
-  sendMessage(text: string): void {
+  /**
+   * Sends the author's message on the current session. Throws if no agent
+   * is selected — callers must gate with a 409 first (§4.4). `displayText`
+   * (e.g. the "(No message entered...)" placeholder) is what gets
+   * persisted as the author's own entry when given — the raw `text` sent to
+   * the agent otherwise (§7 decision 8).
+   */
+  sendMessage(text: string, displayText?: string): void {
     if (!this.session) {
       throw new SlidraError("No agent selected, cannot send a message");
     }
+    this.chatLog?.recordAuthor(text, displayText);
     this.session.sendMessage(text);
   }
 
@@ -389,8 +483,10 @@ export class AgentManager {
   async dispose(): Promise<void> {
     this.rewireSession(undefined);
     if (this.session) {
+      this.chatLog?.markUnfinishedInterrupted();
       await this.session.dispose();
     }
+    await this.chatLog?.flush();
   }
 
   /**
@@ -405,7 +501,22 @@ export class AgentManager {
   async retarget(next: { id: string; workdir: string } | null): Promise<void> {
     const previousSession = this.session;
     if (previousSession) {
+      this.chatLog?.markUnfinishedInterrupted();
       await previousSession.dispose();
+    }
+    // The conversation this deck (if any) still owed a write is flushed
+    // before this manager stops pointing at it — `ChatLog.retarget` does
+    // that internally; a deck that was never bound (`chatLog` still
+    // `undefined`) simply gets a fresh one for the incoming deck.
+    if (this.chatLog) {
+      if (next) {
+        await this.chatLog.retarget(next.id);
+      } else {
+        await this.chatLog.flush();
+        this.chatLog = undefined;
+      }
+    } else if (next) {
+      this.chatLog = new ChatLog(next.id);
     }
     this.presentationId = next?.id ?? null;
     this.workdir = next?.workdir ?? null;

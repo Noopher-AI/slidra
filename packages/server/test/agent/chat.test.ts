@@ -13,6 +13,7 @@ import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { buildCommentContext } from "../../src/agent/session.js";
+import type { AgentKind } from "../../src/agent/adapters.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
@@ -1519,5 +1520,157 @@ describe("chat: the author can see the command run", () => {
     await sse.close();
 
     expect(collected.filter((e) => e.event.startsWith("chat-command"))).toEqual([]);
+  });
+});
+
+// [E6.T7]: the conversation persisted into the deck's own `chat_history`
+// table (`ChatLog`, `slidra chat-history`) — read back via the real
+// `GET /api/chat/history` route, never `ChatLog` constructed directly, so
+// this exercises the whole path a page reload/reopened deck actually takes.
+describe("chat: persisted to the deck's own chat_history (E6.T7)", () => {
+  interface HistoryPage {
+    entries: Array<Record<string, unknown>>;
+    total: number;
+    truncated: boolean;
+  }
+
+  /** `ChatLog` batches/debounces its writes — polls until the deck's own history actually reflects them, rather than assuming the flush already happened the instant chat-done arrived. */
+  async function waitForHistoryTotal(server: RunningServer, expectedTotal: number, query?: string): Promise<HistoryPage> {
+    const url = query === undefined ? `${server.url}/api/chat/history` : `${server.url}/api/chat/history?query=${encodeURIComponent(query)}`;
+    const deadline = Date.now() + 5000;
+    let last: HistoryPage | undefined;
+    while (Date.now() < deadline) {
+      const response = await fetch(url);
+      expect(response.status).toBe(200);
+      last = (await response.json()) as HistoryPage;
+      if (last.total >= expectedTotal) return last;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`GET /api/chat/history never reached total >= ${expectedTotal}, last seen: ${JSON.stringify(last)}`);
+  }
+
+  it("a turn's author message, agent reply, and command are all readable back after the turn ends (AC1/AC3)", async () => {
+    const server = await serve(
+      fakeAgent({
+        replies: [["(ack)"], ["On it."]],
+        toolCallOnPromptIndex: 1,
+        toolCallCommand: "slidra text set p1 slides/001.svg el-1 'Q3'",
+      }),
+    );
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const done = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "change the title to Q3");
+    await done;
+    await sse.close();
+
+    const history = await waitForHistoryTotal(server, 3);
+
+    // The fixture streams this prompt index's tool call before its reply
+    // chunks (see fake-acp-agent.mjs's own handler order), so the command
+    // entry lands between the author and agent entries, not after.
+    expect(history.entries.map((e) => e.kind)).toEqual(["author", "command", "agent"]);
+    expect(history.entries[0]).toMatchObject({ kind: "author", text: "change the title to Q3" });
+    expect(history.entries[2]).toMatchObject({ kind: "agent", text: "On it." });
+    expect(history.entries[1]).toMatchObject({
+      kind: "command",
+      text: "slidra text set p1 slides/001.svg el-1 'Q3'",
+      status: "completed",
+      cli: true,
+    });
+    expect(history.truncated).toBe(false);
+  });
+
+  /** A second fixture adapter config for `codex`, sharing the same log file as `fakeAgent()`'s `claude` one — so a switch's spawn order is observable across both. */
+  function fakeAgentAs(kind: AgentKind, scenario: Record<string, unknown>): AgentAdapterConfig {
+    const label = kind === "codex" ? "Codex" : "Claude Code";
+    return { kind, label, command: process.execPath, args: [fixturePath], env: { FAKE_AGENT_CONFIG: JSON.stringify(scenario), FAKE_AGENT_LOG: logPath } };
+  }
+
+  /** One author message under Claude, then a switch to Codex — the shared setup for both tests below. */
+  async function switchedAgentScenario(): Promise<{ server: RunningServer; sse: SseReader }> {
+    const id = await openFreshPresentation();
+    const server = await startServe({
+      presentationId: id,
+      port: 0,
+      initialAgent: { kind: "claude", source: "cli" },
+      agentManager: {
+        resolveAdapter: (kind: AgentKind) => fakeAgentAs(kind, { replies: [["(ack)"], ["On it."]] }),
+        // `POST /api/agent/select` reads `GET /api/agent`'s cached probe
+        // internally — without this, `AgentManager` falls back to actually
+        // spawning `claude`/`codex` on this machine to check login status,
+        // which either hangs or reports logged-out depending on the
+        // sandbox, unrelated to what this test is proving.
+        runCommand: async () => ({ code: 0, stdout: '{"loggedIn":true}', stderr: "" }),
+      },
+    });
+    servers.push(server);
+
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+    const firstDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "change the title to Q3");
+    await firstDone;
+
+    const dividerSeen = sse.readUntil((e) => e.event === "chat-divider");
+    const selectResponse = await fetch(`${server.url}/api/agent/select`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "codex" }),
+    });
+    expect(selectResponse.status).toBe(200);
+    await dividerSeen;
+
+    return { server, sse };
+  }
+
+  it("switching agents inserts a divider naming slidra chat-history, and the new agent's own first prompt names it too (AC4)", async () => {
+    const { server, sse } = await switchedAgentScenario();
+
+    const history = await waitForHistoryTotal(server, 3); // author, agent reply, divider
+    const divider = history.entries.find((e) => e.kind === "divider");
+    expect(divider).toBeDefined();
+    expect(divider!.text as string).toContain("slidra chat-history");
+
+    // The switch alone only builds the codex session lazily — it is not
+    // actually established (no `session/new`/editorial-brief prompt) until
+    // the author's next message, same as any freshly selected agent.
+    const secondDone = sse.readUntil((e) => e.event === "chat-done");
+    await postChat(server, "keep going");
+    await secondDone;
+    await sse.close();
+
+    // The fixture always reports the same `sessionId` ("fake-session-1")
+    // regardless of which process it runs in, so telling the two sessions
+    // apart needs the one thing that genuinely differs per spawn: the
+    // `{ pid }` line each process logs once at startup, before either
+    // ever calls `session/new`.
+    const rawLog = await readFakeAgentLog();
+    const pidOrder: number[] = [];
+    const promptsByPid = new Map<number, unknown[][]>();
+    let currentPid: number | undefined;
+    for (const entry of rawLog) {
+      if (entry.pid !== undefined) {
+        currentPid = entry.pid;
+        pidOrder.push(entry.pid);
+      } else if (entry.prompt !== undefined && currentPid !== undefined) {
+        const list = promptsByPid.get(currentPid) ?? [];
+        list.push(entry.prompt);
+        promptsByPid.set(currentPid, list);
+      }
+    }
+    expect(pidOrder).toHaveLength(2); // the original claude process, then the fresh codex process
+    const newSessionPrompts = promptsByPid.get(pidOrder[1])!;
+    expect((newSessionPrompts[0][0] as { text: string }).text).toContain("slidra chat-history");
+  });
+
+  it("a --query keyword search still finds content from before the switch (AC5)", async () => {
+    const { server, sse } = await switchedAgentScenario();
+    await sse.close();
+
+    await waitForHistoryTotal(server, 3);
+    const matched = await waitForHistoryTotal(server, 1, "Q3");
+    expect(matched.entries).toHaveLength(1);
+    expect(matched.entries[0]).toMatchObject({ kind: "author", text: "change the title to Q3" });
   });
 });

@@ -772,6 +772,17 @@ async function handleRequest(
       return;
     }
 
+    if (url.pathname === "/api/chat/history") {
+      // AC1/AC2: what a page (re)load or a reopened deck restores the
+      // thread from — the live SSE stream carries no replay, so this is the
+      // only way either of those sees anything that happened before this
+      // connection existed.
+      const deckId = requireDeck(deckSession, res);
+      if (deckId === null) return;
+      await handleChatHistoryGet(deckId, url.searchParams, res);
+      return;
+    }
+
     if (url.pathname === "/api/events") {
       // Live reload push (ticket #5): opens a long-lived SSE stream. Never
       // returns/closes `res` itself — handleConnection hands it to
@@ -932,11 +943,41 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
     sendJson(res, 400, { error: "Message content must not be empty" });
     return;
   }
+  // Optional: what the author's message looks like in the persisted/
+  // restored conversation, when it differs from what was actually sent to
+  // the agent (e.g. the "(No message entered...)" placeholder for a
+  // pins-only send) — §7 decision 8.
+  const rawDisplayText = (body as { displayText?: unknown } | null)?.displayText;
+  const displayText = typeof rawDisplayText === "string" ? rawDisplayText : undefined;
   // #303: one line per author message so a turn that starts unexpectedly
   // (e.g. right after a cancel) can be traced to the request that caused it.
   console.log(`[chat] ${new Date().toISOString()} message ${JSON.stringify(text.slice(0, 60))}${text.length > 60 ? "…" : ""}`);
-  manager.sendMessage(text);
+  manager.sendMessage(text, displayText);
   sendJson(res, 202, { ok: true });
+}
+
+/**
+ * `GET /api/chat/history?limit=&query=` — reads the conversation persisted
+ * in the open deck's own `chat_history` table (`slidra chat-history`).
+ * `limit`/`query` are passed straight through to the CLI, which owns their
+ * validation (an out-of-range `limit`, or an empty `query`, comes back as
+ * `ok:false` — reported here as 400, everything else this call could fail
+ * on is a 500). Both are optional; omitted, the CLI's own default
+ * (20, unfiltered) applies.
+ */
+async function handleChatHistoryGet(deckId: string, searchParams: URLSearchParams, res: ServerResponse): Promise<void> {
+  const args = ["chat-history", deckId];
+  const limit = searchParams.get("limit");
+  if (limit !== null) args.push("--limit", limit);
+  const query = searchParams.get("query");
+  if (query !== null) args.push("--query", query);
+
+  const result = await runJsonCommand<{ entries: unknown[]; total: number; truncated: boolean }>(args);
+  if (!result.ok) {
+    sendJson(res, result.failureKind === "not-found" ? 404 : 400, { error: result.message });
+    return;
+  }
+  sendJson(res, 200, result.data);
 }
 
 /**

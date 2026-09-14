@@ -191,6 +191,15 @@ export function startChatStream(options: ChatStreamOptions): ChatStream {
     options.updateMessages((previous) => appendSystemMessage(previous, options.nextMessageId(), text));
   });
 
+  // [E6.T7] §7 decision 4/5: an agent switch or "New chat" reset. The
+  // server builds this text once (`AgentManager.buildDividerText`) and
+  // persists it to `chat_history` the same moment it broadcasts it here —
+  // rendered exactly like any other system line, never rebuilt client-side.
+  source.addEventListener("chat-divider", (event) => {
+    const { text } = JSON.parse((event as MessageEvent).data) as { text: string };
+    options.updateMessages((previous) => appendSystemMessage(previous, options.nextMessageId(), text));
+  });
+
   source.addEventListener("chat-error", (event) => {
     const { message } = JSON.parse((event as MessageEvent).data) as { message: string };
     activeReplyId = null;

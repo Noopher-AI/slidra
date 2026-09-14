@@ -17,6 +17,7 @@ pub mod argv;
 pub mod asset_import;
 pub mod base64;
 pub mod chart;
+pub mod chat_history;
 pub mod commands;
 pub mod container;
 pub mod deck;

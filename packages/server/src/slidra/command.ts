@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { runSlidra } from "./bin.js";
+import { runSlidra, runSlidraWithStdin } from "./bin.js";
 
 /**
  * Why a command failed, in the only distinction any caller is allowed to
@@ -68,6 +68,16 @@ function parseEnvelope(stdout: string): JsonEnvelope | null {
  */
 export async function runJsonCommand<Data = unknown>(args: string[]): Promise<CommandResult<Data>> {
   const { stdout, stderr } = await runSlidra([...args, "--json"]);
+  return toCommandResult(stdout, stderr);
+}
+
+/** Same contract as `runJsonCommand`, for a command whose payload rides stdin (`chat-history --append -`) rather than argv. */
+export async function runJsonCommandWithStdin<Data = unknown>(args: string[], stdin: string): Promise<CommandResult<Data>> {
+  const { stdout, stderr } = await runSlidraWithStdin([...args, "--json"], stdin);
+  return toCommandResult(stdout, stderr);
+}
+
+function toCommandResult<Data>(stdout: string, stderr: string): CommandResult<Data> {
   const envelope = parseEnvelope(stdout);
   if (envelope === null) {
     const message = stderr.trim();
