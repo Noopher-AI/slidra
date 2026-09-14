@@ -49,6 +49,29 @@ export async function readDeckFileText(deckPath: string, virtualPath: string): P
 }
 
 /**
+ * [E6.T6]: the deck's undo stack depth — `history_group` rows with
+ * `stack = 0` (undo), the SQLite-table equivalent of the pre-[E6.T6]
+ * `<SLIDRA_HOME>/history/<id>/stack.json`'s `undo` array length. A deck
+ * that has never been edited has no history tables at all yet
+ * (`crates/slidra/src/history.rs`'s own documented "genuinely missing"
+ * case) — treated as 0, not an error.
+ */
+export async function undoGroupCount(deckPath: string): Promise<number> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT COUNT(*) AS n FROM history_group WHERE stack = 0").get() as
+      | { n: number }
+      | undefined;
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * Overwrites one existing file's content directly — bypassing the CLI on
  * purpose, for a test fixture that needs a slide's raw bytes to NOT be
  * whatever `slide add`/`textbox add`/etc. would produce (e.g. a bare SVG

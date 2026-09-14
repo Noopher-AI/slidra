@@ -15,7 +15,7 @@ export { deckFileMtime };
  * the one file this server and the Rust `slidra` binary both read and
  * write ([E4.T9]/F7, plan §7 decision 10). Every other piece of a
  * presentation's content goes through the binary; this file (and
- * `history/<id>/stack.json`, see `history-group.ts`) is the one place the
+ * see `history-group.ts`) is the one place the
  * server still touches `SLIDRA_HOME` directly, because there is no CLI
  * command that exposes an id's real deck path or the save-state bookkeeping.
  *

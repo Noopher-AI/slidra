@@ -10,13 +10,10 @@ This document specifies the local runtime workspace outside a `.slidra` deck. It
 <SLIDRA_HOME>/
 ├── projects.json              # registry file
 ├── locks/<hash>.lock          # per-deck advisory lock, keyed by canonical deck path
-├── history/<id>/
-│   ├── stack.json
-│   └── snapshots/<snapshotId> # raw bytes, with no encoding conversion
 └── clipboard/<id>.json        # one internal clipboard per presentation
 ```
 
-A presentation id resolves to the `.slidra` deck file itself — there is no separate unpacked work directory any more (see [the `.slidra` format specification](slidra-format.md)). These four locations are the complete local-state contract: `projects.json`, `locks/<hash>.lock`, `history/<id>/`, and `clipboard/<id>.json`.
+A presentation id resolves to the `.slidra` deck file itself — there is no separate unpacked work directory any more (see [the `.slidra` format specification](slidra-format.md)). These three locations are the complete local-state contract: `projects.json`, `locks/<hash>.lock`, and `clipboard/<id>.json`. Undo/redo history is no longer part of this contract — it lives inside the deck file itself (see [the `.slidra` format specification](slidra-format.md)), so `<SLIDRA_HOME>/history/` is never created.
 
 ## `projects.json`
 
@@ -32,19 +29,9 @@ interface RegistryEntry {
 
 `savedAt` compares two filesystem `stat` readings taken in the same way; it is deliberately not a wall-clock timestamp. The registry is written to a temporary file in the same directory and atomically renamed over `projects.json`. Only a missing file is treated as an empty registry; malformed JSON, permission failures, and other I/O failures are reported explicitly. An entry written by a pre-upgrade release (`workDir` instead of `deckPath`) is dropped on read rather than treated as corrupt — its own id is already dead, since `work/<id>/` no longer exists — so it cannot take an unrelated `open`/`new` down with it.
 
-## `history/<id>/stack.json`
+## Undo/redo history
 
-```jsonc
-{
-  "undo": [{ "groupId": "…", "entries": [{ "virtualPath": "slides/001.svg", "snapshotId": "…" }] }],
-  "redo": [],
-  "openGroup": null
-}
-```
-
-The fixed top-level keys are `undo`, `redo`, and `openGroup`. Missing or malformed keys make the history corrupt; only a missing file means an empty history. A `HistoryEntry` has a virtual path and a snapshot id. A `null` snapshot id records a file creation, so undo deletes that file; a non-null id points to raw bytes in `history/<id>/snapshots/<snapshotId>`.
-
-History is written atomically like `projects.json`. `UNDO_STACK_CAP` is 50 groups; dropping an old group also removes its unreferenced snapshots.
+Undo/redo history is stored in three tables inside the presentation's own `.slidra` deck file, alongside its `content` table — never under `SLIDRA_HOME`. Copying the deck file therefore carries its undo history with it, and reopening a deck on another machine restores it exactly. See [the `.slidra` format specification](slidra-format.md) for the table shapes and the undo/redo group caps.
 
 ## `clipboard/<id>.json`
 

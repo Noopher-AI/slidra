@@ -3821,3 +3821,15 @@ At least one of `--name`/`--owner` must be given. Every other field already in `
 ```
 slidra deck meta set ~/Slidra/Q3.slidra --owner alice
 ```
+
+## Internal commands
+
+Two more commands are dispatched by Rust (`commands::CORE_TAKEOVER`, alongside `undo`/`redo`) but are deliberately NOT among the command-entry-format commands above, and are NOT listed in `packages/server/agent-workdir/reference/commands.md`: they exist solely for `packages/server`'s own turn grouping (`agent/session.ts`) to call, never for an agent to invoke directly. Their headings below intentionally do not use the `` ## `name` `` form — that form is reserved for the spec-normative, agent-facing commands counted above, and using it here would make `scripts/check-reference-subset.mjs` and `crates/slidra/tests/cli_golden.rs`'s `cli_md_lists_exactly_the_89_rust_dispatched_commands` require them to also appear in `reference/commands.md`, defeating the point.
+
+### `history begin-group`
+
+`slidra history begin-group <presentation-id>` — opens a group that spans multiple subsequent commands so they undo together as one step. `data: { "opened": boolean }` — `true` when this call is the one that opened the group (the caller owns it and must call `history end-group`); `false` when a group was already open (the caller joined it and must not close it).
+
+### `history end-group`
+
+`slidra history end-group <presentation-id>` — closes the group opened by `history begin-group` and pushes it onto the undo stack as one step (an empty group is discarded, not pushed). `failureKind: "failed"` when no group is open.

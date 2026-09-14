@@ -154,7 +154,15 @@ async function fingerprintFile(filePath: string): Promise<string> {
   }
 }
 
-/** The four locations NOOP-433 AC3 promises are untouched by switching away from `id`: its deck file's directory, its history, its deployed agent work directory, and the real `.slidra` file `open` read it from. */
+/**
+ * The locations NOOP-433 AC3 promises are untouched by switching away from
+ * `id`: its deck file's directory, its deployed agent work directory, and
+ * the real `.slidra` file `open` read it from. [E6.T6]: no separate
+ * `history` fingerprint any more — undo history now lives inside the deck
+ * file itself, so `deckDir` (which fingerprints every file in the deck's
+ * directory, including that file's own bytes) and `slidraFile` already
+ * cover it; a dedicated field would just duplicate that coverage.
+ */
 async function fingerprintDeck(id: string, slidraPath: string): Promise<Record<string, string>> {
   const registry = await readProjectsRegistry();
   const entry = registry.get(id);
@@ -162,7 +170,6 @@ async function fingerprintDeck(id: string, slidraPath: string): Promise<Record<s
   const home = resolveSlidraHome();
   return {
     deckDir: await fingerprintDir(path.dirname(entry.deckPath)),
-    history: await fingerprintDir(path.join(home, "history", id)),
     agentWorkdir: await fingerprintDir(path.join(home, "agent", id)),
     slidraFile: await fingerprintFile(slidraPath),
   };
@@ -333,7 +340,7 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect((await presentation.json()).name).toBe("deck-b");
   });
 
-  it("④ A's four fingerprints (work dir, history, agent workdir, .slidra file) are byte-for-byte unchanged after switching to B", async () => {
+  it("④ A's fingerprints (work dir, agent workdir, .slidra file) are byte-for-byte unchanged after switching to B", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");
     const server = await serve({ presentationId: a.id });

@@ -72,7 +72,63 @@ afterEach(async () => {
   await rm(logDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
+/**
+ * [E6.T6]: undo history now lives inside the deck's own `.slidra` file
+ * (`history_group`/`history_entry`/`history_snapshot` tables next to
+ * `content` — `crates/slidra/src/deck.rs`), not under
+ * `<SLIDRA_HOME>/history/<id>/`. `node:sqlite`'s `DatabaseSync` is used
+ * here the same test-only way `e2e/helpers/deck.ts`/`serve.test.ts` already
+ * use it — the server and CLI themselves never read/write a deck this way.
+ */
+async function undoGroupCount(deckPath: string): Promise<number> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT COUNT(*) AS n FROM history_group WHERE stack = 0").get() as
+      | { n: number }
+      | undefined;
+    return row?.n ?? 0;
+  } catch {
+    // No history tables yet (never edited) — an empty undo stack.
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+async function hasOpenHistoryGroup(deckPath: string): Promise<boolean> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT COUNT(*) AS n FROM history_group WHERE stack = 2").get() as
+      | { n: number }
+      | undefined;
+    return (row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
+}
+
+/** Wipes the deck's history side tables directly — the SQLite-table equivalent of the pre-[E6.T6] `rm(<SLIDRA_HOME>/history/<id>)`. */
+async function clearDeckHistory(deckPath: string): Promise<void> {
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(deckPath);
+  try {
+    for (const table of ["history_entry", "history_group", "history_snapshot"]) {
+      try {
+        db.prepare(`DELETE FROM ${table}`).run();
+      } catch {
+        // Table does not exist yet — nothing to clear.
+      }
+    }
+  } finally {
+    db.close();
+  }
+}
+
+async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string; deckPath: string }> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
@@ -89,8 +145,9 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   // These tests count undo entries, and the two setup commands above leave
   // their own. Drop the history so the deck reaches each test exactly as it
   // did when `new` still shipped a first slide: one page, empty undo stack.
-  await rm(path.join(slidraHome, "history", id), { recursive: true, force: true });
-  return { id, elementId: added.data!.elementId };
+  // `slidraPath` IS the deck's real path (`new`/`open` operate on it directly).
+  await clearDeckHistory(slidraPath);
+  return { id, elementId: added.data!.elementId, deckPath: slidraPath };
 }
 
 function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
@@ -281,8 +338,8 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(body.error).toBe("no operation to undo");
   });
 
-  it("AC2-a: after the turn, stack.json has no open group and exactly one undo entry for it", async () => {
-    const { id, elementId } = await openFreshPresentationWithElement();
+  it("AC2-a: after the turn, the deck's history tables have no open group and exactly one undo entry for it", async () => {
+    const { id, elementId, deckPath } = await openFreshPresentationWithElement();
     const commands = [
       `slidra text set ${id} slides/001.svg ${elementId} 'A'`,
       `slidra text set ${id} slides/001.svg ${elementId} 'B'`,
@@ -293,14 +350,12 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.ranCommand === commands[1]);
     await waitForFrozen(server, false);
 
-    const stackRaw = await readFile(path.join(slidraHome, "history", id, "stack.json"), "utf8");
-    const stack = JSON.parse(stackRaw) as { undo: unknown[]; openGroup: unknown | null };
-    expect(stack.openGroup).toBeNull();
-    expect(stack.undo).toHaveLength(1);
+    expect(await hasOpenHistoryGroup(deckPath)).toBe(false);
+    expect(await undoGroupCount(deckPath)).toBe(1);
   });
 
   it("two separate agent turns produce two separate undo groups", async () => {
-    const { id, elementId } = await openFreshPresentationWithElement();
+    const { id, elementId, deckPath } = await openFreshPresentationWithElement();
     const cmd1 = `slidra text set ${id} slides/001.svg ${elementId} 'round-one'`;
     const cmd2 = `slidra text set ${id} slides/001.svg ${elementId} 'round-two'`;
     const server = await serve(fakeAgent({ commandsPerTurn: [[cmd1], [cmd2]] }), id);
@@ -313,9 +368,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.ranCommand === cmd2);
     await waitForFrozen(server, false);
 
-    const stackRaw = await readFile(path.join(slidraHome, "history", id, "stack.json"), "utf8");
-    const stack = JSON.parse(stackRaw) as { undo: unknown[] };
-    expect(stack.undo).toHaveLength(2);
+    expect(await undoGroupCount(deckPath)).toBe(2);
   });
 
   it("AC2-b: a turn that only reads (thinks) never freezes, and undo requests during it are never 409'd", async () => {
