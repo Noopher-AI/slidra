@@ -81,16 +81,30 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && dpkg -l | grep -q '^ii  gcc '
 
-# The agent sandbox (packages/server/src/sandbox/) shells out to `srt`,
-# which on Linux enforces the write sandbox via bubblewrap and needs socat
-# to mediate the loopback network path; both are unconditional dependencies
-# of its Linux code path (it throws at startup if either is missing), so
-# they belong in the image rather than an npm dependency.
+# The agent sandbox (packages/server/src/sandbox/) shells out to
+# @anthropic-ai/sandbox-runtime, which on Linux enforces the write sandbox
+# via bubblewrap and needs socat to mediate the loopback network path; both
+# are unconditional dependencies of its Linux code path (it throws at
+# startup if either is missing), so they belong in the image rather than an
+# npm dependency.
+#
+# ripgrep is a separate, easy-to-miss dependency of the same package:
+# `SandboxManager.initialize()` unconditionally calls its own
+# `checkDependenciesAsync()` (no override passed), which on Linux shells out
+# to `rg` to build the mandatory filesystem deny-list and throws if it is
+# not on PATH — this is *not* gated by any sandbox feature flag, so every
+# `initialize()` call needs a real `rg` binary. This pod's interactive shell
+# had made `rg` look present via a `rg() { ... }` bash function the agent
+# harness installs for interactive use — that function is invisible to
+# `child_process`/`execve`, which is what `checkDependenciesAsync()` actually
+# uses, so it doesn't satisfy this dependency. Installing the real
+# `ripgrep` package is what's needed here.
 RUN apt-get update \
-    && apt-get install -y bubblewrap socat \
+    && apt-get install -y bubblewrap socat ripgrep \
     && rm -rf /var/lib/apt/lists/* \
     && dpkg -l | grep -q '^ii  bubblewrap' \
-    && dpkg -l | grep -q '^ii  socat'
+    && dpkg -l | grep -q '^ii  socat' \
+    && dpkg -l | grep -q '^ii  ripgrep'
 
 USER dev
 ENV HOME=/home/dev
