@@ -25,4 +25,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial public release. Renamed from internal project CoMotion.
+- Initial public release. Renamed from internal project Slidra.

@@ -1,4 +1,4 @@
-<title>CoMotion Slide Features QA</title>
+<title>Slidra Slide Features QA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
@@ -374,7 +374,7 @@
 
   <header class="masthead">
     <div class="eyebrow">Manual exploratory testing · Non-AI features · Round 2 re-verification</div>
-    <h1>CoMotion Core Slide Features QA</h1>
+    <h1>Slidra Core Slide Features QA</h1>
     <p class="standfirst">
       Round 1 found 19 issues on <code>feat/break-changed-rust-cli</code> (<code>899bed3</code>). This round takes
       the same list onto the merged <code>main</code> (<code>db6d497</code>, where the Rust CLI replaces the
@@ -440,7 +440,7 @@
           <dd>Same demo, same operations: on the previous round’s <code>899bed3</code> this moved the title to the new
             position and updated the left-rail thumbnail instantly (see the previous report’s “Confirmed working: drag to
             move elements”). This round on <code>db6d497</code> it does not move no matter what. The only relevant change
-            between the two rounds is <code>81c4e74</code> “browser goes engine-free — DOM/CLI replace @co-motion/core”.</dd>
+            between the two rounds is <code>81c4e74</code> “browser goes engine-free — DOM/CLI replace @Slidra/core”.</dd>
           <dt>Expected</dt>
           <dd><code>05-INTERACTIONS.feature</code> “Move and resize elements › drag snap”: dragging a selected element
             moves it; when it nears an edge it snaps and shows pink guide lines; on release it becomes one Undo-able
@@ -448,7 +448,7 @@
           <dt>Impact</dt>
           <dd>Drag-to-move is the most basic action of a visual editor, and the GUI has no alternative — the right
             rail’s Style › Object has no position field, and Arrange can only align/distribute, not freely position. To
-            move any element the author is left with the terminal command <code>co-motion element move</code>. With that
+            move any element the author is left with the terminal command <code>Slidra element move</code>. With that
             path broken, the editor cannot edit layout.</dd>
           <dt>Suspected scope</dt>
           <dd><code>beginMoveGesture</code> in <code>canvas.ts</code> (<code>:2413</code>) silently bails out when any of
@@ -482,7 +482,7 @@
           <dt>Impact</dt>
           <dd>Templates is a dead end in the GUI: the list is always empty, the LAYOUTS section of the New menu is always
             just Blank, so every new page is a white background blank page (the whole demo is dark), and the layout has to
-            be rebuilt from scratch. To use a template the author has to leave the GUI and run <code>co-motion template
+            be rebuilt from scratch. To use a template the author has to leave the GUI and run <code>Slidra template
             add</code> in the terminal — and “templates” is precisely the core concept the design docs use to replace
             masters.</dd>
           <dt>Note</dt>
@@ -560,12 +560,12 @@
         </div>
         <dl class="finding-body">
           <dt>Re-verification this round</dt>
-          <dd>Fixed, and fixed for this exact cause. Running <code>co-motion open</code> on the same <code>.comot</code>
+          <dd>Fixed, and fixed for this exact cause. Running <code>Slidra open</code> on the same <code>.slidra</code>
             six times in a row reported clean all six; on one of them the raw floating-point reading differed by
             <code>+0.000488</code> ms (the old logic would judge this dirty), and the new logic floors both sides to whole
             milliseconds and correctly judges it clean.</dd>
           <dt>Fix</dt>
-          <dd><code>readSaveState</code> in <code>packages/server/src/comotion/save-state.ts</code> was changed to
+          <dd><code>readSaveState</code> in <code>packages/server/src/slidra/save-state.ts</code> was changed to
             <code>Math.floor(maxMtimeMs) &gt; Math.floor(entry.savedAt)</code>, with a comment explicitly stating this is
             to eliminate the last-digit floating-point difference between Rust’s <code>as_secs_f64() * 1000.0</code> and
             Node’s <code>mtimeMs</code> — consistent with the 1-ULP phenomenon reported in the previous round.</dd>
@@ -766,7 +766,7 @@
         </div>
         <dl class="finding-body">
           <dt>Re-verification this round</dt>
-          <dd>Still reproduces. <code>slides/003.svg</code> on Slide 3 carries three <code>&lt;comot:effect&gt;</code>
+          <dd>Still reproduces. <code>slides/003.svg</code> on Slide 3 carries three <code>&lt;slidra:effect&gt;</code>
             elements, but that thumbnail’s DOM has only <code>.overview-number</code>, <code>.overview-thumb</code>, and
             the comment button, with no animation marker at all.</dd>
           <dt>Expected</dt>
@@ -889,7 +889,7 @@
         <dl class="finding-body">
           <dt>Re-verification this round</dt>
           <dd>Still reproduces. Clicking the Slide 1 background block, both the selection box label and the status-bar chip
-            show <code>el-VDJP6MD9hs3N</code>; elements that have <code>data-comot-name</code> display “Title” and
+            show <code>el-VDJP6MD9hs3N</code>; elements that have <code>data-slidra-name</code> display “Title” and
             “Subtitle” normally.</dd>
           <dt>Expected</dt>
           <dd><code>CONTEXT.md</code> defines “display name” as “the element’s human-facing name” and explicitly states

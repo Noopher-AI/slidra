@@ -122,7 +122,7 @@ When Slidra writes `project.json`, it serializes with 2-space indentation and ap
 
 There is **no migration chain**. If `formatVersion` is not `1`, the file is rejected immediately with an error. No automatic upgrade, conversion, or partial read is attempted.
 
-Legacy CoMotion files are rejected outright, even though they can also carry `formatVersion: 1`. A slide containing `xmlns:comot` or `co-motion.dev/ns` is recognized as legacy content and the entire archive is rejected; Slidra never migrates or partially reads it.
+Legacy Slidra files are rejected outright, even though they can also carry `formatVersion: 1`. A slide containing `xmlns:slidra` or `slidra.app/ns` is recognized as legacy content and the entire archive is rejected; Slidra never migrates or partially reads it.
 
 ---
 
@@ -556,7 +556,7 @@ Templates are stored under `templates/` and registered in `project.json.template
 
 - Current version: **1**.
 - There is no migration chain. A `project.json` with `formatVersion ≠ 1` is rejected.
-- Legacy CoMotion files (which also use `formatVersion: 1`) are detected by the presence of `xmlns:comot` or `co-motion.dev/ns` in any slide SVG and are rejected outright with an error message. They are never migrated or partially read.
+- Legacy Slidra files (which also use `formatVersion: 1`) are detected by the presence of `xmlns:slidra` or `slidra.app/ns` in any slide SVG and are rejected outright with an error message. They are never migrated or partially read.
 
 ---
 
@@ -603,4 +603,4 @@ These are known current behaviors, not additional format requirements:
 
 - `xmlns:slidra` is declared on each `slidra:*` metadata block rather than once on the SVG root.
 - A slide may contain multiple `<metadata>` blocks; the reader and writer handle them, but this is not a deliberately designed format rule.
-- A historical CoMotion clipboard namespace correction no longer applies: any legacy namespace marker is rejected under §2.7, never rewritten in place.
+- A historical Slidra clipboard namespace correction no longer applies: any legacy namespace marker is rejected under §2.7, never rewritten in place.

@@ -126,7 +126,7 @@ fn collect_files(
 
 /// Unzips a `.slidra` container into `target_dir`. Validates that the
 /// container has a readable, structurally valid `project.json` at
-/// `FORMAT_VERSION` and that no slide SVG carries an old CoMotion namespace
+/// `FORMAT_VERSION` and that no slide SVG carries an old Slidra namespace
 /// marker before trusting it — there is no migration to run afterwards.
 pub fn unpack_container(slidra_path: &Path, target_dir: &Path) -> SlidraResult<()> {
     let slidra_display = slidra_path.display().to_string();
@@ -216,7 +216,7 @@ pub fn unpack_container(slidra_path: &Path, target_dir: &Path) -> SlidraResult<(
         }
 
         validate_project_json(target_dir, &slidra_display)?;
-        assert_no_legacy_comotion_slides(target_dir, &slidra_display)?;
+        assert_no_legacy_slidra_slides(target_dir, &slidra_display)?;
         Ok(())
     })();
 
@@ -253,14 +253,14 @@ fn join_relative(base: &Path, relative: &str) -> PathBuf {
     path
 }
 
-/// Rejects a presentation whose slide SVGs still carry the old CoMotion
-/// namespace markers (`xmlns:comot` or `co-motion.dev/ns`). Format version 1
-/// is shared by both the old CoMotion format and the new Slidra format, so
+/// Rejects a presentation whose slide SVGs still carry the old Slidra
+/// namespace markers (`xmlns:slidra` or `slidra.app/ns`). Format version 1
+/// is shared by both the old Slidra format and the new Slidra format, so
 /// the version number alone cannot tell them apart — reading one of the old
 /// files anyway would silently lose its effects/notes/comments rather than
 /// fail loudly. This is a hard rejection, not a compatibility parse: the
 /// content is never interpreted or converted.
-fn assert_no_legacy_comotion_slides(work_dir: &Path, slidra_display: &str) -> SlidraResult<()> {
+fn assert_no_legacy_slidra_slides(work_dir: &Path, slidra_display: &str) -> SlidraResult<()> {
     let slides_dir = work_dir.join("slides");
     let entries = match std::fs::read_dir(&slides_dir) {
         Ok(entries) => entries,
@@ -275,9 +275,9 @@ fn assert_no_legacy_comotion_slides(work_dir: &Path, slidra_display: &str) -> Sl
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if content.contains("xmlns:comot") || content.contains("co-motion.dev/ns") {
+        if content.contains("xmlns:slidra") || content.contains("slidra.app/ns") {
             return Err(SlidraError::invalid(format!(
-                "this presentation was made by CoMotion and is not supported by Slidra: {slidra_display}"
+                "this presentation was made by Slidra and is not supported by Slidra: {slidra_display}"
             )));
         }
     }
@@ -349,25 +349,25 @@ mod tests {
     }
 
     #[test]
-    fn unpack_rejects_a_slide_svg_carrying_the_old_comotion_namespace() {
-        let source = temp_dir("legacy-comot-source");
+    fn unpack_rejects_a_slide_svg_carrying_the_old_slidra_namespace() {
+        let source = temp_dir("legacy-slidra-source");
         std::fs::create_dir_all(source.join("slides")).unwrap();
         std::fs::write(
             source.join("slides/001.svg"),
-            br#"<svg xmlns:comot="https://co-motion.dev/ns"></svg>"#,
+            br#"<svg xmlns:slidra="https://slidra.app/ns"></svg>"#,
         )
         .unwrap();
         std::fs::write(source.join("project.json"), minimal_project_json()).unwrap();
 
-        let slidra_path = temp_dir("legacy-comot-output").join("out.slidra");
+        let slidra_path = temp_dir("legacy-slidra-output").join("out.slidra");
         pack_directory(&source, &slidra_path).unwrap();
 
-        let target = temp_dir("legacy-comot-target");
+        let target = temp_dir("legacy-slidra-target");
         std::fs::remove_dir_all(&target).ok();
         let err = unpack_container(&slidra_path, &target).unwrap_err();
         assert!(
             err.to_string()
-                .contains("this presentation was made by CoMotion and is not supported by Slidra"),
+                .contains("this presentation was made by Slidra and is not supported by Slidra"),
             "unexpected error: {err}"
         );
 
