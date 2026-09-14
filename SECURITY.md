@@ -6,8 +6,8 @@ Please do not report security vulnerabilities in public issues, discussions, or 
 Instead, use GitHub's private vulnerability reporting form on the repository's **Security** tab.
 
 Include the affected version or commit, reproduction steps or a proof of concept, the potential
-impact, and any suggested mitigation. We will acknowledge the report within seven days and keep you
-updated as we investigate and prepare a fix.
+impact, and any suggested mitigation. We will acknowledge the report as soon as practical and keep
+you updated as we investigate and prepare a fix.
 
 Please allow the maintainers a reasonable opportunity to address the vulnerability before public
 disclosure.
