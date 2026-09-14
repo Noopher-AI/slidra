@@ -1,5 +1,7 @@
 # A presentation is a single `.slidra` container file; the working directory is hidden
 
+> **⚠️ Superseded for the container format.** [`spec/rfcs/0001-sqlite-container-format.md`](../../spec/rfcs/0001-sqlite-container-format.md) replaces the ZIP-and-hidden-work-directory model this ADR describes: `.slidra` is a SQLite database edited in place, `slidra open` no longer unpacks anything to `~/.slidra/work/<id>/`, and `formatVersion` 5 means "SQLite," never a continuation of the 1→2→3→4 ZIP chain. This ADR's claims about `project.json`'s own field shape are unaffected.
+>
 > **⚠️ Partially superseded.** The internal structure of `project.json` + `slides/00N.svg` + `assets/` is extended by **ADR-0016** to a fourth directory: `fonts/`, registered under a new optional `fonts` field in `project.json`. **Everything else** — `project.json` only holds what SVG can't express, `formatVersion` is never omitted, and page order is an array — is unaffected.
 >
 > **Later revision**: `formatVersion` moved from 3 to 4 (`templates` must be an object shape, the `transition` field is forbidden, `fonts` becomes required), with the full 1→2→3→4 migration rules settled in `docs/spec/slidra-format.md`; this ADR no longer tracks version-by-version detail.

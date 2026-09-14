@@ -1,5 +1,7 @@
 # Presentation content is read-only to agents, accessed through a virtual filesystem
 
+> **⚠️ `work/<id>` no longer exists.** [`spec/rfcs/0001-sqlite-container-format.md`](../../spec/rfcs/0001-sqlite-container-format.md) removes the hidden work directory this file's repeated "`work/<id>` remains unreadable outside the CLI" invariant refers to — the presentation's content now lives inside a single SQLite `.slidra` file, never unpacked anywhere. The invariant itself (an agent only ever reaches content through the CLI's virtual interface, never a real path) is unchanged; there is simply no `work/<id>` left for the old wording to describe. `slidra extract`, named below as the intended escape hatch, is implemented by that RFC.
+>
 > **⚠️ Partially superseded.** The second of the three layers of protection (the permission hook only allows `slidra *`) has an explicit hole opened in it by **ADR-0015**: the asset-import command accepts absolute paths and URLs, and since it's a `slidra` command it passes the hook. Media-format validation is the only guard left on that path.
 >
 > **What still stands**: the virtual file structure, `fs/write_text_file` is always refused, real paths are never leaked, elements are addressed by opaque stable identifiers, and SVG must stay lean (file size is the token cost of every conversation turn).
