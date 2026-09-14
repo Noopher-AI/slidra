@@ -3126,7 +3126,7 @@ fn no_join_work_call_anywhere_in_production_code() {
 /// the same shape) unusable after an upgrade until the author finds and
 /// deletes an undocumented file. A legacy-shaped entry must be told apart
 /// from a genuinely malformed one (which stays an explicit error, per
-/// `registry_entry_missing_work_dir_is_corrupted_error`) and must not
+/// `registry_entry_missing_deck_path_is_corrupted_error`) and must not
 /// abort the whole registry read.
 ///
 /// Added by Review (NOOP-439) as the reproduction of that defect.

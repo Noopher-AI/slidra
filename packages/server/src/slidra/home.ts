@@ -71,6 +71,17 @@ function isRegistryEntry(value: unknown): value is SlidraRegistryEntry {
 }
 
 /**
+ * A pre-upgrade entry written before `deckPath` replaced `workDir`
+ * (`spec/rfcs/0001-sqlite-container-format.md`). Its own id is already
+ * dead — `<SLIDRA_HOME>/work/<id>/` no longer exists — so it is dropped
+ * on read rather than aborting the whole registry, mirroring the Rust
+ * crate's `read_registry`.
+ */
+function isLegacyWorkDirEntry(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "workDir" in value;
+}
+
+/**
  * Reads and parses `projects.json`. Only a genuinely missing file is an
  * empty registry — every other failure (malformed JSON, a malformed entry,
  * permission denied) is an explicit `SlidraError`, never a silent
@@ -101,6 +112,9 @@ export async function readProjectsRegistry(): Promise<SlidraRegistry> {
   const registry: SlidraRegistry = new Map();
   for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (!isRegistryEntry(value)) {
+      if (isLegacyWorkDirEntry(value)) {
+        continue;
+      }
       throw new SlidraError(`presentation registry data is corrupted: ${id}`);
     }
     registry.set(id, value);

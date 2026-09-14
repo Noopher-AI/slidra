@@ -259,6 +259,15 @@ pub mod registry {
                 .and_then(Value::as_str);
             let deck_path = match deck_path {
                 Some(path) => path,
+                None if entry_obj.is_some_and(|entry| entry.contains_key("workDir")) => {
+                    // A pre-upgrade entry from before `deckPath` replaced
+                    // `workDir` (`spec/rfcs/0001-sqlite-container-format.md`):
+                    // its `work/<id>/` directory no longer exists, so the id
+                    // is already dead — dropping it here (rather than
+                    // erroring the whole registry) is what lets an unrelated
+                    // `open`/`new` keep working right after upgrade.
+                    continue;
+                }
                 None => {
                     return Err(SlidraError::invalid(format!(
                         "presentation registry data is corrupted: {id}"
@@ -554,7 +563,7 @@ pub mod registry {
         }
 
         #[test]
-        fn registry_entry_missing_work_dir_is_corrupted_error() {
+        fn registry_entry_missing_deck_path_is_corrupted_error() {
             let _guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir("missing-workdir");
             std::fs::write(home.join("projects.json"), r#"{"abc123":{"foo":"bar"}}"#).unwrap();
