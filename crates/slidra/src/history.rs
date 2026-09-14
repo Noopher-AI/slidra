@@ -12,12 +12,15 @@
 //! section below, and `workspace::write::write_presentation_file`, the one
 //! door every one of those commands writes through.
 //!
-//! Storage lives at `<SLIDRA_HOME>/history/<presentation-id>/`, a sibling
-//! of `work/<id>/` under the same home — never inside the work directory
-//! itself. It is a snapshot store, not an inverse-operation log: an entry is
-//! the complete prior content of one changed file, addressed only by its
-//! virtual path and presentation id (ADR-0004) — this module has no idea
-//! what a slide or an element is.
+//! Storage lives INSIDE the presentation's own `.slidra` deck file
+//! ([E6.T6]), in three side tables (`deck::ensure_history_schema`) that sit
+//! alongside the deck's `content` table — never in a separate
+//! `<SLIDRA_HOME>/history/` tree. Copying the deck file therefore carries
+//! its undo history with it, and `~/.slidra/history/` is never created. It
+//! is a snapshot store, not an inverse-operation log: an entry is the
+//! complete prior content of one changed file, addressed only by its
+//! virtual path (ADR-0004) — this module has no idea what a slide or an
+//! element is.
 //!
 //! Public API:
 //! - `undo(id) -> SlidraResult<UndoResult>` — undoes the most recent
@@ -34,11 +37,12 @@
 //! site. A CLI command handler for `slidra undo`/`redo` needs only the
 //! presentation id argv already gives it.
 
+use crate::deck;
 use crate::errors::{SlidraError, SlidraResult};
 use crate::id;
 use crate::workspace::{self, virtual_fs};
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use rusqlite::{Connection, params};
+use std::path::Path;
 
 /// Undo stack depth cap. Each entry is a full copy of a changed file and
 /// there is no "close" command to trigger cleanup of an open presentation's
@@ -54,42 +58,47 @@ use std::path::{Path, PathBuf};
 /// itself bounded by `undo`'s own capped length. Do not "fix" this into a
 /// symmetric cap on both arrays; that would diverge from the ported
 /// behavior.
-const UNDO_STACK_CAP: usize = 50;
+///
+/// [E6.T6] raised this from 50 to 500 groups now that history lives inside
+/// the deck file itself — see `UNDO_SNAPSHOT_BYTES_CAP` below for the
+/// second, byte-budget cap that now also applies to the same push.
+const UNDO_STACK_CAP: usize = 500;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+/// Total `history_snapshot.data` bytes budget (sum across the WHOLE table —
+/// undo, redo, and any open group all draw from the same pool), enforced
+/// alongside `UNDO_STACK_CAP` by every push onto the undo stack. Exceeding
+/// it evicts the oldest undo group(s) the same way the count cap does,
+/// except it always leaves at least one undo group behind even if that
+/// group alone is over budget (a single oversized snapshot is legal, never
+/// an error — see `push_group_to_undo_stack`). Since `undo`'s own push onto
+/// `redo` is uncapped (this cap's doc paragraph above), the actual worst
+/// case total history footprint is bounded by roughly 2x this value, not
+/// this value itself.
+const UNDO_SNAPSHOT_BYTES_CAP: i64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HistoryEntry {
     /// e.g. "slides/001.svg"
     virtual_path: String,
-    /// Filename under `snapshots/`, holding the file's content from
+    /// `history_snapshot.snapshot_id`, holding the file's content from
     /// *before* this entry's edit — or `None` when the path did not exist
     /// before the edit (the entry represents the path's *creation*). A
     /// `None` entry undoes by deleting the file instead of restoring
     /// snapshot content.
-    ///
-    /// Deliberately a required-but-nullable field, not `#[serde(default)]`:
-    /// a `stack.json` entry with this key missing entirely (as opposed to
-    /// present-and-`null`) must fail to deserialize, matching the TS
-    /// original's `isHistoryEntry` (which treats `undefined` as invalid,
-    /// only `null` or a string as valid).
     snapshot_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct HistoryGroup {
     group_id: String,
     entries: Vec<HistoryEntry>,
 }
 
-/// `openGroup`'s presence-but-nullable requirement mirrors `HistoryEntry`'s
-/// `snapshot_id` above: `undo`/`redo` never touch or validate its *content*
-/// (see `read_stack`'s doc), but the key must still exist in the JSON object
-/// for the file to parse as a valid stack at all — the TS original's
-/// `isStackFile` rejects a `stack.json` with the `openGroup` key missing
-/// entirely, same as it rejects `undo`/`redo` being missing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// `open_group`'s row is `stack = 2` in `history_group` — at most one such
+/// row ever exists at a time (`write_stack` rewrites the whole table on
+/// every call). `undo`/`redo` never touch or validate its *content*, only
+/// round-trip it (see `read_stack`'s doc).
+#[derive(Debug, Clone)]
 pub(crate) struct StackFile {
     undo: Vec<HistoryGroup>,
     redo: Vec<HistoryGroup>,
@@ -101,125 +110,278 @@ pub struct UndoResult {
     pub restored_paths: Vec<String>,
 }
 
-fn history_dir_for(home: &Path, id: &str) -> PathBuf {
-    home.join("history").join(id)
+fn corrupted() -> SlidraError {
+    SlidraError::invalid("undo history is corrupted")
 }
 
-fn stack_path(home: &Path, id: &str) -> PathBuf {
-    history_dir_for(home, id).join("stack.json")
+fn sql_err(_: rusqlite::Error) -> SlidraError {
+    corrupted()
 }
 
-fn snapshot_path(home: &Path, id: &str, snapshot_id: &str) -> PathBuf {
-    history_dir_for(home, id)
-        .join("snapshots")
-        .join(snapshot_id)
+/// Opens `deck_path` and ensures the three history side tables exist —
+/// every read/write primitive below goes through this, mirroring
+/// `virtual_fs::open`'s "open, then act" shape (`deck.rs` module doc: no
+/// cross-call shared connection or transaction, except within
+/// `write_stack`'s own single call).
+fn open(deck_path: &Path) -> SlidraResult<Connection> {
+    let conn = deck::open_connection(deck_path)
+        .map_err(|_| SlidraError::invalid("failed to open undo history"))?;
+    deck::ensure_history_schema(&conn)?;
+    Ok(conn)
 }
 
-/// Reads and parses `stack.json`. A genuinely missing file (never edited
-/// yet) is an empty stack; anything else — an I/O error other than "file
-/// missing", corrupt JSON, or a malformed shape (`undo` not an array, an
-/// entry missing `virtualPath`, ...) — is a loud `SlidraError`, never a
-/// silent fallback to empty. All three of those failure modes deliberately
-/// collapse to the same message ("undo history is corrupted").
+fn read_entries(conn: &Connection, group_rowid: i64) -> SlidraResult<Vec<HistoryEntry>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT virtual_path, snapshot_id FROM history_entry \
+             WHERE group_rowid = ?1 ORDER BY position",
+        )
+        .map_err(sql_err)?;
+    let rows = stmt
+        .query_map(params![group_rowid], |row| {
+            Ok(HistoryEntry {
+                virtual_path: row.get(0)?,
+                snapshot_id: row.get(1)?,
+            })
+        })
+        .map_err(sql_err)?;
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(row.map_err(sql_err)?);
+    }
+    Ok(entries)
+}
+
+/// Reads the whole stack out of `deck_path`'s side tables. A deck with no
+/// history tables yet (never edited, or written before [E6.T6]) is an empty
+/// stack; anything else — a malformed `stack` value outside 0/1/2, more
+/// than one `stack = 2` (open group) row, or an entry whose `group_rowid`
+/// matches no group row — is a loud `SlidraError`, never a silent fallback
+/// to empty. All of those failure modes deliberately collapse to the same
+/// message ("undo history is corrupted"), matching the pre-[E6.T6] JSON
+/// version's "corrupt JSON" / "wrong shape" cases.
 ///
-/// `openGroup` (a previous turn left an edit group open without closing it)
-/// is read and round-tripped by `write_stack`, but never inspected or
-/// validated beyond "present and either null or a well-formed group" by
-/// `undo`/`redo` — they operate purely on the `undo`/`redo` arrays.
-fn read_stack(home: &Path, id: &str) -> SlidraResult<StackFile> {
-    let raw = match std::fs::read_to_string(stack_path(home, id)) {
-        Ok(text) => text,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(StackFile {
-                undo: Vec::new(),
-                redo: Vec::new(),
-                open_group: None,
-            });
+/// The open group (a previous turn left an edit group open without
+/// closing it) is read and round-tripped by `write_stack`, but never
+/// inspected or validated beyond "at most one, well-formed" by `undo`/
+/// `redo` — they operate purely on the `undo`/`redo` arrays.
+fn read_stack(deck_path: &Path) -> SlidraResult<StackFile> {
+    let conn = open(deck_path)?;
+
+    let orphan_entries: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM history_entry \
+             WHERE group_rowid NOT IN (SELECT id FROM history_group)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sql_err)?;
+    if orphan_entries > 0 {
+        return Err(corrupted());
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT id, group_id, stack FROM history_group ORDER BY stack, position")
+        .map_err(sql_err)?;
+    let group_rows: Vec<(i64, String, i64)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(sql_err)?
+        .collect::<Result<_, _>>()
+        .map_err(sql_err)?;
+
+    let mut undo = Vec::new();
+    let mut redo = Vec::new();
+    let mut open_group = None;
+    for (group_rowid, group_id, stack_kind) in group_rows {
+        let group = HistoryGroup {
+            group_id,
+            entries: read_entries(&conn, group_rowid)?,
+        };
+        match stack_kind {
+            0 => undo.push(group),
+            1 => redo.push(group),
+            2 if open_group.is_none() => open_group = Some(group),
+            _ => return Err(corrupted()),
         }
-        Err(_) => return Err(SlidraError::invalid("undo history is corrupted")),
-    };
-    serde_json::from_str(&raw).map_err(|_| SlidraError::invalid("undo history is corrupted"))
+    }
+
+    Ok(StackFile {
+        undo,
+        redo,
+        open_group,
+    })
 }
 
-/// Atomic write: temp file + rename. Every step (directory creation
-/// included) is wrapped so a raw I/O error can never escape this module with
-/// a real filesystem path in its message (ADR-0004). On any failure, the
-/// temp file is best-effort removed rather than left behind.
-fn write_stack(home: &Path, id: &str, stack: &StackFile) -> SlidraResult<()> {
-    let dir = history_dir_for(home, id);
-    let final_path = stack_path(home, id);
-    let temp_path = dir.join(format!(".stack.json.{}.tmp", id::random_hex_suffix()));
+/// Rewrites the whole stack in one transaction: every `history_group`/
+/// `history_entry` row is deleted and every group in `stack` re-inserted —
+/// simpler and no less atomic than diffing against what is already there,
+/// and it keeps `position` always exactly matching each array's current
+/// index. Never touches `history_snapshot` — deleting a now-unreferenced
+/// snapshot row is always a separate, later step (see `delete_snapshot`'s
+/// call sites), never folded into this rewrite.
+fn write_stack(deck_path: &Path, stack: &StackFile) -> SlidraResult<()> {
+    let mut conn = open(deck_path)?;
+    let tx = conn
+        .transaction()
+        .map_err(|_| SlidraError::invalid("failed to write undo history"))?;
 
-    let write_result: std::io::Result<()> = (|| {
-        std::fs::create_dir_all(&dir)?;
-        // serde_json's pretty printer uses a 2-space indent by default,
-        // matching `JSON.stringify(stack, null, 2)`.
-        let mut json = serde_json::to_string_pretty(stack)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
-        json.push('\n');
-        std::fs::write(&temp_path, json)?;
-        std::fs::rename(&temp_path, &final_path)?;
-        Ok(())
-    })();
+    tx.execute("DELETE FROM history_entry", [])
+        .map_err(|_| SlidraError::invalid("failed to write undo history"))?;
+    tx.execute("DELETE FROM history_group", [])
+        .map_err(|_| SlidraError::invalid("failed to write undo history"))?;
 
-    if write_result.is_err() {
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(SlidraError::invalid("failed to write undo history"));
+    for (stack_kind, groups) in [(0i64, &stack.undo), (1i64, &stack.redo)] {
+        for (position, group) in groups.iter().enumerate() {
+            write_group(&tx, group, stack_kind, position as i64)?;
+        }
+    }
+    if let Some(open_group) = &stack.open_group {
+        write_group(&tx, open_group, 2, 0)?;
+    }
+
+    tx.commit()
+        .map_err(|_| SlidraError::invalid("failed to write undo history"))
+}
+
+fn write_group(
+    tx: &rusqlite::Transaction,
+    group: &HistoryGroup,
+    stack_kind: i64,
+    position: i64,
+) -> SlidraResult<()> {
+    tx.execute(
+        "INSERT INTO history_group (group_id, stack, position) VALUES (?1, ?2, ?3)",
+        params![group.group_id, stack_kind, position],
+    )
+    .map_err(|_| SlidraError::invalid("failed to write undo history"))?;
+    let group_rowid = tx.last_insert_rowid();
+    for (entry_position, entry) in group.entries.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO history_entry (group_rowid, position, virtual_path, snapshot_id) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                group_rowid,
+                entry_position as i64,
+                entry.virtual_path,
+                entry.snapshot_id
+            ],
+        )
+        .map_err(|_| SlidraError::invalid("failed to write undo history"))?;
     }
     Ok(())
 }
 
-/// Writes one snapshot file, as raw bytes — this module has no idea whether
+/// Writes one snapshot row, as raw bytes — this module has no idea whether
 /// `content` is UTF-8 text or a binary asset's original bytes, so neither
 /// ever goes through a decode/re-encode round trip that could alter it.
-fn write_snapshot(home: &Path, id: &str, snapshot_id: &str, content: &[u8]) -> SlidraResult<()> {
-    let file_path = snapshot_path(home, id, snapshot_id);
-    (|| -> std::io::Result<()> {
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)?;
+fn write_snapshot(deck_path: &Path, snapshot_id: &str, content: &[u8]) -> SlidraResult<()> {
+    let conn = open(deck_path)?;
+    conn.execute(
+        "INSERT INTO history_snapshot (snapshot_id, data) VALUES (?1, ?2)
+         ON CONFLICT(snapshot_id) DO UPDATE SET data = excluded.data",
+        params![snapshot_id, content],
+    )
+    .map_err(|_| SlidraError::invalid("failed to write undo snapshot"))?;
+    Ok(())
+}
+
+/// A stack row still pointing at a snapshot id with no matching
+/// `history_snapshot` row is always a hard error here — never skip the
+/// entry and pretend the group is smaller than it is.
+fn read_snapshot(deck_path: &Path, snapshot_id: &str) -> SlidraResult<Vec<u8>> {
+    let conn = open(deck_path)?;
+    conn.query_row(
+        "SELECT data FROM history_snapshot WHERE snapshot_id = ?1",
+        params![snapshot_id],
+        |row| row.get::<_, Vec<u8>>(0),
+    )
+    .map_err(|_| corrupted())
+}
+
+/// Deletes one snapshot row. A row that is already gone is not an error
+/// (`DELETE` matching zero rows is not a SQL failure); any other failure
+/// (e.g. the underlying I/O erroring) is a real problem and must not be
+/// swallowed.
+fn delete_snapshot(deck_path: &Path, snapshot_id: &str) -> SlidraResult<()> {
+    let conn = open(deck_path)?;
+    conn.execute(
+        "DELETE FROM history_snapshot WHERE snapshot_id = ?1",
+        params![snapshot_id],
+    )
+    .map_err(|_| SlidraError::invalid("failed to delete undo snapshot"))?;
+    Ok(())
+}
+
+fn total_snapshot_bytes(conn: &Connection) -> SlidraResult<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(LENGTH(data)), 0) FROM history_snapshot",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(sql_err)
+}
+
+fn group_snapshot_bytes(conn: &Connection, group: &HistoryGroup) -> SlidraResult<i64> {
+    let mut total = 0i64;
+    for entry in &group.entries {
+        if let Some(snapshot_id) = &entry.snapshot_id {
+            total += conn
+                .query_row(
+                    "SELECT LENGTH(data) FROM history_snapshot WHERE snapshot_id = ?1",
+                    params![snapshot_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(sql_err)?;
         }
-        std::fs::write(&file_path, content)
-    })()
-    .map_err(|_| SlidraError::invalid("failed to write undo snapshot"))
+    }
+    Ok(total)
 }
 
-/// `stack.json` still points at a snapshot file that is no longer there is
-/// always a hard error here — never skip the entry and pretend the group is
-/// smaller than it is.
-fn read_snapshot(home: &Path, id: &str, snapshot_id: &str) -> SlidraResult<Vec<u8>> {
-    std::fs::read(snapshot_path(home, id, snapshot_id))
-        .map_err(|_| SlidraError::invalid("undo history is corrupted"))
-}
-
-/// Deletes one snapshot file. A file that is already gone is not an error
-/// (mirrors Node's `rm(..., { force: true })`); any other failure (e.g. a
-/// permission error) is a real problem and must not be swallowed.
-fn delete_snapshot(home: &Path, id: &str, snapshot_id: &str) -> SlidraResult<()> {
-    match std::fs::remove_file(snapshot_path(home, id, snapshot_id)) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(SlidraError::invalid("failed to delete undo snapshot")),
+fn evict_oldest_undo_group(stack: &mut StackFile, evicted_snapshot_ids: &mut Vec<String>) {
+    let evicted = stack.undo.remove(0);
+    for entry in evicted.entries {
+        if let Some(snapshot_id) = entry.snapshot_id {
+            evicted_snapshot_ids.push(snapshot_id);
+        }
     }
 }
 
-/// Pushes a group onto `list` (always the `undo` array at every call site in
-/// this ported slice — see `UNDO_STACK_CAP`'s doc) and enforces the cap by
-/// evicting the oldest group once exceeded. Returns the evicted group's
-/// snapshot ids rather than deleting them here: the caller must not delete a
-/// snapshot file until the `write_stack` that drops the last reference to it
-/// has actually succeeded.
-fn push_group_to_undo_stack(list: &mut Vec<HistoryGroup>, group: HistoryGroup) -> Vec<String> {
-    list.push(group);
+/// Pushes `group` onto `stack.undo` (always the `undo` array at every call
+/// site in this ported slice — see `UNDO_STACK_CAP`'s doc) and enforces
+/// both caps by evicting the oldest group(s), first by count
+/// (`UNDO_STACK_CAP`) then by total snapshot bytes
+/// (`UNDO_SNAPSHOT_BYTES_CAP`, queried from `deck_path`'s
+/// `history_snapshot` table — the byte budget is shared across undo, redo,
+/// and any open group, not tracked separately per array). The byte-cap
+/// eviction never drops the last remaining undo group, even when that
+/// group alone is over budget: a single oversized snapshot is legal, not
+/// an error. Returns every evicted group's snapshot ids rather than
+/// deleting them here — the caller must not delete a snapshot row until
+/// the `write_stack` that drops the last reference to it has actually
+/// succeeded.
+fn push_group_to_undo_stack(
+    deck_path: &Path,
+    stack: &mut StackFile,
+    group: HistoryGroup,
+) -> SlidraResult<Vec<String>> {
+    stack.undo.push(group);
     let mut evicted_snapshot_ids = Vec::new();
-    while list.len() > UNDO_STACK_CAP {
-        let evicted = list.remove(0);
-        for entry in evicted.entries {
-            if let Some(snapshot_id) = entry.snapshot_id {
-                evicted_snapshot_ids.push(snapshot_id);
-            }
+
+    while stack.undo.len() > UNDO_STACK_CAP {
+        evict_oldest_undo_group(stack, &mut evicted_snapshot_ids);
+    }
+
+    if stack.undo.len() > 1 {
+        let conn = open(deck_path)?;
+        let mut total_bytes = total_snapshot_bytes(&conn)?;
+        while stack.undo.len() > 1 && total_bytes > UNDO_SNAPSHOT_BYTES_CAP {
+            let freed = group_snapshot_bytes(&conn, &stack.undo[0])?;
+            evict_oldest_undo_group(stack, &mut evicted_snapshot_ids);
+            total_bytes -= freed;
         }
     }
-    evicted_snapshot_ids
+
+    Ok(evicted_snapshot_ids)
 }
 
 /// `read_virtual_file_bytes`, except a genuinely-absent path is `None`
@@ -227,10 +389,10 @@ fn push_group_to_undo_stack(list: &mut Vec<HistoryGroup>, group: HistoryGroup) -
 /// "overwrite" apart from "create"/"delete" while capturing the inverse of
 /// either direction.
 fn read_virtual_file_bytes_or_none(
-    work_dir: &Path,
+    deck_path: &Path,
     virtual_path: &str,
 ) -> SlidraResult<Option<Vec<u8>>> {
-    match virtual_fs::read_virtual_file_bytes(work_dir, virtual_path) {
+    match virtual_fs::read_virtual_file_bytes(deck_path, virtual_path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(SlidraError::NotFound(_)) => Ok(None),
         Err(err) => Err(err),
@@ -239,8 +401,8 @@ fn read_virtual_file_bytes_or_none(
 
 /// Deletes `virtual_path` if it currently exists; a no-op if it does not
 /// (undoing a creation twice must not be an error).
-fn delete_real_file_if_present(work_dir: &Path, virtual_path: &str) -> SlidraResult<()> {
-    virtual_fs::delete_file_if_present(work_dir, virtual_path)
+fn delete_real_file_if_present(deck_path: &Path, virtual_path: &str) -> SlidraResult<()> {
+    virtual_fs::delete_file_if_present(deck_path, virtual_path)
 }
 
 struct ApplyGroupResult {
@@ -268,18 +430,13 @@ struct ApplyGroupResult {
 /// did not exist before this group ran, so "applying" it means deleting the
 /// path instead of writing content back.
 ///
-/// The snapshot files this group *consumes* are returned rather than
-/// deleted here — the caller's `write_stack` has not run yet, so
-/// `stack.json` on disk still lists this group as referencing them.
-fn apply_group(
-    home: &Path,
-    id: &str,
-    work_dir: &Path,
-    group: &HistoryGroup,
-) -> SlidraResult<ApplyGroupResult> {
+/// The snapshot rows this group *consumes* are returned rather than
+/// deleted here — the caller's `write_stack` has not run yet, so the deck
+/// on disk still lists this group as referencing them.
+fn apply_group(deck_path: &Path, group: &HistoryGroup) -> SlidraResult<ApplyGroupResult> {
     let mut inverse_entries = Vec::with_capacity(group.entries.len());
     for entry in &group.entries {
-        let current = read_virtual_file_bytes_or_none(work_dir, &entry.virtual_path)?;
+        let current = read_virtual_file_bytes_or_none(deck_path, &entry.virtual_path)?;
         match current {
             None => inverse_entries.push(HistoryEntry {
                 virtual_path: entry.virtual_path.clone(),
@@ -287,7 +444,7 @@ fn apply_group(
             }),
             Some(bytes) => {
                 let inverse_snapshot_id = id::generate_opaque_id();
-                write_snapshot(home, id, &inverse_snapshot_id, &bytes)?;
+                write_snapshot(deck_path, &inverse_snapshot_id, &bytes)?;
                 inverse_entries.push(HistoryEntry {
                     virtual_path: entry.virtual_path.clone(),
                     snapshot_id: Some(inverse_snapshot_id),
@@ -299,10 +456,10 @@ fn apply_group(
     let mut consumed_snapshot_ids = Vec::new();
     for entry in group.entries.iter().rev() {
         match &entry.snapshot_id {
-            None => delete_real_file_if_present(work_dir, &entry.virtual_path)?,
+            None => delete_real_file_if_present(deck_path, &entry.virtual_path)?,
             Some(snapshot_id) => {
-                let content = read_snapshot(home, id, snapshot_id)?;
-                virtual_fs::force_write_file(work_dir, &entry.virtual_path, &content)?;
+                let content = read_snapshot(deck_path, snapshot_id)?;
+                virtual_fs::force_write_file(deck_path, &entry.virtual_path, &content)?;
                 consumed_snapshot_ids.push(snapshot_id.clone());
             }
         }
@@ -329,9 +486,8 @@ fn apply_group(
 
 /// Undoes the most recent group, moving it onto the redo stack.
 pub fn undo(id: &str) -> SlidraResult<UndoResult> {
-    let home = workspace::resolve_home();
-    let work_dir = workspace::resolve_work_dir(id)?;
-    let mut stack = read_stack(&home, id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    let mut stack = read_stack(&deck_path)?;
     let group = stack
         .undo
         .pop()
@@ -341,28 +497,28 @@ pub fn undo(id: &str) -> SlidraResult<UndoResult> {
         inverse_group,
         restored_paths,
         consumed_snapshot_ids,
-    } = apply_group(&home, id, &work_dir, &group)?;
+    } = apply_group(&deck_path, &group)?;
     // No cap on this push — see UNDO_STACK_CAP's doc comment.
     stack.redo.push(inverse_group);
-    write_stack(&home, id, &stack)?;
+    write_stack(&deck_path, &stack)?;
 
     // Only now is the new stack durable, so only now is it safe to delete
-    // the snapshot files this undo consumed.
+    // the snapshot rows this undo consumed.
     for snapshot_id in &consumed_snapshot_ids {
-        delete_snapshot(&home, id, snapshot_id)?;
+        delete_snapshot(&deck_path, snapshot_id)?;
     }
     Ok(UndoResult { restored_paths })
 }
 
 /// Redoes the most recently undone group, moving it back onto the undo
-/// stack (subject to `UNDO_STACK_CAP`). The content redone is whatever was
-/// on disk at the moment of the corresponding `undo` call, not a second
-/// independently-tracked "future" — so a change made outside undo/redo
-/// between the `undo` and this `redo` is what comes back.
+/// stack (subject to `UNDO_STACK_CAP`/`UNDO_SNAPSHOT_BYTES_CAP`). The
+/// content redone is whatever was on disk at the moment of the
+/// corresponding `undo` call, not a second independently-tracked "future"
+/// — so a change made outside undo/redo between the `undo` and this `redo`
+/// is what comes back.
 pub fn redo(id: &str) -> SlidraResult<UndoResult> {
-    let home = workspace::resolve_home();
-    let work_dir = workspace::resolve_work_dir(id)?;
-    let mut stack = read_stack(&home, id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    let mut stack = read_stack(&deck_path)?;
     let group = stack
         .redo
         .pop()
@@ -372,17 +528,17 @@ pub fn redo(id: &str) -> SlidraResult<UndoResult> {
         inverse_group,
         restored_paths,
         consumed_snapshot_ids,
-    } = apply_group(&home, id, &work_dir, &group)?;
-    let evicted_snapshot_ids = push_group_to_undo_stack(&mut stack.undo, inverse_group);
-    write_stack(&home, id, &stack)?;
+    } = apply_group(&deck_path, &group)?;
+    let evicted_snapshot_ids = push_group_to_undo_stack(&deck_path, &mut stack, inverse_group)?;
+    write_stack(&deck_path, &stack)?;
 
     // Only now is the new stack durable, so only now is it safe to delete
-    // the snapshot files this redo consumed, plus any cap-evicted group's.
+    // the snapshot rows this redo consumed, plus any cap-evicted group's.
     for snapshot_id in consumed_snapshot_ids
         .iter()
         .chain(evicted_snapshot_ids.iter())
     {
-        delete_snapshot(&home, id, snapshot_id)?;
+        delete_snapshot(&deck_path, snapshot_id)?;
     }
     Ok(UndoResult { restored_paths })
 }
@@ -430,13 +586,12 @@ pub(crate) fn stage_snapshot_entries(
     id: &str,
     virtual_paths: &[&str],
 ) -> SlidraResult<Vec<HistoryEntry>> {
-    let home = workspace::resolve_home();
-    let work_dir = workspace::resolve_work_dir(id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
     let mut entries = Vec::with_capacity(virtual_paths.len());
     for &virtual_path in virtual_paths {
-        let content = virtual_fs::read_virtual_file_bytes(&work_dir, virtual_path)?;
+        let content = virtual_fs::read_virtual_file_bytes(&deck_path, virtual_path)?;
         let snapshot_id = id::generate_opaque_id();
-        write_snapshot(&home, id, &snapshot_id, &content)?;
+        write_snapshot(&deck_path, &snapshot_id, &content)?;
         entries.push(HistoryEntry {
             virtual_path: virtual_path.to_string(),
             snapshot_id: Some(snapshot_id),
@@ -475,8 +630,8 @@ pub(crate) fn commit_snapshot_entries(
     id: &str,
     entries: Vec<HistoryEntry>,
 ) -> SlidraResult<CommitResult> {
-    let home = workspace::resolve_home();
-    let mut stack = read_stack(&home, id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    let mut stack = read_stack(&deck_path)?;
     let previous_stack = stack.clone();
 
     let mut pending_deletion_snapshot_ids = Vec::new();
@@ -496,10 +651,11 @@ pub(crate) fn commit_snapshot_entries(
             group_id: id::generate_opaque_id(),
             entries,
         };
-        pending_deletion_snapshot_ids.extend(push_group_to_undo_stack(&mut stack.undo, group));
+        pending_deletion_snapshot_ids
+            .extend(push_group_to_undo_stack(&deck_path, &mut stack, group)?);
     }
 
-    write_stack(&home, id, &stack)?;
+    write_stack(&deck_path, &stack)?;
 
     Ok(CommitResult {
         previous_stack,
@@ -507,24 +663,24 @@ pub(crate) fn commit_snapshot_entries(
     })
 }
 
-/// Deletes the snapshot files a `commit_snapshot_entries` call orphaned,
+/// Deletes the snapshot rows a `commit_snapshot_entries` call orphaned,
 /// once the caller knows that commit will never be reverted.
 pub(crate) fn finalize_committed_entries(id: &str, snapshot_ids: &[String]) -> SlidraResult<()> {
-    let home = workspace::resolve_home();
+    let deck_path = workspace::resolve_work_dir(id)?;
     for snapshot_id in snapshot_ids {
-        delete_snapshot(&home, id, snapshot_id)?;
+        delete_snapshot(&deck_path, snapshot_id)?;
     }
     Ok(())
 }
 
-/// Deletes snapshot files staged by `stage_snapshot_entries` whose write was
+/// Deletes snapshot rows staged by `stage_snapshot_entries` whose write was
 /// never committed — the caller's actual content write failed, so these
-/// would otherwise sit on disk unreferenced by any stack.
+/// would otherwise sit unreferenced by any stack.
 pub(crate) fn discard_snapshot_entries(id: &str, entries: &[HistoryEntry]) -> SlidraResult<()> {
-    let home = workspace::resolve_home();
+    let deck_path = workspace::resolve_work_dir(id)?;
     for entry in entries {
         if let Some(snapshot_id) = &entry.snapshot_id {
-            delete_snapshot(&home, id, snapshot_id)?;
+            delete_snapshot(&deck_path, snapshot_id)?;
         }
     }
     Ok(())
@@ -552,8 +708,8 @@ pub(crate) fn revert_committed_entries(
     entries: &[HistoryEntry],
     previous_stack: &StackFile,
 ) -> SlidraResult<()> {
-    let home = workspace::resolve_home();
-    write_stack(&home, id, previous_stack)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    write_stack(&deck_path, previous_stack)?;
     discard_snapshot_entries(id, entries)
 }
 
@@ -589,11 +745,10 @@ pub(crate) fn record_snapshot(id: &str, virtual_paths: &[&str]) -> SlidraResult<
 /// `write_presentation_file` calls into one undo step; also correctly
 /// commits into a TS-server-opened group via `commit_snapshot_entries`'s
 /// `open_group` branch, since `packages/server`'s own turn grouping and
-/// this module's are the same `stack.json` `openGroup`.
+/// this module's are the same deck's `open_group` row.
 pub(crate) fn begin_history_group(id: &str) -> SlidraResult<bool> {
-    let home = workspace::resolve_home();
-    workspace::resolve_work_dir(id)?;
-    let mut stack = read_stack(&home, id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    let mut stack = read_stack(&deck_path)?;
     if stack.open_group.is_some() {
         return Ok(false);
     }
@@ -601,7 +756,7 @@ pub(crate) fn begin_history_group(id: &str) -> SlidraResult<bool> {
         group_id: id::generate_opaque_id(),
         entries: Vec::new(),
     });
-    write_stack(&home, id, &stack)?;
+    write_stack(&deck_path, &stack)?;
     Ok(true)
 }
 
@@ -612,9 +767,8 @@ pub(crate) fn begin_history_group(id: &str) -> SlidraResult<bool> {
 /// multi-write operations, always paired with the `begin_history_group`
 /// call that opened the group it closes — see that function's doc comment.
 pub(crate) fn end_history_group(id: &str) -> SlidraResult<()> {
-    let home = workspace::resolve_home();
-    workspace::resolve_work_dir(id)?;
-    let mut stack = read_stack(&home, id)?;
+    let deck_path = workspace::resolve_work_dir(id)?;
+    let mut stack = read_stack(&deck_path)?;
     let group = stack
         .open_group
         .take()
@@ -622,11 +776,11 @@ pub(crate) fn end_history_group(id: &str) -> SlidraResult<()> {
     let evicted_snapshot_ids = if group.entries.is_empty() {
         Vec::new()
     } else {
-        push_group_to_undo_stack(&mut stack.undo, group)
+        push_group_to_undo_stack(&deck_path, &mut stack, group)?
     };
-    write_stack(&home, id, &stack)?;
+    write_stack(&deck_path, &stack)?;
     for snapshot_id in &evicted_snapshot_ids {
-        delete_snapshot(&home, id, snapshot_id)?;
+        delete_snapshot(&deck_path, snapshot_id)?;
     }
     Ok(())
 }
@@ -634,6 +788,7 @@ pub(crate) fn end_history_group(id: &str) -> SlidraResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -644,16 +799,34 @@ mod tests {
         dir
     }
 
-    fn write_stack_json(home: &Path, test_id: &str, contents: &str) {
-        let dir = history_dir_for(home, test_id);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("stack.json"), contents).unwrap();
+    /// Builds a `HistoryGroup` from a plain literal shape — the test-seeding
+    /// equivalent of the old hand-written `stack.json` string literals, now
+    /// building rows in the deck's side tables via `write_stack` instead.
+    fn group(group_id: &str, entries: &[(&str, Option<&str>)]) -> HistoryGroup {
+        HistoryGroup {
+            group_id: group_id.to_string(),
+            entries: entries
+                .iter()
+                .map(|(virtual_path, snapshot_id)| HistoryEntry {
+                    virtual_path: virtual_path.to_string(),
+                    snapshot_id: snapshot_id.map(|s| s.to_string()),
+                })
+                .collect(),
+        }
     }
 
-    fn write_snapshot_file(home: &Path, test_id: &str, snapshot_id: &str, content: &[u8]) {
-        let dir = history_dir_for(home, test_id).join("snapshots");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(snapshot_id), content).unwrap();
+    /// Seeds `deck`'s history side tables directly via `write_stack` — the
+    /// test-seeding replacement for hand-writing a `stack.json` literal.
+    fn seed_stack(deck: &Path, undo: Vec<HistoryGroup>, redo: Vec<HistoryGroup>) {
+        write_stack(
+            deck,
+            &StackFile {
+                undo,
+                redo,
+                open_group: None,
+            },
+        )
+        .unwrap();
     }
 
     struct Fixture {
@@ -711,8 +884,9 @@ mod tests {
     fn undo_with_no_history_file_reports_nothing_to_undo() {
         let fixture = Fixture::new("no-file", "pid-no-file");
         let err = undo("pid-no-file").unwrap_err();
-        // Missing stack.json must be treated as an empty stack (not
-        // "corrupted"), so the observed error is the empty-undo-stack one.
+        // A deck with no history tables yet must be treated as an empty
+        // stack (not "corrupted"), so the observed error is the
+        // empty-undo-stack one.
         assert_eq!(err.message(), "no operation to undo");
         drop(fixture);
     }
@@ -722,16 +896,11 @@ mod tests {
         let fixture = Fixture::new("roundtrip", "pid-roundtrip");
         fixture.write("slides/001.svg", b"<svg>ORIGINAL</svg>");
 
-        write_snapshot_file(
-            &fixture.home,
-            "pid-roundtrip",
-            "snap-before",
-            b"<svg>BEFORE</svg>",
-        );
-        write_stack_json(
-            &fixture.home,
-            "pid-roundtrip",
-            r#"{"undo":[{"groupId":"g1","entries":[{"virtualPath":"slides/001.svg","snapshotId":"snap-before"}]}],"redo":[],"openGroup":null}"#,
+        write_snapshot(&fixture.deck, "snap-before", b"<svg>BEFORE</svg>").unwrap();
+        seed_stack(
+            &fixture.deck,
+            vec![group("g1", &[("slides/001.svg", Some("snap-before"))])],
+            vec![],
         );
 
         let undo_result = undo("pid-roundtrip").unwrap();
@@ -740,14 +909,12 @@ mod tests {
             vec!["slides/001.svg".to_string()]
         );
         assert_eq!(fixture.read("slides/001.svg"), b"<svg>BEFORE</svg>");
-        // The consumed snapshot is deleted only after the stack.json write
+        // The consumed snapshot is deleted only after the write_stack call
         // that drops the last reference to it succeeds.
-        assert!(
-            !fixture
-                .home
-                .join("history/pid-roundtrip/snapshots/snap-before")
-                .exists()
-        );
+        assert!(matches!(
+            read_snapshot(&fixture.deck, "snap-before"),
+            Err(_)
+        ));
 
         let redo_result = redo("pid-roundtrip").unwrap();
         assert_eq!(
@@ -764,10 +931,10 @@ mod tests {
         let fixture = Fixture::new("null-snapshot", "pid-null");
         fixture.write("assets/new.png", b"fresh import bytes");
 
-        write_stack_json(
-            &fixture.home,
-            "pid-null",
-            r#"{"undo":[{"groupId":"g1","entries":[{"virtualPath":"assets/new.png","snapshotId":null}]}],"redo":[],"openGroup":null}"#,
+        seed_stack(
+            &fixture.deck,
+            vec![group("g1", &[("assets/new.png", None)])],
+            vec![],
         );
 
         let result = undo("pid-null").unwrap();
@@ -786,25 +953,18 @@ mod tests {
         // Current on-disk content: the state AFTER both edits.
         fixture.write("slides/001.svg", b"V3-after-both-edits");
 
-        write_snapshot_file(
-            &fixture.home,
-            "pid-twice",
-            "snap-v1",
-            b"V1-before-first-edit",
-        );
-        write_snapshot_file(
-            &fixture.home,
-            "pid-twice",
-            "snap-v2",
-            b"V2-before-second-edit",
-        );
-        write_stack_json(
-            &fixture.home,
-            "pid-twice",
-            r#"{"undo":[{"groupId":"g1","entries":[
-                {"virtualPath":"slides/001.svg","snapshotId":"snap-v1"},
-                {"virtualPath":"slides/001.svg","snapshotId":"snap-v2"}
-            ]}],"redo":[],"openGroup":null}"#,
+        write_snapshot(&fixture.deck, "snap-v1", b"V1-before-first-edit").unwrap();
+        write_snapshot(&fixture.deck, "snap-v2", b"V2-before-second-edit").unwrap();
+        seed_stack(
+            &fixture.deck,
+            vec![group(
+                "g1",
+                &[
+                    ("slides/001.svg", Some("snap-v1")),
+                    ("slides/001.svg", Some("snap-v2")),
+                ],
+            )],
+            vec![],
         );
 
         let result = undo("pid-twice").unwrap();
@@ -816,100 +976,164 @@ mod tests {
         drop(fixture);
     }
 
-    /// Pushing a 51st group onto the undo stack (here via `redo`, the only
+    /// Reads back `history_group.group_id` for `stack = 0` (undo), ordered
+    /// by `position` — the direct row-level equivalent of the old
+    /// `stack.json["undo"].map(g => g.groupId)`.
+    fn undo_group_ids(deck: &Path) -> Vec<String> {
+        let conn = Connection::open(deck).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT group_id FROM history_group WHERE stack = 0 ORDER BY position")
+            .unwrap();
+        stmt.query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    }
+
+    fn snapshot_row_exists(deck: &Path, snapshot_id: &str) -> bool {
+        let conn = Connection::open(deck).unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM history_snapshot WHERE snapshot_id = ?1",
+            params![snapshot_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+            > 0
+    }
+
+    /// Pushing a 501st group onto the undo stack (here via `redo`, the only
     /// call site in this ported slice that can grow `undo` past one entry
     /// at a time under test control) drops the oldest group and deletes the
-    /// snapshot file(s) it referenced.
+    /// snapshot row(s) it referenced.
     #[test]
     fn cap_evicts_oldest_undo_group_and_deletes_its_snapshot() {
         let fixture = Fixture::new("cap", "pid-cap");
         fixture.write("live/001.svg", b"content-before-redo");
 
-        write_snapshot_file(&fixture.home, "pid-cap", "snap-u0", b"oldest-group-content");
-        write_snapshot_file(&fixture.home, "pid-cap", "snap-r1", b"redo-content");
+        write_snapshot(&fixture.deck, "snap-u0", b"oldest-group-content").unwrap();
+        write_snapshot(&fixture.deck, "snap-r1", b"redo-content").unwrap();
 
-        let mut undo_groups = String::new();
+        let mut undo_groups = Vec::with_capacity(UNDO_STACK_CAP);
         for i in 0..UNDO_STACK_CAP {
-            if i > 0 {
-                undo_groups.push(',');
-            }
-            let snapshot_field = if i == 0 {
-                r#""snapshotId":"snap-u0""#.to_string()
+            let entries: Vec<(&str, Option<&str>)> = if i == 0 {
+                vec![("dummy/0.txt", Some("snap-u0"))]
             } else {
-                "\"snapshotId\":null".to_string()
+                vec![("dummy/leaked.txt", None)]
             };
-            undo_groups.push_str(&format!(
-                r#"{{"groupId":"u{i}","entries":[{{"virtualPath":"dummy/{i}.txt",{snapshot_field}}}]}}"#
-            ));
+            undo_groups.push(group(&format!("u{i}"), &entries));
         }
-        let stack_json = format!(
-            r#"{{"undo":[{undo_groups}],"redo":[{{"groupId":"r1","entries":[{{"virtualPath":"live/001.svg","snapshotId":"snap-r1"}}]}}],"openGroup":null}}"#
+        seed_stack(
+            &fixture.deck,
+            undo_groups,
+            vec![group("r1", &[("live/001.svg", Some("snap-r1"))])],
         );
-        write_stack_json(&fixture.home, "pid-cap", &stack_json);
 
         let result = redo("pid-cap").unwrap();
         assert_eq!(result.restored_paths, vec!["live/001.svg".to_string()]);
         assert_eq!(fixture.read("live/001.svg"), b"redo-content");
 
-        let stack_text = std::fs::read_to_string(stack_path(&fixture.home, "pid-cap")).unwrap();
-        let stack_value: serde_json::Value = serde_json::from_str(&stack_text).unwrap();
-        let undo_array = stack_value["undo"].as_array().unwrap();
-        assert_eq!(undo_array.len(), UNDO_STACK_CAP);
+        let undo_ids = undo_group_ids(&fixture.deck);
+        assert_eq!(undo_ids.len(), UNDO_STACK_CAP);
         // Oldest group (u0) evicted; u1 is now the first entry.
-        assert_eq!(undo_array[0]["groupId"], "u1");
+        assert_eq!(undo_ids[0], "u1");
         // The new inverse-of-redo group lands at the end, keeping r1's id.
-        assert_eq!(undo_array[UNDO_STACK_CAP - 1]["groupId"], "r1");
+        assert_eq!(undo_ids[UNDO_STACK_CAP - 1], "r1");
 
         // Evicted group's snapshot is gone; the redo's own consumed
         // snapshot is gone too.
-        assert!(
-            !fixture
-                .home
-                .join("history/pid-cap/snapshots/snap-u0")
-                .exists()
+        assert!(!snapshot_row_exists(&fixture.deck, "snap-u0"));
+        assert!(!snapshot_row_exists(&fixture.deck, "snap-r1"));
+
+        drop(fixture);
+    }
+
+    /// [E6.T6] D3: once total `history_snapshot` bytes exceed
+    /// `UNDO_SNAPSHOT_BYTES_CAP`, the oldest undo group(s) are evicted the
+    /// same way the count cap evicts them — even though the count itself
+    /// stays well under `UNDO_STACK_CAP`.
+    #[test]
+    fn byte_cap_evicts_oldest_undo_group_once_snapshot_total_exceeds_it() {
+        let fixture = Fixture::new("byte-cap", "pid-byte-cap");
+        fixture.write("live/001.svg", b"content-before-edit");
+
+        let big = vec![0u8; (UNDO_SNAPSHOT_BYTES_CAP - 5) as usize];
+        write_snapshot(&fixture.deck, "snap-u0-big", &big).unwrap();
+        seed_stack(
+            &fixture.deck,
+            vec![group("u0", &[("dummy/0.bin", Some("snap-u0-big"))])],
+            vec![],
         );
-        assert!(
-            !fixture
-                .home
-                .join("history/pid-cap/snapshots/snap-r1")
-                .exists()
+
+        // A second, small edit pushes a new group onto `undo` (via the same
+        // stage/commit path `write_presentation_file` uses) — total
+        // snapshot bytes now exceeds the cap, so `u0` (the oldest) must be
+        // evicted, leaving only the new group behind.
+        let entries = stage_snapshot_entries("pid-byte-cap", &["live/001.svg"]).unwrap();
+        let commit = commit_snapshot_entries("pid-byte-cap", entries).unwrap();
+        finalize_committed_entries("pid-byte-cap", &commit.pending_deletion_snapshot_ids).unwrap();
+
+        let undo_ids = undo_group_ids(&fixture.deck);
+        assert_eq!(
+            undo_ids.len(),
+            1,
+            "the oversized older group must be evicted"
+        );
+        assert!(!snapshot_row_exists(&fixture.deck, "snap-u0-big"));
+
+        drop(fixture);
+    }
+
+    /// [E6.T6] D3: the byte cap never evicts the LAST remaining undo group
+    /// — a single snapshot larger than the whole cap is legal and kept.
+    #[test]
+    fn byte_cap_never_evicts_the_last_remaining_undo_group() {
+        let fixture = Fixture::new("byte-cap-floor", "pid-byte-cap-floor");
+        let huge = vec![0u8; (UNDO_SNAPSHOT_BYTES_CAP + 1_000) as usize];
+        fixture.write("assets/huge.bin", &huge);
+
+        let entries = stage_snapshot_entries("pid-byte-cap-floor", &["assets/huge.bin"]).unwrap();
+        let commit = commit_snapshot_entries("pid-byte-cap-floor", entries).unwrap();
+        finalize_committed_entries("pid-byte-cap-floor", &commit.pending_deletion_snapshot_ids)
+            .unwrap();
+
+        assert_eq!(
+            undo_group_ids(&fixture.deck).len(),
+            1,
+            "a single snapshot larger than the byte cap must still occupy its own undo step"
         );
 
         drop(fixture);
     }
 
+    /// Replaces the pre-[E6.T6] `corrupted_stack_json_is_reported_as_damaged_history`
+    /// and `wrong_shaped_stack_json_is_reported_as_damaged_history`: under
+    /// the SQLite-backed storage there is no JSON text to corrupt, so both
+    /// degrade to the same "a row has a shape `read_stack` refuses to
+    /// accept" case — a `history_group.stack` value outside 0/1/2.
     #[test]
-    fn corrupted_stack_json_is_reported_as_damaged_history() {
-        let fixture = Fixture::new("corrupt-syntax", "pid-corrupt-1");
-        write_stack_json(&fixture.home, "pid-corrupt-1", "{not valid json");
-        let err = undo("pid-corrupt-1").unwrap_err();
+    fn malformed_history_rows_are_reported_as_damaged_history() {
+        let fixture = Fixture::new("corrupt-shape", "pid-corrupt");
+        let conn = Connection::open(&fixture.deck).unwrap();
+        deck::ensure_history_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO history_group (group_id, stack, position) VALUES ('g1', 9, 0)",
+            [],
+        )
+        .unwrap();
+        let err = undo("pid-corrupt").unwrap_err();
         assert_eq!(err.message(), "undo history is corrupted");
         drop(fixture);
     }
 
     #[test]
-    fn wrong_shaped_stack_json_is_reported_as_damaged_history() {
-        let fixture = Fixture::new("corrupt-shape", "pid-corrupt-2");
-        // Valid JSON, wrong shape: `undo` is not an array.
-        write_stack_json(
-            &fixture.home,
-            "pid-corrupt-2",
-            r#"{"undo":"nope","redo":[],"openGroup":null}"#,
-        );
-        let err = undo("pid-corrupt-2").unwrap_err();
-        assert_eq!(err.message(), "undo history is corrupted");
-        drop(fixture);
-    }
-
-    #[test]
-    fn stack_json_referencing_a_missing_snapshot_file_is_damaged_history() {
+    fn history_row_referencing_a_missing_snapshot_is_damaged_history() {
         let fixture = Fixture::new("missing-snapshot", "pid-missing-snap");
         fixture.write("slides/001.svg", b"current");
-        // References a snapshot id whose file was never written.
-        write_stack_json(
-            &fixture.home,
-            "pid-missing-snap",
-            r#"{"undo":[{"groupId":"g1","entries":[{"virtualPath":"slides/001.svg","snapshotId":"never-written"}]}],"redo":[],"openGroup":null}"#,
+        // References a snapshot id whose row was never written.
+        seed_stack(
+            &fixture.deck,
+            vec![group("g1", &[("slides/001.svg", Some("never-written"))])],
+            vec![],
         );
         let err = undo("pid-missing-snap").unwrap_err();
         assert_eq!(err.message(), "undo history is corrupted");
@@ -987,11 +1211,11 @@ mod tests {
     fn revert_restores_a_redo_stack_the_commit_had_cleared() {
         let fixture = Fixture::new("revert-redo", "pid-revert-redo");
         fixture.write("slides/001.svg", b"current");
-        write_snapshot_file(&fixture.home, "pid-revert-redo", "snap-r1", b"redo-content");
-        write_stack_json(
-            &fixture.home,
-            "pid-revert-redo",
-            r#"{"undo":[],"redo":[{"groupId":"r1","entries":[{"virtualPath":"slides/001.svg","snapshotId":"snap-r1"}]}],"openGroup":null}"#,
+        write_snapshot(&fixture.deck, "snap-r1", b"redo-content").unwrap();
+        seed_stack(
+            &fixture.deck,
+            vec![],
+            vec![group("r1", &[("slides/001.svg", Some("snap-r1"))])],
         );
 
         let entries = stage_snapshot_entries("pid-revert-redo", &["slides/001.svg"]).unwrap();
@@ -1031,22 +1255,10 @@ mod tests {
 
         let entries = stage_snapshot_entries("pid-discard", &["slides/001.svg"]).unwrap();
         let snapshot_id = entries[0].snapshot_id.clone().unwrap();
-        assert!(
-            fixture
-                .home
-                .join("history/pid-discard/snapshots")
-                .join(&snapshot_id)
-                .exists()
-        );
+        assert!(snapshot_row_exists(&fixture.deck, &snapshot_id));
 
         discard_snapshot_entries("pid-discard", &entries).unwrap();
-        assert!(
-            !fixture
-                .home
-                .join("history/pid-discard/snapshots")
-                .join(&snapshot_id)
-                .exists()
-        );
+        assert!(!snapshot_row_exists(&fixture.deck, &snapshot_id));
 
         drop(fixture);
     }

@@ -65,6 +65,7 @@ pub mod effect;
 pub mod element;
 pub mod extract;
 pub mod font;
+pub mod history_group;
 pub mod ls;
 pub mod new;
 pub mod open;
@@ -90,8 +91,16 @@ pub type CommandTokens = &'static [&'static str];
 /// newer mechanism — kept directly here rather than given their own
 /// one-command "family module" (that would just be `element`/`text`/
 /// `textbox`/`comment`'s pattern with an extra layer of indirection for two
-/// commands that predate the family concept entirely).
-const CORE_TAKEOVER: &[CommandTokens] = &[&["undo"], &["redo"]];
+/// commands that predate the family concept entirely). [E6.T6] adds
+/// `history begin-group`/`history end-group` alongside them: also
+/// family-less, also internal (never listed in `docs/spec/cli.md`'s
+/// `` ## `name` `` heading format — see `history_group.rs`'s module doc).
+const CORE_TAKEOVER: &[CommandTokens] = &[
+    &["undo"],
+    &["redo"],
+    &["history", "begin-group"],
+    &["history", "end-group"],
+];
 
 /// Every family's token-sequence list under the newer mechanism, in the
 /// fixed order the combined table is defined in. A `const fn`/array (not a
@@ -148,6 +157,7 @@ pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match tokens[0] {
         "undo" => undo::run(args),
         "redo" => redo::run(args),
+        "history" => history_group::dispatch(tokens, args),
         "element" => element::dispatch(tokens, args),
         "text" => text::dispatch(tokens, args),
         "textbox" => textbox::dispatch(tokens, args),
@@ -218,6 +228,15 @@ pub fn is_in_takeover_table(name: &str) -> bool {
 /// `argv[0]` alone for the single-level commands, `"<family> <sub...>"`
 /// for the rest: `undo`/`redo`, the five `effect` sub-commands, and the 26
 /// `chart`/`table`/`asset` commands.
+///
+/// Deliberately does NOT include [E6.T6]'s `history begin-group`/`history
+/// end-group`: `cli_golden.rs`'s `cli_md_lists_exactly_the_89_rust_dispatched_commands`
+/// treats this exact list as the public/documented command set and
+/// diffs it byte-for-byte against `docs/spec/cli.md`'s `` ## `name` ``
+/// headings — those two commands are internal-only and never get such a
+/// heading (`history_group.rs`'s module doc), so adding them here would
+/// break that invariant. They are registered only in `CORE_TAKEOVER`
+/// above, which that test does not touch.
 pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "new",
     "open",
@@ -553,6 +572,24 @@ mod tests {
     fn undo_and_redo_still_resolve_as_single_token_commands() {
         assert_eq!(resolve_takeover(&["undo", "some-id"]), Some(&["undo"][..]));
         assert_eq!(resolve_takeover(&["redo", "some-id"]), Some(&["redo"][..]));
+    }
+
+    #[test]
+    fn history_begin_and_end_group_resolve_as_two_token_commands() {
+        assert_eq!(
+            resolve_takeover(&["history", "begin-group", "some-id"]),
+            Some(&["history", "begin-group"][..])
+        );
+        assert_eq!(
+            resolve_takeover(&["history", "end-group", "some-id"]),
+            Some(&["history", "end-group"][..])
+        );
+    }
+
+    #[test]
+    fn history_alone_or_with_an_unregistered_subcommand_does_not_match() {
+        assert!(resolve_takeover(&["history"]).is_none());
+        assert!(resolve_takeover(&["history", "frobnicate"]).is_none());
     }
 
     #[test]

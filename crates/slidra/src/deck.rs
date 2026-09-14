@@ -54,6 +54,64 @@ const SCHEMA_SQL: &str = "CREATE TABLE content (
     data BLOB
 )";
 
+/// Undo-history side tables — [E6.T6]: created lazily (`IF NOT EXISTS`) by
+/// `history::ensure_schema` at the start of every `history` module
+/// operation, never as part of `SCHEMA_SQL`/`user_version` above. A deck
+/// written before this ticket (or a fresh `new`) simply has none of these
+/// three tables until its first history operation; that absence is read as
+/// an empty history (`docs/spec/workspace.md`), not a format migration to
+/// run. No `FOREIGN KEY`/`CASCADE`: `history.rs` deletes rows explicitly on
+/// its own eviction/finalize schedule, which deliberately does not line up
+/// with a naive cascading delete (a group is deleted before its snapshots
+/// in some paths, after in others — see `history::write_stack`).
+///
+/// - `history_group`: one row per undo/redo/open-group entry. `stack` is
+///   0=undo, 1=redo, 2=the (at most one) open group; `position` orders
+///   entries within the same `stack` value, ascending oldest-to-newest —
+///   matching `Vec::push`/`Vec::pop`'s stack-at-the-end convention, so
+///   `position 0` is always the oldest surviving entry.
+/// - `history_entry`: one row per entry inside a group, `position`-ordered
+///   within `group_rowid` (a `history_group.id` value, never enforced by a
+///   real foreign key — see above). `snapshot_id` is nullable: `NULL` means
+///   the entry's `virtual_path` did not exist before the edit it records.
+/// - `history_snapshot`: one row per snapshot, addressed by its opaque
+///   `snapshot_id`, holding the path's full prior content as a blob.
+const HISTORY_GROUP_TABLE_SQL: &str = "CREATE TABLE IF NOT EXISTS history_group (
+    id INTEGER PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    stack INTEGER NOT NULL,
+    position INTEGER NOT NULL
+)";
+
+const HISTORY_ENTRY_TABLE_SQL: &str = "CREATE TABLE IF NOT EXISTS history_entry (
+    id INTEGER PRIMARY KEY,
+    group_rowid INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    virtual_path TEXT NOT NULL,
+    snapshot_id TEXT
+)";
+
+const HISTORY_SNAPSHOT_TABLE_SQL: &str = "CREATE TABLE IF NOT EXISTS history_snapshot (
+    snapshot_id TEXT PRIMARY KEY,
+    data BLOB NOT NULL
+)";
+
+/// Lazily creates the three undo-history side tables (above) inside an
+/// already-open deck connection. Idempotent and cheap to call on every
+/// `history` module operation: once the tables exist, `IF NOT EXISTS`
+/// makes every later call a no-op that writes nothing to the file.
+pub(crate) fn ensure_history_schema(conn: &Connection) -> SlidraResult<()> {
+    for stmt in [
+        HISTORY_GROUP_TABLE_SQL,
+        HISTORY_ENTRY_TABLE_SQL,
+        HISTORY_SNAPSHOT_TABLE_SQL,
+    ] {
+        conn.execute(stmt, [])
+            .map_err(|_| SlidraError::invalid("failed to prepare undo history"))?;
+    }
+    Ok(())
+}
+
 /// A `.slidra` file's on-disk container format, told apart by header bytes
 /// alone (never the file extension) — `docs/spec/slidra-format.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

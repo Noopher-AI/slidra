@@ -329,21 +329,28 @@ mod tests {
         // Removing the `revert_committed_entries` call in
         // `write_presentation_file` left 291 tests green — nothing
         // exercised the "commit succeeded, the actual write then failed"
-        // branch. `assert_file_exists` (a row lookup) and
-        // `stage_snapshot_entries` (a read) both still succeed against a
-        // read-only deck FILE; only the actual `UPDATE` — which needs to
-        // take a write lock on the file — fails, reaching exactly the
-        // branch under test.
-        use std::os::unix::fs::PermissionsExt;
-
+        // branch. [E6.T6]: history storage now lives in the SAME deck file
+        // as `content`, so a chmod-read-only deck (the pre-[E6.T6] trigger)
+        // would fail `stage_snapshot_entries`'s own write too, never
+        // reaching the branch under test. A `content`-only `BEFORE UPDATE`
+        // trigger is the surgical replacement: schema-level, so it fires
+        // for every connection regardless of which one opens next, and it
+        // only blocks the `UPDATE content ...` `write_existing_file` issues
+        // — every `history_group`/`history_entry`/`history_snapshot`
+        // INSERT/DELETE `stage_snapshot_entries`/`commit_snapshot_entries`
+        // issue is untouched.
         let fixture = Fixture::new("write-fail", "pid-write-fail");
-        std::fs::set_permissions(&fixture.deck, std::fs::Permissions::from_mode(0o444)).unwrap();
+        {
+            let conn = rusqlite::Connection::open(&fixture.deck).unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER block_content_write BEFORE UPDATE ON content \
+                 BEGIN SELECT RAISE(ABORT, 'blocked for test'); END;",
+            )
+            .unwrap();
+        }
 
         let write_result =
             write_presentation_file("pid-write-fail", "slides/001.svg", "<svg>EDITED</svg>");
-        // Restore write permission immediately so the fixture's own Drop
-        // (which removes the deck file) does not itself fail.
-        std::fs::set_permissions(&fixture.deck, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         let err = write_result.unwrap_err();
         assert_eq!(err.message(), "error writing slide: slides/001.svg");
@@ -360,17 +367,15 @@ mod tests {
             "the failed write must not occupy an undo slot"
         );
 
-        let snapshots_dir = fixture
-            .home
-            .join("history")
-            .join("pid-write-fail")
-            .join("snapshots");
-        let orphan_count = std::fs::read_dir(&snapshots_dir)
-            .map(|entries| entries.count())
-            .unwrap_or(0);
+        let conn = rusqlite::Connection::open(&fixture.deck).unwrap();
+        let orphan_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM history_snapshot", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
         assert_eq!(
             orphan_count, 0,
-            "a reverted commit must not leave an orphan snapshot file on disk"
+            "a reverted commit must not leave an orphan snapshot row behind"
         );
 
         drop(fixture);
