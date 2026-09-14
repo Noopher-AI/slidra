@@ -106,19 +106,16 @@ describe("chat-messages: a command is its own kind of message", () => {
 });
 
 describe("chat-messages: a stream interruption is its own fact", () => {
-  it("marks a command still running as interrupted without touching its ACP status", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "in_progress", true);
+  it.each(["in_progress", "pending"] as const)(
+    "marks a command still %s as interrupted without touching its ACP status",
+    (status) => {
+      const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", status, true);
 
-    expect(markUnfinishedCommandsInterrupted(messages)).toEqual([
-      { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "in_progress", cli: true, interrupted: true },
-    ]);
-  });
-
-  it("marks a command still pending as interrupted too", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "pending", true);
-
-    expect(markUnfinishedCommandsInterrupted(messages)[0]).toMatchObject({ status: "pending", interrupted: true });
-  });
+      expect(markUnfinishedCommandsInterrupted(messages)).toEqual([
+        { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status, cli: true, interrupted: true },
+      ]);
+    },
+  );
 
   it("leaves commands that already reached an outcome alone", () => {
     const completed = appendCommandMessage([], 0, "call-1", "slidra ls p1", "completed", true);
