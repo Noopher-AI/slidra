@@ -15,7 +15,7 @@ export interface TitleBarProps {
    * or failed — see App.tsx's `presentationError`).
    */
   deckName: string | null;
-  /** "Saved" / "Unsaved changes" (NOOP-93 §4.2) — `null` when save-state is `known:false` or its request failed; no status text is shown then. */
+  /** "Saved" / "Saving…" / "Save failed" (NOOP-422 §4(c)) — `null` when save-state is `known:false` or its request failed; no status text is shown then. There is no manual Save action any more (continuous save replaced it) — a `failed` phase is surfaced through App.tsx's own alert banner with a Retry action, not here. */
   savedStatusText: string | null;
   /** While the agent holds the editing lock, undo/redo are always disabled (no request is sent). */
   editingFrozen: boolean;
@@ -25,8 +25,6 @@ export interface TitleBarProps {
   onNew(): void;
   /** NOOP-93 §4.1: the browser only ever hands over bytes, never a path — App.tsx reads `file` and POSTs it. */
   onOpenFile(file: File): void;
-  /** NOOP-93 §4.2: `POST /api/save`, always actually writes (see §4.2's table). */
-  onSave(): void;
   /** Whether the Export dropdown panel is currently open. */
   exportOpen: boolean;
   onExportToggle(): void;
@@ -43,15 +41,17 @@ export interface TitleBarProps {
 
 /**
  * The title bar (New v3). Layout: brand mark / undo-redo / filename /
- * Open-Save-Export / Play.
+ * Open-Export / Play.
  *
- * Open/Save are wired to real actions: Open triggers a hidden
+ * Open is wired to a real action: it triggers a hidden
  * `<input type="file" accept=".slidra">`, and once a file is picked, hands
  * the `File` to `onOpenFile` (whether there are unsaved changes and
  * whether to prompt for confirmation is App.tsx's concern — this component
- * only hands over the file the user picked); Save calls `onSave` directly.
- * The Export panel is its own dedicated component (see ExportPanel.tsx),
- * not implemented here.
+ * only hands over the file the user picked). There is no Save button or
+ * keyboard shortcut any more (NOOP-422: continuous save writes back on its
+ * own; `savedStatusText` is the only save-related thing this component
+ * still shows). The Export panel is its own dedicated component (see
+ * ExportPanel.tsx), not implemented here.
  */
 export function TitleBar({
   deckName,
@@ -61,7 +61,6 @@ export function TitleBar({
   onRedo,
   onNew,
   onOpenFile,
-  onSave,
   exportOpen,
   onExportToggle,
   onExportClose,
@@ -114,7 +113,14 @@ export function TitleBar({
       <span className="deck-name" title={deckName ?? undefined}>
         {deckName ?? "Deck info unavailable"}
       </span>
-      {savedStatusText && <span className="titlebar-saved-status">{savedStatusText}</span>}
+      {savedStatusText && (
+        <span
+          className="titlebar-saved-status"
+          data-state={savedStatusText === "Save failed" ? "failed" : undefined}
+        >
+          {savedStatusText}
+        </span>
+      )}
       {editingFrozen && (
         <span className="titlebar-frozen-badge" role="status">
           Agent editing · undo paused
@@ -143,10 +149,6 @@ export function TitleBar({
         >
           <Icon name="open" size="inline" />
           Open
-        </button>
-        <button type="button" className="titlebar-button" title="Save (⌘S)" onClick={onSave}>
-          <Icon name="save" size="inline" />
-          Save
         </button>
         <ExportPanel
           open={exportOpen}

@@ -6,10 +6,9 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SlidraError, SlidraInvalidRequestError, SlidraNotFoundError } from "./slidra/errors.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
 import { runJsonCommand } from "./slidra/command.js";
 import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
-import { readSaveState } from "./slidra/save-state.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
@@ -30,7 +29,7 @@ import {
   handleRenamePost,
 } from "./open-endpoint.js";
 import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
-import { broadcastSaveState } from "./save-state.js";
+import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
   handleAssetsRoute,
@@ -182,6 +181,26 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const changeBroadcaster = createChangeBroadcaster(initialDeck?.id ?? null);
   disposers.push(() => changeBroadcaster.dispose());
 
+  // NOOP-422 (Continuous save): owns the debounced write-back that replaced
+  // the manual Save button. Built right after the broadcaster/editingLock
+  // it depends on, before anything that might already mark the deck dirty.
+  const saveController = createSaveController({
+    presentationId: initialDeck?.id ?? null,
+    broadcaster: changeBroadcaster,
+    editingLock,
+  });
+  // Registered FIRST (unshift, not push) — server shutdown must write back
+  // any pending debounced edit before anything else tears down, including
+  // the broadcaster itself (AC3/AC5: closing must never abandon an edit
+  // still sitting in the debounce window).
+  disposers.unshift(async () => {
+    const before = await saveController.state();
+    if (before.known && before.dirty) {
+      process.stderr.write(`Writing unsaved changes to ${before.fileName}…\n`);
+    }
+    await saveController.dispose();
+  });
+
   // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
   // login status, the one live AgentChatSession, and swapping that session
   // out on POST /api/agent/select) — serve.ts no longer constructs
@@ -224,7 +243,14 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   });
 
   const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
-  const onUnfrozen = () => changeBroadcaster.broadcast("editing-unfrozen", {});
+  // The agent writes to the deck through the CLI directly, never through an
+  // HTTP route — its turn ending (releasing the floor) is the only
+  // observation point continuous-save has for "the agent may have just
+  // written something" (plan §4(a)'s table).
+  const onUnfrozen = () => {
+    changeBroadcaster.broadcast("editing-unfrozen", {});
+    saveController.markDirty();
+  };
   editingLock.on("frozen", onFrozen);
   editingLock.on("unfrozen", onUnfrozen);
   disposers.push(async () => {
@@ -305,6 +331,11 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       const workdir = await deployAgentWorkdir(incoming.id);
       await manager.retarget({ id: incoming.id, workdir });
       await changeBroadcaster.retarget(incoming.id);
+      // Flushes whatever is still pending on the OUTGOING deck (this
+      // controller's own `presentationId` is still the outgoing id at this
+      // point — `retarget` hasn't run yet) before pointing itself at the
+      // incoming one (NOOP-422 §4's retarget contract).
+      await saveController.retarget(incoming.id);
     },
   });
 
@@ -323,6 +354,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       chatStreams,
       changeBroadcaster,
       editingLock,
+      saveController,
       exportJobManager,
       serverAddress,
       computeSlashCommands,
@@ -412,6 +444,7 @@ async function handleRequest(
   chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
   editingLock: EditingLock,
+  saveController: SaveController,
   exportJobManager: ExportJobManager,
   serverAddress: { host: string; port: number },
   computeSlashCommands: () => Promise<SlashCommand[]>,
@@ -509,7 +542,7 @@ async function handleRequest(
         // NOOP-433: never gated on `requireDeck` below — switching is the
         // one write route that must work with no deck open (entering a
         // deck for the first time) as well as with one already open.
-        await handleDeckSwitchPost(deckSession, changeBroadcaster, req, res);
+        await handleDeckSwitchPost(deckSession, changeBroadcaster, saveController, req, res);
         return;
       }
       if (url.pathname === "/api/new") {
@@ -552,7 +585,8 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleCommandPost(deckId, req, res);
+        const wrote = await handleCommandPost(deckId, req, res);
+        if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/asset") {
@@ -566,17 +600,31 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleAssetPost(deckId, req, res);
+        const wrote = await handleAssetPost(deckId, req, res);
+        if (wrote) saveController.markDirty();
         return;
       }
-      if (url.pathname === "/api/save") {
+      if (url.pathname === "/api/save/flush") {
+        // NOOP-422: replaces the old `POST /api/save` — the only routes that
+        // ever call this now are the Retry action on a failed save, the
+        // unsaved-changes modal's "Save now", and `applyTemplateToSlides`'s
+        // pre-dispatch save. Same "agent holds the floor" 409 gate every
+        // other human write route above uses.
+        //
+        // [E6.T2] moved `/api/open`/`/api/new` above to deck-independent,
+        // deckStore-backed routes that never touch this server's
+        // currently-bound presentation — so, unlike before NOOP-422, neither
+        // route retargets or flushes saveController; switching TO a newly
+        // created/opened deck (and retargeting saveController) is
+        // `POST /api/deck/switch`'s job (`handleDeckSwitchPost` below).
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
         if (editingLock.getState() === "agent") {
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        await handleSavePost(deckId, changeBroadcaster, res);
+        const state = await saveController.flush();
+        sendJson(res, 200, state);
         return;
       }
       if (url.pathname === "/api/export") {
@@ -593,13 +641,15 @@ async function handleRequest(
       if (url.pathname === "/api/undo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        await handleUndoRedoPost(editingLock, deckId, runUndo, res);
+        const wrote = await handleUndoRedoPost(editingLock, deckId, runUndo, res);
+        if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/redo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        await handleUndoRedoPost(editingLock, deckId, runRedo, res);
+        const wrote = await handleUndoRedoPost(editingLock, deckId, runRedo, res);
+        if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/editing/begin") {
@@ -665,7 +715,7 @@ async function handleRequest(
       // event, which a fresh page load never saw.
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      const state = await readSaveState(deckId);
+      const state = await saveController.state();
       sendJson(res, 200, state);
       return;
     }
@@ -795,6 +845,7 @@ function requireDeck(deckSession: DeckSession, res: ServerResponse): string | nu
 async function handleDeckSwitchPost(
   deckSession: DeckSession,
   changeBroadcaster: ChangeBroadcaster,
+  saveController: SaveController,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -830,7 +881,10 @@ async function handleDeckSwitchPost(
   if (result.switched) {
     changeBroadcaster.broadcast("deck-changed", { deck: toPublicDeck(result.deck) });
     changeBroadcaster.broadcast("presentation-changed", {});
-    await broadcastSaveState(changeBroadcaster, result.deck.id);
+    // `deckSession`'s own `bind` (serve.ts's `createDeckSession` call) has
+    // already run `saveController.retarget(result.deck.id)` by the time
+    // `switchTo` resolves — this broadcasts that already-updated state.
+    await broadcastSaveState(changeBroadcaster, saveController);
   }
   sendJson(res, 200, { ok: true, switched: result.switched, deck: toPublicDeck(result.deck) });
 }
@@ -994,31 +1048,6 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
 }
 
 /**
- * `POST /api/save` (NOOP-93 §4.2). Always actually packs — "nothing to
- * save" is not special-cased into a skipped write, because a button that
- * silently does nothing on some clicks and not others is worse than one
- * that always does the same visible thing (§4.2's table, row 4).
- */
-async function handleSavePost(
-  presentationId: string,
-  changeBroadcaster: ChangeBroadcaster,
-  res: ServerResponse,
-): Promise<void> {
-  try {
-    await savePresentation(presentationId);
-  } catch (error) {
-    if (error instanceof SlidraInvalidRequestError) {
-      sendJson(res, 400, { error: error.message });
-      return;
-    }
-    sendJson(res, 500, { error: error instanceof SlidraError ? error.message : "Save failed" });
-    return;
-  }
-  sendJson(res, 200, { ok: true });
-  await broadcastSaveState(changeBroadcaster, presentationId);
-}
-
-/**
  * `POST /api/export` (NOOP-93 §4.4). Starts a job through
  * `ExportJobManager.start()` — which is also the whole 409 gate: the
  * concurrency check and the start happen inside that one synchronous call,
@@ -1124,50 +1153,30 @@ const runUndo = (id: string): Promise<{ restoredPaths: string[] }> => runCommand
 const runRedo = (id: string): Promise<{ restoredPaths: string[] }> => runCommandRestoringPaths("redo", id);
 
 /**
- * `POST /api/save`'s actual pack (plan §3.7): reads `sourcePath` off
- * `projects.json` — there is no CLI command that already knows it — and
- * runs `pack <id> <sourcePath> --json`, which itself advances `savedAt`
- * when the output path equals `sourcePath` (`slidra/save-state.ts`'s
- * next read picks that up).
- */
-async function savePresentation(presentationId: string): Promise<{ fileName: string }> {
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(presentationId);
-  if (!entry) {
-    throw new SlidraError(`no presentation found for id: ${presentationId}`);
-  }
-  if (entry.sourcePath === undefined) {
-    throw new SlidraInvalidRequestError("This presentation has no file path to write back to, use slidra pack to specify a path");
-  }
-  const result = await runJsonCommand(["pack", presentationId, entry.sourcePath]);
-  if (!result.ok) {
-    throw new SlidraError(result.message);
-  }
-  return { fileName: path.basename(entry.sourcePath) };
-}
-
-/**
  * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
  * editing requests in the single-editor-lock sense (plan §4.1): refused
  * with 409 while the agent holds the floor, run unconditionally otherwise
  * — a thrown `SlidraError` on an empty stack is relayed here as 400 with
  * the command's own message verbatim rather than a silent 200.
  */
+/** Resolves to whether the undo/redo actually wrote to the deck (NOOP-422) — `serve.ts`'s route uses this to decide whether to schedule a continuous-save write-back, same convention as `handleCommandPost`/`handleAssetPost`. */
 async function handleUndoRedoPost(
   editingLock: EditingLock,
   presentationId: string,
   run: (id: string) => Promise<{ restoredPaths: string[] }>,
   res: ServerResponse,
-): Promise<void> {
+): Promise<boolean> {
   if (editingLock.getState() === "agent") {
     sendJson(res, 409, { error: new EditingLockConflictError().message });
-    return;
+    return false;
   }
   try {
     const result = await run(presentationId);
     sendJson(res, 200, result);
+    return true;
   } catch (error) {
     sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Could not complete the operation" });
+    return false;
   }
 }
 

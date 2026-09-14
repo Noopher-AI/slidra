@@ -12,6 +12,8 @@ import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar } from "./shell/TitleBar.js";
+import { UnsavedChangesModal } from "./shell/UnsavedChangesModal.js";
+import { installUnsavedGuard } from "./unsaved-guard.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
 import { Stage } from "./shell/Stage.js";
@@ -68,6 +70,9 @@ export function toExportUiState(event: ExportSseEvent): ExportUiState {
       return { kind: "error", message: event.message };
   }
 }
+
+/** An Open/New refused with 409 (unsaved changes), waiting on `UnsavedChangesModal`'s choice — NOOP-422 §4(d). */
+type PendingUnsavedAction = { kind: "open"; file: File } | { kind: "new" };
 
 /**
  * React owns the shell only (`shell/*.tsx`) — the
@@ -155,13 +160,15 @@ export function App() {
   // effect below.
   const [editingFrozen, setEditingFrozen] = useState(false);
 
-  // NOOP-93 §4.2: the titlebar's Save/Saved-vs-Unsaved story. `known:false`
+  // NOOP-422: the titlebar's Saved/Saving…/Save failed story. `known:false`
   // (the initial value) means "no opinion yet" — same as a pre-NOOP-93
   // registry entry — so the titlebar falls back to `presentationInfo`'s
-  // name and shows no status text (§4.2's table) until the first
+  // name and shows no status text (§4(c)'s table) until the first
   // `GET /api/save-state` in the mount effect below resolves.
   const [saveState, setSaveState] = useState<SaveState>({ known: false });
   const [openError, setOpenError] = useState<string | null>(null);
+  /** An Open/New that was refused with 409 (unsaved changes) — NOOP-422 §4(d) replaced the old `window.confirm` with `UnsavedChangesModal`. */
+  const [pendingUnsavedAction, setPendingUnsavedAction] = useState<PendingUnsavedAction | null>(null);
 
   // [E3.T3] #232/#236: the `/` command list — agent report ∪ bundled
   // skills ∪ user skills (architecture decision on #232/#236 — not a
@@ -667,6 +674,14 @@ export function App() {
   const editingFrozenRef = useRef(editingFrozen);
   editingFrozenRef.current = editingFrozen;
 
+  // Read by `flushSave` (to return the last-known state on a frozen/failed
+  // request without waiting on a re-render) and by the `beforeunload` guard
+  // installed below, which must see the CURRENT dirty flag at the moment a
+  // close/reload happens, not the value from whenever the effect last ran.
+  const saveStateRef = useRef(saveState);
+  saveStateRef.current = saveState;
+  useEffect(() => installUnsavedGuard(() => saveStateRef.current.known && saveStateRef.current.dirty), []);
+
   function runUndoRedo(kind: "undo" | "redo"): void {
     if (editingFrozenRef.current) return;
     const path = kind === "redo" ? "/api/redo" : "/api/undo";
@@ -1041,9 +1056,11 @@ export function App() {
 
   /**
    * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
-   * same file with `x-slidra-discard-unsaved: 1` after the author
-   * confirms losing the current unsaved changes — the one round-trip the
-   * table's 409 row describes.
+   * same file with `x-slidra-discard-unsaved: 1` after the author chooses
+   * "Discard changes" in `UnsavedChangesModal` — the one round-trip the
+   * table's 409 row describes. A 409 without `discardUnsaved` opens that
+   * modal instead of proceeding (NOOP-422 §4(d): replaced the old
+   * `window.confirm`, which could not explain why or offer "Save now").
    */
   async function handleOpenFile(file: File, discardUnsaved = false): Promise<void> {
     setOpenError(null);
@@ -1064,8 +1081,7 @@ export function App() {
       return;
     }
     if (response.status === 409 && !discardUnsaved) {
-      const proceed = window.confirm("The current presentation has unsaved changes. Discard them and open a new file?");
-      if (proceed) await handleOpenFile(file, true);
+      setPendingUnsavedAction({ kind: "open", file });
       return;
     }
     if (!response.ok) {
@@ -1081,10 +1097,10 @@ export function App() {
 
   /**
    * `POST /api/new` — the New button. Follows the same path as Open: the
-   * same 409 unsaved-changes confirmation, and likewise doesn't refetch on
-   * its own after success (the server already broadcasts
-   * presentation-changed and save-state, which this tab's live-reload
-   * picks up).
+   * same 409 unsaved-changes gate (now `UnsavedChangesModal`, not
+   * `window.confirm`), and likewise doesn't refetch on its own after
+   * success (the server already broadcasts presentation-changed and
+   * save-state, which this tab's live-reload picks up).
    */
   async function handleNew(discardUnsaved = false): Promise<void> {
     setOpenError(null);
@@ -1099,8 +1115,7 @@ export function App() {
       return;
     }
     if (response.status === 409 && !discardUnsaved) {
-      const proceed = window.confirm("The current presentation has unsaved changes. Discard them and create a new presentation?");
-      if (proceed) await handleNew(true);
+      setPendingUnsavedAction({ kind: "new" });
       return;
     }
     if (!response.ok) {
@@ -1110,31 +1125,34 @@ export function App() {
   }
 
   /**
-   * `POST /api/save` (NOOP-93 §4.2) — Save button and ⌘S/Ctrl+S share this
-   * one path. Frozen guard matches runUndoRedo's: no request, no 409 to
-   * report, same as undo/redo. Returns whether the save actually
-   * succeeded — master mode's "Let the agent update the slides" (AC3)
-   * must not dispatch the agent over a template that failed to save; the
-   * two pre-existing call sites below ignore the return value.
+   * `POST /api/save/flush` (NOOP-422) — continuous save's manual escape
+   * hatches: the Retry action on a failed save, `UnsavedChangesModal`'s
+   * "Save now", and `applyTemplateToSlides`'s pre-dispatch save. Frozen
+   * guard matches runUndoRedo's: no request, no 409 to report, same as
+   * undo/redo. Returns the resulting save state (not just success/failure)
+   * — callers that need to know whether the write actually landed check
+   * `known && !dirty` on the result, same as they would on `saveState`
+   * itself; the server also broadcasts it, so this tab's own state updates
+   * either way.
    */
-  async function handleSave(): Promise<boolean> {
-    if (editingFrozenRef.current) return false;
+  async function flushSave(): Promise<SaveState> {
+    if (editingFrozenRef.current) return saveStateRef.current;
     setOpenError(null);
     let response: Response;
     try {
-      response = await fetch("/api/save", { method: "POST" });
+      response = await fetch("/api/save/flush", { method: "POST" });
     } catch {
       setOpenError("Failed to save: connection lost");
-      return false;
+      return saveStateRef.current;
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       setOpenError(body.error ?? "Failed to save");
-      return false;
+      return saveStateRef.current;
     }
-    // The server broadcasts save-state itself (serve.ts's handleSavePost) —
-    // no client-side refetch needed on success.
-    return true;
+    const data = (await response.json()) as SaveState;
+    setSaveState(data);
+    return data;
   }
 
   /**
@@ -1165,19 +1183,6 @@ export function App() {
       setExportState({ kind: "error", message: body.error ?? "Export failed" });
     }
   }
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent): void {
-      if (!(event.key === "s" || event.key === "S")) return;
-      if (!(event.ctrlKey || event.metaKey)) return;
-      const target = event.target as HTMLElement | null;
-      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
-      event.preventDefault();
-      void handleSave();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   // Fullscreen toggle: fullscreenchange only syncs UI state here — it
   // must never call exitPlay(). Leaving fullscreen (including Esc) returns
@@ -1474,13 +1479,13 @@ export function App() {
   }
 
   /**
-   * "Let the agent update the slides" (AC3): saves the template first —
-   * the agent reads the change off disk, not off whatever this tab still
-   * has in memory — then dispatches `buildApplyMasterMessage` through the
-   * exact same `sendChatText` path `draftWithAgent` above uses. A failed
-   * save does not dispatch (`handleSave`'s own `setOpenError` already
-   * reported why); `sendChatText`'s existing honest-refusal handles a
-   * `streamReady === false` race on its own — the save already happened
+   * "Let the agent update the slides" (AC3): flushes the pending save
+   * first — the agent reads the change off disk, not off whatever this tab
+   * still has in memory — then dispatches `buildApplyMasterMessage` through
+   * the exact same `sendChatText` path `draftWithAgent` above uses. A
+   * failed flush does not dispatch (`flushSave`'s own `setOpenError`
+   * already reported why); `sendChatText`'s existing honest-refusal handles
+   * a `streamReady === false` race on its own — the save already happened
    * either way, and is never rolled back.
    */
   async function applyTemplateToSlides(templateName: string | null): Promise<void> {
@@ -1489,8 +1494,8 @@ export function App() {
     const state = canvasStateRef.current;
     if (!controller || state.pageSource !== "templates" || state.currentIndex === -1) return;
     const templatePath = state.slides[state.currentIndex];
-    const saved = await handleSave();
-    if (!saved) return;
+    const saved = await flushSave();
+    if (!(saved.known && !saved.dirty)) return;
     await sendChatText(buildApplyMasterMessage({ templatePath, templateName, slideCount: controller.deckSlideCount }));
   }
 
@@ -1743,16 +1748,38 @@ export function App() {
         planOutline.fenceText !== answeredPlanFence && (
           <PlanGateModal key={planOutline.fenceText} outline={planOutline} onSend={answerPlan} onDiscard={() => void discardPlan()} />
         )}
+      {shellVisible && pendingUnsavedAction && (
+        <UnsavedChangesModal
+          fileName={saveState.known ? saveState.fileName : "this presentation"}
+          reason={saveState.known && saveState.phase === "failed" ? saveState.reason : undefined}
+          onSaveNow={() => {
+            void (async () => {
+              const result = await flushSave();
+              if (!(result.known && !result.dirty)) return;
+              const action = pendingUnsavedAction;
+              setPendingUnsavedAction(null);
+              if (action.kind === "open") await handleOpenFile(action.file, true);
+              else await handleNew(true);
+            })();
+          }}
+          onKeepEditing={() => setPendingUnsavedAction(null)}
+          onDiscard={() => {
+            const action = pendingUnsavedAction;
+            setPendingUnsavedAction(null);
+            if (action.kind === "open") void handleOpenFile(action.file, true);
+            else void handleNew(true);
+          }}
+        />
+      )}
       {shellVisible && (
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
-          savedStatusText={saveState.known ? (saveState.dirty ? "Unsaved changes" : "Saved") : null}
+          savedStatusText={saveState.known ? (saveState.phase === "saving" ? "Saving…" : saveState.phase === "failed" ? "Save failed" : "Saved") : null}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
           onNew={() => void handleNew()}
           onOpenFile={(file) => void handleOpenFile(file)}
-          onSave={() => void handleSave()}
           exportOpen={exportOpen}
           onExportToggle={() => setExportOpen((open) => !open)}
           onExportClose={() => setExportOpen(false)}
@@ -1788,6 +1815,14 @@ export function App() {
           )}
           {editingFrozen && (
             <div className="live-reload-banner editing-frozen-banner">Agent editing · undo/redo paused</div>
+          )}
+          {saveState.known && saveState.phase === "failed" && (
+            <div role="alert" className="live-reload-banner save-failed-banner">
+              {saveState.reason ?? "Save failed"}
+              <button type="button" className="save-retry-button" onClick={() => void flushSave()}>
+                Retry
+              </button>
+            </div>
           )}
           {openError && (
             <div role="alert" className="live-reload-banner">

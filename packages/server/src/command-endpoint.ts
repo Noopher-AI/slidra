@@ -208,18 +208,24 @@ function readLimitedBody(req: IncomingMessage, limit: number): Promise<string> {
  * Failure mapping follows `/api/files/`'s existing narrow rule (ticket
  * #14): only a `failureKind` that positively proves absence is a 404.
  * A missing kind is "not proven absent", i.e. 500.
+ *
+ * Resolves to whether the command actually wrote to the deck (NOOP-422):
+ * `true` only for a 200 response — the caller (`serve.ts`) uses this to
+ * decide whether to schedule a continuous-save write-back, and every
+ * refusal/failure path above resolves `false` without having touched the
+ * deck at all.
  */
-export async function handleCommandPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleCommandPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   let raw: string;
   try {
     raw = await readLimitedBody(req, MAX_COMMAND_BODY_BYTES);
   } catch (error) {
     if (error instanceof BodyTooLargeError) {
       sendJson(res, 400, { error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)` });
-      return;
+      return false;
     }
     sendJson(res, 400, { error: "Failed to read request body" });
-    return;
+    return false;
   }
 
   let body: unknown;
@@ -227,25 +233,25 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
     body = JSON.parse(raw);
   } catch {
     sendJson(res, 400, { error: "Request body is not valid JSON" });
-    return;
+    return false;
   }
   if (typeof body !== "object" || body === null) {
     sendJson(res, 400, { error: "Request body must be an object" });
-    return;
+    return false;
   }
 
   const { name, input } = body as { name?: unknown; input?: unknown };
   if (typeof name !== "string") {
     sendJson(res, 400, { error: "name must be a string" });
-    return;
+    return false;
   }
   if (!COMMAND_WHITELIST.includes(name)) {
     sendJson(res, 403, { error: `This endpoint does not accept command: ${name}` });
-    return;
+    return false;
   }
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     sendJson(res, 400, { error: "input must be an object" });
-    return;
+    return false;
   }
 
   // The client's own `id`, if it sent one, is overwritten here — never
@@ -264,14 +270,15 @@ export async function handleCommandPost(presentationId: string, req: IncomingMes
     // A thrown error out of encoding/spawning is a bug or an unclassified
     // failure, never a user-facing "not found".
     sendJson(res, 500, { error: error instanceof Error ? error.message : "Command execution failed" });
-    return;
+    return false;
   }
 
   if (!result.ok) {
     const status = result.failureKind === "not-found" ? 404 : 500;
     sendJson(res, status, { error: result.message, failureKind: result.failureKind ?? null });
-    return;
+    return false;
   }
 
   sendJson(res, 200, { ok: true, data: result.data ?? {}, message: result.message });
+  return true;
 }
