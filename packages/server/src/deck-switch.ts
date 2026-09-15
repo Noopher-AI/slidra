@@ -48,6 +48,16 @@ export interface DeckSession {
    * itself throws (a `SlidraNotFoundError`, unresolved).
    */
   switchTo(id: string): Promise<{ deck: DeckIdentity; switched: boolean }>;
+  /**
+   * Re-resolves the currently-bound deck's own identity (`resolveDeck`,
+   * unchanged) and updates `current()` to match — for a change that leaves
+   * *which* deck is bound untouched but changes that deck's own `name`/
+   * `sourcePath`, such as the title bar's rename. Never touches any bound
+   * resource (the watcher, the agent session) — callers that need those
+   * re-pointed too (the rename route retargets the watcher itself) do so
+   * separately. Throws if no deck is currently bound.
+   */
+  refreshCurrent(): Promise<DeckIdentity>;
 }
 
 export interface DeckSessionOptions {
@@ -135,6 +145,14 @@ export function createDeckSession(options: DeckSessionOptions): DeckSession {
       } finally {
         switching = false;
       }
+    },
+
+    async refreshCurrent() {
+      if (current === null) {
+        throw new Error("refreshCurrent() called with no deck bound");
+      }
+      current = await options.resolveDeck(current.id);
+      return current;
     },
   };
 }

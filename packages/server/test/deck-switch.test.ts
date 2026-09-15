@@ -343,6 +343,81 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(await saveState.json()).toMatchObject({ known: true, dirty: false, fileName: "AfterRename.slidra" });
   });
 
+  it("POST /api/deck/rename-current renames the bound deck in place, keeps it bound, and refuses the same name via /api/deck/rename (AC5's other half)", async () => {
+    const created = await createDeck("BeforeRename");
+    const server = await serve({ presentationId: created.id });
+
+    // The route this feature actually replaces the refusal for: renaming
+    // the bound deck through the general endpoint must still 409.
+    const viaRename = await postJson(server, "/api/deck/rename", { id: created.id, name: "ViaRename" });
+    expect(viaRename.status).toBe(409);
+    expect(await viaRename.json()).toMatchObject({ reason: "deck-bound" });
+
+    const renamed = await postJson(server, "/api/deck/rename-current", { name: "AfterRename" });
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toMatchObject({ ok: true, fileName: "AfterRename.slidra" });
+
+    const deckGet = await fetch(`${server.url}/api/deck`);
+    expect(await deckGet.json()).toMatchObject({ deck: { id: created.id, fileName: "AfterRename.slidra" } });
+
+    const presentation = await fetch(`${server.url}/api/presentation`);
+    expect(presentation.status).toBe(200);
+    expect((await presentation.json()).name).toBe("AfterRename");
+
+    const saveState = await fetch(`${server.url}/api/save-state`);
+    expect(await saveState.json()).toMatchObject({ known: true, dirty: false, fileName: "AfterRename.slidra" });
+  });
+
+  it("POST /api/deck/rename-current re-points live reload at the renamed file", async () => {
+    const created = await createDeck("Watched");
+    const server = await serve({ presentationId: created.id });
+    const events = await connectEvents(server);
+
+    const renamed = await postJson(server, "/api/deck/rename-current", { name: "WatchedRenamed" });
+    expect(renamed.status).toBe(200);
+    // The rename's own broadcastSaveState, on the stream already open
+    // before the rename.
+    expect(eventNameOf(await events.readFrame())).toBe("save-state");
+
+    // A subsequent edit must still be observed by that same stream — proof
+    // the watcher was re-pointed at the renamed file rather than left
+    // watching the old, now-nonexistent path (where it would never fire
+    // again).
+    const command = await postJson(server, "/api/command", {
+      name: "slide notes set",
+      input: { slidePath: "slides/001.svg", text: "after-rename" },
+    });
+    expect(command.status).toBe(200);
+    // Continuous save's own debounced write-back can also broadcast a
+    // second "save-state" in here — only "presentation-changed" (the
+    // watcher's own signal) is this test's assertion.
+    let sawChange = false;
+    for (let i = 0; i < 5 && !sawChange; i++) {
+      if (eventNameOf(await events.readFrame()) === "presentation-changed") sawChange = true;
+    }
+    expect(sawChange).toBe(true);
+    expect(await readSlide(created.id)).toContain("after-rename");
+  });
+
+  it("POST /api/deck/rename-current 409s {reason:\"no-deck\"} with no deck open, and {reason:\"name-conflict\"} for a colliding name", async () => {
+    const server = await serve();
+    const noDeck = await postJson(server, "/api/deck/rename-current", { name: "Whatever" });
+    expect(noDeck.status).toBe(409);
+    expect(await noDeck.json()).toMatchObject({ reason: "no-deck" });
+
+    const other = await createDeck("Taken");
+    const current = await createDeck("Current");
+    const boundServer = await serve({ presentationId: current.id });
+    const conflict = await postJson(boundServer, "/api/deck/rename-current", { name: "Taken" });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ reason: "name-conflict" });
+    void other;
+
+    // A refused rename must leave the bound deck exactly as it was.
+    const presentation = await fetch(`${boundServer.url}/api/presentation`);
+    expect((await presentation.json()).name).toBe("Current");
+  });
+
   it("③ A→B: B's content is served", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");

@@ -99,6 +99,18 @@ export interface DeckStore {
   /** `POST /api/open`'s upload path: raw bytes with no real source path (a browser `<input type="file">` never hands one over). */
   openUpload(bytes: Buffer, displayName: string | undefined): Promise<CreatedDeck>;
   rename(id: string, name: string): Promise<void>;
+  /**
+   * Renames the deck `id` on disk exactly like `rename`, but WITHOUT the
+   * `DeckBoundError` guard — the title bar's own rename flow (`serve.ts`'s
+   * `handleRenameCurrentPost`) uses this for the one deck `rename` refuses:
+   * whichever deck `DeckSession` currently has bound. Safe there, and only
+   * there, because the caller already holds the same guard `switchTo` uses
+   * (editing floor idle, no export running) and re-points the file watcher
+   * at the new path immediately afterwards — neither of which this method
+   * does on its own. Never call this for an id you have not confirmed is
+   * the bound one.
+   */
+  renameBound(id: string, name: string): Promise<{ fileName: string }>;
   remove(id: string): Promise<void>;
   /**
    * `POST /api/deck/resolve`'s implementation ([E6.T4] plan §7 decision 1/2):
@@ -126,6 +138,7 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
     importExternal,
     openUpload,
     rename: (id, name) => renameDeck(getCurrentDeckId, id, name),
+    renameBound: (id, name) => applyDeckRename(id, name),
     remove: (id) => removeDeck(getCurrentDeckId, id),
     resolveId,
   };
@@ -414,12 +427,17 @@ async function openUpload(bytes: Buffer, displayName: string | undefined): Promi
  * already "dirty".
  */
 async function renameDeck(getCurrentDeckId: () => string | null, id: string, name: string): Promise<void> {
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  if (!entry) throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   if (getCurrentDeckId() === id) {
     throw new DeckBoundError(`cannot rename the deck that is currently open: ${id}`);
   }
+  await applyDeckRename(id, name);
+}
+
+/** The on-disk rename shared by `renameDeck` (guarded) and `DeckStore.renameBound` (unguarded) — see the latter's docstring for why an unguarded path exists at all. */
+async function applyDeckRename(id: string, name: string): Promise<{ fileName: string }> {
+  const registry = await readProjectsRegistry();
+  const entry = registry.get(id);
+  if (!entry) throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
 
   const baseName = sanitizeDeckBaseName(name);
   const newFileName = `${baseName}.slidra`;
@@ -449,6 +467,7 @@ async function renameDeck(getCurrentDeckId: () => string | null, id: string, nam
     latest.set(id, { ...current, deckPath: newPath, sourcePath: newPath, savedAt });
     await writeProjectsRegistry(latest);
   });
+  return { fileName: newFileName };
 }
 
 /**

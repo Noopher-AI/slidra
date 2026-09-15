@@ -35,7 +35,7 @@ import {
   handleResolvePost,
   handleThumbnailGet,
 } from "./open-endpoint.js";
-import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
+import { createLocalDeckStore, DeckNameConflictError, type DeckStore } from "./storage/deck-store.js";
 import { createAnonymousProvider } from "./identity/anonymous-provider.js";
 import { handleIdentityGet, handleIdentitySignIn, handleIdentitySignOut } from "./identity/routes.js";
 import { createIdentitySession, type IdentitySession } from "./identity/session.js";
@@ -426,15 +426,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const deckSession = createDeckSession({
     initial: initialDeck,
     resolveDeck: resolveDeckIdentity,
-    guard: () => {
-      if (editingLock.getState() !== "idle") {
-        return { reason: "editing", message: new AgentSwitchLockedError().message };
-      }
-      if (exportJobManager.hasActiveJob()) {
-        return { reason: "exporting", message: "An export job is already in progress" };
-      }
-      return null;
-    },
+    guard: () => deckMutationGuard(editingLock, exportJobManager),
     unbind: async (outgoing) => {
       await changeBroadcaster.retarget(null);
       await manager.retarget(null);
@@ -655,6 +647,14 @@ async function handleRequest(
       }
       if (url.pathname === "/api/deck/rename") {
         await handleRenamePost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/deck/rename-current") {
+        // The title bar's own rename — the one case `/api/deck/rename`
+        // refuses (the deck this server currently has bound). Never gated
+        // on `requireDeck`/the editing-lock check below: it has its own
+        // no-deck/editing/exporting guards, matching `/api/deck/switch`.
+        await handleRenameCurrentPost(deckSession, deckStore, changeBroadcaster, saveController, editingLock, exportJobManager, req, res);
         return;
       }
       if (url.pathname === "/api/deck/delete") {
@@ -969,6 +969,24 @@ async function handleRequest(
  * null when there is no deck to hand back; a route handler's job is then
  * just `if (deckId === null) return;`.
  */
+/**
+ * Shared by `deckSession`'s own switch guard (`createDeckSession`'s `guard`
+ * option) and `handleRenameCurrentPost` — renaming the bound deck's file is
+ * only safe under the exact same conditions a switch away from it is.
+ */
+function deckMutationGuard(
+  editingLock: EditingLock,
+  exportJobManager: ExportJobManager,
+): { reason: string; message: string } | null {
+  if (editingLock.getState() !== "idle") {
+    return { reason: "editing", message: new AgentSwitchLockedError().message };
+  }
+  if (exportJobManager.hasActiveJob()) {
+    return { reason: "exporting", message: "An export job is already in progress" };
+  }
+  return null;
+}
+
 function requireDeck(deckSession: DeckSession, res: ServerResponse): string | null {
   const id = deckSession.currentId();
   if (id === null) {
@@ -1032,6 +1050,86 @@ async function handleDeckSwitchPost(
     await broadcastSaveState(changeBroadcaster, saveController);
   }
   sendJson(res, 200, { ok: true, switched: result.switched, deck: toPublicDeck(result.deck) });
+}
+
+/**
+ * `POST /api/deck/rename-current` — the title bar's inline rename. Body:
+ * `{ name: string }`; the deck to rename is always whichever one
+ * `deckSession` currently has bound (there is no `id` in the body). Refuses
+ * with the same `{reason:"editing"}`/`{reason:"exporting"}` conflicts a
+ * switch would (`guard`), and with `{reason:"no-deck"}` when nothing is
+ * open. On success, flushes any pending debounced save against the OLD path
+ * first, renames the file (`DeckStore.renameBound`), then re-points the
+ * file watcher at the new path (`changeBroadcaster.retarget`) — `retarget`
+ * always tears down and rebuilds the watcher, even for the same id, so this
+ * is enough to make live reload see the renamed file.
+ */
+async function handleRenameCurrentPost(
+  deckSession: DeckSession,
+  deckStore: DeckStore,
+  changeBroadcaster: ChangeBroadcaster,
+  saveController: SaveController,
+  editingLock: EditingLock,
+  exportJobManager: ExportJobManager,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const id = requireDeck(deckSession, res);
+  if (id === null) return;
+
+  const conflict = deckMutationGuard(editingLock, exportJobManager);
+  if (conflict) {
+    sendJson(res, 409, { error: conflict.message, reason: conflict.reason });
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const name = (body as { name?: unknown } | null)?.name;
+  if (typeof name !== "string" || name === "") {
+    sendJson(res, 400, { error: "name must be a non-empty string" });
+    return;
+  }
+
+  try {
+    // Settles any edit still sitting in the debounce window against the
+    // OLD path before that path stops existing.
+    await saveController.flush();
+    const { fileName } = await deckStore.renameBound(id, name);
+    // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
+    // reporting the pre-rename name/sourcePath until the next switch.
+    await deckSession.refreshCurrent();
+    await changeBroadcaster.retarget(id);
+    // `renameBound`'s own savedAt snapshot (a Node-side `stat()` read, same
+    // idiom `deck-store.ts` already uses for `create`/`rename`) is not
+    // reliable here: `refreshCurrent`'s `slidra cat` runs a real subprocess
+    // between that snapshot and this line, and under CI's timing that was
+    // observed to nudge the file's mtime past it, permanently reading the
+    // freshly-renamed deck as dirty. Forcing one real write-back instead
+    // re-establishes `savedAt` through the SAME Rust-`pack`-authored
+    // mechanism every other save already relies on (`slidra/save-state.ts`'s
+    // own docstring) — proven immune to a read run after it, unlike a
+    // Node-side stat guess. `flush` also broadcasts "save-state" itself, so
+    // no separate `broadcastSaveState` call is needed.
+    saveController.markDirty();
+    await saveController.flush();
+    sendJson(res, 200, { ok: true, fileName });
+  } catch (error) {
+    if (error instanceof DeckNameConflictError) {
+      sendJson(res, 409, { error: error.message, reason: "name-conflict" });
+      return;
+    }
+    if (error instanceof SlidraNotFoundError) {
+      sendJson(res, 404, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Rename failed" });
+  }
 }
 
 /**

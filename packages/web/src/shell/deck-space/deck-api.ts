@@ -113,6 +113,23 @@ export async function renameDeck(id: string, name: string): Promise<DeckApiResul
   return { ok: true };
 }
 
+/**
+ * `POST /api/deck/rename-current` — the title bar's own rename, for the one
+ * deck `renameDeck` above always refuses: whichever deck this server
+ * currently has bound. `reason` on a 409 is `"no-deck"` / `"editing"` /
+ * `"exporting"` / `"name-conflict"`, never `"deck-bound"` (that reason only
+ * ever comes from `renameDeck`).
+ */
+export async function renameCurrentDeck(name: string): Promise<DeckApiResult<{ fileName: string }>> {
+  const response = await fetch("/api/deck/rename-current", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) return parseError(response);
+  return { ok: true, ...(await response.json()) };
+}
+
 export async function deleteDeck(id: string): Promise<DeckApiResult<object>> {
   const response = await fetch("/api/deck/delete", {
     method: "POST",
