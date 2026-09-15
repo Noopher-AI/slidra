@@ -111,15 +111,6 @@ export interface DeckStore {
    * the bound one.
    */
   renameBound(id: string, name: string): Promise<{ fileName: string }>;
-  /**
-   * Re-snapshots `id`'s `savedAt` to its deck file's CURRENT on-disk mtime —
-   * for a caller whose own subsequent read against the just-renamed/opened
-   * deck (e.g. `DeckSession.refreshCurrent`'s `slidra cat`) may have nudged
-   * that mtime forward past a snapshot `rename`/`renameBound` already took
-   * earlier in the same request, which would otherwise make the deck read
-   * back as dirty for no real edit. A no-op if `id` is not registered.
-   */
-  resnapshotSaved(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   /**
    * `POST /api/deck/resolve`'s implementation ([E6.T4] plan §7 decision 1/2):
@@ -148,7 +139,6 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
     openUpload,
     rename: (id, name) => renameDeck(getCurrentDeckId, id, name),
     renameBound: (id, name) => applyDeckRename(id, name),
-    resnapshotSaved: (id) => resnapshotSavedForId(id),
     remove: (id) => removeDeck(getCurrentDeckId, id),
     resolveId,
   };
@@ -487,13 +477,6 @@ async function applyDeckRename(id: string, name: string): Promise<{ fileName: st
  * "dirty" ([E6.T9] plan §3). A deck never opened yet has no registry entry
  * at all; that is not an error, there is simply nothing to re-snapshot.
  */
-async function resnapshotSavedForId(id: string): Promise<void> {
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  if (!entry) return;
-  await resnapshotSavedAtIfRegistered(entry.deckPath);
-}
-
 async function resnapshotSavedAtIfRegistered(deckPath: string): Promise<void> {
   const registry = await readProjectsRegistry();
   const match = [...registry].find(([, entry]) => entry.deckPath === deckPath);

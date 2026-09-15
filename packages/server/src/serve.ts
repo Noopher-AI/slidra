@@ -1104,15 +1104,20 @@ async function handleRenameCurrentPost(
     // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
     // reporting the pre-rename name/sourcePath until the next switch.
     await deckSession.refreshCurrent();
-    // `refreshCurrent`'s own `slidra cat` read can nudge the deck file's
-    // mtime past the `savedAt` snapshot `renameBound` already took — this
-    // re-takes it now that every read this request makes is done, so the
-    // deck does not read back as dirty for no real edit.
-    await deckStore.resnapshotSaved(id);
     await changeBroadcaster.retarget(id);
-    // Any other tab with this deck open must see the new name too — the
-    // same broadcast `handleDeckSwitchPost` fires after a bind.
-    await broadcastSaveState(changeBroadcaster, saveController);
+    // `renameBound`'s own savedAt snapshot (a Node-side `stat()` read, same
+    // idiom `deck-store.ts` already uses for `create`/`rename`) is not
+    // reliable here: `refreshCurrent`'s `slidra cat` runs a real subprocess
+    // between that snapshot and this line, and under CI's timing that was
+    // observed to nudge the file's mtime past it, permanently reading the
+    // freshly-renamed deck as dirty. Forcing one real write-back instead
+    // re-establishes `savedAt` through the SAME Rust-`pack`-authored
+    // mechanism every other save already relies on (`slidra/save-state.ts`'s
+    // own docstring) — proven immune to a read run after it, unlike a
+    // Node-side stat guess. `flush` also broadcasts "save-state" itself, so
+    // no separate `broadcastSaveState` call is needed.
+    saveController.markDirty();
+    await saveController.flush();
     sendJson(res, 200, { ok: true, fileName });
   } catch (error) {
     if (error instanceof DeckNameConflictError) {
