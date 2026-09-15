@@ -10,7 +10,7 @@
  * enforcement (`os-enforcement.test.ts` owns that).
  */
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleShimExec } from "../../src/sandbox/shim-endpoint.js";
+import { resolveShimScriptPath } from "../../src/sandbox/shim-wrapper.js";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
@@ -254,6 +255,57 @@ describe("POST /api/agent/exec — behavior contract", () => {
     const frames = viaShim.frames!;
     expect(concatKind(frames, FRAME_STDERR).toString("utf8")).toBe("stub failure\n");
     expect(exitCodeOf(frames)).toBe(7);
+  });
+
+  /**
+   * The three AC5 tests above stop at the endpoint's own response frames.
+   * This one runs the other half — the real `shim/slidra-shim.mjs` client
+   * the agent's shell actually invokes (`<sandboxRoot>/bin/slidra`) — with
+   * its stdout on a pipe, which is what every caller that captures a
+   * command's output gives it (`sh -c "slidra cat ... "` inside the fake
+   * ACP fixture, `$(slidra ...)`, a real agent's own command runner). A
+   * `slidra cat <id> slides/001.svg` of a real slide clears 64 KB easily,
+   * and AC5 names >1 MB explicitly.
+   */
+  it("AC5: the real shim client relays >1 MB to a piped stdout byte-for-byte", async () => {
+    const shimScript = resolveShimScriptPath();
+    const direct = await execFileAsync(fakeBinPath, ["large"], { encoding: "buffer" as BufferEncoding, maxBuffer: 4_000_000 });
+
+    const { stdout, stderr, code } = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>((resolve, reject) => {
+      const child = spawn(process.execPath, [shimScript, "large"], {
+        // The agent's shell always runs inside its own deployed work
+        // directory; the endpoint rejects any cwd outside the sandbox root.
+        cwd: path.join(sandboxRoot, "pres-1"),
+        env: { ...process.env, SLIDRA_SHIM_TOKEN: TOKEN, SLIDRA_SHIM_BASE_URL: baseUrl },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const chunks: Buffer[] = [];
+      let errText = "";
+      // A consumer that is not draining the pipe the instant bytes appear —
+      // `slidra cat … | head`, a shell pipeline, or simply an agent whose
+      // event loop is busy. Everything the command wrote must still arrive:
+      // a pipe holds ~64 KB, so anything larger depends on the writer
+      // staying alive until the reader has taken it.
+      child.stdout.pause();
+      setTimeout(() => {
+        child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+        child.stdout.resume();
+      }, 300);
+      child.stderr.on("data", (chunk: Buffer) => (errText += chunk.toString("utf8")));
+      child.on("error", reject);
+      child.on("close", (exitCode) => resolve({ stdout: Buffer.concat(chunks), stderr: errText, code: exitCode }));
+      child.stdin.end();
+    });
+
+    // Reported together: a short read with exit 0 and an empty stderr is
+    // the failure mode that matters here — output lost with nothing at all
+    // to tell the caller it happened.
+    expect({ bytes: stdout.length, stderr, code }).toEqual({
+      bytes: (direct.stdout as unknown as Buffer).length,
+      stderr: "",
+      code: 0,
+    });
+    expect(stdout.equals(direct.stdout as unknown as Buffer)).toBe(true);
   });
 
   it("forwards the request body to the command's stdin", async () => {
