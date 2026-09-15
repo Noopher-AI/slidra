@@ -36,6 +36,10 @@ import {
   handleThumbnailGet,
 } from "./open-endpoint.js";
 import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
+import { createAnonymousProvider } from "./identity/anonymous-provider.js";
+import { handleIdentityGet, handleIdentitySignIn, handleIdentitySignOut } from "./identity/routes.js";
+import { createIdentitySession, type IdentitySession } from "./identity/session.js";
+import type { IdentityProvider } from "./identity/types.js";
 import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
@@ -135,6 +139,15 @@ export interface ServeOptions {
    * to exist on the machine running the test into assertions.
    */
   skillDirs?: Partial<SkillDirs>;
+  /**
+   * [E6.T9]: the identity providers this server registers, and the one
+   * seam production and tests differ on. Omitted (`cli.ts`, the e2e
+   * harness) means exactly `[anonymous]` — the only provider a real
+   * deployment offers until a real one (Email Magic Link) ships. Tests
+   * pass `{ providers: [createFakeProvider()] }` (or a locally-built
+   * two-phase provider, AC7) to sign in without a real identity backend.
+   */
+  identity?: { providers: IdentityProvider[] };
 }
 
 export interface RunningServer {
@@ -256,6 +269,13 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // before `deckSession` actually exists.
   const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
 
+  // [E6.T9]: built once per server, alongside deckStore — the identity
+  // routes below and GET /api/decks' visibility resolver both close over
+  // this one session, so "who is signed in" and "which decks are visible"
+  // can never disagree within a single serve process.
+  const identityProviders = options.identity?.providers ?? [createAnonymousProvider()];
+  const identitySession = createIdentitySession(identityProviders, deckStore);
+
   // The HTTP server is created and `listen()`ed *before* `AgentManager`
   // below, and the closure here references `manager`/`chatStreams`/
   // `deckSession`/`computeSlashCommands` before any of them are
@@ -276,6 +296,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     void handleRequest(
       deckSession,
       deckStore,
+      identitySession,
       staticDir,
       manager,
       chatStreams,
@@ -506,6 +527,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 async function handleRequest(
   deckSession: DeckSession,
   deckStore: DeckStore,
+  identitySession: IdentitySession,
   staticDir: string,
   manager: AgentManager,
   chatStreams: ChatStreamRegistry,
@@ -750,6 +772,14 @@ async function handleRequest(
         sendJson(res, 200, { ok: true });
         return;
       }
+      if (url.pathname === "/api/identity/sign-in") {
+        await handleIdentitySignIn(identitySession, req, res);
+        return;
+      }
+      if (url.pathname === "/api/identity/sign-out") {
+        await handleIdentitySignOut(identitySession, res);
+        return;
+      }
       sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
@@ -792,8 +822,17 @@ async function handleRequest(
     if (url.pathname === "/api/decks") {
       // [E6.T2]: deck-independent, like /api/new and /api/open above —
       // scans the deck folder directly, regardless of whether this server
-      // currently has a deck open.
-      await handleDecksGet(deckStore, url, res);
+      // currently has a deck open. [E6.T9]: with no ?owner= given, the
+      // visible set is identity's union of "Anonymous" plus the current
+      // identity's own decks, not the whole folder.
+      await handleDecksGet(deckStore, url, res, () => identitySession.visibleDecks());
+      return;
+    }
+
+    if (url.pathname === "/api/identity") {
+      // [E6.T9] AC1: the user block's initial render — current identity
+      // (null when anonymous) plus every registered provider.
+      handleIdentityGet(identitySession, res);
       return;
     }
 
