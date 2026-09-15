@@ -232,6 +232,23 @@ describe("GET /api/identity, POST /api/identity/sign-in, POST /api/identity/sign
     expect(await after.json()).toMatchObject({ known: true, dirty: false });
   });
 
+  // Reviewer-added ([E6.T9] review): reverting the union in session.ts's
+  // visibleDecks() to "only my own decks" left every existing test green,
+  // yet plan §7 decision 4 makes the union load-bearing — /api/new never
+  // stamps the current identity (plan §2.8), so a deck created while
+  // signed in is anonymous and would silently vanish from its author's own
+  // list the moment it was created.
+  it("while signed in, a still-anonymous deck stays visible — the visible set is the union of Anonymous and my own, not only my own", async () => {
+    const server = await serve({ identity: { providers: [createFakeProvider()] } });
+
+    const claimedAtSignIn = await createAnonymousDeck(server, "Claimed-at-sign-in");
+    const signIn = await postJson(server, "/api/identity/sign-in", { provider: "fake", identity: "alice" });
+    expect((await signIn.json()) as { claimed: number }).toMatchObject({ claimed: 1 });
+
+    const madeWhileSignedIn = await createAnonymousDeck(server, "Made-while-signed-in");
+    expect(await listDeckFileNames(server)).toEqual([claimedAtSignIn, madeWhileSignedIn].sort());
+  });
+
   it("an explicit ?owner= bypasses identity entirely, even while signed in as someone else", async () => {
     const server = await serve({ identity: { providers: [createFakeProvider()] } });
 
