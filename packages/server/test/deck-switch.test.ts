@@ -418,11 +418,18 @@ describe("switching (AC3/AC4/AC5)", () => {
     const chat = await postJson(server, "/api/chat", { text: "hi" });
     expect(chat.status).toBe(202);
 
-    const log = await waitForLogLine(logPath, (entry) => entry.newSessionCwd !== undefined);
-    const newSessionEntry = log.find((entry) => entry.newSessionCwd !== undefined)!;
+    const cwdLog = await waitForLogLine(logPath, (entry) => entry.newSessionCwd !== undefined);
+    const newSessionEntry = cwdLog.find((entry) => entry.newSessionCwd !== undefined)!;
     const bAgentWorkdir = path.join(resolveSlidraHome(), "agent", b.id);
     expect(newSessionEntry.newSessionCwd).toBe(await realWorkdir(bAgentWorkdir));
 
+    // `prompt` is logged by the fixture's `prompt()` handler, a separate
+    // JSON-RPC call that lands after `newSession()` — under load the two
+    // log lines can be arbitrarily far apart, so this polls independently
+    // instead of assuming the snapshot taken for the cwd check above
+    // already contains it (NOOP flake: CI's full-suite run, never a
+    // single-file run, hit this).
+    const log = await waitForLogLine(logPath, (entry) => Array.isArray(entry.prompt));
     const promptEntry = log.find((entry) => Array.isArray(entry.prompt));
     expect(promptEntry).toBeDefined();
     expect(JSON.stringify(promptEntry!.prompt)).toContain(b.id);
