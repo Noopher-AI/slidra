@@ -2,11 +2,18 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 /**
- * The one file in this codebase allowed to import
- * `@anthropic-ai/sandbox-runtime` (NOOP-425 D1) — everything else talks to
- * `SandboxLauncher` (`launcher.ts`), never to `SandboxManager` or its config
- * types directly. `srt`'s own shapes are unreviewed Beta internals (its own
- * source: `customConfig.filesystem` replaces wholesale rather than merging,
+ * The macOS half of the agent sandbox (NOOP-425 owner decision,
+ * 2026-09-15): `launcher.ts` reaches this module only via a dynamic
+ * `import()`, and only when `process.platform === "darwin"` — Linux uses
+ * `landlock-launcher.ts` instead of `srt`'s bubblewrap path (`initialize()`
+ * unconditionally requires `bwrap`/`socat` there, which needs an
+ * unprivileged user namespace most Linux users' machines disable by
+ * default), and Windows has no OS-level path at all. This is also the one
+ * file in this codebase allowed to import `@anthropic-ai/sandbox-runtime`
+ * (NOOP-425 D1) — everything else talks to `SandboxLauncher` (`launcher.ts`),
+ * never to `SandboxManager` or its config types directly. `srt`'s own
+ * shapes are unreviewed Beta internals (its own source:
+ * `customConfig.filesystem` replaces wholesale rather than merging,
  * `network.allowedDomains` rejects wildcard patterns, `initialize()` runs no
  * zod validation on its input) — confining them to this one module is what
  * keeps a later `srt` upgrade from being a whole-codebase diff.

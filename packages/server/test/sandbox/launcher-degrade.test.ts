@@ -22,6 +22,7 @@ afterEach(async () => {
   await launcher?.dispose();
   launcher = undefined;
   delete process.env.SLIDRA_SANDBOX;
+  delete process.env.SLIDRA_SANDBOX_BIN;
 });
 
 describe("createSandboxLauncher", () => {
@@ -42,16 +43,18 @@ describe("createSandboxLauncher", () => {
     expectDegraded(launcher, "Windows");
   });
 
-  it("a real dependency failure (bwrap/socat/rg not on PATH) degrades instead of throwing", async () => {
-    const originalPath = process.env.PATH;
-    process.env.PATH = "";
-    try {
+  // Only meaningful on the platform that actually dispatches to
+  // landlock-launcher.ts — on any other platform this would just exercise
+  // the same off/Windows/passthrough path the other tests already cover,
+  // for the wrong reason, so it is skipped rather than silently passing.
+  it.skipIf(process.platform !== "linux")(
+    "a real dependency failure (the Landlock helper binary missing) degrades instead of throwing",
+    async () => {
+      process.env.SLIDRA_SANDBOX_BIN = "/nonexistent/slidra-sandbox-exec";
       launcher = await createSandboxLauncher();
-    } finally {
-      process.env.PATH = originalPath;
-    }
-    expectDegraded(launcher, "write isolation failed to start");
-  });
+      expectDegraded(launcher, "write isolation failed to start");
+    },
+  );
 
   it("the passthrough launcher's wrap() returns the spawn unchanged", async () => {
     process.env.SLIDRA_SANDBOX = "off";

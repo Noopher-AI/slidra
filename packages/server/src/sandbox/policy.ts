@@ -60,8 +60,10 @@ export async function buildAgentSandboxPolicy(options: { sandboxRoot: string; ho
   // T2 (NOOP-446, not yet merged) will give every deck a home under
   // `~/Slidra`; deny it once it exists so this policy does not need to
   // change when that ships. Only when it already exists *and* is a
-  // directory — denying a path bwrap has to create denies T2's own mkdir
-  // (a deny of a non-existent path makes bwrap mount an empty file there).
+  // directory — `denyRead` is consumed only by `srt-launcher.ts` (macOS)
+  // now (`landlock-launcher.ts` ignores it entirely, NOOP-425 L6), and a
+  // deny rule for a path that does not exist on disk risks the OS creating
+  // an empty placeholder there, which would deny T2's own mkdir.
   const deckFolder = path.join(home, "Slidra");
   if (await isExistingDirectory(deckFolder)) {
     denyRead.push(deckFolder);
@@ -77,15 +79,25 @@ export async function buildAgentSandboxPolicy(options: { sandboxRoot: string; ho
  * reaching `~/.ssh` — the agent sandbox's allow-list has nothing to say
  * about it, since that command's own process runs under this policy
  * instead.
+ *
+ * NOOP-425 L5: grants the deck's *parent directory*, not just the deck file
+ * and its `-wal`/`-shm`/`-journal` siblings by name. A Landlock rule can
+ * only attach to a path that already exists on disk (a non-existent path is
+ * silently skipped — see `slidra-sandbox-exec`'s own docstring); `-journal`
+ * in particular is created fresh on first write, so naming it explicitly
+ * would grant nothing the first time a deck is touched. This is
+ * deliberately wider than the original per-sibling draft — the CLI can now
+ * write any file inside the deck's own directory, not only the deck's own
+ * names — and it is called out here (and must be called out in the PR,
+ * AC8) precisely because it is a real widening, not an oversight. It does
+ * not affect what `slidra extract <deck> ~/.ssh/` can reach: `~/.ssh` is
+ * still outside this allow-list entirely.
  */
 export function buildCliSandboxPolicy(options: { deckPath: string }): SandboxPolicy {
   const { deckPath } = options;
   return {
     allowWrite: [
-      deckPath,
-      `${deckPath}-wal`,
-      `${deckPath}-shm`,
-      `${deckPath}-journal`,
+      path.dirname(deckPath),
       // `projects.json`, `history/<id>/stack.json`, save-state bookkeeping.
       resolveSlidraHome(),
       // `encodeCommandArgv`'s `slidra-argv-*` mkdtemp files.

@@ -57,37 +57,35 @@ describe("buildAgentSandboxPolicy", () => {
     expect(policy.denyRead).toContain("/decks/b.slidra");
   });
 
-  it("denies ~/Slidra only when it already exists as a directory, so bwrap never mounts an empty file over a path T2 still needs to mkdir", async () => {
-    const withoutIt = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(withoutIt.denyRead).not.toContain(path.join(home, "Slidra"));
-
-    await mkdir(path.join(home, "Slidra"));
-    const withIt = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(withIt.denyRead).toContain(path.join(home, "Slidra"));
-  });
-
-  it("does not deny ~/Slidra when that name exists but is a file, not a directory", async () => {
+  // `denyRead` is consumed only by `srt-launcher.ts` (macOS) — Linux's
+  // `landlock-launcher.ts` ignores it entirely (NOOP-425 L6), since a
+  // write-only Landlock ruleset has no read-restriction concept to apply it
+  // to. Kept here (not moved/duplicated) because the array's *contents* are
+  // still produced by this platform-agnostic function.
+  it("denies ~/Slidra only when it already exists as a directory — never a bare file, never a path absent from disk (macOS srt path only)", async () => {
     const { writeFile } = await import("node:fs/promises");
+
+    const beforeItExists = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
+    expect(beforeItExists.denyRead).not.toContain(path.join(home, "Slidra"));
+
     await writeFile(path.join(home, "Slidra"), "not a directory");
-    const policy = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(policy.denyRead).not.toContain(path.join(home, "Slidra"));
+    const asAFile = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
+    expect(asAFile.denyRead).not.toContain(path.join(home, "Slidra"));
+
+    await rm(path.join(home, "Slidra"));
+    await mkdir(path.join(home, "Slidra"));
+    const asADirectory = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
+    expect(asADirectory.denyRead).toContain(path.join(home, "Slidra"));
   });
 });
 
 describe("buildCliSandboxPolicy", () => {
-  it("allows only the bound deck, its -wal/-shm/-journal siblings, SLIDRA_HOME, and tmpdir (AC8)", () => {
+  it("allows the deck's parent directory (not just the deck by name), SLIDRA_HOME, and tmpdir (AC8, L5)", () => {
     const policy = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
-    expect(policy.allowWrite).toEqual([
-      "/decks/current.slidra",
-      "/decks/current.slidra-wal",
-      "/decks/current.slidra-shm",
-      "/decks/current.slidra-journal",
-      slidraHome,
-      tmpdir(),
-    ]);
+    expect(policy.allowWrite).toEqual(["/decks", slidraHome, tmpdir()]);
   });
 
-  it("never allows an arbitrary path outside the deck and SLIDRA_HOME — the guard `slidra extract <deck> ~/.ssh/` depends on", () => {
+  it("never allows an arbitrary path outside the deck's directory and SLIDRA_HOME — the guard `slidra extract <deck> ~/.ssh/` depends on", () => {
     const policy = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
     expect(policy.allowWrite).not.toContain(path.join(home, ".ssh"));
     expect(policy.denyRead).toEqual([]);
