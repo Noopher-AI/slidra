@@ -296,6 +296,20 @@ describe("no deck open (AC1)", () => {
     const openedJson = (await opened.json()) as { ok: boolean; id: string };
     expect(openedJson.ok).toBe(true);
     expect(openedJson.id).not.toBe(createdJson.id);
+
+    // [E6.T4]: POST /api/deck/resolve and GET /api/decks/thumbnail are
+    // deck-independent too — "Independent" is already registered (created
+    // above via /api/new), so resolving it again must return the same id
+    // rather than minting a second one.
+    const resolved = await postJson(server, "/api/deck/resolve", { fileName: "Independent.slidra" });
+    expect(resolved.status).toBe(200);
+    const resolvedJson = (await resolved.json()) as { id: string; fileName: string };
+    expect(resolvedJson.id).toBe(createdJson.id);
+
+    // A brand-new deck from /api/new has no slides yet — no content to
+    // thumbnail.
+    const thumbnail = await fetch(`${server.url}/api/decks/thumbnail?fileName=Independent.slidra`);
+    expect(thumbnail.status).toBe(204);
   });
 });
 

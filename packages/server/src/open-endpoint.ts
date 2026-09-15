@@ -9,6 +9,7 @@ import {
   ImportConfirmationRequiredError,
   type DeckStore,
 } from "./storage/deck-store.js";
+import { getOrCreateThumbnail, ThumbnailNoSlidesError, ThumbnailNotFoundError } from "./storage/thumbnail-cache.js";
 
 /**
  * The deck lifecycle HTTP routes ([E6.T2], NOOP-448): `POST /api/new`,
@@ -265,5 +266,78 @@ export async function handleDecksGet(store: DeckStore, url: URL, res: ServerResp
     sendJson(res, 200, { decks });
   } catch (error) {
     sendStoreError(res, error, "Failed to list decks");
+  }
+}
+
+/** A deck folder entry's own file name — never a path fragment: no separator, no `..`, matching `sanitizeDeckBaseName`'s own never-produces-a-separator guarantee for anything this route needs to accept back. */
+function isValidDeckFileName(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value !== "" &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !value.includes("..")
+  );
+}
+
+/** `POST /api/deck/resolve` — Deck Space's lazy registration ([E6.T4] plan §7 decision 1/2). Body: `{ fileName: string }`. Deck-independent, like the routes above: never touches whichever deck this server currently has open. */
+export async function handleResolvePost(store: DeckStore, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readTextBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    sendJson(res, 400, { error: "Request body must be a JSON object" });
+    return;
+  }
+  const fileName = (parsed as { fileName?: unknown }).fileName;
+  if (!isValidDeckFileName(fileName)) {
+    sendJson(res, 400, { error: "fileName must be a non-empty file name with no path separators" });
+    return;
+  }
+
+  try {
+    const resolved = await store.resolveId(fileName);
+    sendJson(res, 200, { id: resolved.id, fileName: resolved.fileName });
+  } catch (error) {
+    sendStoreError(res, error, "Resolve failed");
+  }
+}
+
+/** `GET /api/decks/thumbnail?fileName=&v=` — a lazily-registered, cache-first first-slide render (AC2/AC6). `v` (the card's `lastModified`) is a browser cache-buster only; the route derives its own truth from the deck file's real mtime, never trusts the query value. */
+export async function handleThumbnailGet(store: DeckStore, url: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const fileName = url.searchParams.get("fileName");
+  if (!isValidDeckFileName(fileName)) {
+    sendJson(res, 400, { error: "fileName must be a non-empty file name with no path separators" });
+    return;
+  }
+
+  try {
+    const { bytes, etag } = await getOrCreateThumbnail(store, fileName);
+    if (req.headers["if-none-match"] === etag) {
+      res.writeHead(304, { ETag: etag });
+      res.end();
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      ETag: etag,
+      "Content-Length": String(bytes.byteLength),
+    });
+    res.end(bytes);
+  } catch (error) {
+    if (error instanceof ThumbnailNotFoundError) {
+      sendJson(res, 404, { error: error.message });
+      return;
+    }
+    if (error instanceof ThumbnailNoSlidesError) {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to render thumbnail" });
   }
 }

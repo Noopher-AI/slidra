@@ -32,6 +32,8 @@ import {
   handleNewPost,
   handleOpenPost,
   handleRenamePost,
+  handleResolvePost,
+  handleThumbnailGet,
 } from "./open-endpoint.js";
 import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
 import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
@@ -637,6 +639,13 @@ async function handleRequest(
         await handleDeletePost(deckStore, req, res);
         return;
       }
+      if (url.pathname === "/api/deck/resolve") {
+        // [E6.T4]: deck-independent, like /api/new and /api/open above —
+        // lazily registers a deck folder entry Deck Space's list never
+        // minted an id for.
+        await handleResolvePost(deckStore, req, res);
+        return;
+      }
       if (url.pathname === "/api/agent/exec") {
         // NOOP-425 D5/D6: the CLI sandbox's own entry point — only
         // `<sandboxRoot>/bin/slidra` (the shim wrapper) ever calls this,
@@ -785,6 +794,12 @@ async function handleRequest(
       // scans the deck folder directly, regardless of whether this server
       // currently has a deck open.
       await handleDecksGet(deckStore, url, res);
+      return;
+    }
+
+    if (url.pathname === "/api/decks/thumbnail") {
+      // [E6.T4]: deck-independent, same contract as /api/decks above.
+      await handleThumbnailGet(deckStore, url, req, res);
       return;
     }
 

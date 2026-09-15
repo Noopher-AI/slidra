@@ -11,6 +11,7 @@ import {
   resolveSlidraHome,
   withProjectsRegistryLock,
   writeProjectsRegistry,
+  type SlidraRegistry,
 } from "../slidra/home.js";
 import { deckFileMtime, ensureDeckFolder } from "./deck-folder.js";
 import { moveToTrash } from "./trash.js";
@@ -33,6 +34,19 @@ export interface DeckListEntry {
   name: string | null;
   slideCount: number | null;
   owner: string | null;
+  /**
+   * The registry id this file is already known under, or `null` when it has
+   * never been opened/registered — [E6.T4] plan §7 decision 1: listing
+   * never mints a new id (`slidra open` is not idempotent — 50 files would
+   * mean 50 subprocess spawns and 50 registry entries no card ever uses).
+   * When more than one registry entry's `deckPath` resolves to this file,
+   * the lexicographically-smallest id wins (plan §4's behavior table) —
+   * deterministic, and never mutates the registry to reconcile the
+   * duplicates.
+   */
+  id: string | null;
+  /** The deck file's own `mtimeMs` (`deckFileMtime`) — AC2's card metadata and the thumbnail cache's own invalidation key. */
+  lastModified: number;
 }
 
 export interface CreateDeckInput {
@@ -86,6 +100,17 @@ export interface DeckStore {
   openUpload(bytes: Buffer, displayName: string | undefined): Promise<CreatedDeck>;
   rename(id: string, name: string): Promise<void>;
   remove(id: string): Promise<void>;
+  /**
+   * `POST /api/deck/resolve`'s implementation ([E6.T4] plan §7 decision 1/2):
+   * resolves `fileName` (a file already sitting in the deck folder) to its
+   * registry id, registering it via `slidra open` only the first time —
+   * an already-registered file returns its existing id (the same
+   * lexicographically-smallest tie-break `list()` uses) rather than
+   * minting a second one and leaving a duplicate registry entry behind.
+   * Throws `SlidraNotFoundError` when `fileName` does not name a file in
+   * the deck folder.
+   */
+  resolveId(fileName: string): Promise<CreatedDeck>;
 }
 
 export interface DeckStoreOptions {
@@ -102,6 +127,7 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
     openUpload,
     rename: (id, name) => renameDeck(getCurrentDeckId, id, name),
     remove: (id) => removeDeck(getCurrentDeckId, id),
+    resolveId,
   };
 }
 
@@ -186,16 +212,60 @@ async function registerDeckAtPath(deckPath: string, fileName?: string): Promise<
   return { id: opened.data.id, fileName: fileName ?? path.basename(deckPath) };
 }
 
+/** Raw shape `slidra deck list` itself returns — before this module enriches each entry with `id`/`lastModified`. */
+interface RawDeckListEntry {
+  fileName: string;
+  name: string | null;
+  slideCount: number | null;
+  owner: string | null;
+}
+
+/** One registry read, one reverse index (`deckPath` -> lexicographically-smallest id) — never a per-entry registry scan, so a 50-deck listing stays at exactly one `deck list` subprocess call plus one registry read (AC6, [E6.T4] plan §7 decision 1). */
+function buildDeckPathIndex(registry: SlidraRegistry): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const [id, entry] of registry) {
+    const resolved = path.resolve(entry.deckPath);
+    const existing = index.get(resolved);
+    if (existing === undefined || id < existing) index.set(resolved, id);
+  }
+  return index;
+}
+
 async function listDecks(owner?: string): Promise<DeckListEntry[]> {
   const folder = await ensureDeckFolder();
   const args = ["deck", "list", folder];
   if (owner !== undefined) args.push("--owner", owner);
-  const result = await runJsonCommand<{ decks: DeckListEntry[] }>(args);
+  const result = await runJsonCommand<{ decks: RawDeckListEntry[] }>(args);
   if (!result.ok) {
     if (result.failureKind === "not-found") throw new SlidraNotFoundError(result.message);
     throw new SlidraError(result.message);
   }
-  return result.data?.decks ?? [];
+  const raw = result.data?.decks ?? [];
+  const registry = await readProjectsRegistry();
+  const deckPathIndex = buildDeckPathIndex(registry);
+  return Promise.all(
+    raw.map(async (entry) => {
+      const deckPath = path.join(folder, entry.fileName);
+      return {
+        ...entry,
+        id: deckPathIndex.get(path.resolve(deckPath)) ?? null,
+        lastModified: await deckFileMtime(deckPath),
+      };
+    }),
+  );
+}
+
+/** `POST /api/deck/resolve` ([E6.T4] plan §7 decision 1/2). Never mints a second id for a file already registered — reuses `list()`'s own tie-break so the two never disagree about which id a file "is". */
+async function resolveId(fileName: string): Promise<CreatedDeck> {
+  const folder = await ensureDeckFolder();
+  const deckPath = path.join(folder, fileName);
+  if (!(await pathExists(deckPath))) {
+    throw new SlidraNotFoundError(`no deck file found: ${fileName}`);
+  }
+  const registry = await readProjectsRegistry();
+  const existingId = buildDeckPathIndex(registry).get(path.resolve(deckPath));
+  if (existingId !== undefined) return { id: existingId, fileName };
+  return registerDeckAtPath(deckPath, fileName);
 }
 
 /**
