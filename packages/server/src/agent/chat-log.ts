@@ -66,6 +66,8 @@ export class ChatLog {
 
   /** Entries recorded since the last successful flush, keyed by `entryId` so repeated updates to the same row (chunk accumulation, a command's status update) coalesce into one row rather than queuing a write per event. Map preserves insertion order, which is what keeps a batch's relative order correct. */
   private pending = new Map<string, ChatHistoryEntryInput>();
+  /** The last flushed version of each command row, keyed by `entryId`. The 500ms debounce timer starts on whichever event opens a batch, not on `recordCommand` itself, so a `chat-command-update` can easily arrive after its start row has already left `pending` — without this, `recordCommandUpdate` would upsert with `text: ""` and lose `meta.cli`, wiping the command's own text in the deck. Only `command` rows are tracked here; `author`/`agent`/`divider` entries never get a follow-up update keyed off the same `entryId`. */
+  private lastFlushedCommands = new Map<string, ChatHistoryEntryInput>();
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   /** Chains every flush so two overlapping `--append -` calls for the same deck can never race each other's writes. */
   private flushChain: Promise<void> = Promise.resolve();
@@ -112,7 +114,7 @@ export class ChatLog {
   /** A `chat-command-update` — upserts the same row `recordCommand` created; the command text itself never changes, only its outcome. */
   recordCommandUpdate(toolCallId: string, patch: { status: CommandStatus; output?: string; blocked?: true }): void {
     const entryId = commandEntryId(toolCallId);
-    const existing = this.pending.get(entryId);
+    const existing = this.pending.get(entryId) ?? this.lastFlushedCommands.get(entryId);
     const meta: Record<string, unknown> = { toolCallId, ...(existing?.meta ?? {}), ...patch };
     this.enqueue({
       entryId,
@@ -178,6 +180,9 @@ export class ChatLog {
 
     const batch = [...this.pending.values()];
     this.pending.clear();
+    for (const entry of batch) {
+      if (entry.kind === "command") this.lastFlushedCommands.set(entry.entryId, entry);
+    }
     const presentationId = this.presentationId;
     // Caught here, not left to propagate: `flushChain` must never become a
     // rejected promise — the next `enqueue()`'s timer chains onto it with
