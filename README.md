@@ -91,7 +91,7 @@ Agent drafts the deck
   → Human or agent makes the next correction
 ```
 
-## `.slidra` Format
+## `.slidra` Deck Format
 
 A `.slidra` file is a ZIP container with an explicit project manifest and authoritative SVG slides:
 
