@@ -80,6 +80,11 @@ afterEach(async () => {
  * here the same test-only way `e2e/helpers/deck.ts`/`serve.test.ts` already
  * use it — the server and CLI themselves never read/write a deck this way.
  */
+/** True only for "the history tables don't exist yet" (never edited) — every other failure (e.g. SQLITE_BUSY) must surface, not be read as "0"/"false". */
+function isMissingHistoryTable(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("no such table");
+}
+
 async function undoGroupCount(deckPath: string): Promise<number> {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(deckPath, { readOnly: true });
@@ -88,9 +93,13 @@ async function undoGroupCount(deckPath: string): Promise<number> {
       | { n: number }
       | undefined;
     return row?.n ?? 0;
-  } catch {
-    // No history tables yet (never edited) — an empty undo stack.
-    return 0;
+  } catch (error) {
+    // No history tables yet (never edited) — an empty undo stack. Anything
+    // else (e.g. SQLITE_BUSY on a concurrent writer) must not be swallowed
+    // into a falsely-passing "0": that is what made `expected +0 to be 2`
+    // unreadable — it could mean either "really zero" or "couldn't read".
+    if (isMissingHistoryTable(error)) return 0;
+    throw error;
   } finally {
     db.close();
   }
@@ -104,8 +113,9 @@ async function hasOpenHistoryGroup(deckPath: string): Promise<boolean> {
       | { n: number }
       | undefined;
     return (row?.n ?? 0) > 0;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isMissingHistoryTable(error)) return false;
+    throw error;
   } finally {
     db.close();
   }
