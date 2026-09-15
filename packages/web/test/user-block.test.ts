@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UserBlock, type UserBlockProps } from "../src/shell/user-block/UserBlock.js";
 import { Rail, type RailProps } from "../src/shell/Rail.js";
+import { DeckSpace, type DeckSpaceProps } from "../src/shell/deck-space/DeckSpace.js";
 
 // UserBlock's public boundary is props → the rendered string (same
 // convention as titlebar.test.ts/export-panel.test.ts) — every render
@@ -84,5 +85,32 @@ describe("Rail — AC6①: the user block mounts at the bottom of the rail", () 
     expect(rendered).toContain('class="overview"');
     expect(rendered).toContain('class="user-block"');
     expect(rendered.indexOf('class="overview"')).toBeLessThan(rendered.indexOf('class="user-block"'));
+  });
+});
+
+function spaceMarkup(overrides: Partial<DeckSpaceProps> = {}): string {
+  const props: DeckSpaceProps = {
+    decks: null,
+    currentDeckFileName: null,
+    canClose: false,
+    onClose: () => {},
+    errorMessage: null,
+    onNewDeck: () => {},
+    onOpenFile: () => {},
+    onOpenCard: () => {},
+    onRename: async () => null,
+    onDelete: async () => null,
+    userBlock: { identity: null, providers: [], pending: false, message: null, onSignIn: () => {}, onSignOut: () => {} },
+    ...overrides,
+  };
+  return renderToStaticMarkup(createElement(DeckSpace, props));
+}
+
+describe("DeckSpace — AC6②: the user block mounts in the existing .deck-space-user-slot", () => {
+  it("renders .user-block inside .deck-space-user-slot", () => {
+    const rendered = spaceMarkup();
+    expect(rendered).toContain('class="deck-space-user-slot"');
+    expect(rendered).toContain('class="user-block"');
+    expect(rendered.indexOf('class="deck-space-user-slot"')).toBeLessThan(rendered.indexOf('class="user-block"'));
   });
 });

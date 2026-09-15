@@ -1,5 +1,7 @@
 # A deck has an owner
 
+> **This ADR has been extended with a section on `owner: null`.** See "`owner: null` is anonymous, never backfilled" at the end — [E6.T14r2] closed the gap between this ADR's "every deck created through `create`/`import` resolves an owner" sentence below and the code: `DeckStore.importExternal`'s move/copy dispositions and `DeckStore.openUpload` now write `DEFAULT_OWNER` too, same as `create` always did. The one deliberate exception (register-in-place, a `sourcePath` already inside the deck folder) is unchanged and explained in the new section — that sentence was never meant to cover it.
+
 No real sign-in exists in this product yet — there is no login screen, no session, no account. This ADR decides to build the *shape* of ownership now anyway, ahead of the identity system that will actually populate it, rather than waiting until sign-in exists to decide what a deck's relationship to a person even is.
 
 ## Decision: decks carry an owner field, defaulting to "Anonymous"
@@ -29,3 +31,11 @@ The shape decided here: an identity provider is an **asynchronous, out-of-band**
 - `owner` round-trips untouched through every operation that preserves unknown `project.json` fields (ADR-0003) — nothing about this ADR changes that mechanism, it only gives one more field a defined, always-present default.
 - `deck ls --owner <name>` is the only filter this ADR adds; broader multi-owner queries (list every deck a signed-in identity owns, across machines) are [E6.T9]/cloud-edition scope, not decided here.
 - Until [E6.T9] ships, every deck in practice carries `owner: "Anonymous"` — this is expected, not a bug to work around.
+
+## `owner: null` is anonymous, never backfilled
+
+[E6.T9] shipped a `visibleDecks()`/`claimAnonymous()` pair that only recognized the literal string `"Anonymous"` — a deck whose `owner` field reads back `null` (predates this ADR, or was registered before this section closed the import gap below) was filtered out of `GET /api/decks` entirely rather than treated as this ADR's "legitimately missing, not retroactively assigned" case. `packages/server/src/storage/deck-store.ts`'s `isAnonymousOwner(owner)` is now the one place "anonymous" is defined — `owner === null || owner === ANONYMOUS_OWNER` — and both `visibleDecks()` and `claimAnonymous()` go through it, so a `null`-owner deck is visible signed-out and gets claimed on sign-in exactly like an `"Anonymous"`-tagged one.
+
+This also closed the gap in this ADR's own opening decision: `DeckStore.importExternal`'s move/copy dispositions and `DeckStore.openUpload` (an uploaded/copied-in `.slidra` is never "created through `create`" but was never writing `DEFAULT_OWNER` either) now write it too, ordered *after* `registerDeckAtPath`/`open` rather than before — an externally-sourced `.slidra` may still be in the pre-SQLite container format only `open` migrates, and `deck meta set` has no such migration path of its own.
+
+**The one deliberate exception**: `importExternal`'s register-in-place path (`sourcePath` already sitting inside the deck folder — nothing moved, nothing copied) still never writes an owner. A file already on disk when this ADR shipped, or dropped into the deck folder directly outside the app, keeps `owner: null` rather than being silently reassigned to `"Anonymous"` the first time someone happens to open it from Deck Space — retroactive backfill on read is exactly the migration-guessing this ADR's opening decision rejected. `null` is a permanent, legitimate value for a pre-ownership or externally-placed deck, not a transient state waiting to be resolved.

@@ -35,8 +35,12 @@ jobs:
         run: npm test
 
       # This browser gate covers only cross-layer paths unit tests cannot:
-      # browser/agent edits, playback, undo/redo, and save/open persistence.
-      # The full suite remains available through npm run test:e2e.
+      # browser/agent edits, playback, undo/redo, save/open persistence, and
+      # Deck Space's own startup/create/open/rename/delete flow
+      # (e2e/deck-space.test.ts, added [E6.T14r2] — this is what would have
+      # caught the identity/owner-filtering regression at merge time instead
+      # of a later integration pass). The full suite remains available
+      # through npm run test:e2e.
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 

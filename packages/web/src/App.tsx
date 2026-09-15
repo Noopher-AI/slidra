@@ -34,7 +34,7 @@ import { PlanGateModal } from "./shell/PlanGateModal.js";
 import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 import { buildApplyMasterMessage } from "./shell/master-mode/master-prompt.js";
-import { useIdentity } from "./shell/user-block/use-identity.js";
+import type { UserBlockProps } from "./shell/user-block/UserBlock.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
@@ -92,6 +92,8 @@ export interface AppProps {
    * forever from a drag that started while it was up.
    */
   deckSpaceOpen: boolean;
+  /** [E6.T14r2] Plan §7 decision 4: identity state now lives in `Workspace.tsx` (no deck bound means `<App>` never mounts at all, yet Deck Space still needs the same block) — `<Rail>`'s bottom mount gets these props straight through, `useIdentity()` is never called here. */
+  userBlock: UserBlockProps;
 }
 
 /**
@@ -103,7 +105,7 @@ export interface AppProps {
  * rest of the shell), so `canvasRef`'s DOM node identity survives every
  * mode switch — see the comment on `wellRef` below for why that matters.
  */
-export function App({ onOpenDeckSpace, deckSpaceOpen }: AppProps) {
+export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   // Fullscreen toggle (per §0.2 item 2's ruling):
   // the fullscreen target is `.canvas-area` — the stage floor — reused in
@@ -204,11 +206,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen }: AppProps) {
   // progress on purpose.
   const [exportOpen, setExportOpen] = useState(false);
   const [exportState, setExportState] = useState<ExportUiState>({ kind: "idle" });
-
-  // [E6.T9]: the identity block's whole state — App holds it (not context,
-  // plan §7 decision 8) so it can pass identical props to <Rail>'s bottom
-  // mount and, once Deck Space exists, that mount too.
-  const identity = useIdentity();
 
   // #51's titlebar: the deck's name and canvas size, fetched separately
   // from canvas.ts's own CanvasState (which deliberately carries only
@@ -1833,14 +1830,7 @@ export function App({ onOpenDeckSpace, deckSpaceOpen }: AppProps) {
             onEnterMasterMode={() => void enterMasterMode()}
             onExitMasterMode={() => void exitMasterMode()}
             onApplyTemplateToSlides={(templateName) => void applyTemplateToSlides(templateName)}
-            userBlock={{
-              identity: identity.identity,
-              providers: identity.providers,
-              pending: identity.pending,
-              message: identity.message,
-              onSignIn: identity.signIn,
-              onSignOut: identity.signOut,
-            }}
+            userBlock={userBlock}
           />
         )}
         <div className="main">

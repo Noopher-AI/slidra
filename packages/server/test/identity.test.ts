@@ -249,6 +249,32 @@ describe("GET /api/identity, POST /api/identity/sign-in, POST /api/identity/sign
     expect(await listDeckFileNames(server)).toEqual([claimedAtSignIn, madeWhileSignedIn].sort());
   });
 
+  // [E6.T14r2] Plan §7 decision 1/3: a deck with no owner field at all
+  // (never opened/imported-in-place before [E6.T9], or a file written
+  // directly by the CLI — `slidra new` itself never stamps an owner) must
+  // be treated exactly like an "Anonymous"-tagged deck: visible while
+  // signed out, claimed on sign-in, and no longer visible once claimed by
+  // someone else's tag.
+  it("AC4/owner-null: a deck with no owner metadata is visible anonymously, gets claimed on sign-in, and disappears from the anonymous/other-identity views afterward", async () => {
+    const server = await serve({ identity: { providers: [createFakeProvider()] } });
+
+    const noOwnerPath = path.join(deckFolder, "no-owner.slidra");
+    expect((await runCli(["new", noOwnerPath, "--name", "No Owner"])).ok).toBe(true);
+
+    expect(await listDeckFileNames(server)).toEqual(["no-owner.slidra"]);
+
+    const signIn = await postJson(server, "/api/identity/sign-in", { provider: "fake", identity: "alice" });
+    expect((await signIn.json()) as { claimed: number }).toMatchObject({ claimed: 1 });
+    expect(await listDeckFileNames(server)).toEqual(["no-owner.slidra"]);
+
+    const signOut = await postJson(server, "/api/identity/sign-out", {});
+    expect(signOut.status).toBe(200);
+    expect(await listDeckFileNames(server)).toEqual([]);
+
+    await postJson(server, "/api/identity/sign-in", { provider: "fake", identity: "bob" });
+    expect(await listDeckFileNames(server)).toEqual([]);
+  });
+
   it("an explicit ?owner= bypasses identity entirely, even while signed in as someone else", async () => {
     const server = await serve({ identity: { providers: [createFakeProvider()] } });
 

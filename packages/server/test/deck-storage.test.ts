@@ -317,6 +317,30 @@ describe("deck owner metadata (AC6)", () => {
     await expect(store.list("nobody")).resolves.toEqual([]);
     expect((await store.list()).map((d) => d.fileName).sort()).toEqual(["Mine.slidra", "Theirs.slidra"]);
   });
+
+  it("writes Anonymous as owner for an upload and a copy-import, but never backfills owner for a register-in-place import ([E6.T14r2])", async () => {
+    const externalDir = await mkdtemp(path.join(tmpdir(), "slidra-deckstorage-owner-external-"));
+    try {
+      const uploadSourcePath = path.join(externalDir, "uploadme.slidra");
+      expect((await runCli(["new", uploadSourcePath, "--name", "Upload Me"])).ok).toBe(true);
+      const uploaded = await store.openUpload(await readFile(uploadSourcePath), "Uploaded");
+
+      const copySourcePath = path.join(externalDir, "copyme.slidra");
+      expect((await runCli(["new", copySourcePath, "--name", "Copy Me"])).ok).toBe(true);
+      const copied = await store.importExternal({ sourcePath: copySourcePath, disposition: "copy" });
+
+      const insidePath = path.join(deckFolder, "already-here.slidra");
+      expect((await runCli(["new", insidePath, "--name", "Already Here"])).ok).toBe(true);
+      await store.importExternal({ sourcePath: insidePath });
+
+      const decks = await store.list();
+      expect(decks.find((d) => d.fileName === uploaded.fileName)?.owner).toBe("Anonymous");
+      expect(decks.find((d) => d.fileName === copied.fileName)?.owner).toBe("Anonymous");
+      expect(decks.find((d) => d.fileName === "already-here.slidra")?.owner).toBeNull();
+    } finally {
+      await rm(externalDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
 });
 
 function createOpenEndpointTestServer(store: DeckStore): Promise<{ url: string; close: () => Promise<void> }> {

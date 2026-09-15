@@ -16,6 +16,8 @@ import {
   type DeckIdentity,
   type DeckSummary,
 } from "./shell/deck-space/deck-api.js";
+import { useIdentity } from "./shell/user-block/use-identity.js";
+import type { UserBlockProps } from "./shell/user-block/UserBlock.js";
 
 /**
  * [E6.T4] plan §7 decision 3: the one place that decides deck vs. editor,
@@ -32,12 +34,26 @@ import {
  * `key={deck.id}` on `<App>` is deliberate (plan §7 decision 3): entering a
  * different deck remounts the whole editor rather than auditing App.tsx's
  * ~30 effects for "does this reset itself on a deck change" one by one.
+ *
+ * [E6.T14r2] Plan §7 decision 4: this is also the one place `useIdentity()`
+ * is called — no deck bound means `<App>` never mounts, yet Deck Space's
+ * own user block still needs live identity state, so the hook has to live
+ * above both rather than inside `<App>` (which used to own it, [E6.T9]).
  */
 export function Workspace() {
   const [deck, setDeck] = useState<DeckIdentity | null | "loading">("loading");
   const [deckSpaceOpen, setDeckSpaceOpen] = useState(false);
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const identity = useIdentity();
+  const userBlock: UserBlockProps = {
+    identity: identity.identity,
+    providers: identity.providers,
+    pending: identity.pending,
+    message: identity.message,
+    onSignIn: identity.signIn,
+    onSignOut: identity.signOut,
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -70,11 +86,15 @@ export function Workspace() {
   // Deliberately no live-reload subscription (plan §2): Deck Space does not
   // track another tab's create/rename/delete while it happens to be open,
   // only its own actions reload the list — so this only fires when
-  // `deckSpaceOpen` flips true, not on every render.
+  // `deckSpaceOpen` flips true, not on every render. `identity.epoch` is
+  // also a dependency ([E6.T14r2] Plan §7 decision 4/§3): a sign-in/sign-out
+  // reassigns owners server-side (the claim), so the visible set the next
+  // `GET /api/decks` returns changes too — Deck Space must refetch, not show
+  // a stale list until its next open/close toggle.
   useEffect(() => {
     if (deckSpaceOpen || deck === null) void reloadDecks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deckSpaceOpen, deck === null]);
+  }, [deckSpaceOpen, deck === null, identity.epoch]);
 
   function switchConflictMessage(reason: string | undefined, fallback: string): string {
     if (reason === "editing") return "The agent is currently editing, please wait.";
@@ -167,6 +187,7 @@ export function Workspace() {
       onOpenCard={(target) => void handleOpenCard(target)}
       onRename={handleRename}
       onDelete={handleDelete}
+      userBlock={userBlock}
     />
   );
 
@@ -174,7 +195,7 @@ export function Workspace() {
 
   return (
     <>
-      <App key={deck.id} onOpenDeckSpace={() => setDeckSpaceOpen(true)} deckSpaceOpen={deckSpaceOpen} />
+      <App key={deck.id} onOpenDeckSpace={() => setDeckSpaceOpen(true)} deckSpaceOpen={deckSpaceOpen} userBlock={userBlock} />
       {deckSpaceOpen && deckSpace}
     </>
   );

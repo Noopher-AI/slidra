@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { SlidraNotFoundError } from "../slidra/errors.js";
-import { ANONYMOUS_OWNER, claimAnonymous, type DeckListEntry, type DeckStore } from "../storage/deck-store.js";
+import { claimAnonymous, isAnonymousOwner, type DeckListEntry, type DeckStore } from "../storage/deck-store.js";
 import type { Identity, IdentityProvider, SignInOutcome } from "./types.js";
 
 export interface ProviderSummary {
@@ -22,12 +22,15 @@ export type IdentityOutcome = SignInOutcome & { claimed?: number };
  * policy (plan §7 decisions 4/5):
  *
  * - a `signed-in` outcome tags the identity `${kind}:${id}` and reassigns
- *   every currently-`ANONYMOUS_OWNER` deck onto that tag ("claim");
+ *   every currently-anonymous deck (`isAnonymousOwner` — see below) onto
+ *   that tag ("claim");
  * - re-signing into the identity already current is a no-op (`claimed: 0`,
  *   never re-claims — idempotent, matches the plan's behavior table);
  * - the visible deck set for `GET /api/decks` (no `?owner=`) is always the
- *   union of `ANONYMOUS_OWNER` and the current tag, so decks stay visible
- *   through the moment they're claimed rather than blinking away.
+ *   union of anonymous decks (`isAnonymousOwner`: the literal
+ *   `ANONYMOUS_OWNER` tag or `owner: null` — [E6.T14r2] Plan §7 decision 1)
+ *   and the current tag, so decks stay visible through the moment they're
+ *   claimed rather than blinking away.
  */
 export interface IdentitySession {
   providers(): ProviderSummary[];
@@ -99,12 +102,11 @@ export function createIdentitySession(providers: readonly IdentityProvider[], st
     },
 
     async visibleDecks(): Promise<DeckListEntry[]> {
-      if (current === null) return store.list(ANONYMOUS_OWNER);
-      const tag = ownerTag(current.kind, current.identity);
-      const [anonymous, mine] = await Promise.all([store.list(ANONYMOUS_OWNER), store.list(tag)]);
-      const byFileName = new Map<string, DeckListEntry>();
-      for (const entry of [...anonymous, ...mine]) byFileName.set(entry.fileName, entry);
-      return [...byFileName.values()].sort((a, b) => a.fileName.localeCompare(b.fileName));
+      const all = await store.list();
+      const tag = current === null ? null : ownerTag(current.kind, current.identity);
+      return all
+        .filter((entry) => isAnonymousOwner(entry.owner) || (tag !== null && entry.owner === tag))
+        .sort((a, b) => a.fileName.localeCompare(b.fileName));
     },
   };
 }
