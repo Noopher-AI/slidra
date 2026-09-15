@@ -1229,12 +1229,6 @@ export class AgentChatSession extends EventEmitter {
    * field this code does not know how to read.
    */
   private isPermittedCommand(params: acp.RequestPermissionRequest): boolean {
-    // NOOP-425 D7: once the OS-level write sandbox is actually enforcing,
-    // this string-based check is no longer the boundary — see
-    // `protected-paths.ts`'s own docstring for what it was never able to
-    // guarantee. Falls through to the check below whenever isolation is
-    // off or degraded, unchanged from before this ticket.
-    if (getActiveLauncher()?.active) return true;
     const command = extractCommand(params.toolCall);
     if (command !== undefined) {
       if (isSlidraCommand(command)) return true;
