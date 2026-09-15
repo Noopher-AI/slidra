@@ -210,4 +210,3 @@ describe.skipIf(!isLinux)("existing credentials and CLI logins keep working with
     expect(await readFile(probePath, "utf8")).toBe("ok");
   });
 });
-
