@@ -166,6 +166,21 @@ export function turnRunningFrom(data: unknown): boolean {
   return (data as Record<string, unknown>).turnRunning === true;
 }
 
+/** `GET /api/agent`'s `writeIsolation` (NOOP-425 AC7). A malformed or missing field reads as active with no reason — the same "assume the safer/quieter state" rule a missing `turnRunning` follows above — since this is only ever used to decide whether to show a warning, never to gate anything. */
+export interface WriteIsolationView {
+  active: boolean;
+  reason: string | null;
+}
+
+export function writeIsolationFrom(data: unknown): WriteIsolationView {
+  if (typeof data !== "object" || data === null) return { active: true, reason: null };
+  const writeIsolation = (data as Record<string, unknown>).writeIsolation;
+  if (typeof writeIsolation !== "object" || writeIsolation === null) return { active: true, reason: null };
+  const { active, reason } = writeIsolation as Record<string, unknown>;
+  if (active === true) return { active: true, reason: null };
+  return { active: false, reason: typeof reason === "string" && reason !== "" ? reason : "Write isolation is not active" };
+}
+
 export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const { current, source, agents } = data as Record<string, unknown>;
