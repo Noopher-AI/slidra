@@ -299,19 +299,13 @@ describe("deck owner metadata (AC6)", () => {
     store = createLocalDeckStore();
   });
 
-  it("round-trips an owner given at create time through to the listing", async () => {
-    await store.create({ name: "Owned", owner: "u1" });
-    const decks = await store.list();
-    expect(decks.find((d) => d.fileName === "Owned.slidra")?.owner).toBe("u1");
-  });
-
   it('defaults a create with no owner to "Anonymous" rather than leaving it null', async () => {
     await store.create({ name: "Unowned" });
     const decks = await store.list();
     expect(decks.find((d) => d.fileName === "Unowned.slidra")?.owner).toBe("Anonymous");
   });
 
-  it("filters the listing by owner, exactly", async () => {
+  it("round-trips an owner from create through to the listing, and filters by it exactly", async () => {
     await store.create({ name: "Mine", owner: "u1" });
     await store.create({ name: "Theirs", owner: "u2" });
 
