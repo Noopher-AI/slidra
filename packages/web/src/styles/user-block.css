@@ -1,0 +1,81 @@
+/* ═══════════════════════════════════════════════════════════════
+   The identity block ([E6.T9]): bottom of the left rail, and Deck
+   Space's own left column at the same position. Sits right after
+   `.overview` (`flex: 1` in rail.css), which sinks it to the bottom
+   without a `margin-top: auto` of its own.
+   ═══════════════════════════════════════════════════════════════ */
+
+.user-block {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: 1px solid var(--surface-2);
+}
+
+.user-block-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--space-4) * 2);
+  height: calc(var(--space-4) * 2);
+  flex: 0 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.user-block-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-block-avatar-fallback {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ink-600);
+}
+
+.user-block-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-block-signin,
+.user-block-signout {
+  height: var(--control-h-compact);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--ink-700);
+  background: var(--surface-white);
+  border: 1px solid var(--surface-2);
+}
+
+.user-block-signin:hover:not([disabled]),
+.user-block-signout:hover:not([disabled]) {
+  border-color: var(--ink-300);
+}
+
+.user-block-signin[disabled],
+.user-block-signout[disabled] {
+  color: var(--ink-300);
+}
+
+.user-block-hint {
+  font-size: var(--text-xs-hint);
+  color: var(--ink-400);
+}
+
+.user-block-message {
+  flex-basis: 100%;
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}

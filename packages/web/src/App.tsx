@@ -34,6 +34,7 @@ import { PlanGateModal } from "./shell/PlanGateModal.js";
 import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 import { buildApplyMasterMessage } from "./shell/master-mode/master-prompt.js";
+import { useIdentity } from "./shell/user-block/use-identity.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
@@ -203,6 +204,11 @@ export function App({ onOpenDeckSpace, deckSpaceOpen }: AppProps) {
   // progress on purpose.
   const [exportOpen, setExportOpen] = useState(false);
   const [exportState, setExportState] = useState<ExportUiState>({ kind: "idle" });
+
+  // [E6.T9]: the identity block's whole state — App holds it (not context,
+  // plan §7 decision 8) so it can pass identical props to <Rail>'s bottom
+  // mount and, once Deck Space exists, that mount too.
+  const identity = useIdentity();
 
   // #51's titlebar: the deck's name and canvas size, fetched separately
   // from canvas.ts's own CanvasState (which deliberately carries only
@@ -1827,6 +1833,14 @@ export function App({ onOpenDeckSpace, deckSpaceOpen }: AppProps) {
             onEnterMasterMode={() => void enterMasterMode()}
             onExitMasterMode={() => void exitMasterMode()}
             onApplyTemplateToSlides={(templateName) => void applyTemplateToSlides(templateName)}
+            userBlock={{
+              identity: identity.identity,
+              providers: identity.providers,
+              pending: identity.pending,
+              message: identity.message,
+              onSignIn: identity.signIn,
+              onSignOut: identity.signOut,
+            }}
           />
         )}
         <div className="main">
