@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleDecksGet, handleResolvePost, handleThumbnailGet } from "../src/open-endpoint.js";
 import { createLocalDeckStore, type DeckStore } from "../src/storage/deck-store.js";
+import { readProjectsRegistry } from "../src/slidra/home.js";
 
 /**
  * [E6.T4] plan §6's test inventory for Deck Space's new server surface:
@@ -93,6 +94,41 @@ describe("DeckStore.list — id/lastModified (AC2)", () => {
     const decks = await store.list();
     const entry = decks.find((d) => d.fileName === "Registered.slidra");
     expect(entry?.id).toBe(created.id);
+  });
+});
+
+describe("DeckStore.list — a 50-deck folder (AC6)", () => {
+  it("lists all 50 never-opened entries without minting a single registry id", async () => {
+    // A copy on disk is exactly what an unregistered deck is (`deck list`
+    // reads the folder, the registry is consulted once in-process), so
+    // copying one real deck 50 times is the same input a 50-deck folder
+    // gives `list()` — without paying for 50 `slidra new` subprocesses to
+    // build the fixture.
+    const seed = await createUnregisteredDeck("Seed.slidra", "Seed");
+    for (let i = 0; i < 49; i += 1) {
+      await copyFile(seed, path.join(deckFolder, `Copy-${i}.slidra`));
+    }
+
+    const startedAt = Date.now();
+    const decks = await store.list();
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(decks).toHaveLength(50);
+    // Every entry still carries AC2's own two fields — a listing that got
+    // cheap by dropping them would not be the thing this guards.
+    for (const entry of decks) {
+      expect(entry.id).toBeNull();
+      expect(entry.lastModified).toBeGreaterThan(0);
+    }
+    // Plan §7 decision 1, stated as the thing it actually protects rather
+    // than as a stopwatch: a listing pass registers nothing. `slidra open`
+    // is not idempotent, so a per-entry `registerDeckAtPath` would leave 50
+    // registry entries behind here — and being spawned in parallel, would
+    // still comfortably beat any wall-clock budget on a fast machine.
+    expect(await readProjectsRegistry()).toHaveProperty("size", 0);
+    // The stall budget on top: one `deck list` subprocess, one registry
+    // read, N stats.
+    expect(elapsedMs).toBeLessThan(3000);
   });
 });
 
