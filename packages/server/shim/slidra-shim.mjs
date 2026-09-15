@@ -77,6 +77,35 @@ request.on("response", (response) => {
   let buffered = Buffer.alloc(0);
   let exited = false;
 
+  // `process.stdout`/`process.stderr` writes to a pipe (the common case for
+  // an agent's command runner) are asynchronous: `.write()` queues the bytes
+  // with libuv and returns before they actually reach the kernel pipe
+  // buffer. Calling `process.exit()` as soon as the exit frame arrives races
+  // that queue — any payload still in flight gets dropped, silently
+  // truncating output while still reporting exit code 0 and empty stderr.
+  // Instead, track every in-flight write and only exit once the exit frame
+  // has arrived *and* every write's callback has confirmed its payload was
+  // actually handed to the OS (which — unlike a bare `.write()` call —
+  // libuv's pipe write guarantees delivers to the reader even after this
+  // process exits, because the bytes are already in the kernel buffer by
+  // the time the callback fires).
+  let exitCode = null;
+  let pendingWrites = 0;
+
+  function exitOnceDrained() {
+    if (exitCode !== null && pendingWrites === 0) {
+      process.exit(exitCode);
+    }
+  }
+
+  function relay(stream, payload) {
+    pendingWrites += 1;
+    stream.write(payload, () => {
+      pendingWrites -= 1;
+      exitOnceDrained();
+    });
+  }
+
   response.on("data", (chunk) => {
     buffered = buffered.length === 0 ? chunk : Buffer.concat([buffered, chunk]);
     for (;;) {
@@ -84,9 +113,10 @@ request.on("response", (response) => {
       const kind = buffered.readUInt8(0);
 
       if (kind === FRAME_EXIT) {
-        const code = buffered.readInt32BE(1);
         exited = true;
-        process.exit(code);
+        exitCode = buffered.readInt32BE(1);
+        exitOnceDrained();
+        return;
       }
 
       const length = buffered.readUInt32BE(1);
@@ -95,9 +125,9 @@ request.on("response", (response) => {
       buffered = buffered.subarray(FRAME_HEADER_BYTES + length);
 
       if (kind === FRAME_STDOUT) {
-        process.stdout.write(payload);
+        relay(process.stdout, payload);
       } else if (kind === FRAME_STDERR) {
-        process.stderr.write(payload);
+        relay(process.stderr, payload);
       }
     }
   });
