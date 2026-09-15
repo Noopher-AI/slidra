@@ -266,6 +266,10 @@ describe("deck folder switching (AC2)", () => {
     await rm(otherFolder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  // CI's macOS runner (slower disk I/O for two real `create()` calls
+  // against two separate temp dirs) has intermittently missed the default
+  // 30s test timeout here — unrelated to this test's own logic, which
+  // finishes well under a second locally. Doubled rather than reworked.
   it("sends subsequent decks to the newly configured folder and leaves decks already in the old one untouched", async () => {
     await setDeckFolder(deckFolder);
     const first = await createLocalDeckStore().create({ name: "InA" });
@@ -288,7 +292,7 @@ describe("deck folder switching (AC2)", () => {
     expect((await stat(firstPath)).mtimeMs).toBe(mtimeBefore);
     await expect(readdir(otherFolder)).resolves.toEqual(["InB.slidra"]);
     await expect(readdir(deckFolder)).resolves.toEqual(["InA.slidra"]);
-  });
+  }, 60000);
 });
 
 describe("deck owner metadata (AC6)", () => {
@@ -299,19 +303,13 @@ describe("deck owner metadata (AC6)", () => {
     store = createLocalDeckStore();
   });
 
-  it("round-trips an owner given at create time through to the listing", async () => {
-    await store.create({ name: "Owned", owner: "u1" });
-    const decks = await store.list();
-    expect(decks.find((d) => d.fileName === "Owned.slidra")?.owner).toBe("u1");
-  });
-
   it('defaults a create with no owner to "Anonymous" rather than leaving it null', async () => {
     await store.create({ name: "Unowned" });
     const decks = await store.list();
     expect(decks.find((d) => d.fileName === "Unowned.slidra")?.owner).toBe("Anonymous");
   });
 
-  it("filters the listing by owner, exactly", async () => {
+  it("round-trips an owner from create through to the listing, and filters by it exactly", async () => {
     await store.create({ name: "Mine", owner: "u1" });
     await store.create({ name: "Theirs", owner: "u2" });
 
@@ -322,6 +320,30 @@ describe("deck owner metadata (AC6)", () => {
     expect(u2.map((d) => d.fileName)).toEqual(["Theirs.slidra"]);
     await expect(store.list("nobody")).resolves.toEqual([]);
     expect((await store.list()).map((d) => d.fileName).sort()).toEqual(["Mine.slidra", "Theirs.slidra"]);
+  });
+
+  it("writes Anonymous as owner for an upload and a copy-import, but never backfills owner for a register-in-place import ([E6.T14r2])", async () => {
+    const externalDir = await mkdtemp(path.join(tmpdir(), "slidra-deckstorage-owner-external-"));
+    try {
+      const uploadSourcePath = path.join(externalDir, "uploadme.slidra");
+      expect((await runCli(["new", uploadSourcePath, "--name", "Upload Me"])).ok).toBe(true);
+      const uploaded = await store.openUpload(await readFile(uploadSourcePath), "Uploaded");
+
+      const copySourcePath = path.join(externalDir, "copyme.slidra");
+      expect((await runCli(["new", copySourcePath, "--name", "Copy Me"])).ok).toBe(true);
+      const copied = await store.importExternal({ sourcePath: copySourcePath, disposition: "copy" });
+
+      const insidePath = path.join(deckFolder, "already-here.slidra");
+      expect((await runCli(["new", insidePath, "--name", "Already Here"])).ok).toBe(true);
+      await store.importExternal({ sourcePath: insidePath });
+
+      const decks = await store.list();
+      expect(decks.find((d) => d.fileName === uploaded.fileName)?.owner).toBe("Anonymous");
+      expect(decks.find((d) => d.fileName === copied.fileName)?.owner).toBe("Anonymous");
+      expect(decks.find((d) => d.fileName === "already-here.slidra")?.owner).toBeNull();
+    } finally {
+      await rm(externalDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 });
 

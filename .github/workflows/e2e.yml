@@ -35,10 +35,46 @@ jobs:
         run: npm test
 
       # This browser gate covers only cross-layer paths unit tests cannot:
-      # browser/agent edits, playback, undo/redo, and save/open persistence.
-      # The full suite remains available through npm run test:e2e.
+      # browser/agent edits, playback, undo/redo, save/open persistence, and
+      # Deck Space's own startup/create/open/rename/delete flow
+      # (e2e/deck-space.test.ts, added [E6.T14r2] — this is what would have
+      # caught the identity/owner-filtering regression at merge time instead
+      # of a later integration pass). The full suite remains available
+      # through npm run test:e2e.
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run core browser E2E suite
         run: npm run test:e2e:core
+
+  # NOOP-472 AC1/AC2: the macOS half of the CLI/server/sandbox suite, kept
+  # separate from `required` rather than a matrix so this context has its
+  # own name (`required-macos`) — a shared `required` context across both
+  # platforms would report only once and hide a macOS-only failure. This
+  # job intentionally does not install Playwright or run test:e2e:core:
+  # #349's scope is the CLI/server/sandbox suite (`npm test`), not the
+  # browser gate, and macOS runners bill at 10x the Linux rate.
+  #
+  # Making this a required status check (AC1) happens in the repo's
+  # ruleset settings, not in this file — the agent token this job runs
+  # under cannot write branch protection/ruleset config (verified: GET
+  # /repos/.../branches/main/protection returns 403). See the PR's Manual
+  # verification checklist for the human step.
+  required-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Includes the production build (which builds slidra-sandbox-exec via
+      # cargo) plus the CLI/server/sandbox unit suite — the darwin-only
+      # Seatbelt tests in os-enforcement.test.ts run for the first time here.
+      - name: Run unit test suite
+        run: npm test

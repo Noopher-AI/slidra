@@ -209,7 +209,14 @@ it("switching agents from the menu — system message, chip, next message, and e
 
   await page.locator('.chat-chip-menu [data-kind="codex"]').click();
 
-  await expect.poll(() => textOf(page, ".chat-system"), { timeout: 10_000 }).toBe("Switched to Codex. It will handle messages from here.");
+  // The divider text is the server's own (`AgentManager.buildDividerText`), not the
+  // browser's — [E6.T7] moved it there and appended the `slidra chat-history` pointer
+  // its AC4 requires, so the full sentence is what reaches `.chat-system`.
+  await expect
+    .poll(() => textOf(page, ".chat-system"), { timeout: 10_000 })
+    .toBe(
+      "Switched to Codex. It will handle messages from here. Above is the conversation before it joined — the agent has no memory of it; it can read it back with `slidra chat-history` if it needs to.",
+    );
   await expect.poll(() => textOf(page, ".agent-dot-connected")).toBe("Codex");
   // The menu collapses once a selection is made; reopening it shows codex checked and the command-line hint gone.
   expect(await page.locator(".chat-chip-menu").count()).toBe(0);

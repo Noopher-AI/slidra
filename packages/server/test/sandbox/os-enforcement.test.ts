@@ -3,11 +3,12 @@
 
 /**
  * NOOP-425 AC1/AC2/AC3/AC4: real sandbox enforcement, not a mock. Every
- * test here builds a real `SandboxLauncher` (`createLandlockLauncher()` on
- * Linux, skipped everywhere else — this project has no macOS pod to run
- * `createSrtLauncher()`'s Seatbelt path against) and actually spawns a real
- * child process through it. "Tested on the `SandboxLauncher` interface"
- * (NOOP-463 plan §6): never on `slidra-sandbox-exec`'s argv shape.
+ * test here builds a real `SandboxLauncher` and actually spawns a real
+ * child process through it — `createLandlockLauncher()` (Linux) in the
+ * describe blocks below, `createSrtLauncher()` (macOS Seatbelt, NOOP-472)
+ * in the darwin-only block at the end of this file. "Tested on the
+ * `SandboxLauncher` interface" (NOOP-463 plan §6): never on
+ * `slidra-sandbox-exec`'s argv shape.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -18,11 +19,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLandlockLauncher } from "../../src/sandbox/landlock-launcher.js";
+import { createSandboxLauncher } from "../../src/sandbox/launcher.js";
 import { buildAgentSandboxPolicy } from "../../src/sandbox/policy.js";
 import { touchesProtectedPath, type ProtectedPaths } from "../../src/agent/protected-paths.js";
 import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
 
 const isLinux = process.platform === "linux";
+const isDarwin = process.platform === "darwin";
 
 // Same real binary `crates/slidra`'s own `[[bin]]` target produces
 // (`npm run build` runs `cargo build --release` first) — these tests exist
@@ -68,10 +71,6 @@ afterEach(async () => {
   await Promise.all(cleanupDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-// Only Linux is exercised here — this pod (and this project's CI) has no
-// macOS runner to prove `srt-launcher.ts`'s Seatbelt path against; that
-// platform's own dependency (`@anthropic-ai/sandbox-runtime`) is left to
-// its own upstream test suite.
 describe.skipIf(!isLinux)("Landlock write enforcement (AC1)", () => {
   it("a write assembled from a shell variable, outside the sandbox, fails at the OS level — not at the string check", async () => {
     const sandboxRoot = await tempDir("slidra-os-enforce-root-");
@@ -252,5 +251,131 @@ describe.skipIf(!isLinux)("existing credentials and CLI logins keep working with
     const inPlaceResult = spawnSync(inPlace.command, inPlace.args, { env: inPlace.env, encoding: "utf8" });
     expect(inPlaceResult.status).toBe(0);
     expect(await readFile(configPath, "utf8")).toBe('{"numStartups":2}');
+  });
+});
+
+// NOOP-472: the macOS counterpart to the Landlock block above, exercising
+// `createSrtLauncher()`'s real Seatbelt enforcement instead of a mock.
+// `srt-launcher.ts` is imported dynamically inside each `it`, never at
+// module scope — mirroring `launcher.ts`'s own dispatch (`createSrtLauncher`
+// is only ever imported when `process.platform === "darwin"`), so this file
+// keeps loading on Linux CI without pulling in `@anthropic-ai/sandbox-runtime`
+// there at all.
+describe.skipIf(!isDarwin)("Seatbelt write enforcement on macOS (AC1/AC2/AC3, srt-launcher.ts)", () => {
+  it("a write outside the sandbox root is refused by the OS", async () => {
+    const { createSrtLauncher } = await import("../../src/sandbox/srt-launcher.js");
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const outsideDir = await outsideTheSandboxDir("slidra-os-enforce-outside-");
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: await tempDir("slidra-os-enforce-home-") });
+    launcher = await createSrtLauncher();
+    expect(launcher.active).toBe(true);
+
+    const wrapped = await launcher.wrap(
+      { command: "sh", args: ["-c", `printf x > "${outsideDir}/escape.txt"`], env: process.env },
+      policy,
+    );
+    const result = spawnSync(wrapped.command, wrapped.args, { env: wrapped.env, encoding: "utf8" });
+
+    expect(result.status).not.toBe(0);
+    await expect(stat(path.join(outsideDir, "escape.txt"))).rejects.toThrow();
+  });
+
+  it("a write inside the allow-listed sandbox root succeeds", async () => {
+    const { createSrtLauncher } = await import("../../src/sandbox/srt-launcher.js");
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: await tempDir("slidra-os-enforce-home-") });
+    launcher = await createSrtLauncher();
+    expect(launcher.active).toBe(true);
+
+    const wrapped = await launcher.wrap(
+      { command: "sh", args: ["-c", `printf ok > "${sandboxRoot}/inside.txt"`], env: process.env },
+      policy,
+    );
+    const result = spawnSync(wrapped.command, wrapped.args, { env: wrapped.env, encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(await readFile(path.join(sandboxRoot, "inside.txt"), "utf8")).toBe("ok");
+  });
+
+  it("reading a file elsewhere on the machine and an outbound loopback HTTP request both still succeed (AC3)", async () => {
+    const { createSrtLauncher } = await import("../../src/sandbox/srt-launcher.js");
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: await tempDir("slidra-os-enforce-home-") });
+    launcher = await createSrtLauncher();
+    expect(launcher.active).toBe(true);
+
+    const readWrapped = await launcher.wrap({ command: "cat", args: ["/etc/hosts"], env: process.env }, policy);
+    const readResult = spawnSync(readWrapped.command, readWrapped.args, { env: readWrapped.env, encoding: "utf8" });
+    const expected = await readFile("/etc/hosts", "utf8");
+    expect(readResult.status).toBe(0);
+    expect(readResult.stdout).toBe(expected);
+
+    const server = http.createServer((_req, res) => res.end("ok"));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const wrapped = await launcher.wrap(
+        { command: "curl", args: ["-s", "-o", "/dev/null", "-w", "%{http_code}", `http://127.0.0.1:${String(port)}/`], env: process.env },
+        policy,
+      );
+      // `spawn`, not `spawnSync` — same deadlock risk as the Linux AC3 test
+      // above (the server runs on this same event loop).
+      const { status, stdout } = await new Promise<{ status: number | null; stdout: string }>((resolve, reject) => {
+        const child = spawn(wrapped.command, wrapped.args, { env: wrapped.env });
+        let out = "";
+        child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
+        child.on("error", reject);
+        child.on("close", (code) => resolve({ status: code, stdout: out }));
+      });
+
+      expect(status).toBe(0);
+      expect(stdout).toBe("200");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
+/**
+ * The launcher contract every caller depends on but no `allowWrite` test
+ * touches: `wrap()` must hand back the env the CALLER asked for, not the
+ * parent process's. `agent/manager.ts` rewrites `PATH` so the agent resolves
+ * `slidra` to `<sandboxRoot>/bin` (the CLI-sandbox shim) rather than to any
+ * ambient binary — and `srt-launcher.ts` used to spread `srt`'s own env
+ * (which is `process.env` verbatim) *after* the caller's, silently undoing
+ * exactly that rewrite. The whole CLI sandbox then went unused on macOS:
+ * the agent ran the real `slidra` binary inside the agent sandbox, where
+ * `denyRead` covers the deck, so every scripted command failed
+ * (freeze.test.ts, first caught by the required-macos job).
+ *
+ * Runs against `createSandboxLauncher()` — whichever real launcher this
+ * platform dispatches to — so neither platform can regress alone.
+ */
+describe.skipIf(process.platform === "win32")("SandboxLauncher.wrap() preserves the caller's own env (every platform)", () => {
+  it("a PATH the caller overrode is what the wrapped command resolves against, not the parent's", async () => {
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: await tempDir("slidra-os-enforce-home-") });
+    launcher = await createSandboxLauncher();
+    expect(launcher.active).toBe(true);
+
+    // A stand-in for the shim wrapper, under the same name the agent's
+    // shell would resolve, in a directory that is on no ambient PATH.
+    const binDir = path.join(sandboxRoot, "bin");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(path.join(binDir, "slidra"), "#!/bin/sh\necho shim-was-used\n", { mode: 0o755 });
+
+    const wrapped = await launcher.wrap(
+      {
+        command: "sh",
+        args: ["-c", "slidra"],
+        env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+      },
+      policy,
+    );
+    const result = spawnSync(wrapped.command, wrapped.args, { env: wrapped.env, encoding: "utf8" });
+
+    expect(result.stdout.trim()).toBe("shim-was-used");
+    expect(result.status).toBe(0);
   });
 });

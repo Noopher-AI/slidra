@@ -32,8 +32,14 @@ import {
   handleNewPost,
   handleOpenPost,
   handleRenamePost,
+  handleResolvePost,
+  handleThumbnailGet,
 } from "./open-endpoint.js";
-import { createLocalDeckStore, type DeckStore } from "./storage/deck-store.js";
+import { createLocalDeckStore, DeckNameConflictError, type DeckStore } from "./storage/deck-store.js";
+import { createAnonymousProvider } from "./identity/anonymous-provider.js";
+import { handleIdentityGet, handleIdentitySignIn, handleIdentitySignOut } from "./identity/routes.js";
+import { createIdentitySession, type IdentitySession } from "./identity/session.js";
+import type { IdentityProvider } from "./identity/types.js";
 import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import {
@@ -133,6 +139,15 @@ export interface ServeOptions {
    * to exist on the machine running the test into assertions.
    */
   skillDirs?: Partial<SkillDirs>;
+  /**
+   * [E6.T9]: the identity providers this server registers, and the one
+   * seam production and tests differ on. Omitted (`cli.ts`, the e2e
+   * harness) means exactly `[anonymous]` — the only provider a real
+   * deployment offers until a real one (Email Magic Link) ships. Tests
+   * pass `{ providers: [createFakeProvider()] }` (or a locally-built
+   * two-phase provider, AC7) to sign in without a real identity backend.
+   */
+  identity?: { providers: IdentityProvider[] };
 }
 
 export interface RunningServer {
@@ -254,6 +269,13 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // before `deckSession` actually exists.
   const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
 
+  // [E6.T9]: built once per server, alongside deckStore — the identity
+  // routes below and GET /api/decks' visibility resolver both close over
+  // this one session, so "who is signed in" and "which decks are visible"
+  // can never disagree within a single serve process.
+  const identityProviders = options.identity?.providers ?? [createAnonymousProvider()];
+  const identitySession = createIdentitySession(identityProviders, deckStore);
+
   // The HTTP server is created and `listen()`ed *before* `AgentManager`
   // below, and the closure here references `manager`/`chatStreams`/
   // `deckSession`/`computeSlashCommands` before any of them are
@@ -274,6 +296,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     void handleRequest(
       deckSession,
       deckStore,
+      identitySession,
       staticDir,
       manager,
       chatStreams,
@@ -403,15 +426,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const deckSession = createDeckSession({
     initial: initialDeck,
     resolveDeck: resolveDeckIdentity,
-    guard: () => {
-      if (editingLock.getState() !== "idle") {
-        return { reason: "editing", message: new AgentSwitchLockedError().message };
-      }
-      if (exportJobManager.hasActiveJob()) {
-        return { reason: "exporting", message: "An export job is already in progress" };
-      }
-      return null;
-    },
+    guard: () => deckMutationGuard(editingLock, exportJobManager),
     unbind: async (outgoing) => {
       await changeBroadcaster.retarget(null);
       await manager.retarget(null);
@@ -504,6 +519,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 async function handleRequest(
   deckSession: DeckSession,
   deckStore: DeckStore,
+  identitySession: IdentitySession,
   staticDir: string,
   manager: AgentManager,
   chatStreams: ChatStreamRegistry,
@@ -633,8 +649,23 @@ async function handleRequest(
         await handleRenamePost(deckStore, req, res);
         return;
       }
+      if (url.pathname === "/api/deck/rename-current") {
+        // The title bar's own rename — the one case `/api/deck/rename`
+        // refuses (the deck this server currently has bound). Never gated
+        // on `requireDeck`/the editing-lock check below: it has its own
+        // no-deck/editing/exporting guards, matching `/api/deck/switch`.
+        await handleRenameCurrentPost(deckSession, deckStore, changeBroadcaster, saveController, editingLock, exportJobManager, req, res);
+        return;
+      }
       if (url.pathname === "/api/deck/delete") {
         await handleDeletePost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/deck/resolve") {
+        // [E6.T4]: deck-independent, like /api/new and /api/open above —
+        // lazily registers a deck folder entry Deck Space's list never
+        // minted an id for.
+        await handleResolvePost(deckStore, req, res);
         return;
       }
       if (url.pathname === "/api/agent/exec") {
@@ -741,6 +772,14 @@ async function handleRequest(
         sendJson(res, 200, { ok: true });
         return;
       }
+      if (url.pathname === "/api/identity/sign-in") {
+        await handleIdentitySignIn(identitySession, req, res);
+        return;
+      }
+      if (url.pathname === "/api/identity/sign-out") {
+        await handleIdentitySignOut(identitySession, res);
+        return;
+      }
       sendJson(res, 405, { error: "Only GET is supported" });
       return;
     }
@@ -783,8 +822,23 @@ async function handleRequest(
     if (url.pathname === "/api/decks") {
       // [E6.T2]: deck-independent, like /api/new and /api/open above —
       // scans the deck folder directly, regardless of whether this server
-      // currently has a deck open.
-      await handleDecksGet(deckStore, url, res);
+      // currently has a deck open. [E6.T9]: with no ?owner= given, the
+      // visible set is identity's union of "Anonymous" plus the current
+      // identity's own decks, not the whole folder.
+      await handleDecksGet(deckStore, url, res, () => identitySession.visibleDecks());
+      return;
+    }
+
+    if (url.pathname === "/api/identity") {
+      // [E6.T9] AC1: the user block's initial render — current identity
+      // (null when anonymous) plus every registered provider.
+      handleIdentityGet(identitySession, res);
+      return;
+    }
+
+    if (url.pathname === "/api/decks/thumbnail") {
+      // [E6.T4]: deck-independent, same contract as /api/decks above.
+      await handleThumbnailGet(deckStore, url, req, res);
       return;
     }
 
@@ -915,6 +969,24 @@ async function handleRequest(
  * null when there is no deck to hand back; a route handler's job is then
  * just `if (deckId === null) return;`.
  */
+/**
+ * Shared by `deckSession`'s own switch guard (`createDeckSession`'s `guard`
+ * option) and `handleRenameCurrentPost` — renaming the bound deck's file is
+ * only safe under the exact same conditions a switch away from it is.
+ */
+function deckMutationGuard(
+  editingLock: EditingLock,
+  exportJobManager: ExportJobManager,
+): { reason: string; message: string } | null {
+  if (editingLock.getState() !== "idle") {
+    return { reason: "editing", message: new AgentSwitchLockedError().message };
+  }
+  if (exportJobManager.hasActiveJob()) {
+    return { reason: "exporting", message: "An export job is already in progress" };
+  }
+  return null;
+}
+
 function requireDeck(deckSession: DeckSession, res: ServerResponse): string | null {
   const id = deckSession.currentId();
   if (id === null) {
@@ -978,6 +1050,86 @@ async function handleDeckSwitchPost(
     await broadcastSaveState(changeBroadcaster, saveController);
   }
   sendJson(res, 200, { ok: true, switched: result.switched, deck: toPublicDeck(result.deck) });
+}
+
+/**
+ * `POST /api/deck/rename-current` — the title bar's inline rename. Body:
+ * `{ name: string }`; the deck to rename is always whichever one
+ * `deckSession` currently has bound (there is no `id` in the body). Refuses
+ * with the same `{reason:"editing"}`/`{reason:"exporting"}` conflicts a
+ * switch would (`guard`), and with `{reason:"no-deck"}` when nothing is
+ * open. On success, flushes any pending debounced save against the OLD path
+ * first, renames the file (`DeckStore.renameBound`), then re-points the
+ * file watcher at the new path (`changeBroadcaster.retarget`) — `retarget`
+ * always tears down and rebuilds the watcher, even for the same id, so this
+ * is enough to make live reload see the renamed file.
+ */
+async function handleRenameCurrentPost(
+  deckSession: DeckSession,
+  deckStore: DeckStore,
+  changeBroadcaster: ChangeBroadcaster,
+  saveController: SaveController,
+  editingLock: EditingLock,
+  exportJobManager: ExportJobManager,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const id = requireDeck(deckSession, res);
+  if (id === null) return;
+
+  const conflict = deckMutationGuard(editingLock, exportJobManager);
+  if (conflict) {
+    sendJson(res, 409, { error: conflict.message, reason: conflict.reason });
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return;
+  }
+  const name = (body as { name?: unknown } | null)?.name;
+  if (typeof name !== "string" || name === "") {
+    sendJson(res, 400, { error: "name must be a non-empty string" });
+    return;
+  }
+
+  try {
+    // Settles any edit still sitting in the debounce window against the
+    // OLD path before that path stops existing.
+    await saveController.flush();
+    const { fileName } = await deckStore.renameBound(id, name);
+    // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
+    // reporting the pre-rename name/sourcePath until the next switch.
+    await deckSession.refreshCurrent();
+    await changeBroadcaster.retarget(id);
+    // `renameBound`'s own savedAt snapshot (a Node-side `stat()` read, same
+    // idiom `deck-store.ts` already uses for `create`/`rename`) is not
+    // reliable here: `refreshCurrent`'s `slidra cat` runs a real subprocess
+    // between that snapshot and this line, and under CI's timing that was
+    // observed to nudge the file's mtime past it, permanently reading the
+    // freshly-renamed deck as dirty. Forcing one real write-back instead
+    // re-establishes `savedAt` through the SAME Rust-`pack`-authored
+    // mechanism every other save already relies on (`slidra/save-state.ts`'s
+    // own docstring) — proven immune to a read run after it, unlike a
+    // Node-side stat guess. `flush` also broadcasts "save-state" itself, so
+    // no separate `broadcastSaveState` call is needed.
+    saveController.markDirty();
+    await saveController.flush();
+    sendJson(res, 200, { ok: true, fileName });
+  } catch (error) {
+    if (error instanceof DeckNameConflictError) {
+      sendJson(res, 409, { error: error.message, reason: "name-conflict" });
+      return;
+    }
+    if (error instanceof SlidraNotFoundError) {
+      sendJson(res, 404, { error: error.message });
+      return;
+    }
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Rename failed" });
+  }
 }
 
 /**

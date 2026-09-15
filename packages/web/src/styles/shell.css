@@ -104,6 +104,27 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+}
+.deck-name-rename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.deck-name-rename-input {
+  height: var(--control-h-compact);
+  min-width: 0;
+  padding-inline: var(--space-2);
+  border: 1px solid var(--ink-300);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.deck-name-rename-error {
+  font-size: var(--text-xs-hint);
+  color: var(--brand-red);
+  white-space: nowrap;
 }
 .titlebar-saved-status {
   color: var(--ink-500);

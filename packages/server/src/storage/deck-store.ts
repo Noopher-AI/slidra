@@ -11,6 +11,7 @@ import {
   resolveSlidraHome,
   withProjectsRegistryLock,
   writeProjectsRegistry,
+  type SlidraRegistry,
 } from "../slidra/home.js";
 import { deckFileMtime, ensureDeckFolder } from "./deck-folder.js";
 import { moveToTrash } from "./trash.js";
@@ -33,6 +34,19 @@ export interface DeckListEntry {
   name: string | null;
   slideCount: number | null;
   owner: string | null;
+  /**
+   * The registry id this file is already known under, or `null` when it has
+   * never been opened/registered — [E6.T4] plan §7 decision 1: listing
+   * never mints a new id (`slidra open` is not idempotent — 50 files would
+   * mean 50 subprocess spawns and 50 registry entries no card ever uses).
+   * When more than one registry entry's `deckPath` resolves to this file,
+   * the lexicographically-smallest id wins (plan §4's behavior table) —
+   * deterministic, and never mutates the registry to reconcile the
+   * duplicates.
+   */
+  id: string | null;
+  /** The deck file's own `mtimeMs` (`deckFileMtime`) — AC2's card metadata and the thumbnail cache's own invalidation key. */
+  lastModified: number;
 }
 
 export interface CreateDeckInput {
@@ -85,7 +99,30 @@ export interface DeckStore {
   /** `POST /api/open`'s upload path: raw bytes with no real source path (a browser `<input type="file">` never hands one over). */
   openUpload(bytes: Buffer, displayName: string | undefined): Promise<CreatedDeck>;
   rename(id: string, name: string): Promise<void>;
+  /**
+   * Renames the deck `id` on disk exactly like `rename`, but WITHOUT the
+   * `DeckBoundError` guard — the title bar's own rename flow (`serve.ts`'s
+   * `handleRenameCurrentPost`) uses this for the one deck `rename` refuses:
+   * whichever deck `DeckSession` currently has bound. Safe there, and only
+   * there, because the caller already holds the same guard `switchTo` uses
+   * (editing floor idle, no export running) and re-points the file watcher
+   * at the new path immediately afterwards — neither of which this method
+   * does on its own. Never call this for an id you have not confirmed is
+   * the bound one.
+   */
+  renameBound(id: string, name: string): Promise<{ fileName: string }>;
   remove(id: string): Promise<void>;
+  /**
+   * `POST /api/deck/resolve`'s implementation ([E6.T4] plan §7 decision 1/2):
+   * resolves `fileName` (a file already sitting in the deck folder) to its
+   * registry id, registering it via `slidra open` only the first time —
+   * an already-registered file returns its existing id (the same
+   * lexicographically-smallest tie-break `list()` uses) rather than
+   * minting a second one and leaving a duplicate registry entry behind.
+   * Throws `SlidraNotFoundError` when `fileName` does not name a file in
+   * the deck folder.
+   */
+  resolveId(fileName: string): Promise<CreatedDeck>;
 }
 
 export interface DeckStoreOptions {
@@ -101,11 +138,28 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
     importExternal,
     openUpload,
     rename: (id, name) => renameDeck(getCurrentDeckId, id, name),
+    renameBound: (id, name) => applyDeckRename(id, name),
     remove: (id) => removeDeck(getCurrentDeckId, id),
+    resolveId,
   };
 }
 
-const DEFAULT_OWNER = "Anonymous";
+/** The owner tag every deck gets until an identity claims it — [E6.T9]'s "no identity" state, not just `create`'s default. Literal value is load-bearing: every deck already on disk was written with it, so it must never change. */
+export const ANONYMOUS_OWNER = "Anonymous";
+const DEFAULT_OWNER = ANONYMOUS_OWNER;
+
+/**
+ * The single definition of "anonymous" ([E6.T14r2] Plan §7 decision 1):
+ * `owner: null` (never opened/imported-in-place before [E6.T9], or a file
+ * whose owner was never written) counts as anonymous the same as the
+ * literal `ANONYMOUS_OWNER` tag. Every caller that used to compare against
+ * `ANONYMOUS_OWNER` alone (`visibleDecks()`, `claimAnonymous()`) goes
+ * through this instead — the Rust CLI's `--owner` filter stays an exact
+ * string match and is never asked to express this union.
+ */
+export function isAnonymousOwner(owner: string | null): boolean {
+  return owner === null || owner === ANONYMOUS_OWNER;
+}
 export const UNTITLED_DECK_NAME = "Untitled";
 
 /** A margin added onto a `saved_at` reading, matching `open-endpoint.ts`'s old `reopenPresentationInPlace` and the Rust registry's own `SAVED_AT_SETTLE_WINDOW_MS` — filesystem timestamp updates can lag the write that triggered them by a few milliseconds. */
@@ -186,16 +240,60 @@ async function registerDeckAtPath(deckPath: string, fileName?: string): Promise<
   return { id: opened.data.id, fileName: fileName ?? path.basename(deckPath) };
 }
 
+/** Raw shape `slidra deck list` itself returns — before this module enriches each entry with `id`/`lastModified`. */
+interface RawDeckListEntry {
+  fileName: string;
+  name: string | null;
+  slideCount: number | null;
+  owner: string | null;
+}
+
+/** One registry read, one reverse index (`deckPath` -> lexicographically-smallest id) — never a per-entry registry scan, so a 50-deck listing stays at exactly one `deck list` subprocess call plus one registry read (AC6, [E6.T4] plan §7 decision 1). */
+function buildDeckPathIndex(registry: SlidraRegistry): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const [id, entry] of registry) {
+    const resolved = path.resolve(entry.deckPath);
+    const existing = index.get(resolved);
+    if (existing === undefined || id < existing) index.set(resolved, id);
+  }
+  return index;
+}
+
 async function listDecks(owner?: string): Promise<DeckListEntry[]> {
   const folder = await ensureDeckFolder();
   const args = ["deck", "list", folder];
   if (owner !== undefined) args.push("--owner", owner);
-  const result = await runJsonCommand<{ decks: DeckListEntry[] }>(args);
+  const result = await runJsonCommand<{ decks: RawDeckListEntry[] }>(args);
   if (!result.ok) {
     if (result.failureKind === "not-found") throw new SlidraNotFoundError(result.message);
     throw new SlidraError(result.message);
   }
-  return result.data?.decks ?? [];
+  const raw = result.data?.decks ?? [];
+  const registry = await readProjectsRegistry();
+  const deckPathIndex = buildDeckPathIndex(registry);
+  return Promise.all(
+    raw.map(async (entry) => {
+      const deckPath = path.join(folder, entry.fileName);
+      return {
+        ...entry,
+        id: deckPathIndex.get(path.resolve(deckPath)) ?? null,
+        lastModified: await deckFileMtime(deckPath),
+      };
+    }),
+  );
+}
+
+/** `POST /api/deck/resolve` ([E6.T4] plan §7 decision 1/2). Never mints a second id for a file already registered — reuses `list()`'s own tie-break so the two never disagree about which id a file "is". */
+async function resolveId(fileName: string): Promise<CreatedDeck> {
+  const folder = await ensureDeckFolder();
+  const deckPath = path.join(folder, fileName);
+  if (!(await pathExists(deckPath))) {
+    throw new SlidraNotFoundError(`no deck file found: ${fileName}`);
+  }
+  const registry = await readProjectsRegistry();
+  const existingId = buildDeckPathIndex(registry).get(path.resolve(deckPath));
+  if (existingId !== undefined) return { id: existingId, fileName };
+  return registerDeckAtPath(deckPath, fileName);
 }
 
 /**
@@ -236,10 +334,20 @@ async function createDeck(input: CreateDeckInput): Promise<CreatedDeck> {
 
 /**
  * Imports an external `.slidra` — AC3. A `sourcePath` already inside the
- * deck folder registers directly, no move/copy, no confirmation. Outside
- * the folder with no `disposition` throws `ImportConfirmationRequiredError`
- * before touching anything; `disposition` picks move (source no longer
- * exists afterward) or copy (source untouched).
+ * deck folder registers directly, no move/copy, no confirmation, and no
+ * owner write — ADR-0023's register-in-place case, a pre-existing file's
+ * `owner: null` is never backfilled. Outside the folder with no
+ * `disposition` throws `ImportConfirmationRequiredError` before touching
+ * anything; `disposition` picks move (source no longer exists afterward) or
+ * copy (source untouched) — both write `DEFAULT_OWNER` ([E6.T14r2] Plan §3)
+ * but only *after* `registerDeckAtPath`/`open`, deliberately the reverse of
+ * `createDeck`'s owner-before-open order: an externally-sourced `.slidra`
+ * may still be in the pre-SQLite container format `open` migrates on first
+ * read (`deck meta set` has no such migration path and fails outright
+ * against one — verified against `e2e`'s own zip-packed fixtures), so
+ * `open` has to run first here. `resnapshotSavedAtIfRegistered` afterward
+ * re-snapshots `savedAt` past the owner write, the same fix-up `renameDeck`
+ * already relies on, so the deck still doesn't open already "dirty".
  */
 async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   const folder = await ensureDeckFolder();
@@ -272,7 +380,11 @@ async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   }
 
   try {
-    return await registerDeckAtPath(targetPath, fileName);
+    const created = await registerDeckAtPath(targetPath, fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", targetPath, "--owner", DEFAULT_OWNER]);
+    if (!metaSet.ok) throw new SlidraError(metaSet.message);
+    await resnapshotSavedAtIfRegistered(targetPath);
+    return created;
   } catch (error) {
     if (input.disposition === "move") {
       await rename(targetPath, resolvedSource).catch(() => {});
@@ -283,7 +395,7 @@ async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   }
 }
 
-/** `POST /api/open`'s upload path: writes the uploaded bytes straight into the deck folder under a conflict-free name, then validates+registers them the same way `create`/`importExternal` do — an invalid upload leaves no file behind. */
+/** `POST /api/open`'s upload path: writes the uploaded bytes straight into the deck folder under a conflict-free name, validates+registers them the same way `create`/`importExternal` do, then writes `DEFAULT_OWNER` — after `open`, not before, same reason as `importExternal`'s move/copy branch (an uploaded `.slidra` may still be in the pre-SQLite container format only `open` migrates). An invalid upload leaves no file behind. */
 async function openUpload(bytes: Buffer, displayName: string | undefined): Promise<CreatedDeck> {
   const folder = await ensureDeckFolder();
   const trimmed = (displayName ?? "").trim();
@@ -294,7 +406,11 @@ async function openUpload(bytes: Buffer, displayName: string | undefined): Promi
 
   await writeFile(targetPath, bytes);
   try {
-    return await registerDeckAtPath(targetPath, fileName);
+    const created = await registerDeckAtPath(targetPath, fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", targetPath, "--owner", DEFAULT_OWNER]);
+    if (!metaSet.ok) throw new SlidraError(metaSet.message);
+    await resnapshotSavedAtIfRegistered(targetPath);
+    return created;
   } catch (error) {
     await rm(targetPath, { force: true }).catch(() => {});
     throw error;
@@ -311,12 +427,17 @@ async function openUpload(bytes: Buffer, displayName: string | undefined): Promi
  * already "dirty".
  */
 async function renameDeck(getCurrentDeckId: () => string | null, id: string, name: string): Promise<void> {
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  if (!entry) throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
   if (getCurrentDeckId() === id) {
     throw new DeckBoundError(`cannot rename the deck that is currently open: ${id}`);
   }
+  await applyDeckRename(id, name);
+}
+
+/** The on-disk rename shared by `renameDeck` (guarded) and `DeckStore.renameBound` (unguarded) — see the latter's docstring for why an unguarded path exists at all. */
+async function applyDeckRename(id: string, name: string): Promise<{ fileName: string }> {
+  const registry = await readProjectsRegistry();
+  const entry = registry.get(id);
+  if (!entry) throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
 
   const baseName = sanitizeDeckBaseName(name);
   const newFileName = `${baseName}.slidra`;
@@ -346,6 +467,58 @@ async function renameDeck(getCurrentDeckId: () => string | null, id: string, nam
     latest.set(id, { ...current, deckPath: newPath, sourcePath: newPath, savedAt });
     await writeProjectsRegistry(latest);
   });
+  return { fileName: newFileName };
+}
+
+/**
+ * Re-snapshots a claimed deck's `savedAt` the same way `renameDeck` does
+ * above (`:343-350`) — after a `deck meta set --owner` write, the registry
+ * entry's old `savedAt` would read stale and the deck would open already
+ * "dirty" ([E6.T9] plan §3). A deck never opened yet has no registry entry
+ * at all; that is not an error, there is simply nothing to re-snapshot.
+ */
+async function resnapshotSavedAtIfRegistered(deckPath: string): Promise<void> {
+  const registry = await readProjectsRegistry();
+  const match = [...registry].find(([, entry]) => entry.deckPath === deckPath);
+  if (!match) return;
+  const [id] = match;
+  const savedAt = (await deckFileMtime(deckPath)) + SAVED_AT_SETTLE_WINDOW_MS;
+  await withProjectsRegistryLock(async () => {
+    const latest = await readProjectsRegistry();
+    const current = latest.get(id);
+    if (!current) return;
+    latest.set(id, { ...current, savedAt });
+    await writeProjectsRegistry(latest);
+  });
+}
+
+/**
+ * Reassigns every currently-anonymous deck (`isAnonymousOwner` — the
+ * literal `ANONYMOUS_OWNER` tag or `owner: null`) to `ownerTag` — the
+ * "claim" side effect of signing in ([E6.T9] plan §7 decision 5, widened by
+ * [E6.T14r2] Plan §7 decision 3). Order is
+ * deliberately per-file, not batched: a failure partway through leaves the
+ * decks already reassigned exactly as reassigned (their content never
+ * touched — `deck meta set --owner` only ever rewrites `project.json`'s
+ * owner key, `crates/…/deck.rs:275-282`), and the thrown message names the
+ * first file that failed so the caller/UI can say which one. `identity/`
+ * itself never touches `node:fs` — this is the one place that does the
+ * reassignment, same rule as every other deck file mutation in this repo.
+ */
+export async function claimAnonymous(ownerTag: string): Promise<number> {
+  const folder = await ensureDeckFolder();
+  const anonymous = (await listDecks()).filter((entry) => isAnonymousOwner(entry.owner));
+  let claimed = 0;
+  for (const entry of anonymous) {
+    const deckPath = path.join(folder, entry.fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", deckPath, "--owner", ownerTag]);
+    if (!metaSet.ok) {
+      throw new SlidraError(`failed to claim ${entry.fileName}: ${metaSet.message}`);
+    }
+    await resnapshotSavedAtIfRegistered(deckPath);
+    claimed++;
+  }
+  return claimed;
 }
 
 /** Deletes a registered deck: moves its file to the OS trash (AC4, never a bare `unlink`), then drops its registry entry, history, and clipboard. */

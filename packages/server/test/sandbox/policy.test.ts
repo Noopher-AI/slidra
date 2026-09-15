@@ -33,6 +33,9 @@ describe("buildAgentSandboxPolicy", () => {
     expect(policy.allowWrite).toContain(path.join(home, ".claude.json"));
     expect(policy.allowWrite).toContain(path.join(home, ".codex"));
     expect(policy.allowWrite).toContain(path.join(home, ".npm"));
+    // `uv` always caches under `~/.cache/uv`, ignoring macOS's own
+    // `~/Library/Caches` convention — both must be writable there.
+    expect(policy.allowWrite).toContain(path.join(home, ".cache"));
     expect(policy.allowWrite).toContain(path.join(home, ".config"));
     // `cmd > /dev/null 2>&1` is common enough in shell tooling that
     // Landlock's write restriction would otherwise break it (found via

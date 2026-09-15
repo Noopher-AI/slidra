@@ -29,6 +29,10 @@
 //   { turn, permissionOutcome }                — one per command, in order.
 //   { turn, ranCommand }                       — after that command's shell
 //                                                 execution actually finishes.
+//   { turn, failedCommand, cwd, error }       — that command's shell
+//                                                 execution failed; the
+//                                                 rethrow below still
+//                                                 happens.
 //   { turn, readOnly: true }                   — a readOnlyTurns turn's read
 //                                                 completed.
 // A missing/failed permission or shell run throws, which surfaces as
@@ -106,7 +110,18 @@ class MultiCommandFakeAgent {
         if (config.holdAfterPermissionMs) {
           await new Promise((resolve) => setTimeout(resolve, config.holdAfterPermissionMs));
         }
-        await runShellCommand(command, sessionCwd);
+        try {
+          await runShellCommand(command, sessionCwd);
+        } catch (error) {
+          // Recorded before rethrowing, never instead of it — the throw is
+          // still what surfaces as chat-error. Without this line a command
+          // that fails reaches the test only as `waitForLog` timing out on
+          // a `ranCommand` that never arrives: 55 seconds of nothing, with
+          // the real cause (the command's own stderr) discarded along with
+          // the rejected promise.
+          log({ turn, failedCommand: command, cwd: sessionCwd, error: String(error?.message ?? error) });
+          throw error;
+        }
         log({ turn, ranCommand: command });
       }
     }

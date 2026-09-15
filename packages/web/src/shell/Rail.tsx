@@ -12,6 +12,7 @@ import { SaveTemplateModal } from "./rail/SaveTemplateModal.js";
 import type { TemplateEntry } from "./rail/useTemplateList.js";
 import { MasterModeBar } from "./master-mode/MasterModeBar.js";
 import { useTemplateAvailability } from "./master-mode/useTemplateAvailability.js";
+import { UserBlock, type UserBlockProps } from "./user-block/UserBlock.js";
 
 type CommandResult = { ok: boolean; message: string; data?: unknown };
 type RunCommand = (name: string, input: Record<string, unknown>) => Promise<CommandResult | undefined>;
@@ -46,6 +47,8 @@ export interface RailProps {
   onExitMasterMode: () => void;
   /** "Let the agent update the slides" (AC3) — App.tsx saves then dispatches. */
   onApplyTemplateToSlides: (templateName: string | null) => void;
+  /** [E6.T9]: `<UserBlock>`'s own props, passed straight through — `App.tsx` owns the `useIdentity()` state, `<Rail>` just mounts it at the bottom of the column, right after `.overview` (plan §1/§7 decision 8: the same component, same position, in Deck Space's left column too). */
+  userBlock: UserBlockProps;
 }
 
 type RailMenu = "new" | "templates" | null;
@@ -75,6 +78,7 @@ export function Rail({
   onEnterMasterMode,
   onExitMasterMode,
   onApplyTemplateToSlides,
+  userBlock,
 }: RailProps) {
   const [menu, setMenu] = useState<RailMenu>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -247,6 +251,7 @@ export function Rail({
         />
       )}
       <aside className="overview" ref={containerRef} />
+      <UserBlock {...userBlock} />
       {contextMenuRequest && !inMasterMode && (
         <ThumbContextMenu
           menuRef={contextMenuRef}

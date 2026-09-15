@@ -47,7 +47,7 @@ Slidra places agent work inside four explicit boundaries:
 
 | Boundary | Component | Purpose |
 | --- | --- | --- |
-| **Representation** | `.slidra` format | Makes the deck inspectable |
+| **Representation** | `.slidra` format | Makes the deck inspectable through the CLI (`ls`, `cat`) — the file itself is a single-file database, not something a general-purpose archive tool can open |
 | **Action** | `slidra` CLI | Defines what can be changed |
 | **Behavior** | Skills and guidance | Defines how work should proceed |
 | **Validation** | Executable validators `slidra validate` | Defines what must remain true |
@@ -93,7 +93,7 @@ Agent drafts the deck
 
 ## `.slidra` Deck Format
 
-A `.slidra` file is a ZIP container with an explicit project manifest and authoritative SVG slides:
+A `.slidra` file is a single-file SQLite database with an explicit project manifest and authoritative SVG slides. The layout below is the entry set the container holds, as rows in its `content` table (see [`docs/spec/slidra-format.md`](docs/spec/slidra-format.md) for the on-disk schema, including how a deck from an older release is carried forward):
 
 ```text
 deck.slidra
@@ -209,9 +209,15 @@ flowchart LR
 | Agent integration | Agent Client Protocol, TypeScript | Connects Claude Code, Codex, or local-Qwen-backed Pi to the resident server while keeping deck changes inside the CLI command surface. |
 | Application server | Node.js 22, TypeScript, native `node:http` | Runs `slidra serve`, exposes the JSON and SSE endpoints, and translates Web requests into `slidra` CLI read or write commands. |
 | `slidra` CLI | Rust 1.85, Rust 2024 Edition, Clap, Serde | Implements reads, semantic edits, validation, undo and redo. It is the only presentation-content boundary for `.slidra`. |
-| `.slidra` | ZIP, JSON, SVG | Stores the manifest, ordered slides, templates, assets, fonts, and optional planning documents in one `.slidra` file. |
+| `.slidra` | SQLite, JSON, SVG | Stores the manifest, ordered slides, templates, assets, fonts, and optional planning documents in one `.slidra` file. |
 
 The local and hosted paths use the same frontend build and the same server and CLI contracts. Vercel hosts the static Next.js output and protects the public edge; it does not replace the stateful Node.js server or the Rust command engine.
+
+## Platform support and the agent sandbox
+
+`slidra serve` runs on Linux, macOS, and Windows. On Linux and macOS, every command the connected agent runs is wrapped in an OS-enforced write sandbox — the kernel's own Landlock LSM on Linux, Seatbelt (via `@anthropic-ai/sandbox-runtime`) on macOS — so a write outside the deck's working area and a small, reviewed allow-list (credential/cache directories the agent's own tools need) is refused by the OS itself, not by a string check over the command the agent asked to run. Windows has no OS-level sandbox path yet; the agent runs unconfined there. On any platform, `SLIDRA_SANDBOX=off` turns write isolation off explicitly, and a dependency or initialization failure degrades to running unconfined with a logged reason rather than failing startup.
+
+**What the sandbox guarantees, and what it does not:** it restricts *what the agent can write*, not what it can read or reach over the network — reads and outbound network access are deliberately left open (ADR-0021), so it is not a defense against a prompt-injection payload the agent reads and simply repeats back as a command. It also does not, by itself, keep the agent from reading `SLIDRA_HOME` or other decks; that refusal is enforced separately, above the OS sandbox layer (`denyRead`, ADR-0002).
 
 
 ## Contributing

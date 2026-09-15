@@ -21,7 +21,7 @@ import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar } from "./shell/TitleBar.js";
-import { UnsavedChangesModal } from "./shell/UnsavedChangesModal.js";
+import { renameCurrentDeck } from "./shell/deck-space/deck-api.js";
 import { installUnsavedGuard } from "./unsaved-guard.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
@@ -35,6 +35,7 @@ import { PlanGateModal } from "./shell/PlanGateModal.js";
 import { parsePlanOutline, type PlanOutline } from "./plan-file.js";
 import { mediaInsertInput } from "./shell/dock/panels/media-insert.js";
 import { buildApplyMasterMessage } from "./shell/master-mode/master-prompt.js";
+import type { UserBlockProps } from "./shell/user-block/UserBlock.js";
 
 /**
  * WebKit still ships only the prefixed `webkitExitFullscreen`. Shared by
@@ -80,8 +81,21 @@ export function toExportUiState(event: ExportSseEvent): ExportUiState {
   }
 }
 
-/** An Open/New refused with 409 (unsaved changes), waiting on `UnsavedChangesModal`'s choice — NOOP-422 §4(d). */
-type PendingUnsavedAction = { kind: "open"; file: File } | { kind: "new" };
+export interface AppProps {
+  /** [E6.T4]: `TitleBar`'s "Deck Space" button — `Workspace.tsx` is the one place that decides what opening it means (an overlay above this editor). */
+  onOpenDeckSpace(): void;
+  /**
+   * True while Deck Space is showing as an overlay above this editor.
+   * [E6.T4] plan §7 decision 8: the window `dragenter` guard below must
+   * ignore a file drag while it's open (Deck Space owns its own drop zone
+   * instead), and the drop overlay must be forced closed the instant it
+   * opens — otherwise closing Deck Space again can leave the stage tinted
+   * forever from a drag that started while it was up.
+   */
+  deckSpaceOpen: boolean;
+  /** [E6.T14r2] Plan §7 decision 4: identity state now lives in `Workspace.tsx` (no deck bound means `<App>` never mounts at all, yet Deck Space still needs the same block) — `<Rail>`'s bottom mount gets these props straight through, `useIdentity()` is never called here. */
+  userBlock: UserBlockProps;
+}
 
 /**
  * React owns the shell only (`shell/*.tsx`) — the
@@ -92,7 +106,7 @@ type PendingUnsavedAction = { kind: "open"; file: File } | { kind: "new" };
  * rest of the shell), so `canvasRef`'s DOM node identity survives every
  * mode switch — see the comment on `wellRef` below for why that matters.
  */
-export function App() {
+export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   // Fullscreen toggle (per §0.2 item 2's ruling):
   // the fullscreen target is `.canvas-area` — the stage floor — reused in
@@ -176,8 +190,6 @@ export function App() {
   // `GET /api/save-state` in the mount effect below resolves.
   const [saveState, setSaveState] = useState<SaveState>({ known: false });
   const [openError, setOpenError] = useState<string | null>(null);
-  /** An Open/New that was refused with 409 (unsaved changes) — NOOP-422 §4(d) replaced the old `window.confirm` with `UnsavedChangesModal`. */
-  const [pendingUnsavedAction, setPendingUnsavedAction] = useState<PendingUnsavedAction | null>(null);
 
   // [E3.T3] #232/#236: the `/` command list — agent report ∪ bundled
   // skills ∪ user skills (architecture decision on #232/#236 — not a
@@ -321,6 +333,10 @@ export function App() {
   // (the iframe's forwarded "drag-enter" signal above carries no payload).
   useEffect(() => {
     function onWindowDragEnter(event: globalThis.DragEvent) {
+      // [E6.T4] plan §7 decision 8: Deck Space owns its own drop zone while
+      // it's open as an overlay — this guard must not also raise the stage
+      // overlay underneath it.
+      if (deckSpaceOpen) return;
       if (!event.dataTransfer?.types.includes("Files")) return;
       setDropActive(true);
     }
@@ -333,7 +349,15 @@ export function App() {
       window.removeEventListener("dragenter", onWindowDragEnter);
       window.removeEventListener("dragend", onWindowDragEnd);
     };
-  }, []);
+  }, [deckSpaceOpen]);
+
+  // [E6.T4] plan §7 decision 8: force the drop overlay closed the instant
+  // Deck Space opens — a drag that raised it a moment earlier must not
+  // leave the stage tinted after Deck Space (and the guard above) closes
+  // again.
+  useEffect(() => {
+    if (deckSpaceOpen) setDropActive(false);
+  }, [deckSpaceOpen]);
 
   // Clipboard paste (US 4/6, docs/asset-import.md) is a window-level event,
   // not something any one element owns — it fires wherever focus happens to
@@ -1071,79 +1095,30 @@ export function App() {
   }
 
   /**
-   * `POST /api/open` (NOOP-93 §4.1). `discardUnsaved` re-sends the exact
-   * same file with `x-slidra-discard-unsaved: 1` after the author chooses
-   * "Discard changes" in `UnsavedChangesModal` — the one round-trip the
-   * table's 409 row describes. A 409 without `discardUnsaved` opens that
-   * modal instead of proceeding (NOOP-422 §4(d): replaced the old
-   * `window.confirm`, which could not explain why or offer "Save now").
+   * The title bar's own double-click rename (`TitleBar`'s `onRenameDeck`).
+   * `POST /api/deck/rename-current` already re-points the file watcher at
+   * the new path server-side; `refreshSaveState` picks up the new
+   * `fileName` for this tab the same way it does after any other save-state
+   * change, and the server's own broadcast (`save-state`) updates any other
+   * tab that has this deck open.
    */
-  async function handleOpenFile(file: File, discardUnsaved = false): Promise<void> {
-    setOpenError(null);
-    const bytes = await file.arrayBuffer();
-    let response: Response;
-    try {
-      response = await fetch("/api/open", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-slidra-file-name": encodeURIComponent(file.name),
-          ...(discardUnsaved ? { "x-slidra-discard-unsaved": "1" } : {}),
-        },
-        body: bytes,
-      });
-    } catch {
-      setOpenError(`"${file.name}" failed to open: connection lost`);
-      return;
+  async function handleRenameDeck(name: string): Promise<string | null> {
+    const result = await renameCurrentDeck(name);
+    if (result.ok) {
+      await refreshSaveState();
+      return null;
     }
-    if (response.status === 409 && !discardUnsaved) {
-      setPendingUnsavedAction({ kind: "open", file });
-      return;
+    if (result.reason === "name-conflict") return "A deck with that name already exists";
+    if (result.reason === "editing" || result.reason === "exporting") {
+      return "Can't rename right now — try again in a moment";
     }
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "Failed to open");
-      return;
-    }
-    // /api/open already broadcasts presentation-changed + save-state on
-    // success (open-endpoint.ts) — this tab's own live-reload subscription
-    // picks both up the same way an external edit would. No extra refetch
-    // needed here.
-  }
-
-  /**
-   * `POST /api/new` — the New button. Follows the same path as Open: the
-   * same 409 unsaved-changes gate (now `UnsavedChangesModal`, not
-   * `window.confirm`), and likewise doesn't refetch on its own after
-   * success (the server already broadcasts presentation-changed and
-   * save-state, which this tab's live-reload picks up).
-   */
-  async function handleNew(discardUnsaved = false): Promise<void> {
-    setOpenError(null);
-    let response: Response;
-    try {
-      response = await fetch("/api/new", {
-        method: "POST",
-        headers: discardUnsaved ? { "x-slidra-discard-unsaved": "1" } : {},
-      });
-    } catch {
-      setOpenError("Failed to create new presentation: connection lost");
-      return;
-    }
-    if (response.status === 409 && !discardUnsaved) {
-      setPendingUnsavedAction({ kind: "new" });
-      return;
-    }
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "Failed to create new presentation");
-    }
+    return result.error;
   }
 
   /**
    * `POST /api/save/flush` (NOOP-422) — continuous save's manual escape
-   * hatches: the Retry action on a failed save, `UnsavedChangesModal`'s
-   * "Save now", and `applyTemplateToSlides`'s pre-dispatch save. Frozen
+   * hatches: the Retry action on a failed save, and
+   * `applyTemplateToSlides`'s pre-dispatch save. Frozen
    * guard matches runUndoRedo's: no request, no 409 to report, same as
    * undo/redo. Returns the resulting save state (not just success/failure)
    * — callers that need to know whether the write actually landed check
@@ -1801,38 +1776,15 @@ export function App() {
         planOutline.fenceText !== answeredPlanFence && (
           <PlanGateModal key={planOutline.fenceText} outline={planOutline} onSend={answerPlan} onDiscard={() => void discardPlan()} />
         )}
-      {shellVisible && pendingUnsavedAction && (
-        <UnsavedChangesModal
-          fileName={saveState.known ? saveState.fileName : "this presentation"}
-          reason={saveState.known && saveState.phase === "failed" ? saveState.reason : undefined}
-          onSaveNow={() => {
-            void (async () => {
-              const result = await flushSave();
-              if (!(result.known && !result.dirty)) return;
-              const action = pendingUnsavedAction;
-              setPendingUnsavedAction(null);
-              if (action.kind === "open") await handleOpenFile(action.file, true);
-              else await handleNew(true);
-            })();
-          }}
-          onKeepEditing={() => setPendingUnsavedAction(null)}
-          onDiscard={() => {
-            const action = pendingUnsavedAction;
-            setPendingUnsavedAction(null);
-            if (action.kind === "open") void handleOpenFile(action.file, true);
-            else void handleNew(true);
-          }}
-        />
-      )}
       {shellVisible && (
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
+          onRenameDeck={handleRenameDeck}
           savedStatusText={saveState.known ? (saveState.phase === "saving" ? "Saving…" : saveState.phase === "failed" ? "Save failed" : "Saved") : null}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
-          onNew={() => void handleNew()}
-          onOpenFile={(file) => void handleOpenFile(file)}
+          onOpenDeckSpace={onOpenDeckSpace}
           exportOpen={exportOpen}
           onExportToggle={() => setExportOpen((open) => !open)}
           onExportClose={() => setExportOpen(false)}
@@ -1901,6 +1853,7 @@ export function App() {
             onEnterMasterMode={() => void enterMasterMode()}
             onExitMasterMode={() => void exitMasterMode()}
             onApplyTemplateToSlides={(templateName) => void applyTemplateToSlides(templateName)}
+            userBlock={userBlock}
           />
         )}
         <div className="main">

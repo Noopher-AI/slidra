@@ -84,6 +84,32 @@ impl Fixture {
     }
 }
 
+/// Runs the real binary with a payload on stdin — `chat-history --append -`
+/// is the only command in this file that reads one, so this stays a plain
+/// free function next to `rust_bin()` rather than a `Fixture` method.
+fn run_with_stdin(args: &[&str], home: &Path, stdin_payload: &str) -> Output {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let mut child = Command::new(rust_bin())
+        .args(args)
+        .env("SLIDRA_HOME", home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("compiled slidra binary must run");
+    child
+        .stdin
+        .take()
+        .expect("stdin was piped")
+        .write_all(stdin_payload.as_bytes())
+        .expect("writing the payload to stdin must succeed");
+    child
+        .wait_with_output()
+        .expect("compiled slidra binary must finish")
+}
+
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(self.home.parent().unwrap());
@@ -571,6 +597,89 @@ fn undo_history_survives_copying_the_deck_file_to_a_clean_home() {
     assert_eq!(
         restored, before,
         "undo on the copied deck must restore the exact pre-edit bytes"
+    );
+
+    fs::remove_dir_all(&other_home).ok();
+    fs::remove_dir_all(&other_workspace).ok();
+}
+
+/// [E6.T7] AC6: the chat conversation lives in the deck's own file, so
+/// copying that file to another machine (a different directory, under a
+/// completely clean `SLIDRA_HOME`) carries the conversation with it — the
+/// chat twin of `undo_history_survives_copying_the_deck_file_to_a_clean_home`
+/// above. [E6.T13] added it: AC6's undo half had this guard, its chat half
+/// had none, so nothing caught a regression that re-homed chat rows outside
+/// the container.
+#[test]
+fn chat_history_survives_copying_the_deck_file_to_a_clean_home() {
+    let fixture = Fixture::new("t7-ac6-copy-chat");
+    let slidra_path = fixture.workspace.join("ac6chat.slidra");
+    fixture.run_rust(&["new", slidra_path.to_str().unwrap(), "--name", "test"]);
+    let opened = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
+    let id1 = extract_id(&opened);
+
+    let entries = r#"[{"entryId":"ce-1","kind":"author","at":"2026-01-01T00:00:00Z","text":"hello from machine 1"},{"entryId":"ce-2","kind":"agent","at":"2026-01-01T00:00:01Z","text":"reply from the agent"}]"#;
+    let appended = run_with_stdin(
+        &["chat-history", &id1, "--append", "-"],
+        &fixture.home,
+        entries,
+    );
+    assert!(
+        appended.status.success(),
+        "setup: `chat-history --append -` failed: {appended:?}"
+    );
+
+    // "Another machine" — a different directory tree AND a brand-new,
+    // never-touched `SLIDRA_HOME`, so nothing but the copied bytes carries
+    // any state across.
+    let other_home = env::temp_dir().join(format!(
+        "slidra-cli-golden-t7-ac6-other-home-{}",
+        std::process::id()
+    ));
+    let other_workspace = env::temp_dir().join(format!(
+        "slidra-cli-golden-t7-ac6-other-ws-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&other_home).unwrap();
+    fs::create_dir_all(&other_workspace).unwrap();
+    let copied_path = other_workspace.join("copy.slidra");
+    fs::copy(&slidra_path, &copied_path).unwrap();
+
+    let open2 = Command::new(rust_bin())
+        .args(["open", copied_path.to_str().unwrap()])
+        .env("SLIDRA_HOME", &other_home)
+        .output()
+        .expect("compiled slidra binary must run");
+    assert!(
+        open2.status.success(),
+        "reopen on the copy failed: {open2:?}"
+    );
+    let id2 = extract_id(&open2);
+
+    let restored = Command::new(rust_bin())
+        .args(["chat-history", &id2, "--json"])
+        .env("SLIDRA_HOME", &other_home)
+        .output()
+        .expect("compiled slidra binary must run");
+    assert!(
+        restored.status.success(),
+        "chat-history on the copied deck under a clean home failed: {restored:?}"
+    );
+    let stdout = String::from_utf8_lossy(&restored.stdout);
+    // Both turns, their order, and their text — not merely a non-empty
+    // table: a copy that carried the rows but dropped their content would
+    // still satisfy a count-only assertion.
+    assert!(
+        stdout.contains("hello from machine 1"),
+        "the author's turn must survive the copy: {stdout}"
+    );
+    assert!(
+        stdout.contains("reply from the agent"),
+        "the agent's turn must survive the copy: {stdout}"
+    );
+    assert!(
+        stdout.find("hello from machine 1") < stdout.find("reply from the agent"),
+        "the copied conversation must keep its original order: {stdout}"
     );
 
     fs::remove_dir_all(&other_home).ok();

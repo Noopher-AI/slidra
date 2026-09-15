@@ -16,8 +16,7 @@ function markup(overrides: Partial<TitleBarProps> = {}): string {
     editingFrozen: false,
     onUndo: () => {},
     onRedo: () => {},
-    onNew: () => {},
-    onOpenFile: () => {},
+    onOpenDeckSpace: () => {},
     exportOpen: false,
     onExportToggle: () => {},
     onExportClose: () => {},
@@ -33,22 +32,20 @@ function markup(overrides: Partial<TitleBarProps> = {}): string {
 }
 
 describe("TitleBar", () => {
-  it("positions the New button to the left of Open", () => {
+  // [E6.T4] AC5: New/Open/Save are gone — Deck Space now owns deck
+  // creation/open (and continuous save already replaced manual Save, see
+  // the NOOP-422 comment this test absorbs below).
+  it("renders a Deck Space button and neither New, Open nor Save", () => {
     const rendered = markup();
-    expect(rendered).toContain(">New</button>");
-    expect(rendered.indexOf(">New</button>")).toBeLessThan(rendered.indexOf(">Open</button>"));
+    expect(rendered).toContain(">Deck Space</button>");
+    expect(rendered).not.toContain(">New</button>");
+    expect(rendered).not.toContain(">Open</button>");
+    expect(rendered).not.toContain(">Save</button>");
+    expect(rendered).not.toContain("⌘S");
   });
 
   it("no longer renders the connection indicator in the title bar", () => {
     expect(markup()).not.toContain("agent-dot");
-  });
-
-  // NOOP-422 (AC1): continuous save replaced the manual Save button — no
-  // keyboard shortcut, and no button anywhere in this component.
-  it("renders no Save button and no ⌘S title", () => {
-    const rendered = markup();
-    expect(rendered).not.toContain(">Save</button>");
-    expect(rendered).not.toContain("⌘S");
   });
 
   // NOOP-422 §4(c): the three save-status phases each get their own text.
