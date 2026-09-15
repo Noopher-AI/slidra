@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { DeckCard, type DeckCardProps } from "../src/shell/deck-space/DeckCard.js";
 import { DeckSpace, type DeckSpaceProps } from "../src/shell/deck-space/DeckSpace.js";
 import type { DeckSummary } from "../src/shell/deck-space/deck-api.js";
+import type { UserBlockProps } from "../src/shell/user-block/UserBlock.js";
 
 // Same convention as titlebar.test.ts/icons.test.ts: the public boundary is
 // props → the rendered string. Both components here are deliberately
@@ -35,6 +36,15 @@ function cardMarkup(overrides: Partial<DeckCardProps> = {}): string {
   return renderToStaticMarkup(createElement(DeckCard, props));
 }
 
+const BASE_USER_BLOCK: UserBlockProps = {
+  identity: null,
+  providers: [],
+  pending: false,
+  message: null,
+  onSignIn: () => {},
+  onSignOut: () => {},
+};
+
 function spaceMarkup(overrides: Partial<DeckSpaceProps> = {}): string {
   const props: DeckSpaceProps = {
     decks: null,
@@ -47,6 +57,7 @@ function spaceMarkup(overrides: Partial<DeckSpaceProps> = {}): string {
     onOpenCard: () => {},
     onRename: async () => null,
     onDelete: async () => null,
+    userBlock: BASE_USER_BLOCK,
     ...overrides,
   };
   return renderToStaticMarkup(createElement(DeckSpace, props));

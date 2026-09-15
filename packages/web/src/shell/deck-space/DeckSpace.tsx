@@ -3,6 +3,7 @@
 
 import { useRef, useState, type DragEvent } from "react";
 import { Icon } from "../../icons/index.js";
+import { UserBlock, type UserBlockProps } from "../user-block/UserBlock.js";
 import { DeckCard } from "./DeckCard.js";
 import type { DeckSummary } from "./deck-api.js";
 
@@ -22,6 +23,8 @@ export interface DeckSpaceProps {
   /** Resolves to an error message to show inline, or `null` on success. */
   onRename(deck: DeckSummary, name: string): Promise<string | null>;
   onDelete(deck: DeckSummary): Promise<string | null>;
+  /** [E6.T14r2] Plan §7 decision 4: same block, same props, as the editor rail's bottom mount — `Workspace.tsx` holds the one `useIdentity()` for the whole tree and passes it down here too. */
+  userBlock: UserBlockProps;
 }
 
 /**
@@ -45,6 +48,7 @@ export function DeckSpace({
   onOpenCard,
   onRename,
   onDelete,
+  userBlock,
 }: DeckSpaceProps) {
   const [dropActive, setDropActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -147,7 +151,9 @@ export function DeckSpace({
           </div>
         )}
       </div>
-      <div className="deck-space-user-slot" />
+      <div className="deck-space-user-slot">
+        <UserBlock {...userBlock} />
+      </div>
     </div>
   );
 }

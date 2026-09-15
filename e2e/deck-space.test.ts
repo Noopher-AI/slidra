@@ -120,6 +120,9 @@ describe("① starting with no deck open lands on Deck Space (AC1)", () => {
       expect(await page.locator(".titlebar").count()).toBe(0);
       await expect.poll(() => page.locator(".deck-card").count(), { timeout: 10_000 }).toBe(1);
       expect(await page.locator(".deck-card-name").first().textContent()).toBe("Untouched Deck");
+      // [E6.T14r2] AC6②: the user block mounts on the Deck Space startup
+      // screen itself, not only once a deck is open.
+      expect(await page.locator(".user-block").count()).toBe(1);
     } finally {
       await harness.cleanup();
     }
