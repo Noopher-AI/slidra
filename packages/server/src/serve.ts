@@ -1104,6 +1104,11 @@ async function handleRenameCurrentPost(
     // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
     // reporting the pre-rename name/sourcePath until the next switch.
     await deckSession.refreshCurrent();
+    // `refreshCurrent`'s own `slidra cat` read can nudge the deck file's
+    // mtime past the `savedAt` snapshot `renameBound` already took — this
+    // re-takes it now that every read this request makes is done, so the
+    // deck does not read back as dirty for no real edit.
+    await deckStore.resnapshotSaved(id);
     await changeBroadcaster.retarget(id);
     // Any other tab with this deck open must see the new name too — the
     // same broadcast `handleDeckSwitchPost` fires after a bind.
