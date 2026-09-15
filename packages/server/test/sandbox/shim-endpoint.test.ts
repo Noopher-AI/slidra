@@ -348,6 +348,24 @@ describe("POST /api/agent/exec — behavior contract", () => {
     }
   });
 
+  /**
+   * The symlink-resolution fix above must not widen the accepted set: a cwd
+   * that is nominally inside `sandboxRoot` but is itself a symlink pointing
+   * outside it (e.g. `/etc`) still has to be rejected. Before the fix this
+   * passed — the raw string comparison saw `<sandboxRoot>/escape` and
+   * treated it as "inside" without ever resolving where it actually leads.
+   */
+  it("400s on a cwd inside the sandbox root that is a symlink pointing outside it", async () => {
+    const escapeLink = path.join(sandboxRoot, "escape");
+    await symlink("/etc", escapeLink);
+    try {
+      const result = await callShim({ token: TOKEN, argv: ["x"], cwd: escapeLink });
+      expect(result.status).toBe(400);
+    } finally {
+      await rm(escapeLink, { force: true });
+    }
+  });
+
   it("forwards the request body to the command's stdin", async () => {
     const viaShim = await callShim({ token: TOKEN, argv: ["echo-stdin"], body: "hello from stdin" });
     expect(viaShim.status).toBe(200);
