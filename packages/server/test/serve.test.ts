@@ -535,6 +535,17 @@ describe("startServe", () => {
     expect(response.status).toBe(500);
     expect(body.error).toBe("presentation registry data is corrupted");
     expect(body.error).not.toContain(slidraHome);
+
+    // Restore before this test ends: afterEach's server.close() flushes
+    // save-state, which re-reads the registry — left corrupted, that read
+    // throws uncaught inside the close()/dispose() chain, and the rejection
+    // was observed to surface asynchronously against whichever unrelated
+    // test happened to be running next in the same worker (misattributed
+    // timeouts in packages/server/test/agent/freeze.test.ts on CI). Deleting
+    // the file (rather than reconstructing valid JSON) is the same "never
+    // opened" state readProjectsRegistry already treats as an empty
+    // registry, so close()'s own flush can proceed cleanly.
+    await rm(path.join(slidraHome, "projects.json"), { force: true });
   });
 
   // A `projects.json` written by a pre-SQLite release carries `workDir`
