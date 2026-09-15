@@ -131,7 +131,9 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
   };
 }
 
-const DEFAULT_OWNER = "Anonymous";
+/** The owner tag every deck gets until an identity claims it — [E6.T9]'s "no identity" state, not just `create`'s default. Literal value is load-bearing: every deck already on disk was written with it, so it must never change. */
+export const ANONYMOUS_OWNER = "Anonymous";
+const DEFAULT_OWNER = ANONYMOUS_OWNER;
 export const UNTITLED_DECK_NAME = "Untitled";
 
 /** A margin added onto a `saved_at` reading, matching `open-endpoint.ts`'s old `reopenPresentationInPlace` and the Rust registry's own `SAVED_AT_SETTLE_WINDOW_MS` — filesystem timestamp updates can lag the write that triggered them by a few milliseconds. */
@@ -416,6 +418,55 @@ async function renameDeck(getCurrentDeckId: () => string | null, id: string, nam
     latest.set(id, { ...current, deckPath: newPath, sourcePath: newPath, savedAt });
     await writeProjectsRegistry(latest);
   });
+}
+
+/**
+ * Re-snapshots a claimed deck's `savedAt` the same way `renameDeck` does
+ * above (`:343-350`) — after a `deck meta set --owner` write, the registry
+ * entry's old `savedAt` would read stale and the deck would open already
+ * "dirty" ([E6.T9] plan §3). A deck never opened yet has no registry entry
+ * at all; that is not an error, there is simply nothing to re-snapshot.
+ */
+async function resnapshotSavedAtIfRegistered(deckPath: string): Promise<void> {
+  const registry = await readProjectsRegistry();
+  const match = [...registry].find(([, entry]) => entry.deckPath === deckPath);
+  if (!match) return;
+  const [id] = match;
+  const savedAt = (await deckFileMtime(deckPath)) + SAVED_AT_SETTLE_WINDOW_MS;
+  await withProjectsRegistryLock(async () => {
+    const latest = await readProjectsRegistry();
+    const current = latest.get(id);
+    if (!current) return;
+    latest.set(id, { ...current, savedAt });
+    await writeProjectsRegistry(latest);
+  });
+}
+
+/**
+ * Reassigns every currently-`ANONYMOUS_OWNER` deck to `ownerTag` — the
+ * "claim" side effect of signing in ([E6.T9] plan §7 decision 5). Order is
+ * deliberately per-file, not batched: a failure partway through leaves the
+ * decks already reassigned exactly as reassigned (their content never
+ * touched — `deck meta set --owner` only ever rewrites `project.json`'s
+ * owner key, `crates/…/deck.rs:275-282`), and the thrown message names the
+ * first file that failed so the caller/UI can say which one. `identity/`
+ * itself never touches `node:fs` — this is the one place that does the
+ * reassignment, same rule as every other deck file mutation in this repo.
+ */
+export async function claimAnonymous(ownerTag: string): Promise<number> {
+  const folder = await ensureDeckFolder();
+  const anonymous = await listDecks(ANONYMOUS_OWNER);
+  let claimed = 0;
+  for (const entry of anonymous) {
+    const deckPath = path.join(folder, entry.fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", deckPath, "--owner", ownerTag]);
+    if (!metaSet.ok) {
+      throw new SlidraError(`failed to claim ${entry.fileName}: ${metaSet.message}`);
+    }
+    await resnapshotSavedAtIfRegistered(deckPath);
+    claimed++;
+  }
+  return claimed;
 }
 
 /** Deletes a registered deck: moves its file to the OS trash (AC4, never a bare `unlink`), then drops its registry entry, history, and clipboard. */

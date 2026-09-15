@@ -15,6 +15,7 @@ import "../styles/stage.css";
 import "../styles/stage-overlays.css";
 import "../styles/dock.css";
 import "../styles/rail.css";
+import "../styles/user-block.css";
 import "../styles/plan-gate.css";
 import "../styles/export-panel.css";
 import "../styles/notes.css";

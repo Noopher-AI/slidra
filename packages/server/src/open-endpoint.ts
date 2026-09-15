@@ -7,6 +7,7 @@ import {
   DeckBoundError,
   DeckNameConflictError,
   ImportConfirmationRequiredError,
+  type DeckListEntry,
   type DeckStore,
 } from "./storage/deck-store.js";
 import { getOrCreateThumbnail, ThumbnailNoSlidesError, ThumbnailNotFoundError } from "./storage/thumbnail-cache.js";
@@ -258,11 +259,28 @@ export async function handleDeletePost(store: DeckStore, req: IncomingMessage, r
   }
 }
 
-/** `GET /api/decks?owner=` — AC6. Every entry is scanned directly out of the deck folder (`storage/`'s one Rust subprocess call), never out of the registry — a deck that has never been opened still shows up here. */
-export async function handleDecksGet(store: DeckStore, url: URL, res: ServerResponse): Promise<void> {
-  const owner = url.searchParams.has("owner") ? (url.searchParams.get("owner") ?? "") : undefined;
+/**
+ * `GET /api/decks?owner=` — AC6. Every entry is scanned directly out of the
+ * deck folder (`storage/`'s one Rust subprocess call), never out of the
+ * registry — a deck that has never been opened still shows up here.
+ *
+ * `resolveVisibleDecks` is [E6.T9]'s optional identity-aware seam: an
+ * explicit `?owner=` always wins and bypasses it entirely (identity never
+ * overrides a caller-specified filter), matching T2's original contract
+ * unchanged — this is what keeps `deck-storage.test.ts:372`'s three-arg
+ * call passing with no edit. Omitted (every caller before [E6.T9]),
+ * `store.list(undefined)` runs exactly as it always did.
+ */
+export async function handleDecksGet(
+  store: DeckStore,
+  url: URL,
+  res: ServerResponse,
+  resolveVisibleDecks?: () => Promise<DeckListEntry[]>,
+): Promise<void> {
+  const hasOwnerParam = url.searchParams.has("owner");
+  const owner = hasOwnerParam ? (url.searchParams.get("owner") ?? "") : undefined;
   try {
-    const decks = await store.list(owner);
+    const decks = hasOwnerParam || !resolveVisibleDecks ? await store.list(owner) : await resolveVisibleDecks();
     sendJson(res, 200, { decks });
   } catch (error) {
     sendStoreError(res, error, "Failed to list decks");

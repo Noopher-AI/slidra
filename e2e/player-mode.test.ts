@@ -388,6 +388,8 @@ it("pressing Esc in play mode (focus inside the player) returns to edit mode: .t
     .poll(() => page.locator(".play-bar").getAttribute("data-player-focus"), { timeout: 10_000 })
     .toBe("true");
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
+  // AC6②: <Rail> — and the user block mounted inside it — is unmounted entirely in play mode, same as .titlebar above.
+  await expect.poll(() => page.locator(".user-block").count()).toBe(0);
 
   // Focus is inside the play iframe here — this Esc is caught by
   // player-runtime.js's own keydown handler, which posts an "exit-play"
@@ -397,6 +399,7 @@ it("pressing Esc in play mode (focus inside the player) returns to edit mode: .t
   await page.keyboard.press("Escape");
 
   await expect.poll(() => page.locator(".titlebar").count(), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => page.locator(".user-block").count()).toBe(1);
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");
 });
 
