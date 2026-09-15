@@ -134,6 +134,19 @@ export function createLocalDeckStore(options: DeckStoreOptions = {}): DeckStore 
 /** The owner tag every deck gets until an identity claims it — [E6.T9]'s "no identity" state, not just `create`'s default. Literal value is load-bearing: every deck already on disk was written with it, so it must never change. */
 export const ANONYMOUS_OWNER = "Anonymous";
 const DEFAULT_OWNER = ANONYMOUS_OWNER;
+
+/**
+ * The single definition of "anonymous" ([E6.T14r2] Plan §7 decision 1):
+ * `owner: null` (never opened/imported-in-place before [E6.T9], or a file
+ * whose owner was never written) counts as anonymous the same as the
+ * literal `ANONYMOUS_OWNER` tag. Every caller that used to compare against
+ * `ANONYMOUS_OWNER` alone (`visibleDecks()`, `claimAnonymous()`) goes
+ * through this instead — the Rust CLI's `--owner` filter stays an exact
+ * string match and is never asked to express this union.
+ */
+export function isAnonymousOwner(owner: string | null): boolean {
+  return owner === null || owner === ANONYMOUS_OWNER;
+}
 export const UNTITLED_DECK_NAME = "Untitled";
 
 /** A margin added onto a `saved_at` reading, matching `open-endpoint.ts`'s old `reopenPresentationInPlace` and the Rust registry's own `SAVED_AT_SETTLE_WINDOW_MS` — filesystem timestamp updates can lag the write that triggered them by a few milliseconds. */
@@ -308,10 +321,20 @@ async function createDeck(input: CreateDeckInput): Promise<CreatedDeck> {
 
 /**
  * Imports an external `.slidra` — AC3. A `sourcePath` already inside the
- * deck folder registers directly, no move/copy, no confirmation. Outside
- * the folder with no `disposition` throws `ImportConfirmationRequiredError`
- * before touching anything; `disposition` picks move (source no longer
- * exists afterward) or copy (source untouched).
+ * deck folder registers directly, no move/copy, no confirmation, and no
+ * owner write — ADR-0023's register-in-place case, a pre-existing file's
+ * `owner: null` is never backfilled. Outside the folder with no
+ * `disposition` throws `ImportConfirmationRequiredError` before touching
+ * anything; `disposition` picks move (source no longer exists afterward) or
+ * copy (source untouched) — both write `DEFAULT_OWNER` ([E6.T14r2] Plan §3)
+ * but only *after* `registerDeckAtPath`/`open`, deliberately the reverse of
+ * `createDeck`'s owner-before-open order: an externally-sourced `.slidra`
+ * may still be in the pre-SQLite container format `open` migrates on first
+ * read (`deck meta set` has no such migration path and fails outright
+ * against one — verified against `e2e`'s own zip-packed fixtures), so
+ * `open` has to run first here. `resnapshotSavedAtIfRegistered` afterward
+ * re-snapshots `savedAt` past the owner write, the same fix-up `renameDeck`
+ * already relies on, so the deck still doesn't open already "dirty".
  */
 async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   const folder = await ensureDeckFolder();
@@ -344,7 +367,11 @@ async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   }
 
   try {
-    return await registerDeckAtPath(targetPath, fileName);
+    const created = await registerDeckAtPath(targetPath, fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", targetPath, "--owner", DEFAULT_OWNER]);
+    if (!metaSet.ok) throw new SlidraError(metaSet.message);
+    await resnapshotSavedAtIfRegistered(targetPath);
+    return created;
   } catch (error) {
     if (input.disposition === "move") {
       await rename(targetPath, resolvedSource).catch(() => {});
@@ -355,7 +382,7 @@ async function importExternal(input: ImportDeckInput): Promise<CreatedDeck> {
   }
 }
 
-/** `POST /api/open`'s upload path: writes the uploaded bytes straight into the deck folder under a conflict-free name, then validates+registers them the same way `create`/`importExternal` do — an invalid upload leaves no file behind. */
+/** `POST /api/open`'s upload path: writes the uploaded bytes straight into the deck folder under a conflict-free name, validates+registers them the same way `create`/`importExternal` do, then writes `DEFAULT_OWNER` — after `open`, not before, same reason as `importExternal`'s move/copy branch (an uploaded `.slidra` may still be in the pre-SQLite container format only `open` migrates). An invalid upload leaves no file behind. */
 async function openUpload(bytes: Buffer, displayName: string | undefined): Promise<CreatedDeck> {
   const folder = await ensureDeckFolder();
   const trimmed = (displayName ?? "").trim();
@@ -366,7 +393,11 @@ async function openUpload(bytes: Buffer, displayName: string | undefined): Promi
 
   await writeFile(targetPath, bytes);
   try {
-    return await registerDeckAtPath(targetPath, fileName);
+    const created = await registerDeckAtPath(targetPath, fileName);
+    const metaSet = await runJsonCommand(["deck", "meta", "set", targetPath, "--owner", DEFAULT_OWNER]);
+    if (!metaSet.ok) throw new SlidraError(metaSet.message);
+    await resnapshotSavedAtIfRegistered(targetPath);
+    return created;
   } catch (error) {
     await rm(targetPath, { force: true }).catch(() => {});
     throw error;
@@ -443,8 +474,10 @@ async function resnapshotSavedAtIfRegistered(deckPath: string): Promise<void> {
 }
 
 /**
- * Reassigns every currently-`ANONYMOUS_OWNER` deck to `ownerTag` — the
- * "claim" side effect of signing in ([E6.T9] plan §7 decision 5). Order is
+ * Reassigns every currently-anonymous deck (`isAnonymousOwner` — the
+ * literal `ANONYMOUS_OWNER` tag or `owner: null`) to `ownerTag` — the
+ * "claim" side effect of signing in ([E6.T9] plan §7 decision 5, widened by
+ * [E6.T14r2] Plan §7 decision 3). Order is
  * deliberately per-file, not batched: a failure partway through leaves the
  * decks already reassigned exactly as reassigned (their content never
  * touched — `deck meta set --owner` only ever rewrites `project.json`'s
@@ -455,7 +488,7 @@ async function resnapshotSavedAtIfRegistered(deckPath: string): Promise<void> {
  */
 export async function claimAnonymous(ownerTag: string): Promise<number> {
   const folder = await ensureDeckFolder();
-  const anonymous = await listDecks(ANONYMOUS_OWNER);
+  const anonymous = (await listDecks()).filter((entry) => isAnonymousOwner(entry.owner));
   let claimed = 0;
   for (const entry of anonymous) {
     const deckPath = path.join(folder, entry.fileName);
