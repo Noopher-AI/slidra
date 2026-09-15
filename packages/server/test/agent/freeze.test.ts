@@ -226,6 +226,22 @@ async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs =
   }
 }
 
+/**
+ * `waitForFrozen(server, false)` observes the unfreeze over HTTP; the history-group
+ * close it unblocks is a separate SQLite write on the same async path, so under
+ * heavier CI load the two can be observed out of order — `frozen` flips visible a
+ * moment before the group-close write lands. Give a read that depends on the write
+ * a short settle window instead of asserting the instant the poll above returns.
+ */
+async function waitForCount(fn: () => Promise<number>, expected: number, timeoutMs = 2_000): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await fn();
+    if (value === expected || Date.now() > deadline) return value;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 async function readSlide(id: string): Promise<string> {
   const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
   expect(result.ok).toBe(true);
@@ -351,7 +367,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForFrozen(server, false);
 
     expect(await hasOpenHistoryGroup(deckPath)).toBe(false);
-    expect(await undoGroupCount(deckPath)).toBe(1);
+    expect(await waitForCount(() => undoGroupCount(deckPath), 1)).toBe(1);
   });
 
   it("two separate agent turns produce two separate undo groups", async () => {
@@ -368,7 +384,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.ranCommand === cmd2);
     await waitForFrozen(server, false);
 
-    expect(await undoGroupCount(deckPath)).toBe(2);
+    expect(await waitForCount(() => undoGroupCount(deckPath), 2)).toBe(2);
   });
 
   it("AC2-b: a turn that only reads (thinks) never freezes, and undo requests during it are never 409'd", async () => {
