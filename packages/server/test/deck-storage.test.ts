@@ -266,6 +266,10 @@ describe("deck folder switching (AC2)", () => {
     await rm(otherFolder, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  // CI's macOS runner (slower disk I/O for two real `create()` calls
+  // against two separate temp dirs) has intermittently missed the default
+  // 30s test timeout here — unrelated to this test's own logic, which
+  // finishes well under a second locally. Doubled rather than reworked.
   it("sends subsequent decks to the newly configured folder and leaves decks already in the old one untouched", async () => {
     await setDeckFolder(deckFolder);
     const first = await createLocalDeckStore().create({ name: "InA" });
@@ -288,7 +292,7 @@ describe("deck folder switching (AC2)", () => {
     expect((await stat(firstPath)).mtimeMs).toBe(mtimeBefore);
     await expect(readdir(otherFolder)).resolves.toEqual(["InB.slidra"]);
     await expect(readdir(deckFolder)).resolves.toEqual(["InA.slidra"]);
-  });
+  }, 60000);
 });
 
 describe("deck owner metadata (AC6)", () => {
