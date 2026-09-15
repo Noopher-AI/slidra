@@ -64,6 +64,17 @@ function runCommandReturning(outcome: CommandOutcome, delayMs = 0): { runCommand
 const loggedInOutcome: CommandOutcome = { code: 0, stdout: '{"loggedIn":true}', stderr: "" };
 const loggedOutOutcome: CommandOutcome = { code: 0, stdout: '{"loggedIn":false}', stderr: "" };
 
+/**
+ * A placeholder for `AgentManagerOptions.workdir` — never read for its
+ * content by anything these tests exercise (none of them call
+ * `sendMessage`, so `AgentChatSession.establishSession()`, the only reader,
+ * never runs), only for its shape: NOOP-425's `buildSession()` derives the
+ * CLI sandbox's `PATH` prefix from `path.dirname(workdir)` eagerly, at
+ * session-construction time, so a real string is now required here even
+ * though the interface's own type (`string | null`) already demanded one.
+ */
+const FAKE_WORKDIR = "/tmp/manager-test-workdir";
+
 describe("AgentManager", () => {
   it("initial.kind === null: current is null, source is none, and no session is ever built", async () => {
     const { resolveAdapter, calls } = trackingResolveAdapter();
@@ -88,6 +99,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -104,6 +116,7 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -123,6 +136,7 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome, delayMs);
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -147,6 +161,7 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock,
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -171,6 +186,7 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -198,6 +214,7 @@ describe("AgentManager", () => {
     let changed: { kind: AgentKind; label: string } | undefined;
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -224,6 +241,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
@@ -256,6 +274,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
       runCommand,
