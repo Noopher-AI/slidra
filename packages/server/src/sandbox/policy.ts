@@ -45,7 +45,9 @@ export async function buildAgentSandboxPolicy(options: { sandboxRoot: string; ho
     // npm/pip/uv/playwright caches: read-only here would make those tools
     // hard-fail rather than merely run uncached.
     path.join(home, ".npm"),
-    isMac ? path.join(home, "Library", "Caches") : path.join(home, ".cache"),
+    // `uv` always uses `~/.cache/uv` (XDG-style) even on macOS, ignoring the
+    // platform's `~/Library/Caches` convention — grant both there.
+    ...(isMac ? [path.join(home, "Library", "Caches"), path.join(home, ".cache")] : [path.join(home, ".cache")]),
     // gh and other CLIs' token refresh — see the docstring above.
     path.join(home, ".config"),
     // `cmd > /dev/null 2>&1` is one of the most common shell idioms there
