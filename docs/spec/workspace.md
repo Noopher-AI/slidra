@@ -55,7 +55,7 @@ The folder is created (`mkdir -p`) before every list/create/import, so a first r
 
 Every deck file operation (create, import, rename, delete, and the `POST /api/open` upload path) goes through `packages/server/src/storage/`'s `DeckStore` — no other module calls `node:fs` against a `.slidra` file's own path.
 
-A deck's `project.json` may additionally carry an `owner` field (a free-form string set at creation time, defaulting to `"Anonymous"` when not given explicitly, and only ever left absent for a deck predating this field). Unknown extra fields, `owner` included, always round-trip untouched (ADR-0003) — see [`slidra-format.md`](slidra-format.md).
+A deck's `project.json` may additionally carry an `owner` field (a free-form string set at creation time, defaulting to `"Anonymous"` when not given explicitly, and only ever left absent for a deck predating this field, or one only ever registered in place from a file already sitting in the deck folder). Unknown extra fields, `owner` included, always round-trip untouched (ADR-0003) — see [`slidra-format.md`](slidra-format.md). A missing `owner` (`null`) is treated as anonymous everywhere a literal `"Anonymous"` tag is: visible with no identity signed in, and claimed the same way on sign-in (ADR-0023's extension).
 
 ## Agent working directory ([E6.T8], `SandboxRoot`)
 

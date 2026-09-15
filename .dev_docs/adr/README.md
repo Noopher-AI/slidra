@@ -39,4 +39,4 @@ Always cite an ADR by number (`ADR-0002`), never by filename — filenames chang
 | 0020 | A deck is a database, not an archive | Supersedes ADR-0003 |
 | 0021 | The agent runs in an OS sandbox, and so does the CLI | Follow-up to ADR-0019 |
 | 0022 | One server, one current deck, switchable | |
-| 0023 | A deck has an owner | Deliberately kept separate from ADR-0020 |
+| 0023 | A deck has an owner | Deliberately kept separate from ADR-0020; Extended with a section (`owner: null` is anonymous, never backfilled) |
