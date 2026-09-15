@@ -6,7 +6,7 @@
 
 A `.slidra` file is the canonical, self-contained container for a Slidra presentation. This document describes the file's internal shape — `project.json`, slide SVGs, assets, fonts, templates — independent of which container format currently carries them; §1 covers where that shape lives on disk for each format version.
 
-> **`formatVersion` 5 changes the container itself, not just this document's version number.** [`spec/rfcs/0001-sqlite-container-format.md`](../../spec/rfcs/0001-sqlite-container-format.md) is authoritative for the SQLite container (schema, migration, concurrency, write granularity); this file's container description below (ZIP) applies to `formatVersion` 1 through 4 only. Every field/element/attribute rule elsewhere in this document — `project.json`'s shape, slide SVG structure, `<slidra:*>` elements — is unaffected by which container carries it.
+> **`formatVersion` 5 changes the container itself, not just this document's version number.** [`spec/rfcs/0001-sqlite-container-format.md`](../../spec/rfcs/0001-sqlite-container-format.md) is authoritative for the SQLite container (schema, migration, concurrency, write granularity); §1 below describes both the current SQLite container (`formatVersion` 5) and the legacy ZIP container it replaced (`formatVersion` 1 through 4, read-only, migrated once on open). Every field/element/attribute rule elsewhere in this document — `project.json`'s shape, slide SVG structure, `<slidra:*>` elements — is unaffected by which container carries it.
 
 ---
 
@@ -33,13 +33,13 @@ A `.slidra` file is the canonical, self-contained container for a Slidra present
 | `assets/data/` | directory | CSV data files referenced by tables (subdirectory of `assets/`). |
 | `plan/` | directory | Plan files (`outline.md`, `design-spec.md`). |
 
-### 1.3 Unpack safety
+### 1.3 Entry path validation
 
-When extracting a `.slidra` archive, all entry paths are validated **before** any file is written:
+Neither container ever "extracts" onto a real directory tree — a `formatVersion` 5 deck's entries are `content` table rows read directly by path, and a legacy ZIP is read entirely into memory (`read_legacy_zip`) and used to build a brand-new SQLite deck in place; there is no step that writes loose files to disk under either format. Entry paths are still validated before being trusted, in both cases:
 
-- No entry may resolve to a path outside the target directory (no absolute paths, no `..` segments).
-- If validation fails, the entire extraction is aborted and no partial files are left behind.
-- Missing required directories (`slides/`, `assets/`, `fonts/`) are created automatically.
+- No entry path may resolve outside the deck's own logical root (no absolute paths, no `..` segments).
+- For a legacy ZIP being migrated, validation happens while reading it into memory: any invalid entry fails the whole read, and `migrate_legacy_zip_in_place` never begins writing the new SQLite deck — the file being migrated is left byte-for-byte untouched.
+- Missing required directories (`slides/`, `assets/`, `fonts/`) are created automatically as explicit rows, for both a freshly created deck and a migrated one.
 
 ### 1.4 Undo/redo history tables ([E6.T6], `formatVersion` 5 only)
 
@@ -61,13 +61,27 @@ Two caps apply to every push onto the `undo` array (via `redo`, or via a content
 
 The container's editing model (RFC 0001 §4: no `VACUUM`, no `auto_vacuum`) applies here too — trimming evicted history frees pages for reuse but does not shrink the file.
 
+### 1.5 Chat history table ([E6.T7], `formatVersion` 5 only)
+
+A `chat_history` table sits alongside `content` in the same SQLite file, so a conversation travels with the deck: copying the file copies the conversation, and reopening it later (on the same machine or another) reads the same history back. Like the undo/redo tables in §1.4, it is created lazily (`CREATE TABLE IF NOT EXISTS`), the first time a conversation actually appends an entry — a pure read never creates it, so a deck nobody has chatted in yet stays byte-for-byte whatever `new` or the legacy-ZIP migration produced.
+
+```sql
+chat_history(seq INTEGER PRIMARY KEY AUTOINCREMENT, entry_id TEXT NOT NULL UNIQUE,
+             kind TEXT NOT NULL,   -- one of: author, agent, command, divider
+             at TEXT NOT NULL, text TEXT NOT NULL, meta TEXT)
+```
+
+`kind` is validated against a fixed set on every write, never trusted from the caller: `author`/`agent` mirror who spoke, `command` is a `slidra` invocation the agent ran (its outcome folded into the row), and `divider` marks an agent switch or a "New chat" reset. `meta` carries a `command` entry's extra fields (`toolCallId`/`status`/`cli`/`output`/`blocked`) as an opaque JSON object, never inspected by this table's own reader/writer.
+
+## 2. `project.json`
+
 The presentation's root metadata file. UTF-8 encoded JSON.
 
 ### 2.1 Schema
 
 ```jsonc
 {
-  "formatVersion": 1,          // required, must equal 1
+  "formatVersion": 5,          // required, must equal the current FORMAT_VERSION (see §2.7)
   "name": "My Presentation",   // required, string
   "canvas": {                  // required
     "width": 1280,            // required, positive number (px)
@@ -97,7 +111,7 @@ The presentation's root metadata file. UTF-8 encoded JSON.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `formatVersion` | `number` | Yes | Must equal `1`. Any other value causes the file to be rejected. |
+| `formatVersion` | `number` | Yes | Must equal the crate's current `FORMAT_VERSION` (**5**). A lower value (1 through 4) is legal only inside a legacy ZIP container, migrated once on open — see §2.7. A value the running build does not understand is rejected. |
 | `name` | `string` | Yes | Presentation display name. |
 | `canvas` | object | Yes | `{ width, height }` — both positive numbers, in pixels. |
 | `slides` | `string[]` | Yes | Ordered list of virtual paths to slide SVGs. May be empty (`[]`). |
@@ -140,9 +154,13 @@ When Slidra writes `project.json`, it serializes with 2-space indentation and ap
 
 ### 2.7 `formatVersion` enforcement
 
-There is **no migration chain**. If `formatVersion` is not `1`, the file is rejected immediately with an error. No automatic upgrade, conversion, or partial read is attempted.
+`formatVersion` doubles as both this JSON field and the deck file's SQLite `user_version` pragma (§1) — the two must always agree, since the field is validated on every read regardless of which pragma the container itself reports. The currently shipped `FORMAT_VERSION` is **5**, and `new` always produces a fresh deck at that version directly.
 
-Legacy CoMotion files are rejected outright, even though they can also carry `formatVersion: 1`. A slide containing `xmlns:comot` or `co-motion.dev/ns` is recognized as legacy content and the entire archive is rejected; Slidra never migrates or partially reads it.
+**Within a single container format, there is no migration chain.** A SQLite deck (`formatVersion` 5) with any other value is rejected immediately with an error — 5 is the only version this crate has ever produced as SQLite, so there is nothing between versions to migrate. A legacy ZIP deck (`formatVersion` 1 through 4) with a value outside that range is likewise rejected outright, with no ZIP-to-ZIP migration chain either.
+
+**Across the two container formats, there is exactly one migration, and it runs once.** The first time `slidra open` sees a legacy ZIP deck (`formatVersion` 1–4), it migrates the file in place to a SQLite deck at `formatVersion` 5 (`migrate_legacy_zip_in_place`, §1) — the jump from 4 straight to 5 marks "this is a different container format," not a continuation of the old numbering. This is the one automatic, silent conversion the format allows; it never partially reads a file (validation failures abort the migration before any new bytes are written, leaving the original untouched, §1.3) and it never runs a second time on a deck already at 5.
+
+Legacy CoMotion files are rejected outright, even though they can also carry `formatVersion: 1`. A slide containing `xmlns:comot` or `co-motion.dev/ns` is recognized as legacy content and the entire file is rejected at migration time; Slidra never migrates or partially reads it.
 
 ---
 
@@ -617,7 +635,7 @@ my-presentation.slidra
 3. **Flat addressing**: Elements are addressed by opaque ids (`el-…`), not by path or position. This makes addressing stable under reordering.
 4. **SVG is the format**: Slides are SVG. The format does not layer a proprietary intermediate on top of SVG; the SVG *is* the artifact.
 5. **Forward compatibility**: Unknown fields in `project.json` are preserved. Unknown `data-slidra-*` attributes on elements are preserved.
-6. **No silent migration**: Format violations are rejected, not silently corrected.
+6. **No silent correction of format violations**: an invalid `project.json`, an out-of-range `formatVersion`, or a rejected CoMotion marker is an explicit error, never silently patched. The one exception this principle does not cover is a *container* change, not a violation: a legacy ZIP deck (`formatVersion` 1–4) is migrated once, automatically, to the SQLite container at `formatVersion` 5 the first time `slidra open` sees it (§2.7) — every field and structural rule in this document is unaffected, only the bytes on disk change shape.
 
 ---
 

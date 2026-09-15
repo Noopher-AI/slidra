@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
@@ -193,11 +193,12 @@ async function readLog(): Promise<LogLine[]> {
 
 /**
  * Polls the fake agent's log until `predicate` matches a line, or `timeoutMs` elapses.
- * Default matches vitest.config.ts's testTimeout: this is a self-timed poll loop, so
- * raising the vitest-level budget alone does not help it survive full-suite CPU
- * contention — it needs the same 30s headroom applied here directly.
+ * Default matches this file's own vi.setConfig testTimeout (60s, with a 5s margin
+ * under it): this is a self-timed poll loop, so raising the vitest-level budget alone
+ * does not help it survive full-suite CPU contention or macOS's slower subprocess
+ * spawns — it needs matching headroom applied here directly.
  */
-async function waitForLog(predicate: (line: LogLine) => boolean, timeoutMs = 30_000): Promise<LogLine> {
+async function waitForLog(predicate: (line: LogLine) => boolean, timeoutMs = 55_000): Promise<LogLine> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const lines = await readLog();
@@ -216,7 +217,7 @@ async function getEditingState(server: RunningServer): Promise<{ frozen: boolean
 }
 
 /** Polls GET /api/editing until `frozen` matches. Same rationale as waitForLog above. */
-async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs = 30_000): Promise<void> {
+async function waitForFrozen(server: RunningServer, frozen: boolean, timeoutMs = 55_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const state = await getEditingState(server);
@@ -323,6 +324,16 @@ async function openFreshPresentationForCommandExecution(): Promise<CommandExecut
 
 describe("T5: agent-turn undo grouping and editing freeze", () => {
   beforeAll(requireCliBuilt);
+  // Each test here spawns several `slidra` CLI subprocesses via execFile and
+  // polls over real HTTP; the shared vitest.config.ts budget (30s) was tuned
+  // against Linux CI contention and left near-zero headroom for this file's
+  // own internal poll timeouts (also 30s, see waitForLog/waitForFrozen
+  // above). On the macOS runner (first exercised by [E6.T11]'s new
+  // required-macos job) subprocess spawn overhead alone pushes some of these
+  // right past the shared budget — "AC4" finished at 30042ms, 42ms over,
+  // not hung. Doubling this file's own timeout gives real margin without
+  // masking an actual hang (still well under e2e's 120s ceiling).
+  vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
   it("AC1: one turn's several commands undo together as a single group, and a second undo hits the empty stack", async () => {
     const { id, elementId } = await openFreshPresentationWithElement();

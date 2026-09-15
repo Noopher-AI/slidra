@@ -5,6 +5,8 @@
 > **⚠️ Partially superseded.** The internal structure of `project.json` + `slides/00N.svg` + `assets/` is extended by **ADR-0016** to a fourth directory: `fonts/`, registered under a new optional `fonts` field in `project.json`. **Everything else** — `project.json` only holds what SVG can't express, `formatVersion` is never omitted, and page order is an array — is unaffected.
 >
 > **Later revision**: `formatVersion` moved from 3 to 4 (`templates` must be an object shape, the `transition` field is forbidden, `fonts` becomes required), with the full 1→2→3→4 migration rules settled in `docs/spec/slidra-format.md`; this ADR no longer tracks version-by-version detail.
+>
+> **Superseded by ADR-0020.** Where the first banner above and `spec/rfcs/0001-sqlite-container-format.md` record the *what* and *how* of the ZIP→SQLite change, **ADR-0020** is the decision record proper: it names the trade-offs this ADR's ZIP-and-hidden-work-directory model traded away in exchange (an `unzip`-able file, a container any archive tool could inspect) and why they were accepted. Cite ADR-0020 for the container-format decision going forward; this ADR remains the record of what was originally decided and why, for the model it describes.
 
 > The container layout, the complete type and required-ness of every `project.json` field, and the version-by-version `formatVersion` migration rules are authoritative in [`docs/spec/slidra-format.md`](../../docs/spec/slidra-format.md); this ADR only records why `formatVersion` exists and why the container takes this shape.
 

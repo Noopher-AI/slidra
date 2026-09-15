@@ -95,7 +95,22 @@ export async function createSrtLauncher(): Promise<SandboxLauncher> {
       return {
         command,
         args,
-        env: { ...spawn.env, ...env },
+        // `srt`'s own `env` is `process.env` verbatim on macOS (verified
+        // against 0.0.76's source: the macOS/Linux branch of
+        // `wrapWithSandboxArgv` returns `{ argv, env: process.env }` and adds
+        // nothing to it — the proxy variables it does set are baked into the
+        // wrapped command string, not into this object). So it goes FIRST and
+        // the caller's own env last: spreading it last instead silently
+        // overwrote every variable the caller had deliberately changed from
+        // the parent's value, `PATH` above all — which is exactly the
+        // variable `agent/manager.ts` rewrites to put `<sandboxRoot>/bin`
+        // (the CLI-sandbox shim) ahead of any ambient `slidra`. The agent
+        // then resolved `slidra` to the real binary and ran it *inside the
+        // agent sandbox*, where `denyRead` covers the deck — every scripted
+        // command failed, macOS only (`landlock-launcher.ts` hands the
+        // caller's env straight back). Caught by the required-macos job's
+        // freeze.test.ts failures, 2026-09-15.
+        env: { ...env, ...spawn.env },
         shell: false,
         ...(spawn.cwd === undefined ? {} : { cwd: spawn.cwd }),
       };

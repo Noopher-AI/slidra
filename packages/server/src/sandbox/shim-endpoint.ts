@@ -23,6 +23,7 @@
  */
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
+import { realpathSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { constants as osConstants } from "node:os";
 import path from "node:path";
@@ -91,6 +92,17 @@ function parseArgvHeader(value: string): string[] | undefined {
   return parsed;
 }
 
+/** One directory, two spellings when a symlink is in the path (macOS
+ *  `/var/folders/…` vs `/private/var/folders/…`). An unresolvable path falls
+ *  back to its own spelling — never to "accept". */
+function canonical(target: string): string {
+  try {
+    return realpathSync.native(target);
+  } catch {
+    return target;
+  }
+}
+
 /** Resolves the `cwd` header against `sandboxRoot`; undefined means "reject", distinct from "header absent" (the caller's own default). */
 function resolveRequestedCwd(sandboxRoot: string, header: string): string | undefined {
   let decoded: string;
@@ -99,8 +111,8 @@ function resolveRequestedCwd(sandboxRoot: string, header: string): string | unde
   } catch {
     return undefined;
   }
-  const resolved = path.resolve(decoded);
-  const relative = path.relative(sandboxRoot, resolved);
+  const resolved = canonical(path.resolve(decoded));
+  const relative = path.relative(canonical(sandboxRoot), resolved);
   if (relative === "") return resolved;
   if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
   return resolved;
