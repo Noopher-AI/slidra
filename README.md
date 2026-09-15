@@ -91,7 +91,7 @@ Agent drafts the deck
   → Human or agent makes the next correction
 ```
 
-## `.slidra` Format
+## `.slidra` Deck Format
 
 A `.slidra` file is a single-file SQLite database with an explicit project manifest and authoritative SVG slides. The layout below is the entry set the container holds, as rows in its `content` table (see [`docs/spec/slidra-format.md`](docs/spec/slidra-format.md) for the on-disk schema, including how a deck from an older release is carried forward):
 
