@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
+import { useState, type KeyboardEvent } from "react";
 import { Icon } from "../icons/index.js";
 import { ExportPanel, type ExportUiState } from "./ExportPanel.js";
 import type { ExportFormat } from "../live-reload.js";
@@ -14,6 +15,13 @@ export interface TitleBarProps {
    * or failed — see App.tsx's `presentationError`).
    */
   deckName: string | null;
+  /**
+   * Double-clicking the deck name calls this with the trimmed draft name.
+   * Resolves to an error message to show inline (the input stays open,
+   * same as `DeckCard`'s own rename), or `null` on success. Renaming is not
+   * offered at all (double-click does nothing) while `deckName` is `null`.
+   */
+  onRenameDeck(name: string): Promise<string | null>;
   /** "Saved" / "Saving…" / "Save failed" (NOOP-422 §4(c)) — `null` when save-state is `known:false` or its request failed; no status text is shown then. There is no manual Save action any more (continuous save replaced it) — a `failed` phase is surfaced through App.tsx's own alert banner with a Retry action, not here. */
   savedStatusText: string | null;
   /** While the agent holds the editing lock, undo/redo are always disabled (no request is sent). */
@@ -47,6 +55,7 @@ export interface TitleBarProps {
  */
 export function TitleBar({
   deckName,
+  onRenameDeck,
   savedStatusText,
   editingFrozen,
   onUndo,
@@ -62,6 +71,41 @@ export function TitleBar({
   onPlayFromStart,
   canPlay,
 }: TitleBarProps) {
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+
+  function startRename(): void {
+    if (deckName === null) return;
+    setDraftName(deckName.replace(/\.slidra$/, ""));
+    setRenameError(null);
+    setEditing(true);
+  }
+
+  function cancelRename(): void {
+    setEditing(false);
+    setRenameError(null);
+  }
+
+  async function confirmRename(): Promise<void> {
+    const trimmed = draftName.trim();
+    if (trimmed === "" || renaming) return;
+    setRenaming(true);
+    const error = await onRenameDeck(trimmed);
+    setRenaming(false);
+    if (error) {
+      setRenameError(error);
+      return;
+    }
+    setEditing(false);
+  }
+
+  function onRenameInputKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "Enter") void confirmRename();
+    if (event.key === "Escape") cancelRename();
+  }
+
   return (
     <header className="titlebar">
       <div className="titlebar-brand">
@@ -91,9 +135,51 @@ export function TitleBar({
           <Icon name="redo" size="inline" />
         </button>
       </div>
-      <span className="deck-name" title={deckName ?? undefined}>
-        {deckName ?? "Deck info unavailable"}
-      </span>
+      {editing ? (
+        <span className="deck-name-rename">
+          <input
+            className="deck-name-rename-input"
+            value={draftName}
+            autoFocus
+            disabled={renaming}
+            onChange={(event) => setDraftName(event.target.value)}
+            onKeyDown={onRenameInputKeyDown}
+          />
+          <button
+            type="button"
+            className="titlebar-icon-button"
+            title="Save name"
+            aria-label="Save name"
+            disabled={draftName.trim() === "" || renaming}
+            onClick={() => void confirmRename()}
+          >
+            <Icon name="save" size="inline" />
+          </button>
+          <button
+            type="button"
+            className="titlebar-icon-button"
+            title="Cancel rename"
+            aria-label="Cancel rename"
+            disabled={renaming}
+            onClick={cancelRename}
+          >
+            <Icon name="close" size="inline" />
+          </button>
+          {renameError && (
+            <span className="deck-name-rename-error" role="alert">
+              {renameError}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span
+          className="deck-name"
+          title={deckName ?? undefined}
+          onDoubleClick={startRename}
+        >
+          {deckName ?? "Deck info unavailable"}
+        </span>
+      )}
       {savedStatusText && (
         <span
           className="titlebar-saved-status"

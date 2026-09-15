@@ -21,6 +21,7 @@ import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar } from "./shell/TitleBar.js";
+import { renameCurrentDeck } from "./shell/deck-space/deck-api.js";
 import { installUnsavedGuard } from "./unsaved-guard.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
@@ -1094,6 +1095,27 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   }
 
   /**
+   * The title bar's own double-click rename (`TitleBar`'s `onRenameDeck`).
+   * `POST /api/deck/rename-current` already re-points the file watcher at
+   * the new path server-side; `refreshSaveState` picks up the new
+   * `fileName` for this tab the same way it does after any other save-state
+   * change, and the server's own broadcast (`save-state`) updates any other
+   * tab that has this deck open.
+   */
+  async function handleRenameDeck(name: string): Promise<string | null> {
+    const result = await renameCurrentDeck(name);
+    if (result.ok) {
+      await refreshSaveState();
+      return null;
+    }
+    if (result.reason === "name-conflict") return "A deck with that name already exists";
+    if (result.reason === "editing" || result.reason === "exporting") {
+      return "Can't rename right now — try again in a moment";
+    }
+    return result.error;
+  }
+
+  /**
    * `POST /api/save/flush` (NOOP-422) — continuous save's manual escape
    * hatches: the Retry action on a failed save, and
    * `applyTemplateToSlides`'s pre-dispatch save. Frozen
@@ -1757,6 +1779,7 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
       {shellVisible && (
         <TitleBar
           deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
+          onRenameDeck={handleRenameDeck}
           savedStatusText={saveState.known ? (saveState.phase === "saving" ? "Saving…" : saveState.phase === "failed" ? "Save failed" : "Saved") : null}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
