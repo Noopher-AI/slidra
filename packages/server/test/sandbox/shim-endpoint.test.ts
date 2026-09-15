@@ -9,7 +9,7 @@
  * this file is about the shim's own HTTP/framing contract, not OS
  * enforcement (`os-enforcement.test.ts` owns that).
  */
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import http, { type Server } from "node:http";
@@ -142,6 +142,8 @@ async function callShim(options: {
   cwd?: string;
   omitArgvHeader?: boolean;
   body?: string;
+  /** Defaults to the shared server; only the symlinked-root test below points elsewhere. */
+  target?: string;
 }): Promise<{ status: number; frames: Frame[] | null; rawBody: string }> {
   const headers: Record<string, string> = {};
   if (options.token !== undefined) headers["x-slidra-shim-token"] = options.token;
@@ -153,7 +155,7 @@ async function callShim(options: {
   }
 
   return new Promise((resolve, reject) => {
-    const req = http.request(`${baseUrl}/api/agent/exec`, { method: "POST", headers }, (res) => {
+    const req = http.request(`${options.target ?? baseUrl}/api/agent/exec`, { method: "POST", headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => {
@@ -306,6 +308,44 @@ describe("POST /api/agent/exec — behavior contract", () => {
       code: 0,
     });
     expect(stdout.equals(direct.stdout as unknown as Buffer)).toBe(true);
+  });
+
+  /**
+   * NOOP-474 (Review): macOS's `os.tmpdir()` is `/var/folders/…`, a path that
+   * only exists through the `/var → /private/var` symlink, while a child
+   * process's own `process.cwd()` — exactly what `slidra-shim.mjs` sends in
+   * the cwd header — is always the resolved `/private/var/folders/…`.
+   * `resolveRequestedCwd` compares the two as strings, so on macOS every shim
+   * call is refused with 400. Reproduced here on any platform by giving the
+   * server a symlink to the same root the caller names by its real path.
+   */
+  it("accepts a cwd that reaches the sandbox root through a symlink (the macOS /var -> /private/var case)", async () => {
+    const linkDir = await mkdtemp(path.join(tmpdir(), "shim-endpoint-link-"));
+    const linkedRoot = path.join(linkDir, "root");
+    await symlink(sandboxRoot, linkedRoot);
+
+    const linkedServer = http.createServer((req, res) => {
+      handleShimExec(req, res, { sandboxRoot: linkedRoot, token: TOKEN, currentDeckId: () => currentDeckId });
+    });
+    await new Promise<void>((resolve) => linkedServer.listen(0, "127.0.0.1", resolve));
+    const linkedUrl = `http://127.0.0.1:${String((linkedServer.address() as AddressInfo).port)}`;
+
+    try {
+      const result = await callShim({
+        token: TOKEN,
+        argv: ["stub"],
+        // The real, symlink-free path of the very directory `linkedRoot`
+        // points at — the same physical directory, spelled the way a spawned
+        // child process reports it.
+        cwd: path.join(sandboxRoot, "pres-1"),
+        target: linkedUrl,
+      });
+      expect(result.status).toBe(200);
+    } finally {
+      linkedServer.closeAllConnections();
+      await new Promise<void>((resolve) => linkedServer.close(() => resolve()));
+      await rm(linkDir, { recursive: true, force: true });
+    }
   });
 
   it("forwards the request body to the command's stdin", async () => {
