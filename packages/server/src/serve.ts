@@ -13,6 +13,7 @@ import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
 import { createSandboxRoot } from "./sandbox/sandbox-root.js";
+import { createSandboxLauncher, setActiveLauncher } from "./sandbox/launcher.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
 import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
@@ -173,6 +174,18 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // below (AC9).
   const sandboxRoot = await createSandboxRoot();
   disposers.push(() => sandboxRoot.disposeAll());
+
+  // NOOP-425: this process's one active write-isolation launcher
+  // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
+  // `agent/manager.ts`'s `writeIsolation` status) — never fails startup
+  // itself (D8): platform/dependency/self-check failures all come back as
+  // an inert, `active: false` launcher instead of throwing.
+  const sandboxLauncher = await createSandboxLauncher();
+  setActiveLauncher(sandboxLauncher);
+  disposers.push(async () => {
+    setActiveLauncher(undefined);
+    await sandboxLauncher.dispose();
+  });
 
   if (options.presentationId !== undefined) {
     initialDeck = await resolveDeckIdentity(options.presentationId);
