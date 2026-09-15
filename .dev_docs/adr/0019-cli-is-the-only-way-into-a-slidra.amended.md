@@ -1,5 +1,7 @@
 # The command gate now protects "presentation files must go through the CLI," everything else is allowed
 
+> **Amended (NOOP-472, re-confirming against [E6.T8]).** The Cost section's closing paragraph named the follow-up this decision needed: "taking execution back under control... and putting subprocesses inside an OS-level sandbox." That follow-up has landed, as ADR-0021 — Linux via Landlock, macOS via Seatbelt, Windows still unconfined. It closes exactly the gap it was built for and no more: it restricts what a spawned process can *write*, refusing anything outside an allow-listed sandbox root and a small set of credential/cache paths (`packages/server/src/sandbox/landlock-launcher.ts:12-18`, deliberately ignoring `denyRead`/`denyWrite` — a Landlock ruleset built from `AccessFs::from_write` has no read-restriction concept to apply them to). Reads and outbound network access remain exactly as unrestricted as this ADR already said they'd stay. **"The prompt-injection chain is now open" (above) still stands, unchanged**: the sandbox limits what an agent can write, never what it can be talked into believing or repeating. Nothing here substitutes for `protected-paths.ts`'s existing string-level check or for `validate`/undo's role as the layers that don't depend on guessing.
+
 ADR-0004's second layer was an allowlist: `session/request_permission` only allowed commands
 starting with `slidra` whose arguments matched a strict character grammar, blocking everything
 else. This ADR redraws that line.
