@@ -48,6 +48,13 @@ export async function buildAgentSandboxPolicy(options: { sandboxRoot: string; ho
     isMac ? path.join(home, "Library", "Caches") : path.join(home, ".cache"),
     // gh and other CLIs' token refresh — see the docstring above.
     path.join(home, ".config"),
+    // `cmd > /dev/null 2>&1` is one of the most common shell idioms there
+    // is; without this, Landlock's write restriction (opening /dev/null
+    // for writing is still a write) breaks it with EACCES, and every tool
+    // that silences its own output this way starts failing (found via
+    // os-enforcement.test.ts's AC3 network probe, which redirects curl's
+    // response body there).
+    "/dev/null",
   ];
 
   const slidraHome = resolveSlidraHome();

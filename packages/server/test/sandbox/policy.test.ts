@@ -34,6 +34,10 @@ describe("buildAgentSandboxPolicy", () => {
     expect(policy.allowWrite).toContain(path.join(home, ".codex"));
     expect(policy.allowWrite).toContain(path.join(home, ".npm"));
     expect(policy.allowWrite).toContain(path.join(home, ".config"));
+    // `cmd > /dev/null 2>&1` is common enough in shell tooling that
+    // Landlock's write restriction would otherwise break it (found via
+    // os-enforcement.test.ts's AC3 probe).
+    expect(policy.allowWrite).toContain("/dev/null");
   });
 
   it("never allow-lists the home directory itself, ~/.ssh, or SLIDRA_HOME", async () => {
