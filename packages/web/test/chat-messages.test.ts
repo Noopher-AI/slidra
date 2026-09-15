@@ -10,6 +10,7 @@ import {
   appendSystemMessage,
   markUnfinishedCommandsInterrupted,
   restoreChatMessages,
+  TRUNCATED_HISTORY_NOTICE,
   updateCommandMessage,
   type ChatMessage,
   type PersistedChatEntry,
@@ -202,5 +203,20 @@ describe("chat-messages: restoring a persisted thread (GET /api/chat/history)", 
         status: "failed", cli: false, output: "blocked", blocked: true, interrupted: true,
       },
     ]);
+  });
+
+  it("prepends a system notice ahead of every restored entry when the response says truncated, and defaults to omitting it", () => {
+    const entries: PersistedChatEntry[] = [
+      { entryId: "ce-1", seq: 1, kind: "author", at: "2026-01-01T00:00:00.000Z", text: "change the title to Q3" },
+    ];
+
+    const truncated = restoreChatMessages(entries, 0, true);
+    expect(truncated.messages[0]).toEqual({ id: 0, role: "system", text: TRUNCATED_HISTORY_NOTICE });
+    expect(truncated.messages[1]).toEqual({ id: 1, role: "author", text: "change the title to Q3" });
+    expect(truncated.nextId).toBe(2);
+
+    const notTruncated = restoreChatMessages(entries, 0);
+    expect(notTruncated.messages).toEqual([{ id: 0, role: "author", text: "change the title to Q3" }]);
+    expect(notTruncated.nextId).toBe(1);
   });
 });

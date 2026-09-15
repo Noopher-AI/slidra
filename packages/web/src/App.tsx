@@ -1354,8 +1354,8 @@ export function App() {
       try {
         const response = await fetch("/api/chat/history?limit=1000");
         if (response.ok && !cancelled) {
-          const data = (await response.json()) as { entries: PersistedChatEntry[] };
-          const restored = restoreChatMessages(data.entries, nextMessageIdRef.current);
+          const data = (await response.json()) as { entries: PersistedChatEntry[]; truncated: boolean };
+          const restored = restoreChatMessages(data.entries, nextMessageIdRef.current, data.truncated);
           nextMessageIdRef.current = restored.nextId;
           setMessages(restored.messages);
         }

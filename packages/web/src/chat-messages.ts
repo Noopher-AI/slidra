@@ -201,6 +201,10 @@ export interface RestoredChat {
   nextId: number;
 }
 
+/** Plan §7 decision 7: `GET /api/chat/history` always caps at 1000, so a deck with more history than that restores only the tail — this is what tells the author (and the agent, reading the thread back) that older entries are not gone, just not shown. Text names `slidra chat-history` verbatim, same convention `manager.ts`'s divider text and `brief.ts`'s `[Prior conversation]` section already follow for how an agent is meant to reach the rest. */
+export const TRUNCATED_HISTORY_NOTICE =
+  "Older messages from this conversation are still stored in the deck's own file — ask the agent to look them up with `slidra chat-history` if you need them.";
+
 /**
  * Rebuilds a `ChatMessage[]` from what `GET /api/chat/history` returned —
  * how a page reload (AC1) and reopening a deck the next day (AC2) restore
@@ -213,29 +217,40 @@ export interface RestoredChat {
  * agent switch/"New chat" reset already used live (§7 decision 4/5): the
  * server built its text once, at the moment it happened, and this is that
  * same text read back, not recomputed.
+ *
+ * `truncated` (the response envelope's own field, AC3) prepends
+ * {@link TRUNCATED_HISTORY_NOTICE} as its own `SystemMessage`, ahead of
+ * every restored entry — it describes the restore itself, not anything
+ * that happened in the conversation, so it takes `startId` itself and
+ * every entry's id shifts up by one, keeping ids assigned in the same
+ * order the messages array renders them.
  */
-export function restoreChatMessages(entries: readonly PersistedChatEntry[], startId: number): RestoredChat {
+export function restoreChatMessages(entries: readonly PersistedChatEntry[], startId: number, truncated = false): RestoredChat {
   let nextId = startId;
-  const messages: ChatMessage[] = entries.map((entry): ChatMessage => {
+  const messages: ChatMessage[] = [];
+  if (truncated) {
+    messages.push({ id: nextId++, role: "system", text: TRUNCATED_HISTORY_NOTICE });
+  }
+  for (const entry of entries) {
     const id = nextId++;
     if (entry.kind === "author" || entry.kind === "agent") {
-      return { id, role: entry.kind, text: entry.text };
+      messages.push({ id, role: entry.kind, text: entry.text });
+    } else if (entry.kind === "divider") {
+      messages.push({ id, role: "system", text: entry.text });
+    } else {
+      messages.push({
+        id,
+        role: "command",
+        toolCallId: entry.toolCallId ?? entry.entryId,
+        command: entry.text,
+        status: entry.status ?? "completed",
+        cli: entry.cli ?? true,
+        ...(entry.output !== undefined ? { output: entry.output } : {}),
+        ...(entry.blocked ? { blocked: true as const } : {}),
+        ...(entry.interrupted ? { interrupted: true as const } : {}),
+      });
     }
-    if (entry.kind === "divider") {
-      return { id, role: "system", text: entry.text };
-    }
-    return {
-      id,
-      role: "command",
-      toolCallId: entry.toolCallId ?? entry.entryId,
-      command: entry.text,
-      status: entry.status ?? "completed",
-      cli: entry.cli ?? true,
-      ...(entry.output !== undefined ? { output: entry.output } : {}),
-      ...(entry.blocked ? { blocked: true as const } : {}),
-      ...(entry.interrupted ? { interrupted: true as const } : {}),
-    };
-  });
+  }
   return { messages, nextId };
 }
 
