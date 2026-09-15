@@ -88,6 +88,12 @@ function isMissingHistoryTable(error: unknown): boolean {
 async function undoGroupCount(deckPath: string): Promise<number> {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(deckPath, { readOnly: true });
+  // Now that a real read failure surfaces instead of being read as "0"
+  // (see isMissingHistoryTable below), a momentary SQLITE_BUSY against the
+  // server's own concurrent write must be waited out, not thrown on sight —
+  // without this the readonly connection's default (fail immediately) turns
+  // ordinary write/read overlap into a flaky "database is locked" error.
+  db.exec("PRAGMA busy_timeout = 5000");
   try {
     const row = db.prepare("SELECT COUNT(*) AS n FROM history_group WHERE stack = 0").get() as
       | { n: number }
@@ -108,6 +114,7 @@ async function undoGroupCount(deckPath: string): Promise<number> {
 async function hasOpenHistoryGroup(deckPath: string): Promise<boolean> {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(deckPath, { readOnly: true });
+  db.exec("PRAGMA busy_timeout = 5000");
   try {
     const row = db.prepare("SELECT COUNT(*) AS n FROM history_group WHERE stack = 2").get() as
       | { n: number }
