@@ -2,7 +2,16 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
+import {
+  fromAgentResponse,
+  modelOptionsFrom,
+  type AgentConnection,
+  type AgentModelOption,
+  type AgentUiStatus,
+  turnRunningFrom,
+  writeIsolationFrom,
+  type WriteIsolationView,
+} from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, restoreChatMessages, type ChatMessage, type PersistedChatEntry, appendErrorMessage } from "./chat-messages.js";
 import { startChatStream, type ChatStream } from "./chat-stream.js";
@@ -958,6 +967,7 @@ export function App() {
       // #303: a turn already in flight (started before this tab loaded, or
       // from another client) shows Stop right away.
       setWorking(turnRunningFrom(data));
+      setWriteIsolation(writeIsolationFrom(data));
     } catch {
       setAgentStatus({ kind: "error", message: "Could not get agent status: connection lost" });
     } finally {
@@ -1321,6 +1331,10 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [working, setWorking] = useState(false);
+  // NOOP-425 AC7: starts optimistic (no warning shown) until the first
+  // `GET /api/agent` resolves, same "assume the quieter state" rule
+  // `writeIsolationFrom` itself follows for a malformed/missing field.
+  const [writeIsolation, setWriteIsolation] = useState<WriteIsolationView>({ active: true, reason: null });
   /** Errors go into the message timeline: they stay attached to whichever message they followed, rather than as a bar pinned to the bottom that outlives its relevance. */
   function pushChatError(text: string): void {
     setMessages((prev) => appendErrorMessage(prev, nextMessageIdRef.current++, text));
@@ -1967,6 +1981,7 @@ export function App() {
                   modelsLocked: working || stopping,
                   onSelectModel: (modelId) => void selectAgentModel(modelId),
                   onLoadModels: () => void loadAgentModels(),
+                  writeIsolation,
                 }}
                 comments={comments}
                 onPinnedClick={(comment) => void openPinnedComment(comment)}

@@ -831,16 +831,18 @@ describe("chat: session cwd", () => {
 
     // Never the real project directory the CLI was launched from.
     expect(sentCwd).not.toBe(process.cwd());
-    // Exactly `<SLIDRA_HOME>/agent/<presentationId>`, resolved — the
+    // Exactly `<agentSandboxRoot>/<presentationId>`, resolved — the
     // product work directory `deployAgentWorkdir()` deploys before
     // `startServe` ever
-    // constructs the session. The escape-hatch this test used to
-    // assert ("never under SLIDRA_HOME") is inverted by design: `../work/<id>`
-    // is no longer reachable from here, because `fs/read_text_file`'s
-    // containment is the deployed directory's own real tree
-    // (`classifyAgentReadPath`/`readAgentWorkdirFile`), not a string prefix
-    // check an agent could try to walk out of.
-    const expectedWorkdir = await realpath(path.join(slidraHome, "agent", id));
+    // constructs the session. NOOP-425 D4 moved this out from under
+    // `SLIDRA_HOME` into this serve process's own sandbox root; the
+    // escape-hatch this test used to assert ("never under SLIDRA_HOME") is
+    // inverted by design either way: `../work/<id>` is no longer reachable
+    // from here, because `fs/read_text_file`'s containment is the deployed
+    // directory's own real tree (`classifyAgentReadPath`/
+    // `readAgentWorkdirFile`), not a string prefix check an agent could try
+    // to walk out of.
+    const expectedWorkdir = await realpath(path.join(server.agentSandboxRoot, id));
     expect(sentCwd).toBe(expectedWorkdir);
   });
 
@@ -884,7 +886,7 @@ describe("chat: session cwd", () => {
     // a second deploy would overwrite anyway. This only proves the read
     // wiring reaches the real, already-deployed `.claude/skills` tree; skill
     // *content* is out of scope here.
-    const skillDir = path.join(slidraHome, "agent", id, ".claude", "skills", "probe");
+    const skillDir = path.join(server.agentSandboxRoot, id, ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
     await writeFile(path.join(skillDir, "SKILL.md"), "skill content for testing");
 
@@ -901,21 +903,19 @@ describe("chat: session cwd", () => {
   });
 });
 
-describe("chat: serve close does not delete the deployed work directory", () => {
-  it("leaves the work directory's AGENTS.md readable and unchanged after close()", async () => {
+describe("chat: serve close deletes the deployed work directory (NOOP-425 AC9)", () => {
+  it("removes the whole sandbox root — no agent working files survive close()", async () => {
     const id = await openFreshPresentation();
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
     // This test owns close()/assert itself — see the shutdown-hang test
     // above for why afterEach must not also try to close it.
     servers = servers.filter((running) => running !== server);
+    const sandboxRoot = server.agentSandboxRoot;
     await server.close();
 
-    const sourceAgentsMd = await readFile(
-      path.join(path.dirname(fileURLToPath(import.meta.url)), "../../agent-workdir/AGENTS.md"),
-      "utf8",
-    );
-    const deployedAgentsMd = await readFile(path.join(slidraHome, "agent", id, "AGENTS.md"), "utf8");
-    expect(deployedAgentsMd).toBe(sourceAgentsMd);
+    const { stat } = await import("node:fs/promises");
+    await expect(stat(path.join(sandboxRoot, id, "AGENTS.md"))).rejects.toThrow();
+    await expect(stat(sandboxRoot)).rejects.toThrow();
   });
 });
 

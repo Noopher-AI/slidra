@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { describe, expect, it } from "vitest";
-import { fromAgentResponse, modelOptionsFrom } from "../src/agent-status.js";
+import { fromAgentResponse, modelOptionsFrom, writeIsolationFrom } from "../src/agent-status.js";
 
 // agent-status.ts's public boundary is the pure conversion `GET /api/agent`
 // JSON → AgentUiStatus | null — no React, no fetch.
@@ -156,5 +156,35 @@ describe("modelOptionsFrom (chat-panel model picker)", () => {
     });
     expect(modelOptionsFrom({})).toEqual({ current: null, options: [] });
     expect(modelOptionsFrom(null)).toEqual({ current: null, options: [] });
+  });
+});
+
+describe("writeIsolationFrom (NOOP-425 AC7)", () => {
+  it("active:true → { active: true, reason: null }, even if a reason string is also present", () => {
+    expect(writeIsolationFrom({ writeIsolation: { active: true, reason: "ignored" } })).toEqual({ active: true, reason: null });
+  });
+
+  it("active:false with a reason → surfaces that reason", () => {
+    expect(writeIsolationFrom({ writeIsolation: { active: false, reason: "SLIDRA_SANDBOX=off" } })).toEqual({
+      active: false,
+      reason: "SLIDRA_SANDBOX=off",
+    });
+  });
+
+  it("active:false with a missing/empty reason → a fallback message, never a blank warning", () => {
+    expect(writeIsolationFrom({ writeIsolation: { active: false } })).toEqual({
+      active: false,
+      reason: "Write isolation is not active",
+    });
+    expect(writeIsolationFrom({ writeIsolation: { active: false, reason: "" } })).toEqual({
+      active: false,
+      reason: "Write isolation is not active",
+    });
+  });
+
+  it("missing or malformed field → active:true (the quieter state), never a fabricated warning", () => {
+    expect(writeIsolationFrom({})).toEqual({ active: true, reason: null });
+    expect(writeIsolationFrom({ writeIsolation: "not-an-object" })).toEqual({ active: true, reason: null });
+    expect(writeIsolationFrom(null)).toEqual({ active: true, reason: null });
   });
 });

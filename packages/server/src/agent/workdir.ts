@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { cp, mkdir, readFile, readdir, realpath, rename, rm } from "node:fs/promises";
+import { cp, readFile, readdir, realpath, rm } from "node:fs/promises";
 import type { Dirent } from "node:fs";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
-import { isEnoent, resolveSlidraHome } from "../slidra/home.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -165,85 +163,28 @@ export function resolveAgentWorkdirSource(): string {
 }
 
 /**
- * Where one presentation's work directory is deployed to on the user's
- * machine — `<SLIDRA_HOME>/agent/<presentationId>`, never cleaned up
- * when `serve` exits.
+ * Where one presentation's work directory is deployed to, under this
+ * `serve` process's own sandbox root (`sandbox/sandbox-root.ts`) —
+ * `<sandboxRoot>/<presentationId>`.
  *
- * Keyed by presentation id rather than one shared `agent/` directory
- * because two `slidra serve` processes can run on the same machine at
- * the same time, and `deployAgentWorkdir()` replaces its target wholesale
- * on every startup. A shared path means the second `serve` to start pulls
- * the directory out from under the first one's already-spawned ACP agent,
- * whose session `cwd` is this path — and once that directory is unlinked
- * the agent gets ENOENT for every relative-path read, every write, and
- * even `getcwd`, silently, with nothing surfaced to the author. Per-id
- * targets also give each session its own Claude Code project slug (which
- * is derived from `cwd`), so two presentations' transcripts stop landing
- * in one directory.
+ * NOOP-425 D4: previously `<SLIDRA_HOME>/agent/<presentationId>`, a path
+ * shared across every `slidra serve` on the machine, which needed a whole
+ * retire/sweep generation scheme (see git history) to keep a second serve's
+ * deploy from unlinking the directory an earlier serve's already-spawned
+ * ACP agent was sitting in as its `cwd`. A per-serve sandbox root makes two
+ * servers structurally unable to collide — each gets its own root — so that
+ * scheme is no longer needed at all: `deployAgentWorkdir` below can simply
+ * remove-then-copy.
  */
-export function agentWorkdirTarget(presentationId: string): string {
-  return path.join(resolveSlidraHome(), "agent", presentationId);
-}
-
-/**
- * Names of the previous generations of `presentationId`'s work directory —
- * siblings of the target, so the retiring `rename` stays within one
- * filesystem. Scoped by id (rather than one shared `agent.old-` prefix)
- * because the sweep below must never reach into another presentation's
- * retired directory: that one may still be some other `serve`'s live agent
- * `cwd`.
- */
-function retiredPrefixFor(presentationId: string): string {
-  return `${presentationId}.old-`;
-}
-
-/**
- * Removes the retired generations of `presentationId`'s work directory, and
- * only those. Deliberately called at the *start* of a deploy rather than at
- * the end of the one that created them: a retired directory is the inode a
- * still-running agent may be sitting in, and it stays readable for exactly
- * as long as it is not unlinked. Deferring the delete by one deploy is what
- * turns "the older agent breaks instantly" into "the older agent keeps
- * reading the previous generation's files".
- *
- * Failures are swallowed per entry — a leftover directory is litter, never
- * a reason to refuse to start.
- */
-async function sweepRetiredWorkdirs(parent: string, presentationId: string): Promise<void> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(parent, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  const prefix = retiredPrefixFor(presentationId);
-  await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
-      .map((entry) => rm(path.join(parent, entry.name), { recursive: true, force: true }).catch(() => {})),
-  );
+export function agentWorkdirTarget(sandboxRoot: string, presentationId: string): string {
+  return path.join(sandboxRoot, presentationId);
 }
 
 /**
  * Deploys the package's `agent-workdir/` source to `agentWorkdirTarget()`,
- * overwriting the target wholesale every time `serve` starts — this is a
+ * overwriting the target wholesale every time it is called — this is a
  * product decision (a user's local edit is not meant to persist across
- * restarts), not a caching optimization left undone.
- *
- * Written via a staging directory + rename so a failure partway through
- * (disk full, a permissions error) never leaves the target half-written:
- * everything happens in a sibling directory first, and only a clean copy
- * ever gets renamed over the real target. The staging directory shares
- * `SLIDRA_HOME` with the target, and therefore its filesystem, which is
- * what makes the final `rename` atomic rather than a copy-then-delete.
- *
- * The previous generation is *retired* (renamed aside), never deleted here
- * — deleting it would unlink the very inode an agent spawned by an earlier
- * `serve` of this same presentation is sitting in, which is exactly the
- * failure `agentWorkdirTarget`'s docstring describes. The retired copy is
- * swept at the start of the *next* deploy instead, by
- * `sweepRetiredWorkdirs`, so that agent keeps reading real files for the
- * rest of its life.
+ * restarts, or a deck switch), not a caching optimization left undone.
  *
  * `.claude/skills/` is never committed to the repo — `.agents/skills/` is
  * the only source of truth (so a skill is never written twice and cannot
@@ -254,41 +195,16 @@ async function sweepRetiredWorkdirs(parent: string, presentationId: string): Pro
  * `mkdtemp`-based cwd) an agent that resolves symlinks before echoing a
  * path back must be compared against the same resolved form.
  */
-export async function deployAgentWorkdir(presentationId: string): Promise<string> {
-  const home = resolveSlidraHome();
+export async function deployAgentWorkdir(sandboxRoot: string, presentationId: string): Promise<string> {
   const source = resolveAgentWorkdirSource();
-  const target = agentWorkdirTarget(presentationId);
-  const parent = path.dirname(target);
-  const staging = path.join(home, `agent.tmp-${randomUUID()}`);
-  const retired = path.join(parent, `${retiredPrefixFor(presentationId)}${randomUUID()}`);
+  const target = agentWorkdirTarget(sandboxRoot, presentationId);
 
-  await mkdir(parent, { recursive: true });
-  await sweepRetiredWorkdirs(parent, presentationId);
-  await rm(staging, { recursive: true, force: true });
   try {
-    await cp(source, staging, { recursive: true });
-    await cp(path.join(staging, ".agents", "skills"), path.join(staging, ".claude", "skills"), { recursive: true });
-    // Retire whatever is already there instead of deleting it (see the
-    // docstring). ENOENT just means this presentation has never been
-    // served on this machine — every other failure is real.
-    const retiredPrevious = await rename(target, retired).then(
-      () => true,
-      (error: unknown) => {
-        if (isEnoent(error)) return false;
-        throw error;
-      },
-    );
-    try {
-      await rename(staging, target);
-    } catch (error) {
-      // The target slot is empty and the new copy did not land. Put the
-      // previous generation back rather than leaving no work directory at
-      // all — a stale one still runs, a missing one cannot.
-      if (retiredPrevious) await rename(retired, target).catch(() => {});
-      throw error;
-    }
+    await rm(target, { recursive: true, force: true });
+    await cp(source, target, { recursive: true });
+    await cp(path.join(target, ".agents", "skills"), path.join(target, ".claude", "skills"), { recursive: true });
   } catch {
-    await rm(staging, { recursive: true, force: true }).catch(() => {});
+    await rm(target, { recursive: true, force: true }).catch(() => {});
     // Never echo the underlying fs error's own message here — it embeds a
     // real filesystem path (ADR-0004, third layer), and this error can
     // surface all the way out to `startServe`'s caller.

@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "slidra"
 path = "src/main.rs"
 
+[[bin]]
+name = "slidra-sandbox-exec"
+path = "src/bin/sandbox_exec.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
@@ -20,3 +24,11 @@ ureq = "3"
 flate2 = "1.0"
 zip = { version = "7.2.0", default-features = false, features = ["deflate-flate2"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+
+# NOOP-425 L2: slidra-sandbox-exec's Landlock ruleset (agent sandbox, Linux
+# only — macOS uses @anthropic-ai/sandbox-runtime's Seatbelt path instead,
+# Windows degrades). Gated to the Linux target so the dependency (and its
+# Linux-only syscalls) never needs to build, or even resolve, on other
+# platforms.
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"

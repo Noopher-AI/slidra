@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -13,22 +13,20 @@ import {
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
 
-// The product work directory `slidra serve` deploys on every startup
-// (`packages/server/agent-workdir/` -> `<SLIDRA_HOME>/agent`) and the agent
-// session reads real files from, alongside the presentation's own virtual
-// tree. No server, no ACP subprocess — everything here is a plain filesystem
-// check.
+// The product work directory `slidra serve` deploys into this serve
+// process's own sandbox root (`packages/server/agent-workdir/` ->
+// `<sandboxRoot>/<presentationId>`) and the agent session reads real files
+// from, alongside the presentation's own virtual tree. No server, no ACP
+// subprocess — everything here is a plain filesystem check.
 
-let slidraHome: string;
+let sandboxRoot: string;
 
 beforeEach(async () => {
-  slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-workdir-home-"));
-  process.env.SLIDRA_HOME = slidraHome;
+  sandboxRoot = await mkdtemp(path.join(tmpdir(), "slidra-workdir-sandbox-"));
 });
 
 afterEach(async () => {
-  delete process.env.SLIDRA_HOME;
-  await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  await rm(sandboxRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** Every file under `dir`, as a sorted list of paths relative to `dir` (posix-style, for stable comparison across platforms). */
@@ -62,10 +60,10 @@ describe("resolveAgentWorkdirSource", () => {
 const PRESENTATION = "pres-1";
 
 describe("deployAgentWorkdir", () => {
-  it("deploys the source's files to <SLIDRA_HOME>/agent/<id>, byte-for-byte", async () => {
-    const target = await deployAgentWorkdir(PRESENTATION);
-    expect(target).toBe(await realpath(agentWorkdirTarget(PRESENTATION)));
-    expect(agentWorkdirTarget(PRESENTATION)).toBe(path.join(slidraHome, "agent", PRESENTATION));
+  it("deploys the source's files to <sandboxRoot>/<id>, byte-for-byte", async () => {
+    const target = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    expect(target).toBe(await realpath(agentWorkdirTarget(sandboxRoot, PRESENTATION)));
+    expect(agentWorkdirTarget(sandboxRoot, PRESENTATION)).toBe(path.join(sandboxRoot, PRESENTATION));
 
     const source = resolveAgentWorkdirSource();
     const sourceFiles = (await listFilesRecursively(source)).filter(
@@ -81,7 +79,7 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("copies .agents/skills into .claude/skills, relative paths and bytes identical", async () => {
-    const target = await deployAgentWorkdir(PRESENTATION);
+    const target = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
     const agentsSkills = await listFilesRecursively(path.join(target, ".agents", "skills"));
     const claudeSkills = await listFilesRecursively(path.join(target, ".claude", "skills"));
     expect(claudeSkills).toEqual(agentsSkills);
@@ -95,13 +93,13 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
-    await deployAgentWorkdir(PRESENTATION);
-    const target = agentWorkdirTarget(PRESENTATION);
+    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    const target = agentWorkdirTarget(sandboxRoot, PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "user-modified content");
     await mkdir(path.join(target, "extra-dir"), { recursive: true });
     await writeFile(path.join(target, "extra-dir", "extra-file.md"), "should-not-survive");
 
-    await deployAgentWorkdir(PRESENTATION);
+    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
 
     const sourceAgentsMd = await readFile(path.join(resolveAgentWorkdirSource(), "AGENTS.md"), "utf8");
     const deployedAgentsMd = await readFile(path.join(target, "AGENTS.md"), "utf8");
@@ -111,76 +109,33 @@ describe("deployAgentWorkdir", () => {
   });
 
   it("is idempotent: deploying twice in a row leaves the same files behind", async () => {
-    const first = await deployAgentWorkdir(PRESENTATION);
+    const first = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
     const firstFiles = await listFilesRecursively(first);
-    const second = await deployAgentWorkdir(PRESENTATION);
+    const second = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
     const secondFiles = await listFilesRecursively(second);
     expect(second).toBe(first);
     expect(secondFiles).toEqual(firstFiles);
   });
 
-  // The concurrency regressions (two `slidra serve` on one machine).
-  // `deployAgentWorkdir` used to `rm -rf` one shared `<HOME>/agent`, which
-  // unlinked the directory a running agent had as its `cwd`.
+  // The concurrency regression this used to guard against (two `slidra
+  // serve` on one machine sharing one `<SLIDRA_HOME>/agent`) can no longer
+  // happen at all once each serve gets its own sandbox root (NOOP-425 D4) —
+  // two presentations *within* one root still need two directories, which
+  // this keeps covering.
 
   it("gives two presentations two directories, and deploying one leaves the other's inode untouched", async () => {
-    const a = await deployAgentWorkdir("pres-a");
-    const b = await deployAgentWorkdir("pres-b");
+    const a = await deployAgentWorkdir(sandboxRoot, "pres-a");
+    const b = await deployAgentWorkdir(sandboxRoot, "pres-b");
     expect(a).not.toBe(b);
 
     // A file only `pres-a` has: it must survive `pres-b`'s deploy, and it
     // must still be reachable through the *same* directory handle `pres-a`'s
     // agent would be holding.
     await writeFile(path.join(a, "agent-a-wrote-this.txt"), "still here");
-    await deployAgentWorkdir("pres-b");
+    await deployAgentWorkdir(sandboxRoot, "pres-b");
 
     expect(await readFile(path.join(a, "agent-a-wrote-this.txt"), "utf8")).toBe("still here");
     expect(await realpath(a)).toBe(a);
-  });
-
-  it("retires the previous generation instead of unlinking it, so an agent already inside it keeps reading", async () => {
-    const first = await deployAgentWorkdir(PRESENTATION);
-    const firstInode = (await stat(first)).ino;
-
-    await deployAgentWorkdir(PRESENTATION);
-
-    // The old inode is still readable — it was renamed aside, not removed.
-    const agentDir = path.join(slidraHome, "agent");
-    const retired = (await readdir(agentDir)).filter((name) => name.startsWith(`${PRESENTATION}.old-`));
-    expect(retired).toHaveLength(1);
-    const retiredDir = path.join(agentDir, retired[0]!);
-    expect((await stat(retiredDir)).ino).toBe(firstInode);
-    expect(await readFile(path.join(retiredDir, "AGENTS.md"), "utf8")).not.toBe("");
-  });
-
-  it("sweeps the retired generation on the deploy after next, so retired copies do not pile up", async () => {
-    await deployAgentWorkdir(PRESENTATION);
-    await deployAgentWorkdir(PRESENTATION);
-    await deployAgentWorkdir(PRESENTATION);
-
-    const retired = (await readdir(path.join(slidraHome, "agent"))).filter((name) =>
-      name.startsWith(`${PRESENTATION}.old-`),
-    );
-    expect(retired).toHaveLength(1);
-  });
-
-  it("never sweeps another presentation's retired directory — it may still be that serve's live agent cwd", async () => {
-    await deployAgentWorkdir("pres-a");
-    await deployAgentWorkdir("pres-a"); // retires pres-a's first generation
-    const agentDir = path.join(slidraHome, "agent");
-    const retiredA = (await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"));
-    expect(retiredA).toHaveLength(1);
-
-    await deployAgentWorkdir("pres-b");
-    await deployAgentWorkdir("pres-b");
-
-    expect((await readdir(agentDir)).filter((name) => name.startsWith("pres-a.old-"))).toEqual(retiredA);
-  });
-
-  it("leaves no staging directory behind", async () => {
-    await deployAgentWorkdir(PRESENTATION);
-    const staging = (await readdir(slidraHome)).filter((name) => name.startsWith("agent.tmp-"));
-    expect(staging).toEqual([]);
   });
 });
 

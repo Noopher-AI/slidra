@@ -3,7 +3,7 @@
 
 import { useRef, useState } from "react";
 import type { AgentKind } from "../../live-reload.js";
-import type { AgentCardView, AgentConnection, AgentModelOption, AgentUiStatus } from "../../agent-status.js";
+import type { AgentCardView, AgentConnection, AgentModelOption, AgentUiStatus, WriteIsolationView } from "../../agent-status.js";
 import { useCloseFloatingLayer } from "../use-floating-layer.js";
 
 export interface AgentPickerProps {
@@ -31,6 +31,8 @@ export interface AgentPickerProps {
   onLoadModels(): void;
   /** For tests: which menu starts open (a pure props->markup test can't open state). */
   defaultOpen?: "agent" | "model" | null;
+  /** NOOP-425 AC7: `GET /api/agent`'s `writeIsolation`. Omitted (not just `{active:true}`) by every caller that predates this ticket and every existing test fixture; treated the same as "active" — no warning drawn — so none of them needed updating. */
+  writeIsolation?: WriteIsolationView;
 }
 
 type OpenMenu = "agent" | "model" | null;
@@ -83,6 +85,7 @@ export function AgentPicker({
   onSelectModel,
   onLoadModels,
   defaultOpen = null,
+  writeIsolation,
 }: AgentPickerProps) {
   const [open, setOpen] = useState<OpenMenu>(defaultOpen);
   const agentRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +109,11 @@ export function AgentPicker({
   return (
     <div className="chat-status">
       {actionError && <p className="chat-status-error">{actionError}</p>}
+      {writeIsolation && !writeIsolation.active && (
+        <p className="chat-status-write-isolation" data-testid="write-isolation-warning">
+          {writeIsolation.reason}
+        </p>
+      )}
       <div className="chat-chips">
         <div className="chat-chip-wrap" ref={agentRef}>
           <button

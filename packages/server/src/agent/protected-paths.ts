@@ -15,8 +15,8 @@ import { homedir } from "node:os";
  *
  *   - `<SLIDRA_HOME>` — the live work directories of every presentation,
  *     the undo history, `projects.json`, the save-state bookkeeping —
- *     *except* `<SLIDRA_HOME>/agent`, which is the agent's own working
- *     directory and has to stay usable; or
+ *     *except* `<sandboxRoot>/<presentationId>`, which is the agent's own
+ *     working directory and has to stay usable; or
  *   - a `.slidra` container file anywhere on disk.
  *
  * **What this is not.** It does not model the shell (see
@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 export interface ProtectedPaths {
   /** `<SLIDRA_HOME>` — everything under it is CLI-only, except `agentWorkdir`. */
   slidraHome: string;
-  /** `<SLIDRA_HOME>/agent/<id>`: the agent's own cwd, deliberately left open. */
+  /** `<sandboxRoot>/<id>`: the agent's own cwd, deliberately left open. */
   agentWorkdir: string;
   /** The open presentation's `.slidra` file, when the registry knows one. */
   sourcePath?: string;

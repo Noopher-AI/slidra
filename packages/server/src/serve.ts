@@ -12,6 +12,11 @@ import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
+import { createSandboxRoot } from "./sandbox/sandbox-root.js";
+import { createSandboxLauncher, setActiveLauncher } from "./sandbox/launcher.js";
+import { deployShimWrapper } from "./sandbox/shim-wrapper.js";
+import { createShimToken, setShimConfig } from "./sandbox/shim-config.js";
+import { handleShimExec } from "./sandbox/shim-endpoint.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
 import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
@@ -133,6 +138,8 @@ export interface ServeOptions {
 export interface RunningServer {
   port: number;
   url: string;
+  /** This server's own sandbox root (NOOP-425 D4) — where the agent's deployed work directory (and, once write isolation is active, the shim wrapper) lives. Never under `SLIDRA_HOME` any more. */
+  agentSandboxRoot: string;
   close: () => Promise<void>;
 }
 
@@ -156,16 +163,44 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // pre-NOOP-433 startup sequence, just wrapped in "only when given".
   let initialDeck: DeckIdentity | null = null;
   let initialWorkdir: string | null = null;
-  if (options.presentationId !== undefined) {
-    initialDeck = await resolveDeckIdentity(options.presentationId);
-    initialWorkdir = await deployAgentWorkdir(options.presentationId);
-  }
 
   const staticDir = options.staticDir ?? resolveWebDist();
 
   // Resources started alongside the HTTP server. close() tears them down in
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
+
+  // NOOP-425 D4: this serve process's own scratch tree for the agent's
+  // deployed work directory — created unconditionally (even with no deck
+  // bound yet) since a later deck switch's `bind` needs it too. Disposed
+  // wholesale on shutdown, and one presentation at a time on `unbind`
+  // below (AC9).
+  const sandboxRoot = await createSandboxRoot();
+  disposers.push(() => sandboxRoot.disposeAll());
+
+  // NOOP-425 D5: the CLI-sandbox shim wrapper every spawned agent's PATH is
+  // pointed at (`agent/manager.ts`'s `buildSession()`) — deployed once per
+  // sandbox root, alongside it, since every presentation shares this one
+  // `bin/` directory.
+  await deployShimWrapper(sandboxRoot.path);
+  const shimToken = createShimToken();
+
+  // NOOP-425: this process's one active write-isolation launcher
+  // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
+  // `agent/manager.ts`'s `writeIsolation` status) — never fails startup
+  // itself (D8): platform/dependency/self-check failures all come back as
+  // an inert, `active: false` launcher instead of throwing.
+  const sandboxLauncher = await createSandboxLauncher();
+  setActiveLauncher(sandboxLauncher);
+  disposers.push(async () => {
+    setActiveLauncher(undefined);
+    await sandboxLauncher.dispose();
+  });
+
+  if (options.presentationId !== undefined) {
+    initialDeck = await resolveDeckIdentity(options.presentationId);
+    initialWorkdir = await deployAgentWorkdir(sandboxRoot.path, options.presentationId);
+  }
 
   // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
   // lifecycle (AgentManager -> AgentChatSession) and the human editing
@@ -199,6 +234,70 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       process.stderr.write(`Writing unsaved changes to ${before.fileName}…\n`);
     }
     await saveController.dispose();
+  });
+
+  // NOOP-93 §4.4: one export job at a time, for this server's whole
+  // lifetime — a fresh manager per `startServe` call, never persisted.
+  // `serverAddress` starts with a placeholder port because the real one
+  // (`actualPort`, below) is not known until `listen()` resolves, but the
+  // object identity is fixed now so the request handler closure below can
+  // read whatever it holds *at request time* — by then `listen()` has long
+  // since resolved and the real value has been written into it.
+  const exportJobManager = new ExportJobManager();
+  const serverAddress = { host, port: 0 };
+
+  // [E6.T2]: built once per server, injected into every deck lifecycle
+  // route in `open-endpoint.ts` — no route constructs its own.
+  // `getCurrentDeckId` closes over `deckSession` (declared below) so
+  // rename/delete refuse the deck this server currently has bound — safe
+  // for the same reason the request handler closure below is: neither runs
+  // before `deckSession` actually exists.
+  const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
+
+  // The HTTP server is created and `listen()`ed *before* `AgentManager`
+  // below, and the closure here references `manager`/`chatStreams`/
+  // `deckSession`/`computeSlashCommands` before any of them are
+  // constructed — safe, because none of it runs until an actual request
+  // arrives, which cannot happen before `startServe()` itself returns.
+  // NOOP-425 D5/D6: this ordering is deliberate, not incidental —
+  // `setShimConfig()` right after `listen()` needs the real port, and it
+  // must be in place *before* `AgentManager`'s constructor builds its
+  // first session (including a pre-selected `initialAgent`, the common
+  // case on every normal startup) — otherwise that first session's spawn
+  // env would permanently miss the shim token, silently disabling the CLI
+  // sandbox for as long as that session lives (reproduced while writing
+  // this: it manifested as every agent-issued `slidra` command hanging,
+  // resolved to a shim with no server to answer it — see
+  // packages/server/test/agent/fixtures/multi-command-fake-acp-agent.mjs's
+  // real `slidra` invocations, which is what caught it).
+  const server = http.createServer((req, res) => {
+    void handleRequest(
+      deckSession,
+      deckStore,
+      staticDir,
+      manager,
+      chatStreams,
+      changeBroadcaster,
+      editingLock,
+      saveController,
+      exportJobManager,
+      serverAddress,
+      computeSlashCommands,
+      sandboxRoot.path,
+      shimToken,
+      req,
+      res,
+    );
+  });
+
+  await listen(server, port, host);
+  const actualPort = (server.address() as AddressInfo).port;
+  serverAddress.port = actualPort;
+
+  setShimConfig({ token: shimToken, baseUrl: `http://${host}:${actualPort}` });
+  disposers.push(() => {
+    setShimConfig(undefined);
+    return Promise.resolve();
   });
 
   // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
@@ -295,16 +394,6 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     detachCommands();
   });
 
-  // NOOP-93 §4.4: one export job at a time, for this server's whole
-  // lifetime — a fresh manager per `startServe` call, never persisted.
-  // `serverAddress` starts with a placeholder port because the real one
-  // (`actualPort`, below) is not known until `listen()` resolves, but the
-  // object identity is fixed now so the request handler closure below can
-  // read whatever it holds *at request time* — by then `listen()` has long
-  // since resolved and the real value has been written into it.
-  const exportJobManager = new ExportJobManager();
-  const serverAddress = { host, port: 0 };
-
   // NOOP-433: owns the currently-bound deck's identity and the switch
   // sequence (`deck-switch.ts`'s own docstring has the fixed order). `bind`/
   // `unbind` are exactly `startServe`'s own startup wiring above, replayed
@@ -323,12 +412,15 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       }
       return null;
     },
-    unbind: async (_outgoing) => {
+    unbind: async (outgoing) => {
       await changeBroadcaster.retarget(null);
       await manager.retarget(null);
+      // AC9, "switching decks": the outgoing deck's agent working files
+      // never persist inside the sandbox past the switch.
+      await sandboxRoot.disposePresentation(outgoing.id);
     },
     bind: async (incoming) => {
-      const workdir = await deployAgentWorkdir(incoming.id);
+      const workdir = await deployAgentWorkdir(sandboxRoot.path, incoming.id);
       await manager.retarget({ id: incoming.id, workdir });
       await changeBroadcaster.retarget(incoming.id);
       // Flushes whatever is still pending on the OUTGOING deck (this
@@ -339,37 +431,10 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     },
   });
 
-  // [E6.T2]: built once per server, injected into every deck lifecycle
-  // route in `open-endpoint.ts` — no route constructs its own.
-  // `getCurrentDeckId` closes over `deckSession` (declared above) so
-  // rename/delete refuse the deck this server currently has bound.
-  const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
-
-  const server = http.createServer((req, res) => {
-    void handleRequest(
-      deckSession,
-      deckStore,
-      staticDir,
-      manager,
-      chatStreams,
-      changeBroadcaster,
-      editingLock,
-      saveController,
-      exportJobManager,
-      serverAddress,
-      computeSlashCommands,
-      req,
-      res,
-    );
-  });
-
-  await listen(server, port, host);
-  const actualPort = (server.address() as AddressInfo).port;
-  serverAddress.port = actualPort;
-
   return {
     port: actualPort,
     url: `http://${host}:${actualPort}`,
+    agentSandboxRoot: sandboxRoot.path,
     close: async () => {
       for (const dispose of disposers) {
         await dispose();
@@ -448,6 +513,8 @@ async function handleRequest(
   exportJobManager: ExportJobManager,
   serverAddress: { host: string; port: number },
   computeSlashCommands: () => Promise<SlashCommand[]>,
+  sandboxRootPath: string,
+  shimToken: string,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -568,6 +635,19 @@ async function handleRequest(
       }
       if (url.pathname === "/api/deck/delete") {
         await handleDeletePost(deckStore, req, res);
+        return;
+      }
+      if (url.pathname === "/api/agent/exec") {
+        // NOOP-425 D5/D6: the CLI sandbox's own entry point — only
+        // `<sandboxRoot>/bin/slidra` (the shim wrapper) ever calls this,
+        // authenticated by a per-serve token rather than by origin (a
+        // subprocess has no Origin header at all). See `shim-endpoint.ts`'s
+        // own docstring for the byte-framed streaming protocol.
+        handleShimExec(req, res, {
+          sandboxRoot: sandboxRootPath,
+          token: shimToken,
+          currentDeckId: () => deckSession.currentId(),
+        });
         return;
       }
       if (url.pathname === "/api/command") {

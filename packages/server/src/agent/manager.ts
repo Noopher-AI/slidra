@@ -9,6 +9,16 @@ import { ChatLog } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
 import { writeAgentModel, writeAgentSelection } from "./settings.js";
+import { getActiveLauncher } from "../sandbox/launcher.js";
+import { getShimConfig } from "../sandbox/shim-config.js";
+import path from "node:path";
+
+/** `AgentStatus.writeIsolation` (AC7): whether this server's write sandbox is actually enforcing, and why not when it isn't. */
+export interface WriteIsolationStatus {
+  active: boolean;
+  /** Non-null exactly when `active` is false — mirrors `SandboxLauncher.degradedReason`'s own invariant. */
+  reason: string | null;
+}
 
 /** Where the currently-selected agent kind came from (NOOP-230 §4.3). */
 export type AgentSource = "cli" | "settings" | "none";
@@ -49,6 +59,8 @@ export interface AgentStatus {
   modelId: string | null;
   /** Every model the current session can switch to (`POST /api/agent/model`); `[]` with no session or an adapter that reports none. */
   models: readonly AgentModelChoice[];
+  /** AC7: whether the write sandbox is actually enforcing right now, and why not when it isn't (forced off, Windows, or a dependency/init failure). */
+  writeIsolation: WriteIsolationStatus;
 }
 
 /** Thrown by `select()` while the agent holds the editing floor (T5) — reuses that conflict's own wording. */
@@ -178,7 +190,28 @@ export class AgentManager {
 
   private buildSession(presentationId: string, workdir: string, kind: AgentKind): AgentChatSession {
     const config = this.resolveAdapter(kind);
-    return new AgentChatSession(config, presentationId, this.editingLock, workdir, this.preferredModels[kind] ?? null);
+    // NOOP-425 D5/D6: every spawned agent reaches `slidra` through the CLI
+    // sandbox's shim, never a real binary on the ambient PATH — prepending
+    // `<sandboxRoot>/bin` (workdir's own parent; `agent/workdir.ts`'s
+    // `agentWorkdirTarget` always deploys to `<sandboxRoot>/<presentationId>`)
+    // is what makes the agent's shell resolve `slidra` to the wrapper there.
+    // Built here rather than in `agent/session.ts` (which may only be
+    // touched at its two plan-authorized call sites) since this is the one
+    // place that already has `workdir` in hand before the session exists.
+    const shimConfig = getShimConfig();
+    const shimBinDir = path.join(path.dirname(workdir), "bin");
+    const env: Record<string, string> = {
+      ...config.env,
+      PATH: `${shimBinDir}${path.delimiter}${config.env?.PATH ?? process.env.PATH ?? ""}`,
+      ...(shimConfig ? { SLIDRA_SHIM_TOKEN: shimConfig.token, SLIDRA_SHIM_BASE_URL: shimConfig.baseUrl } : {}),
+    };
+    return new AgentChatSession(
+      { ...config, env },
+      presentationId,
+      this.editingLock,
+      workdir,
+      this.preferredModels[kind] ?? null,
+    );
   }
 
   /** Forwards one session's events to every currently attached `/api/chat/stream` listener. */
@@ -282,6 +315,10 @@ export class AgentManager {
       model: this.session?.getModel() ?? null,
       modelId: this.session?.getModelId() ?? null,
       models: this.session?.getModelChoices() ?? [],
+      writeIsolation: {
+        active: getActiveLauncher()?.active ?? false,
+        reason: getActiveLauncher()?.degradedReason ?? "write isolation has not been initialized for this server",
+      },
       agents: ADAPTER_SPECS.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {

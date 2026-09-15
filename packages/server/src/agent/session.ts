@@ -17,6 +17,9 @@ import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js"
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
 import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
+import path from "node:path";
+import { getActiveLauncher } from "../sandbox/launcher.js";
+import { buildAgentSandboxPolicy } from "../sandbox/policy.js";
 
 /**
  * `fs/write_text_file` is always refused (ADR-0004, first layer). The
@@ -891,9 +894,27 @@ export class AgentChatSession extends EventEmitter {
     // files, and the container is only reachable through a path the agent
     // was never told.
     this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
-    const child = spawn(this.config.command, this.config.args ?? [], {
+    // NOOP-425: wrapped through the active sandbox launcher, when one is
+    // running (`serve.ts` is the only writer of `getActiveLauncher()`) —
+    // every other caller in this codebase talks to `SandboxLauncher`, never
+    // to a spawn call directly. `path.dirname(this.workdirReal)` is this
+    // process's sandbox root: `workdirReal` is always
+    // `<sandboxRoot>/<presentationId>` (`agent/workdir.ts`'s
+    // `agentWorkdirTarget`), so the allow-list covers the whole root (the
+    // shim wrapper lives at `<sandboxRoot>/bin`, a sibling of every
+    // presentation's own subdirectory), not just this one presentation.
+    const rawEnv = this.config.env ? { ...process.env, ...this.config.env } : process.env;
+    const launcher = getActiveLauncher();
+    const wrapped = launcher
+      ? await launcher.wrap(
+          { command: this.config.command, args: this.config.args ?? [], env: rawEnv, cwd: this.workdirReal },
+          await buildAgentSandboxPolicy({ sandboxRoot: path.dirname(this.workdirReal) }),
+        )
+      : { command: this.config.command, args: this.config.args ?? [], env: rawEnv, shell: false };
+    const child = spawn(wrapped.command, wrapped.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: this.config.env ? { ...process.env, ...this.config.env } : process.env,
+      env: wrapped.env,
+      shell: wrapped.shell,
     });
     this.child = child;
     // The adapter's own diagnostics used to go to `"ignore"`, which is why
