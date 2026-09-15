@@ -187,7 +187,11 @@ describe.skipIf(!isLinux)("outside the sandbox, reads and network stay open (AC3
 describe.skipIf(!isLinux)("existing credentials and CLI logins keep working with no extra configuration (AC4)", () => {
   it("HOME inside the sandbox is unchanged, and writing into an existing ~/.claude keeps working", async () => {
     const sandboxRoot = await tempDir("slidra-os-enforce-root-");
-    const fakeHome = await tempDir("slidra-os-enforce-home-");
+    // Deliberately *not* under `tmpdir()`: the allow-list grants the whole
+    // of `tmpdir()` (see `outsideTheSandboxDir`), so a fake home in there
+    // would make the write probe below pass even with every credential
+    // entry stripped out of `buildAgentSandboxPolicy` — proving nothing.
+    const fakeHome = await outsideTheSandboxDir("slidra-os-enforce-home-");
     await mkdir(path.join(fakeHome, ".claude"), { recursive: true });
     const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: fakeHome });
     launcher = await createLandlockLauncher();
@@ -208,5 +212,45 @@ describe.skipIf(!isLinux)("existing credentials and CLI logins keep working with
     const writeResult = spawnSync(writeCheck.command, writeCheck.args, { env: writeCheck.env, encoding: "utf8" });
     expect(writeResult.status).toBe(0);
     expect(await readFile(probePath, "utf8")).toBe("ok");
+  });
+
+  // NOOP-425 §7's open assumption (2), carried into this round as review
+  // feedback: does a real CLI's credential refresh survive this allow-list?
+  // `claude` updates `~/.claude.json` (token refresh, but also every plain
+  // startup's `numStartups`) through an atomic write: stage a sibling
+  // `~/.claude.json.tmp.<pid>.<hex>`, then rename it over the target.
+  // `$HOME` itself is not on the allow-list, so that staging write is
+  // refused — and the allow-list is *meant* to refuse it, since granting
+  // `$HOME` would gut `denyRead`. What makes AC4 hold anyway is the
+  // fallback the same writer takes when staging fails with EACCES and the
+  // target already exists (the logged-in case AC4 is about): it reopens
+  // the target itself with O_WRONLY|O_CREAT|O_TRUNC and writes in place.
+  // Both halves are asserted here: the refusal is the allow-list's
+  // boundary (AC8), the in-place write is AC4 itself. Landlock has to
+  // grant TRUNCATE for the second half, which is not implied by the first.
+  it("refuses a staged sibling in $HOME but still allows the in-place ~/.claude.json update a credential refresh falls back to", async () => {
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const fakeHome = await outsideTheSandboxDir("slidra-os-enforce-home-");
+    const configPath = path.join(fakeHome, ".claude.json");
+    await writeFile(configPath, '{"numStartups":1}');
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: fakeHome });
+    launcher = await createLandlockLauncher();
+
+    const stagedPath = `${configPath}.tmp.4242.abcdef012345`;
+    const staged = await launcher.wrap(
+      { command: "sh", args: ["-c", `printf '{}' > "${stagedPath}"`], env: process.env },
+      policy,
+    );
+    const stagedResult = spawnSync(staged.command, staged.args, { env: staged.env, encoding: "utf8" });
+    expect(stagedResult.status).not.toBe(0);
+    expect(stagedResult.stderr).toContain("Permission denied");
+
+    const inPlace = await launcher.wrap(
+      { command: "sh", args: ["-c", `printf '{"numStartups":2}' > "${configPath}"`], env: process.env },
+      policy,
+    );
+    const inPlaceResult = spawnSync(inPlace.command, inPlace.args, { env: inPlace.env, encoding: "utf8" });
+    expect(inPlaceResult.status).toBe(0);
+    expect(await readFile(configPath, "utf8")).toBe('{"numStartups":2}');
   });
 });
