@@ -19,6 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLandlockLauncher } from "../../src/sandbox/landlock-launcher.js";
+import { createSandboxLauncher } from "../../src/sandbox/launcher.js";
 import { buildAgentSandboxPolicy } from "../../src/sandbox/policy.js";
 import { touchesProtectedPath, type ProtectedPaths } from "../../src/agent/protected-paths.js";
 import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
@@ -333,5 +334,48 @@ describe.skipIf(!isDarwin)("Seatbelt write enforcement on macOS (AC1/AC2/AC3, sr
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+/**
+ * The launcher contract every caller depends on but no `allowWrite` test
+ * touches: `wrap()` must hand back the env the CALLER asked for, not the
+ * parent process's. `agent/manager.ts` rewrites `PATH` so the agent resolves
+ * `slidra` to `<sandboxRoot>/bin` (the CLI-sandbox shim) rather than to any
+ * ambient binary — and `srt-launcher.ts` used to spread `srt`'s own env
+ * (which is `process.env` verbatim) *after* the caller's, silently undoing
+ * exactly that rewrite. The whole CLI sandbox then went unused on macOS:
+ * the agent ran the real `slidra` binary inside the agent sandbox, where
+ * `denyRead` covers the deck, so every scripted command failed
+ * (freeze.test.ts, first caught by the required-macos job).
+ *
+ * Runs against `createSandboxLauncher()` — whichever real launcher this
+ * platform dispatches to — so neither platform can regress alone.
+ */
+describe.skipIf(process.platform === "win32")("SandboxLauncher.wrap() preserves the caller's own env (every platform)", () => {
+  it("a PATH the caller overrode is what the wrapped command resolves against, not the parent's", async () => {
+    const sandboxRoot = await tempDir("slidra-os-enforce-root-");
+    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home: await tempDir("slidra-os-enforce-home-") });
+    launcher = await createSandboxLauncher();
+    expect(launcher.active).toBe(true);
+
+    // A stand-in for the shim wrapper, under the same name the agent's
+    // shell would resolve, in a directory that is on no ambient PATH.
+    const binDir = path.join(sandboxRoot, "bin");
+    await mkdir(binDir, { recursive: true });
+    await writeFile(path.join(binDir, "slidra"), "#!/bin/sh\necho shim-was-used\n", { mode: 0o755 });
+
+    const wrapped = await launcher.wrap(
+      {
+        command: "sh",
+        args: ["-c", "slidra"],
+        env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+      },
+      policy,
+    );
+    const result = spawnSync(wrapped.command, wrapped.args, { env: wrapped.env, encoding: "utf8" });
+
+    expect(result.stdout.trim()).toBe("shim-was-used");
+    expect(result.status).toBe(0);
   });
 });
