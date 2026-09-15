@@ -185,6 +185,7 @@
   --rail-w: 212px;
   --panel-w: 340px;
   --notes-h: 112px;
+  --deck-card-w: 220px;
   /* control.h's 30–34px range is genuinely two real values in the
      prototype: 30px for the titlebar's own buttons (Open/Save/
      Export…), 34px for certain dialog inputs. The doc only names a

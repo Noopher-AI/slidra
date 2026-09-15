@@ -93,6 +93,7 @@ The design language inherits from Holspire (warm-white shell, brand red, Plus Ja
 | `notes.h` | 112 px |
 | `control.h` | 30–34 px (button/input); 28 px compact variant |
 | `hit.min` | 28 px |
+| `deck.card.w` | 220 px (Deck Space grid card minimum width) |
 
 ## Radius
 | Token | Value | Use |

@@ -1,0 +1,249 @@
+/* ═══════════════════════════════════════════════════════════════
+   Deck Space ([E6.T4]/#342) — the deck-selection screen. Full-screen
+   either as the app's own root (no deck open) or as an overlay above the
+   editor (`Workspace.tsx`'s own `key={deck.id}`-remounted `<App>` sits
+   underneath). Same token vocabulary as shell.css — see that file's own
+   header for why the legacy `--u`/`--s-well`/... names are not used here.
+   ═══════════════════════════════════════════════════════════════ */
+
+.deck-space {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-1);
+  font-family: var(--font-ui);
+  color: var(--ink-900);
+}
+
+.deck-space-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--titlebar-h);
+  padding-inline: var(--space-8);
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--surface-2);
+}
+.deck-space-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.deck-space-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.deck-space-close {
+  display: grid;
+  place-items: center;
+  width: var(--control-h-compact);
+  height: var(--control-h-compact);
+  border-radius: var(--radius-xs);
+  color: var(--ink-700);
+}
+.deck-space-close:hover {
+  background: var(--surface-2);
+}
+
+.deck-space-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-8);
+}
+.deck-space-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-white);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink-700);
+  white-space: nowrap;
+}
+.deck-space-action:not(:disabled):hover {
+  border-color: var(--ink-300);
+  background: var(--surface-0);
+}
+.deck-space-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.deck-space-error-banner {
+  flex: none;
+  margin-inline: var(--space-8);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-sm);
+  background: var(--brand-red-tint);
+  color: var(--brand-red-hover);
+  font-size: var(--text-sm);
+}
+
+.deck-space-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-8) var(--space-8);
+}
+.deck-space-body[data-drop-active="true"] {
+  outline: calc(var(--space-1) / 2) dashed var(--brand-red);
+  outline-offset: -8px;
+  background: var(--brand-red-tint);
+}
+
+.deck-space-loading {
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+
+.deck-space-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  color: var(--ink-500);
+  font-size: var(--text-sm);
+}
+
+.deck-space-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--deck-card-w), 1fr));
+  gap: var(--space-5);
+}
+
+.deck-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface-white);
+  overflow: hidden;
+  cursor: pointer;
+}
+.deck-card:hover {
+  border-color: var(--ink-300);
+}
+.deck-card:focus-visible {
+  outline: calc(var(--space-1) / 2) solid var(--brand-red-ring);
+  outline-offset: 1px;
+}
+.deck-card[data-current="true"] {
+  border-color: var(--brand-red);
+}
+
+.deck-card-thumb-wrap {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--well-bg);
+}
+.deck-card-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--surface-white);
+}
+.deck-card-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+}
+.deck-card-current-badge {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--brand-red);
+  color: var(--surface-white);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+.deck-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+}
+.deck-card-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-card-modified {
+  font-size: var(--text-xs-hint);
+  color: var(--ink-500);
+}
+.deck-card-error {
+  font-size: var(--text-xs-hint);
+  color: var(--brand-red);
+}
+.deck-card-rename-input {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-2);
+  border: 1px solid var(--brand-red);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.deck-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+}
+.deck-card-icon-button {
+  display: grid;
+  place-items: center;
+  width: var(--control-h-compact);
+  height: var(--control-h-compact);
+  border-radius: var(--radius-xs);
+  color: var(--ink-700);
+}
+.deck-card-icon-button:not(:disabled):hover {
+  background: var(--surface-2);
+}
+.deck-card-text-button {
+  height: var(--control-h-compact);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface-white);
+  font-size: var(--text-xs-hint);
+  font-weight: 600;
+  color: var(--ink-700);
+}
+.deck-card-text-button:not(:disabled):hover {
+  border-color: var(--ink-300);
+}
+
+/* [E6.T9]'s own mount point — this ticket only reserves the slot. */
+.deck-space-user-slot {
+  flex: none;
+  position: fixed;
+  left: var(--space-8);
+  bottom: var(--space-8);
+}
