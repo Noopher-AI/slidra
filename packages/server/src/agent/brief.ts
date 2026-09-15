@@ -41,6 +41,9 @@ Every \`slidra\` command's first argument must be filled in with this ID, to say
 [How to read and how to edit]
 The full command list (every command's name, parameters, and purpose) is in your work directory's \`reference/commands.md\` — read that document with your native file-reading ability; don't guess other commands' syntax from just the two examples below. This presentation's own content is also a set of virtual paths you can read directly (e.g. \`slides/001.svg\`) — your work directory's \`AGENTS.md\` explains this more fully.
 
+[Prior conversation]
+This deck may already carry conversation from before you joined it — a previous agent, or an earlier session with you. You were not present for any of it and have no memory of it; if you need to know what was discussed or done earlier, read it back with \`slidra chat-history ${presentationId} --query <text>\` (a keyword search) or \`slidra chat-history ${presentationId} --limit <n>\` (the most recent entries). Treat it as background only: \`plan/outline.md\` and \`plan/design-spec.md\`, when present, are this presentation's actual source of truth, and the chat history is subordinate to them, never the other way around.
+
 [Rules]
 - This presentation's content can only be read or written through \`slidra\` commands. Using shell file tools (\`sed\`, \`cp\`, \`rm\`, etc.) directly against the presentation's physical files will be blocked — without asking the author, blocked outright — and you never get those real paths in the first place anyway.
 - Every other shell command is unrestricted: anything unrelated to the presentation's files (looking things up, handling temp files, running other tools) — just do it the way you normally would.

@@ -9,8 +9,11 @@ import {
   appendNoticeMessage,
   appendSystemMessage,
   markUnfinishedCommandsInterrupted,
+  restoreChatMessages,
+  TRUNCATED_HISTORY_NOTICE,
   updateCommandMessage,
   type ChatMessage,
+  type PersistedChatEntry,
 } from "../src/chat-messages.js";
 
 describe("chat-messages: identity, not position", () => {
@@ -106,19 +109,16 @@ describe("chat-messages: a command is its own kind of message", () => {
 });
 
 describe("chat-messages: a stream interruption is its own fact", () => {
-  it("marks a command still running as interrupted without touching its ACP status", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "in_progress", true);
+  it.each(["in_progress", "pending"] as const)(
+    "marks a command still %s as interrupted without touching its ACP status",
+    (status) => {
+      const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", status, true);
 
-    expect(markUnfinishedCommandsInterrupted(messages)).toEqual([
-      { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status: "in_progress", cli: true, interrupted: true },
-    ]);
-  });
-
-  it("marks a command still pending as interrupted too", () => {
-    const messages = appendCommandMessage([], 0, "call-1", "slidra ls p1", "pending", true);
-
-    expect(markUnfinishedCommandsInterrupted(messages)[0]).toMatchObject({ status: "pending", interrupted: true });
-  });
+      expect(markUnfinishedCommandsInterrupted(messages)).toEqual([
+        { id: 0, role: "command", toolCallId: "call-1", command: "slidra ls p1", status, cli: true, interrupted: true },
+      ]);
+    },
+  );
 
   it("leaves commands that already reached an outcome alone", () => {
     const completed = appendCommandMessage([], 0, "call-1", "slidra ls p1", "completed", true);
@@ -155,5 +155,68 @@ describe("chat-messages: a system message is neither speech nor a lost-turn noti
       { id: 0, role: "author", text: "change the title" },
       { id: 1, role: "system", text: "Switched to Codex. It will handle messages from here." },
     ]);
+  });
+});
+
+// [E6.T7]: `GET /api/chat/history`'s persisted shape restored into the same
+// `ChatMessage[]` the live SSE stream builds — a page reload/reopened deck
+// must render identically to what streamed live.
+describe("chat-messages: restoring a persisted thread (GET /api/chat/history)", () => {
+  it("restores all four kinds, assigns ids in order starting from startId, and reports the next free id", () => {
+    const entries: PersistedChatEntry[] = [
+      { entryId: "ce-1", seq: 1, kind: "author", at: "2026-01-01T00:00:00.000Z", text: "change the title to Q3" },
+      { entryId: "ce-2", seq: 2, kind: "agent", at: "2026-01-01T00:00:01.000Z", text: "On it." },
+      {
+        entryId: "cmd-call-1", seq: 3, kind: "command", at: "2026-01-01T00:00:02.000Z",
+        text: "slidra text set p1 slides/001.svg el-1 'Q3'", toolCallId: "call-1", status: "completed", cli: true,
+      },
+      { entryId: "ce-3", seq: 4, kind: "divider", at: "2026-01-01T00:00:03.000Z", text: "Switched to Codex. It will handle messages from here." },
+    ];
+
+    const restored = restoreChatMessages(entries, 5);
+
+    expect(restored).toEqual({
+      messages: [
+        { id: 5, role: "author", text: "change the title to Q3" },
+        { id: 6, role: "agent", text: "On it." },
+        { id: 7, role: "command", toolCallId: "call-1", command: "slidra text set p1 slides/001.svg el-1 'Q3'", status: "completed", cli: true },
+        { id: 8, role: "system", text: "Switched to Codex. It will handle messages from here." },
+      ],
+      nextId: 9,
+    });
+  });
+
+  it("carries a failed command's output/blocked/interrupted flags through, and falls back to entryId when toolCallId is absent", () => {
+    const entries: PersistedChatEntry[] = [
+      {
+        entryId: "cmd-call-2", seq: 1, kind: "command", at: "2026-01-01T00:00:00.000Z",
+        text: "rm -rf slides/001.svg", cli: false, status: "failed",
+        output: "blocked", blocked: true, interrupted: true,
+      },
+    ];
+
+    const { messages } = restoreChatMessages(entries, 0);
+
+    expect(messages).toEqual([
+      {
+        id: 0, role: "command", toolCallId: "cmd-call-2", command: "rm -rf slides/001.svg",
+        status: "failed", cli: false, output: "blocked", blocked: true, interrupted: true,
+      },
+    ]);
+  });
+
+  it("prepends a system notice ahead of every restored entry when the response says truncated, and defaults to omitting it", () => {
+    const entries: PersistedChatEntry[] = [
+      { entryId: "ce-1", seq: 1, kind: "author", at: "2026-01-01T00:00:00.000Z", text: "change the title to Q3" },
+    ];
+
+    const truncated = restoreChatMessages(entries, 0, true);
+    expect(truncated.messages[0]).toEqual({ id: 0, role: "system", text: TRUNCATED_HISTORY_NOTICE });
+    expect(truncated.messages[1]).toEqual({ id: 1, role: "author", text: "change the title to Q3" });
+    expect(truncated.nextId).toBe(2);
+
+    const notTruncated = restoreChatMessages(entries, 0);
+    expect(notTruncated.messages).toEqual([{ id: 0, role: "author", text: "change the title to Q3" }]);
+    expect(notTruncated.nextId).toBe(1);
   });
 });

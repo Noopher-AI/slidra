@@ -58,6 +58,7 @@ pub mod argv;
 pub mod asset_import;
 pub mod cat;
 pub mod chart;
+pub mod chat_history;
 pub mod comment;
 pub mod convert;
 pub mod deck;
@@ -175,6 +176,7 @@ pub const TAKEOVER_TABLE: &[&str] = &[
     "asset",
     "cat",
     "chart",
+    "chat-history",
     "convert",
     "effect add",
     "effect list",
@@ -298,6 +300,7 @@ pub const REGISTERED_COMMAND_NAMES: &[&str] = &[
     "table col width",
     "asset import",
     "font import",
+    "chat-history",
 ];
 
 #[cfg(test)]
@@ -386,6 +389,7 @@ mod tests {
                 "asset",
                 "cat",
                 "chart",
+                "chat-history",
                 "convert",
                 "effect add",
                 "effect list",
@@ -412,7 +416,7 @@ mod tests {
 
     #[test]
     fn registered_command_names_is_exactly_the_declared_set() {
-        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 60);
+        assert_eq!(REGISTERED_COMMAND_NAMES.len(), 61);
         assert_eq!(
             REGISTERED_COMMAND_NAMES,
             [
@@ -476,6 +480,7 @@ mod tests {
                 "table col width",
                 "asset import",
                 "font import",
+                "chat-history",
             ]
         );
     }

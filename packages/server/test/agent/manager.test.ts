@@ -290,7 +290,12 @@ describe("AgentManager", () => {
       // registration survives the retargets below (a session swap must
       // never require `/api/chat/stream` to reconnect).
       manager.attachStream(() => {});
-      expect(attachSpy).toHaveBeenCalledTimes(1); // constructor's own rewireSession
+      // [E6.T7] `rewireSession` now makes two independent `attachStream`
+      // subscriptions per session build — `forwardToExternal` (this test's
+      // own subject) and `recordToChatLog` (persists the conversation,
+      // unrelated to what this test is proving) — so every count below is
+      // doubled from its pre-[E6.T7] value.
+      expect(attachSpy).toHaveBeenCalledTimes(2); // constructor's own rewireSession
 
       // A session exists, bound to p1 (never warmed) — cancel() reaches it
       // and reports "no turn in flight", the distinct message from "no
@@ -300,7 +305,7 @@ describe("AgentManager", () => {
       await manager.retarget({ id: "p2", workdir: "/tmp/deck-switch-test-wd2" });
 
       expect(disposeSpy).toHaveBeenCalledTimes(1); // the p1 session was torn down
-      expect(attachSpy).toHaveBeenCalledTimes(2); // re-subscribed on the fresh (p2) session
+      expect(attachSpy).toHaveBeenCalledTimes(4); // re-subscribed (both listeners) on the fresh (p2) session
       expect(calls).toEqual(["claude", "claude"]); // rebuilt via resolveAdapter for the new deck
       // A fresh session exists, now bound to p2 — same "no turn in flight"
       // shape as before, proving retarget rebuilt a real session rather
@@ -310,7 +315,7 @@ describe("AgentManager", () => {
       await manager.retarget(null);
 
       expect(disposeSpy).toHaveBeenCalledTimes(2); // the p2 session was torn down too
-      expect(attachSpy).toHaveBeenCalledTimes(2); // no deck, no session to (re)build or attach
+      expect(attachSpy).toHaveBeenCalledTimes(4); // no deck, no session to (re)build or attach
       expect(calls).toEqual(["claude", "claude"]); // no rebuild attempt with no deck bound
       await expect(manager.cancel()).rejects.toThrow("No agent selected, there is no turn to stop");
     } finally {

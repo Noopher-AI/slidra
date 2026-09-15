@@ -16,6 +16,12 @@ The full rules for parameter syntax (quoting, comma-separated lists, etc.) are i
 **Usage** Read the full contents of a virtual path — an alternative to reading the file directly.
 **Example** `slidra cat <presentation-id> slides/001.svg`
 
+## chat-history
+
+**Parameters** `<presentation-id>` `--limit <n>` (optional, 1-1000, default 20) `--query <text>` (optional, must not be empty).
+**Usage** Read back this conversation's history, persisted in the presentation's own file — the most recent entries, or only those matching `--query` (case-insensitive substring). Use this to recall earlier turns you were not present for (e.g. right after taking over from another agent), or anything past what your own context window still holds.
+**Example** `slidra chat-history <presentation-id> --limit 50` or `slidra chat-history <presentation-id> --query "Q3 revenue"`
+
 ## chart axis set
 
 **Parameters** `<presentation-id>` `<slide-path>` `<element-id>` `single|dual`, `--right <series-name>` (repeatable; only applies when mode is `dual`, specifying which series plot on the right axis).

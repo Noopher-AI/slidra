@@ -3822,9 +3822,67 @@ At least one of `--name`/`--owner` must be given. Every other field already in `
 slidra deck meta set ~/Slidra/Q3.slidra --owner alice
 ```
 
+## `chat-history`
+
+**Syntax**
+
+```
+slidra chat-history <presentation-id> [--limit <n>] [--query <text>]
+slidra chat-history <presentation-id> --append -
+```
+
+**Parameters**
+
+- `presentation-id`: string, required.
+- `--limit <n>`: optional, an integer between 1 and 1000 inclusive. Defaults to 20. How many of the most recent (or most recent matching, with `--query`) entries to return.
+- `--query <text>`: optional, must not be empty when given. Restricts the result to entries whose `text` contains `text` as a case-insensitive substring (never a `LIKE` pattern — a literal `%`/`_` in `text` matches only itself).
+- `--append -`: write mode. Reads a JSON array of entries from stdin and appends them to this presentation's chat history in one transaction (the whole batch is rejected, and nothing is written, if any entry is malformed). Mutually exclusive with `--limit`/`--query`.
+
+**Success `data`** (read mode)
+
+```json
+{
+  "entries": [
+    { "entryId": "ce-1", "seq": 1, "kind": "author", "at": "2026-01-01T00:00:00.000Z", "text": "please update the title" },
+    {
+      "entryId": "ce-2", "seq": 2, "kind": "command", "at": "2026-01-01T00:00:01.000Z",
+      "text": "slidra text set pres-abc123 slides/001.svg el-1 'Q3 Report'",
+      "toolCallId": "tc-1", "status": "completed", "cli": true
+    }
+  ],
+  "total": 2,
+  "truncated": false
+}
+```
+
+Entries are always in chronological order (oldest first), regardless of `--query`. `kind` is one of `author`/`agent`/`command`/`divider`. A `command` entry's extra fields (`toolCallId`/`status`/`cli`/`output`/`blocked`) are present only on that kind, carried over verbatim from whatever was appended. `total` is the number of entries that matched (before `--limit` truncated the page); `truncated` is `total > limit`. A presentation with no chat history at all (nothing ever appended) returns `{ "entries": [], "total": 0, "truncated": false }`, never an error.
+
+**Success `data`** (write mode, `--append -`)
+
+```json
+{ "appended": 2 }
+```
+
+**Error cases**
+
+| Condition | `failureKind` |
+|---|---|
+| `presentation-id` does not exist | `not-found` |
+| `--limit` is not an integer between 1 and 1000 | `failed` |
+| `--query` is given as an empty string | `failed` |
+| `--append -` with no stdin, or stdin is not a JSON array of well-formed entries (each needs `entryId`/`kind`/`at`/`text`; `kind` must be one of `author`/`agent`/`command`/`divider`) | `failed` |
+
+**Example**
+
+```
+slidra chat-history pres-abc123 --limit 50
+slidra chat-history pres-abc123 --query "Q3 revenue"
+echo '[{"entryId":"ce-1","kind":"author","at":"2026-01-01T00:00:00.000Z","text":"hello"}]' | slidra chat-history pres-abc123 --append -
+```
+
 ## Internal commands
 
-Two more commands are dispatched by Rust (`commands::CORE_TAKEOVER`, alongside `undo`/`redo`) but are deliberately NOT among the command-entry-format commands above, and are NOT listed in `packages/server/agent-workdir/reference/commands.md`: they exist solely for `packages/server`'s own turn grouping (`agent/session.ts`) to call, never for an agent to invoke directly. Their headings below intentionally do not use the `` ## `name` `` form — that form is reserved for the spec-normative, agent-facing commands counted above, and using it here would make `scripts/check-reference-subset.mjs` and `crates/slidra/tests/cli_golden.rs`'s `cli_md_lists_exactly_the_89_rust_dispatched_commands` require them to also appear in `reference/commands.md`, defeating the point.
+Two more commands are dispatched by Rust (`commands::CORE_TAKEOVER`, alongside `undo`/`redo`) but are deliberately NOT among the command-entry-format commands above, and are NOT listed in `packages/server/agent-workdir/reference/commands.md`: they exist solely for `packages/server`'s own turn grouping (`agent/session.ts`) to call, never for an agent to invoke directly. Their headings below intentionally do not use the `` ## `name` `` form — that form is reserved for the spec-normative, agent-facing commands counted above, and using it here would make `scripts/check-reference-subset.mjs` and `crates/slidra/tests/cli_golden.rs`'s `cli_md_lists_exactly_the_92_rust_dispatched_commands` require them to also appear in `reference/commands.md`, defeating the point.
 
 ### `history begin-group`
 

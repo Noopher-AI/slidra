@@ -238,6 +238,19 @@ describe("startChatStream", () => {
     expect(notices(started.messages)).toEqual([]);
   });
 
+  it("renders a chat-divider event as a system line, using the server's text verbatim", () => {
+    started = start();
+    started.fake.emit("chat-chunk", { text: "before the switch" });
+    started.fake.emit("chat-done");
+
+    started.fake.emit("chat-divider", { text: "Switched to Codex. It will handle messages from here. Above is the conversation before it joined." });
+
+    expect(started.messages).toEqual([
+      { id: 0, role: "agent", text: "before the switch" },
+      { id: 1, role: "system", text: "Switched to Codex. It will handle messages from here. Above is the conversation before it joined." },
+    ]);
+  });
+
   it("stop() closes the underlying EventSource", () => {
     started = start();
     started.stream.stop();

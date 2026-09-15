@@ -4,8 +4,8 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { fromAgentResponse, modelOptionsFrom, type AgentConnection, type AgentModelOption, type AgentUiStatus, turnRunningFrom } from "./agent-status.js";
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
-import { appendMessage, appendSystemMessage, type ChatMessage, appendErrorMessage } from "./chat-messages.js";
-import { startChatStream } from "./chat-stream.js";
+import { appendMessage, restoreChatMessages, type ChatMessage, type PersistedChatEntry, appendErrorMessage } from "./chat-messages.js";
+import { startChatStream, type ChatStream } from "./chat-stream.js";
 import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent, type SaveState } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
@@ -474,7 +474,13 @@ export function App() {
       // that tab hears about its own change too, same as every other
       // no-replay event on this stream.
       onAgentChanged: (event) => {
-        setMessages((prev) => appendSystemMessage(prev, nextMessageIdRef.current++, `Switched to ${event.label}. It will handle messages from here.`));
+        // [E6.T7] §7 decision 5: the divider itself no longer built here —
+        // the server composes it once (`AgentManager.buildDividerText`) and
+        // delivers it over `/api/chat/stream`'s own `chat-divider` event
+        // (handled in chat-stream.ts), the same channel this tab's message
+        // list already listens to. This event still exists purely to
+        // refresh the agent-status pill.
+        void event;
         void refreshAgentStatus();
       },
       // Switching models doesn't warrant a system message: the pill itself
@@ -1332,16 +1338,49 @@ export function App() {
   const nextMessageIdRef = useRef(0);
 
   useEffect(() => {
-    // All of the turn bookkeeping — including what happens to a turn whose
-    // ending is lost to a dropped connection — lives in chat-stream.ts so
-    // it can be tested without rendering React (ticket #19).
-    const stream = startChatStream({
-      updateMessages: setMessages,
-      setWorking,
-      setStreamReady,
-      nextMessageId: () => nextMessageIdRef.current++,
-    });
-    return () => stream.stop();
+    // [E6.T7] AC1/AC2: restores the thread persisted in the deck's own
+    // file before ever connecting the live stream — `/api/chat/stream`
+    // carries no replay (same reasoning as every other SSE channel in this
+    // app), so a page reload or a freshly reopened deck would otherwise
+    // show an empty conversation until the next message happened to
+    // arrive. A failed/absent history (no deck open yet, a fresh
+    // presentation with no history) is not an error to surface — same
+    // "GET seeds the initial value, no fallback on failure" shape every
+    // other mount-time GET in this component already follows.
+    let cancelled = false;
+    let stream: ChatStream | undefined;
+
+    async function bootstrapThenConnect(): Promise<void> {
+      try {
+        const response = await fetch("/api/chat/history?limit=1000");
+        if (response.ok && !cancelled) {
+          const data = (await response.json()) as { entries: PersistedChatEntry[]; truncated: boolean };
+          const restored = restoreChatMessages(data.entries, nextMessageIdRef.current, data.truncated);
+          nextMessageIdRef.current = restored.nextId;
+          setMessages(restored.messages);
+        }
+      } catch {
+        // Connection lost before the very first render settled — nothing
+        // to restore; the live stream below still connects normally.
+      }
+      if (cancelled) return;
+      // All of the turn bookkeeping — including what happens to a turn
+      // whose ending is lost to a dropped connection — lives in
+      // chat-stream.ts so it can be tested without rendering React
+      // (ticket #19).
+      stream = startChatStream({
+        updateMessages: setMessages,
+        setWorking,
+        setStreamReady,
+        nextMessageId: () => nextMessageIdRef.current++,
+      });
+    }
+
+    void bootstrapThenConnect();
+    return () => {
+      cancelled = true;
+      stream?.stop();
+    };
   }, []);
 
   // #51's connection indicator: three states derived purely from
@@ -1384,7 +1423,7 @@ export function App() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(displayText === undefined ? { text } : { text, displayText }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string; reason?: string };
@@ -1527,10 +1566,13 @@ export function App() {
   /**
    * The "New chat" button next to Send — `POST /api/chat/new`. The server
    * drops the current ACP session and opens a fresh one with the same
-   * agent; this also clears the message list here, since that conversation
-   * no longer exists on the agent's side — leaving it on screen would just
-   * make it look like the agent still remembers it. The presentation
-   * itself is entirely untouched.
+   * agent. [E6.T7] §7 decision 4: the message list is no longer cleared
+   * here — the conversation is now persisted in the deck's own file, so
+   * clearing the screen would just have it reappear on the next reload,
+   * screen and file disagreeing in the meantime. The server inserts a
+   * divider instead (delivered over `/api/chat/stream`'s `chat-divider`
+   * event, same as an agent switch) marking where the reset happened. The
+   * presentation itself is entirely untouched.
    */
   async function startNewChatSession(): Promise<void> {
     try {
@@ -1538,13 +1580,10 @@ export function App() {
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
         pushChatError(body.error ?? "Could not start a new conversation");
-        return;
       }
     } catch {
       pushChatError("Could not start a new conversation: connection lost");
-      return;
     }
-    setMessages([]);
   }
 
   /** slidePath = the current slide's virtual path. */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { SlidraError } from "./errors.js";
 
@@ -70,4 +70,39 @@ export async function runSlidra(args: string[]): Promise<SlidraProcessResult> {
     // somewhere that leaks host layout.
     throw new SlidraError("Failed to run slidra");
   }
+}
+
+/**
+ * Same contract as `runSlidra`, but for a command that reads its payload
+ * from stdin (`chat-history --append -`) — `execFile`'s promisified form
+ * has no way to write to the child's stdin before it resolves, so this
+ * goes through `spawn` directly instead, buffering stdout/stderr itself.
+ * Only a genuine failure to start the process throws; a non-zero exit still
+ * resolves with whatever stdout/stderr the process produced (same
+ * exit-code-blind contract `runSlidra`/`runJsonCommand` already use).
+ */
+export async function runSlidraWithStdin(args: string[], stdin: string): Promise<SlidraProcessResult> {
+  const bin = resolveSlidraBin();
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, args, { cwd: process.cwd(), env: process.env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once("error", () => {
+      // SLIDRA_BIN's value is never echoed here either — same ADR-0004
+      // reasoning as runSlidra's own catch block above.
+      reject(new SlidraError("Failed to run slidra"));
+    });
+    child.once("close", () => {
+      resolve({ stdout, stderr });
+    });
+    child.stdin.end(stdin);
+  });
 }

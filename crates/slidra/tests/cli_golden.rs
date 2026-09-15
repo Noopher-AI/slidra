@@ -2224,7 +2224,7 @@ fn dash_prefixed_presentation_id_works_for_every_argv_toolkit() {
 /// Reads `docs/spec/cli.md` directly rather than shelling out — this test
 /// IS the parser, not a caller of one.
 #[test]
-fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
+fn cli_md_lists_exactly_the_92_rust_dispatched_commands() {
     let spec_path = repo_root().join("docs/spec/cli.md");
     let spec_content = fs::read_to_string(&spec_path).expect("docs/spec/cli.md must be readable");
 
@@ -2266,8 +2266,8 @@ fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
     // independent extraction pass).
     let all_backtick_headings = heading_starts.len();
     assert_eq!(
-        all_backtick_headings, 91,
-        "docs/spec/cli.md must have exactly 91 backtick-H2 command headings, found {all_backtick_headings}"
+        all_backtick_headings, 92,
+        "docs/spec/cli.md must have exactly 92 backtick-H2 command headings, found {all_backtick_headings}"
     );
 
     let rust_names: Vec<String> = commands::REGISTERED_COMMAND_NAMES
@@ -2285,8 +2285,8 @@ fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
         .collect();
     assert_eq!(
         commands::REGISTERED_COMMAND_NAMES.len(),
-        60,
-        "REGISTERED_COMMAND_NAMES must stay 60"
+        61,
+        "REGISTERED_COMMAND_NAMES must stay 61"
     );
     let takeover_total = commands::element::TAKEOVER.len()
         + commands::text::TAKEOVER.len()
@@ -2294,7 +2294,7 @@ fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
         + commands::comment::TAKEOVER.len()
         + commands::deck::TAKEOVER.len();
     assert_eq!(takeover_total, 31, "the five TAKEOVER tables must total 31");
-    assert_eq!(rust_names.len(), 91, "60 + 31 must equal 91");
+    assert_eq!(rust_names.len(), 92, "61 + 31 must equal 92");
 
     let rust_set: std::collections::BTreeSet<&str> =
         rust_names.iter().map(String::as_str).collect();
@@ -2302,8 +2302,8 @@ fn cli_md_lists_exactly_the_91_rust_dispatched_commands() {
         spec_entries.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(
         spec_entries.len(),
-        91,
-        "docs/spec/cli.md must have exactly 91 command entries"
+        92,
+        "docs/spec/cli.md must have exactly 92 command entries"
     );
 
     let in_rust_not_in_spec: Vec<&str> = rust_set.difference(&spec_set).copied().collect();
@@ -2423,7 +2423,7 @@ fn every_documented_command_is_dispatched_by_rust_without_node() {
                 .map(|tokens| tokens.join(" ")),
         )
         .collect();
-    assert_eq!(rust_names.len(), 91);
+    assert_eq!(rust_names.len(), 92);
 
     for name in &rust_names {
         let tokens: Vec<&str> = name.split(' ').collect();

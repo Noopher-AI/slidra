@@ -125,8 +125,8 @@ describe("editorial brief and reference/commands.md stay consistent", () => {
     }
   });
 
-  it("has been slimmed to name only `text set` and `comment list` as syntax examples", () => {
-    expect(commandsMentionedIn(brief).sort()).toEqual(["comment list", "text set"]);
+  it("has been slimmed to name only `chat-history`, `text set`, and `comment list`", () => {
+    expect(commandsMentionedIn(brief).sort()).toEqual(["chat-history", "comment list", "text set"]);
     expect(brief).toContain("reference/commands.md");
   });
 

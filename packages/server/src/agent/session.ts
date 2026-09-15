@@ -258,6 +258,16 @@ interface ChatEvents {
   "available-commands": (payload: { commands: readonly acp.AvailableCommand[] }) => void;
   /** A line the server itself has to say (not the agent) — e.g. how many queued messages Stop threw away. */
   "chat-notice": (payload: { text: string }) => void;
+  /**
+   * An agent switch or "New chat" reset (§7 decisions 4/5) — never emitted
+   * by `AgentChatSession` itself (there is no session-level moment for it:
+   * the switch/reset tears this whole session down). Listed here purely so
+   * `AgentManager.forwardToExternal` — the same `(event, data) => void`
+   * shape `attachStream` below builds its listeners from — can broadcast it
+   * to every `/api/chat/stream` connection through the one shared type,
+   * `ChatStreamSend`, without a second broadcast mechanism.
+   */
+  "chat-divider": (payload: { text: string }) => void;
 }
 
 /**
