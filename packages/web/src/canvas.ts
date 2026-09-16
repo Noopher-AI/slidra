@@ -63,19 +63,7 @@ import type { EmbedProvider } from "./embed.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
 import type { Effect, SlideTransition } from "./effects.js";
-import {
-  decomposeMatrix,
-  formatTransform,
-  snapTranslation,
-  composeMatrices,
-  applyMatrixToPoint,
-  invertMatrix,
-  type Matrix,
-  type Rect,
-  type TransformParts,
-  type SnapCandidate,
-  type SnapGuide,
-} from "./geometry.js";
+import { type Matrix, type Rect } from "./geometry.js";
 import {
   parseSlide,
   type BackgroundImage,
@@ -86,17 +74,18 @@ import {
 import { INITIAL_PASTE_OFFSET_STATE, clipboardWritten, nextPasteOffset, type PasteOffsetState } from "./paste-offset.js";
 import { classifyClipboardText } from "./clipboard/payload.js";
 import { pasteCommandFor, type CellRangeProvider, type ClipboardTarget } from "./clipboard/dispatch.js";
-import { tabTarget, cellsInRange, normalizeRange, isCellInRange, type CellRange } from "./table-overlay.js";
+import { tabTarget, cellsInRange, type CellRange } from "./table-overlay.js";
 import { readChartModel, type ChartModel } from "./chart-model.js";
-import { isPlayerMessage, isSelectionMessage, isNonNegativeRect, isBoundsItem, isMeasuredItem, isElementBoundsItem, isTableCellRectItem, isFiniteNumber, isValidPoint, isValidRect, isStringArray, type SelectionMessage, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
+import { isMeasuredItem, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
 export type { TableRuntimeEvent } from "./canvas/runtime-messages.js";
-import { SNAP_THRESHOLD_PX, HUMAN_RENEW_THROTTLE_MS, roundsToZero, rectsIntersect, flattenElements, subtreeIds, subtreeForcesUniformScale, OPPOSITE_CORNER, cornerPoint, type Viewport, type OriginalTransform, type MoveGesture, type ScaleGesture, type RotateGesture, type TextboxWidthGesture, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
+import { flattenElements, type Viewport, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
 import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 export { presentationFontFaces, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 import { normalizeTemplatePaths, pageTransitionTransform, type ProjectJson } from "./canvas/project-io.js";
 export { fetchAssetList } from "./canvas/project-io.js";
 import { createGestures, type GestureDeps } from "./canvas/gestures.js";
 import { createRuntimeMessageHandlers, type RuntimeMessageDeps } from "./canvas/runtime-message-handlers.js";
+import type { PlayModeDeps } from "./canvas/play-mode.js";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -1040,6 +1029,87 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     },
   };
   const runtimeMessages = createRuntimeMessageHandlers(runtimeMessageDeps);
+
+  /**
+   * [E8.T3] Same rehearsal as `gestureDeps`/`runtimeMessageDeps` above, for
+   * the twelve play-mode functions defined further down this file — this
+   * ticket only measures their dependency surface (its own field count is
+   * the number [S10.F4] decides on), it moves none of them.
+   */
+  const playModeDeps: PlayModeDeps = {
+    frame,
+    selection,
+    activeGesture: {
+      get: () => activeGesture,
+      set: (value) => {
+        activeGesture = value;
+      },
+    },
+    overlay,
+    chartWindow,
+    embeds,
+    container,
+    deck: {
+      slides: () => slides,
+      currentIndex: () => currentIndex,
+      setCurrentIndex: (index) => {
+        currentIndex = index;
+      },
+    },
+    session: {
+      isDestroyed: () => destroyed,
+      mode: {
+        get: () => mode,
+        set: (value) => {
+          mode = value;
+        },
+      },
+      exiting: {
+        get: () => exiting,
+        set: (value) => {
+          exiting = value;
+        },
+      },
+      error: {
+        get: () => error,
+        set: (value) => {
+          error = value;
+        },
+      },
+    },
+    slideState: {
+      pageTransition: {
+        get: () => currentPageTransition,
+        set: (value) => {
+          currentPageTransition = value;
+        },
+      },
+      setSlideEffects: (effects) => {
+        currentSlideEffects = effects;
+      },
+    },
+    selectionState: {
+      setPendingSelectionIds: (ids) => {
+        pendingSelectionIds = ids;
+      },
+      previewReturnSelectionIds: {
+        get: () => previewReturnSelectionIds,
+        set: (value) => {
+          previewReturnSelectionIds = value;
+        },
+      },
+    },
+    publish: {
+      notify,
+      notifyOverlay,
+      notifyChartWindow,
+      notifyEmbeds,
+    },
+    commitTextEditIfEditing: () => {
+      if (editingState) void commitTextEdit();
+    },
+    render,
+  };
 
   // One listener for the whole controller's lifetime, not per-frame.element: it
   // reads `frame.element` (the current, possibly-rebuilt element) at call time
@@ -2178,17 +2248,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
      */
     previewEffectIndices?: number[] | null,
   ): Promise<void> {
-    const captured = thisGeneration ?? frame.generation;
-    if (currentIndex === -1) {
-      frame.paintedView = null;
-      frame.paintedPlay = null;
-      frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
+    const captured = thisGeneration ?? playModeDeps.frame.generation;
+    if (playModeDeps.deck.currentIndex() === -1) {
+      playModeDeps.frame.paintedView = null;
+      playModeDeps.frame.paintedPlay = null;
+      playModeDeps.frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
       return;
     }
 
-    const slidePath = slides[currentIndex];
+    const slidePath = playModeDeps.deck.slides()[playModeDeps.deck.currentIndex()];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
-    if (destroyed || captured !== frame.generation) return;
+    if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
 
     // #303: only reload()'s background refresh (playEnter=false, no preview,
     // startAt "first") may keep the running document; every arrival —
@@ -2198,15 +2268,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       !playEnter &&
       previewEffectIndices === undefined &&
       startAt === "first" &&
-      frame.paintedPlay !== null &&
-      frame.paintedPlay.slidePath === slidePath &&
-      frame.paintedPlay.key === playKey;
+      playModeDeps.frame.paintedPlay !== null &&
+      playModeDeps.frame.paintedPlay.slidePath === slidePath &&
+      playModeDeps.frame.paintedPlay.key === playKey;
 
     let planScript: string;
     let hideStyle: string;
     try {
       const plan = await computePlayerPlan(svgMarkup, slidePath);
-      if (destroyed || captured !== frame.generation) return;
+      if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
       const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
@@ -2222,34 +2292,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // rather than a second one, since even a cache-hit await is one more
       // microtask on a path PlayChrome.tsx's 2.5s auto-hide timer races
       // against).
-      currentPageTransition = plan.transition;
+      playModeDeps.slideState.pageTransition.set(plan.transition);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
       // previous, broken slide would keep showing on top of a page that
       // is in fact playing fine (found in gate review round 2).
-      if (error !== null) {
-        error = null;
-        notify();
+      if (playModeDeps.session.error.get() !== null) {
+        playModeDeps.session.error.set(null);
+        playModeDeps.publish.notify();
       }
     } catch (planError) {
       // A stale frame.generation's own rejection (e.g. a superseded navigation's
       // /api/effects/ fetch resolving after a newer renderPlay() already
       // took over) must not clobber state a newer, still-live call owns.
-      if (destroyed || captured !== frame.generation) return;
+      if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
       // Surfaced, never silently swallowed (design doc). Play the static
       // slide with no runtime rather than leaving the frame.element blank — the
       // author still sees the slide, plus the reason nothing animates.
-      error = planError instanceof Error ? planError.message : "effect list could not be parsed";
-      notify();
+      playModeDeps.session.error.set(planError instanceof Error ? planError.message : "effect list could not be parsed");
+      playModeDeps.publish.notify();
       // A broken page has no transition to play on the way out either —
       // reset to the all-"none" default so a later playExitTransition()
       // call leaving this (static) page does not act on stale data left
       // over from whichever slide was last painted successfully.
-      currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
-      frame.paintedView = null;
-      frame.paintedPlay = null;
-      frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+      playModeDeps.slideState.pageTransition.set({ enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } });
+      playModeDeps.frame.paintedView = null;
+      playModeDeps.frame.paintedPlay = null;
+      playModeDeps.frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
 
@@ -2261,34 +2331,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
-    embeds.entries = stageEmbedsFor(svgMarkup);
-    embeds.boxes = {};
-    notifyEmbeds();
+    playModeDeps.embeds.entries = stageEmbedsFor(svgMarkup);
+    playModeDeps.embeds.boxes = {};
+    playModeDeps.publish.notifyEmbeds();
 
-    frame.paintedView = null;
-    frame.element.srcdoc = wrapPlayDocument(
+    playModeDeps.frame.paintedView = null;
+    playModeDeps.frame.element.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       hideStyle,
       planScript,
     );
-    frame.paintedPlay = { slidePath, key: playKey };
+    playModeDeps.frame.paintedPlay = { slidePath, key: playKey };
 
-    const { effect, duration } = currentPageTransition.enter;
+    const { effect, duration } = playModeDeps.slideState.pageTransition.get().enter;
     if (playEnter && effect !== "none" && duration > 0) {
       const ms = duration * 1000;
-      frame.element.style.transition = "none";
-      frame.element.style.opacity = "0";
-      frame.element.style.transform = pageTransitionTransform(effect, "enter-start");
+      playModeDeps.frame.element.style.transition = "none";
+      playModeDeps.frame.element.style.opacity = "0";
+      playModeDeps.frame.element.style.transform = pageTransitionTransform(effect, "enter-start");
       // The "none" transition and the start values above must land in a
       // rendered frame before switching to the real transition, or the
       // browser coalesces both style writes into one paint and nothing
       // animates.
       requestAnimationFrame(() => {
-        if (destroyed || captured !== frame.generation) return;
-        frame.element.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
-        frame.element.style.opacity = "1";
-        frame.element.style.transform = "none";
+        if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+        playModeDeps.frame.element.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
+        playModeDeps.frame.element.style.opacity = "1";
+        playModeDeps.frame.element.style.transform = "none";
       });
       // [E2.T17]: the embed overlay converts runtime-local px against
       // `frame.element.getBoundingClientRect()` *at message time*, and the runtime
@@ -2298,8 +2368,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // runtime-local boxes are unchanged; only the frame.element's own rect moved)
       // is what puts it back on its placeholder.
       window.setTimeout(() => {
-        if (destroyed || captured !== frame.generation) return;
-        notifyEmbeds();
+        if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+        playModeDeps.publish.notifyEmbeds();
       }, ms + 50);
     } else {
       // Instant path must actively clear any inline opacity/transition/
@@ -2309,9 +2379,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // animating, defensively — clearing a value while `transition` is
       // still declared risks animating the removal itself instead of
       // jumping straight to the resting state.
-      frame.element.style.removeProperty("transition");
-      frame.element.style.removeProperty("opacity");
-      frame.element.style.removeProperty("transform");
+      playModeDeps.frame.element.style.removeProperty("transition");
+      playModeDeps.frame.element.style.removeProperty("opacity");
+      playModeDeps.frame.element.style.removeProperty("transform");
     }
   }
 
@@ -2333,73 +2403,73 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * must abandon its own page change rather than apply it on top.
    */
   async function playExitTransition(thisGeneration: number): Promise<boolean> {
-    if (exiting) return false;
-    const { effect, duration } = currentPageTransition.exit;
+    if (playModeDeps.session.exiting.get()) return false;
+    const { effect, duration } = playModeDeps.slideState.pageTransition.get().exit;
     if (effect === "none" || duration === 0) return true;
 
-    exiting = true;
+    playModeDeps.session.exiting.set(true);
     const ms = duration * 1000;
-    frame.element.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
-    frame.element.style.opacity = "0";
-    frame.element.style.transform = pageTransitionTransform(effect, "exit-end");
+    playModeDeps.frame.element.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
+    playModeDeps.frame.element.style.opacity = "0";
+    playModeDeps.frame.element.style.transform = pageTransitionTransform(effect, "exit-end");
     await new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-    exiting = false;
+    playModeDeps.session.exiting.set(false);
 
-    if (destroyed || thisGeneration !== frame.generation) {
-      frame.element.style.removeProperty("transition");
-      frame.element.style.removeProperty("opacity");
-      frame.element.style.removeProperty("transform");
+    if (playModeDeps.session.isDestroyed() || thisGeneration !== playModeDeps.frame.generation) {
+      playModeDeps.frame.element.style.removeProperty("transition");
+      playModeDeps.frame.element.style.removeProperty("opacity");
+      playModeDeps.frame.element.style.removeProperty("transform");
       return false;
     }
     return true;
   }
 
   async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
-    if (destroyed) return;
-    if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
+    if (playModeDeps.session.isDestroyed()) return;
+    if (!Number.isInteger(index) || index < 0 || index >= playModeDeps.deck.slides().length) {
       throw new Error(`slide index out of range: ${index}`);
     }
 
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
     // Captured before currentIndex moves — "forward" decides whether the
     // page being left plays an exit (§4.6: only a forward change does),
     // same intent as advancePastEnd()'s "+= 1" vs retreatPastStart()'s
     // "-= 1".
-    const forward = index > currentIndex;
-    if (mode === "play" && forward) {
+    const forward = index > playModeDeps.deck.currentIndex();
+    if (playModeDeps.session.mode.get() === "play" && forward) {
       if (!(await playExitTransition(thisGeneration))) return;
     }
-    currentIndex = index;
+    playModeDeps.deck.setCurrentIndex(index);
     // Plan §4.5: "close on slide change" — a chart window's edits target
     // a specific element id on the slide being left; render()'s own
     // notifyChartWindow() below would eventually close it anyway (the id
     // resolves on the wrong slide), but that happens after the slide fetch
     // resolves — closing it here means the window never lingers open for a
     // beat while the next slide loads.
-    chartWindow.target = null;
-    notifyChartWindow();
+    playModeDeps.chartWindow.target = null;
+    playModeDeps.publish.notifyChartWindow();
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
-    notify();
-    notifyOverlay();
-    if (mode === "play") {
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    if (playModeDeps.session.mode.get() === "play") {
       await renderPlay(thisGeneration, "first", true);
     } else {
       // [E2.T8]: `selectAfter` reuses the exact same "reselect once the
@@ -2409,79 +2479,79 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // `frame.element.srcdoc` navigation (NOOP-227: the runtime hasn't attached
       // its `message` listener yet) and be silently dropped, exactly the
       // failure `render()`'s own `selectOnceLoaded` exists to avoid.
-      if (selectAfter && selectAfter.length > 0) pendingSelectionIds = [...selectAfter];
-      await render(thisGeneration);
+      if (selectAfter && selectAfter.length > 0) playModeDeps.selectionState.setPendingSelectionIds([...selectAfter]);
+      await playModeDeps.render(thisGeneration);
     }
   }
 
   async function next(): Promise<void> {
-    if (currentIndex === -1 || currentIndex >= slides.length - 1) return;
-    await showSlide(currentIndex + 1);
+    if (playModeDeps.deck.currentIndex() === -1 || playModeDeps.deck.currentIndex() >= playModeDeps.deck.slides().length - 1) return;
+    await showSlide(playModeDeps.deck.currentIndex() + 1);
   }
 
   async function previous(): Promise<void> {
-    if (currentIndex <= 0) return;
-    await showSlide(currentIndex - 1);
+    if (playModeDeps.deck.currentIndex() <= 0) return;
+    await showSlide(playModeDeps.deck.currentIndex() - 1);
   }
 
   async function play(): Promise<void> {
-    if (destroyed || mode === "play") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "play";
-    frame.playerHasFocus = false;
-    error = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() === "play") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("play");
+    playModeDeps.frame.playerHasFocus = false;
+    playModeDeps.session.error.set(null);
     // Entering play mode destroys the view-mode iframe (selection-runtime.js
     // included), so any selection it reported is gone with it.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
     await renderPlay(thisGeneration);
   }
 
   async function exitPlay(): Promise<void> {
-    if (destroyed || mode === "view") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "view";
-    frame.playerHasFocus = false;
-    error = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() === "view") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("view");
+    playModeDeps.frame.playerHasFocus = false;
+    playModeDeps.session.error.set(null);
     // Returning to view mode rebuilds the iframe with a fresh
     // selection-runtime.js instance that has never heard a click yet.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
-    await render(thisGeneration);
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    await playModeDeps.render(thisGeneration);
   }
 
   /**
@@ -2495,27 +2565,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * while the preview plays. No-op outside view mode.
    */
   async function previewEffects(effectIndices: number[] | null): Promise<void> {
-    if (destroyed || mode !== "view") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "preview";
-    previewReturnSelectionIds = [...selection.ids];
-    error = null;
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "view") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("preview");
+    playModeDeps.selectionState.previewReturnSelectionIds.set([...playModeDeps.selection.ids]);
+    playModeDeps.session.error.set(null);
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
     await renderPlay(thisGeneration, "first", false, effectIndices);
   }
 
@@ -2528,46 +2598,46 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * AnimateObjectPanel's own Escape handling). No-op outside preview mode.
    */
   function exitPreview(): void {
-    if (destroyed || mode !== "preview") return;
-    const thisGeneration = ++frame.generation;
-    mode = "view";
-    error = null;
-    const restoreIds = previewReturnSelectionIds ?? [];
-    previewReturnSelectionIds = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "preview") return;
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("view");
+    playModeDeps.session.error.set(null);
+    const restoreIds = playModeDeps.selectionState.previewReturnSelectionIds.get() ?? [];
+    playModeDeps.selectionState.previewReturnSelectionIds.set(null);
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
-    pendingSelectionIds = restoreIds.length > 0 ? restoreIds : null;
-    void render(thisGeneration);
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    playModeDeps.selectionState.setPendingSelectionIds(restoreIds.length > 0 ? restoreIds : null);
+    void playModeDeps.render(thisGeneration);
   }
 
   function focusPlayer(): void {
-    if (destroyed || mode !== "play") return;
-    frame.element.focus();
-    frame.element.contentWindow?.focus();
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "play") return;
+    playModeDeps.frame.element.focus();
+    playModeDeps.frame.element.contentWindow?.focus();
     // Belt-and-braces, confirmed necessary (not merely defensive) by
     // e2e/player-mode.test.ts: a bare cross-document `.focus()` call from
     // the parent alone did not reliably fire the runtime's own `focus`
     // listener in headless Chromium during testing. Asking the runtime to
     // call `window.focus()` on itself, from inside its own document, is
     // the half that actually lands.
-    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
-    frame.playerHasFocus = true;
-    notify();
+    playModeDeps.frame.element.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
+    playModeDeps.frame.playerHasFocus = true;
+    playModeDeps.publish.notify();
   }
 
   function stepPlayer(direction: "advance" | "retreat"): void {
-    if (destroyed || mode !== "play") return;
-    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "play") return;
+    playModeDeps.frame.element.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
   }
 
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
-    const old = frame.element;
-    frame.paintedView = null; // #303: a new element has painted nothing yet.
-    frame.paintedPlay = null;
-    frame.element = buildFrame(sandbox);
-    container.insertBefore(frame.element, old);
+    const old = playModeDeps.frame.element;
+    playModeDeps.frame.paintedView = null; // #303: a new element has painted nothing yet.
+    playModeDeps.frame.paintedPlay = null;
+    playModeDeps.frame.element = buildFrame(sandbox);
+    playModeDeps.container.insertBefore(playModeDeps.frame.element, old);
     old.remove();
   }
 
