@@ -57,10 +57,27 @@
  * (`getBBox()`/`getCTM()`) itself and reports it up, since there is no
  * bundled font-metrics engine here any more to compute one from the parsed
  * model. See docs on the postMessage protocol below (`SelectionMessage`).
+ *
+ * This file is the public entry point (GitHub #379/[S10]): it keeps the
+ * `./canvas.js` import path and every exported name, type and semantics
+ * frozen, and re-exports what moved out. The `mountCanvas` closure's stateless
+ * helpers, state records, and three of its domains — gestures, runtime
+ * message handling, and play mode — now live under `./canvas/` as their own
+ * modules, each reached through a factory that takes a narrow, explicitly
+ * typed dependency object (`GestureDeps`, `RuntimeMessageDeps`,
+ * `PlayModeDeps`) rather than the closure itself. What stays here is the glue
+ * that owns the closure state those factories read and write — selection,
+ * overlay, frame, table range, chart window, and embed state — plus the
+ * domains small enough, or state-owning enough, that extracting them would
+ * not have narrowed anything: select/delete/duplicate/order, in-place text
+ * editing, the chart data window, command posting, asset import, style and
+ * page setters, and view-mode reload/render. See `packages/web/src/canvas/README.md`
+ * for what each module under `./canvas/` owns and what its dependency
+ * interface is allowed to reach.
  */
 import { slidePaintKey } from "./slide-paint-key.js";
 import type { EmbedProvider } from "./embed.js";
-import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
+import { stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
 import type { Effect, SlideTransition } from "./effects.js";
 import { type Matrix, type Rect } from "./geometry.js";
@@ -79,9 +96,9 @@ import { readChartModel, type ChartModel } from "./chart-model.js";
 import { isMeasuredItem, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
 export type { TableRuntimeEvent } from "./canvas/runtime-messages.js";
 import { flattenElements, type Viewport, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
-import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
+import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapSelectionDocument } from "./canvas/frame-documents.js";
 export { presentationFontFaces, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
-import { normalizeTemplatePaths, pageTransitionTransform, type ProjectJson } from "./canvas/project-io.js";
+import { normalizeTemplatePaths, type ProjectJson } from "./canvas/project-io.js";
 export { fetchAssetList } from "./canvas/project-io.js";
 import { createGestures, type GestureDeps } from "./canvas/gestures.js";
 import { createRuntimeMessageHandlers, type RuntimeMessageDeps } from "./canvas/runtime-message-handlers.js";
@@ -1789,9 +1806,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (mode !== "view") return;
     await runCommand("textbox add", { slidePath: slides[currentIndex], ...input });
   }
-
-  // --- Drag-to-move (§4.2) ---
-
 
   /**
    * A committed gesture's write comes back over /api/events and drives a full

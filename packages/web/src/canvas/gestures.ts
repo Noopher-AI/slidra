@@ -136,6 +136,8 @@ export interface GestureHandlers {
 }
 
 export function createGestures(gestureDeps: GestureDeps): GestureHandlers {
+  // --- Drag-to-move (§4.2) ---
+
   function beginMoveGesture(point: { x: number; y: number }): void {
     // NOOP-382: every early return here used to be silent — a drag would
     // simply not start, with no preview, no history entry, and nothing in
