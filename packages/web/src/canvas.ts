@@ -722,7 +722,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // True from a committed gesture until render() has re-selected
   // `pendingSelectionIds` — reported as `OverlayState.dragging` so the
   // context bar stays hidden across the reload (see keepSelectionAcrossReload).
-  let overlaySettling = false;
   // See CanvasState.dragSignal's own comment — bumped on every "drag-enter"
   // message, never reset (there is nothing to reset it back to: it is an
   // edge counter, not a level).
@@ -760,10 +759,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // frequency during local editing, and shaped nothing like either.
   const chartWindowListeners = new Set<(state: ChartWindowState | null) => void>();
   let chartWindowTarget: string | null = null;
-  let overlayBoxes: Rect[] = [];
-  let overlayUnion: Rect | null = null;
-  let overlayAncestors: { id: string; name: string | null }[] = [];
-  let overlayGuides: { orientation: "v" | "h"; position: number }[] = [];
+  const overlay = {
+    boxes: [] as Rect[],
+    union: null as Rect | null,
+    ancestors: [] as { id: string; name: string | null }[],
+    guides: [] as { orientation: "v" | "h"; position: number }[],
+    badges: [] as { target: string; n: number; rect: Rect }[],
+    badgeTargets: [] as { target: string; n: number }[],
+    settling: false,
+  };
   // [E2.T7]: the current slide's effect list, parsed fresh on every
   // render() (never on gesture/selection changes — an effect list edit
   // always comes back over /api/events -> reload() -> render() like any
@@ -774,10 +778,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // [E2.T7]/D9: `{target, n}` for every distinct effect target on the
   // current slide, in first-appearance order — computed alongside
   // currentSlideEffects and re-sent to the runtime as a `measure` command
-  // once it reports "runtime-ready". `overlayBadges` holds the last
+  // once it reports "runtime-ready". `overlay.badges` holds the last
   // successful `measured` reply, converted to parent client px.
-  let badgeTargets: { target: string; n: number }[] = [];
-  let overlayBadges: { target: string; n: number; rect: Rect }[] = [];
   // [E2.T17] the embed overlay's own state channel. `embedEntries` is the
   // current slide's `stageEmbedsFor` table (set at render time, parent
   // side); `embedBoxes` is where each of those elements last reported
@@ -1053,9 +1055,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "bounds") {
       const items = Array.isArray(message.items) ? message.items.filter(isBoundsItem) : [];
-      overlayBoxes = items.map((item) => item.rect);
-      overlayUnion = isNonNegativeRect(message.union) ? message.union : null;
-      overlayAncestors = items.length === 1 ? items[0].ancestors : [];
+      overlay.boxes = items.map((item) => item.rect);
+      overlay.union = isNonNegativeRect(message.union) ? message.union : null;
+      overlay.ancestors = items.length === 1 ? items[0].ancestors : [];
       notifyOverlay();
       return;
     }
@@ -1159,10 +1161,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // `settle` lifts it only when no reload is coming (cancelled, no-op,
       // or failed — nothing was parked in pendingSelectionIds); otherwise
       // render()/selectOnceLoaded clear it once the re-selection has landed.
-      if (gesture && gesture.kind !== "marquee") overlaySettling = true;
+      if (gesture && gesture.kind !== "marquee") overlay.settling = true;
       const settle = () => {
         if (pendingSelectionIds === null && activeGesture === null) {
-          overlaySettling = false;
+          overlay.settling = false;
           notifyOverlay();
         }
         endEditingLease();
@@ -1260,7 +1262,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (message.event === "measured") {
       const items = Array.isArray(message.items) ? message.items.filter(isMeasuredItem) : [];
       const rectByTarget = new Map(items.map((item) => [item.id, item.rect]));
-      overlayBadges = badgeTargets.flatMap((entry) => {
+      overlay.badges = overlay.badgeTargets.flatMap((entry) => {
         const rect = rectByTarget.get(entry.target);
         return rect ? [{ target: entry.target, n: entry.n, rect: toParentClientRect(rect) }] : [];
       });
@@ -1479,20 +1481,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (selection.ids.length === 0) return null;
     if (selection.ids.length > 1) return { text: `${selection.ids.length} elements`, path: [] };
     const text = selection.names[0] ?? selection.ids[0];
-    const path = overlayAncestors.map((ancestor) => ancestor.name ?? ancestor.id);
+    const path = overlay.ancestors.map((ancestor) => ancestor.name ?? ancestor.id);
     return { text, path };
   }
 
   /** Converts the stored runtime-px overlay geometry to parent client px against the frame's rect *right now* — the one place that conversion happens, shared by `notifyOverlay` and `subscribeOverlay`'s initial push. Guides are the exception: they only exist mid-drag and are converted where they are computed. */
   function buildOverlayState(): OverlayState {
     return {
-      boxes: overlayBoxes.map(toParentClientRect),
-      union: overlayUnion ? toParentClientRect(overlayUnion) : null,
+      boxes: overlay.boxes.map(toParentClientRect),
+      union: overlay.union ? toParentClientRect(overlay.union) : null,
       label: computeOverlayLabel(),
-      guides: [...overlayGuides],
-      dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlaySettling,
+      guides: [...overlay.guides],
+      dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlay.settling,
       hasAnimation: selection.ids.some((id) => currentSlideEffects.some((effect) => effect.target === id)),
-      badges: overlayBadges,
+      badges: overlay.badges,
     };
   }
 
@@ -1519,13 +1521,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   function requestBadgeMeasurement(): void {
     if (mode !== "view") return;
-    badgeTargets = computeBadgeTargets(currentSlideEffects);
-    if (badgeTargets.length === 0) {
-      overlayBadges = [];
+    overlay.badgeTargets = computeBadgeTargets(currentSlideEffects);
+    if (overlay.badgeTargets.length === 0) {
+      overlay.badges = [];
       notifyOverlay();
       return;
     }
-    postToFrame({ command: "measure", ids: badgeTargets.map((entry) => entry.target) });
+    postToFrame({ command: "measure", ids: overlay.badgeTargets.map((entry) => entry.target) });
   }
 
   function notifyOverlay(): void {
@@ -2123,7 +2125,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // own GuideLayer overlay now, not inside the sandboxed iframe — a
     // client-px position converts the same way a point's own coordinate
     // does (toParentClientPoint), just for one axis at a time.
-    overlayGuides = guides.map((guide) => ({
+    overlay.guides = guides.map((guide) => ({
       orientation: guide.orientation,
       position:
         guide.orientation === "v"
@@ -2153,14 +2155,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // gesture-end handler) — otherwise it flashes: shown the instant the
     // gesture ends, gone when the reload drops the selection, shown again
     // once it is restored.
-    overlaySettling = true;
+    overlay.settling = true;
   }
 
   async function endMoveGesture(cancelled: boolean): Promise<void> {
     const gesture = activeGesture;
     activeGesture = null;
     if (!gesture || gesture.kind !== "move") return;
-    overlayGuides = [];
+    overlay.guides = [];
     notifyOverlay();
 
     if (cancelled) {
@@ -2243,10 +2245,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // already up to date from the last updateMoveGesture call (host- or
     // iframe-driven) — exactly what the iframe-originated "gesture-end"
     // path (handleSelectionMessage) also relies on.
-    overlaySettling = true;
+    overlay.settling = true;
     void endMoveGesture(false).then(() => {
       if (pendingSelectionIds === null && activeGesture === null) {
-        overlaySettling = false;
+        overlay.settling = false;
         notifyOverlay();
       }
       endEditingLease();
@@ -2941,16 +2943,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.names = [];
     selection.groupPath = [];
     viewport = null;
-    overlayBoxes = [];
-    overlayUnion = null;
-    overlayAncestors = [];
-    overlayGuides = [];
+    overlay.boxes = [];
+    overlay.union = null;
+    overlay.ancestors = [];
+    overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
     currentSlideEffects = [];
-    badgeTargets = [];
-    overlayBadges = [];
+    overlay.badgeTargets = [];
+    overlay.badges = [];
     notify();
     notifyOverlay();
 
@@ -2987,15 +2989,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const selectAfterLoad = pendingSelectionIds;
     pendingSelectionIds = null;
     // Nothing to re-select after this render → nothing to wait for either.
-    if (!selectAfterLoad) overlaySettling = false;
+    if (!selectAfterLoad) overlay.settling = false;
 
     if (currentIndex === -1) {
       currentSlideModel = null;
       currentSlideMarkup = null;
       elementBoundsById = new Map();
       currentSlideEffects = [];
-      badgeTargets = [];
-      overlayBadges = [];
+      overlay.badgeTargets = [];
+      overlay.badges = [];
       paintedView = null;
       frame.srcdoc = EMPTY_DECK_DOCUMENT;
       notifyChartWindow();
@@ -3033,7 +3035,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // srcdoc (about to be replaced below) — clear it so a stale bounds map
     // never outlives the slide it measured. The fresh iframe self-reports
     // its own bounds once its script runs (selection-runtime.js's
-    // `reportElementBounds`), same "runtime-ready" timing `overlayBadges`
+    // `reportElementBounds`), same "runtime-ready" timing `overlay.badges`
     // already relies on. Kept when the repaint is skipped (#303): the
     // document — and therefore its bounds — is unchanged.
     if (repaint) elementBoundsById = new Map();
@@ -3114,8 +3116,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const onLoad = () => {
       targetFrame.removeEventListener("load", onLoad);
       // Whatever happens next, the wait is over — never leave the context
-      // bar stuck hidden behind a stale `overlaySettling`.
-      overlaySettling = false;
+      // bar stuck hidden behind a stale `overlay.settling`.
+      overlay.settling = false;
       if (destroyed || thisGeneration !== generation || mode !== "view") return;
       // Only the ids that still resolve are selected — a paste of several
       // elements where one was concurrently deleted still gives feedback
@@ -3400,16 +3402,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.names = [];
     selection.groupPath = [];
     viewport = null;
-    overlayBoxes = [];
-    overlayUnion = null;
-    overlayAncestors = [];
-    overlayGuides = [];
+    overlay.boxes = [];
+    overlay.union = null;
+    overlay.ancestors = [];
+    overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
     currentSlideEffects = [];
-    badgeTargets = [];
-    overlayBadges = [];
+    overlay.badgeTargets = [];
+    overlay.badges = [];
     notify();
     notifyOverlay();
     if (mode === "play") {
@@ -3451,16 +3453,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.names = [];
     selection.groupPath = [];
     viewport = null;
-    overlayBoxes = [];
-    overlayUnion = null;
-    overlayAncestors = [];
-    overlayGuides = [];
+    overlay.boxes = [];
+    overlay.union = null;
+    overlay.ancestors = [];
+    overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
     currentSlideEffects = [];
-    badgeTargets = [];
-    overlayBadges = [];
+    overlay.badgeTargets = [];
+    overlay.badges = [];
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
@@ -3481,16 +3483,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.names = [];
     selection.groupPath = [];
     viewport = null;
-    overlayBoxes = [];
-    overlayUnion = null;
-    overlayAncestors = [];
-    overlayGuides = [];
+    overlay.boxes = [];
+    overlay.union = null;
+    overlay.ancestors = [];
+    overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
     currentSlideEffects = [];
-    badgeTargets = [];
-    overlayBadges = [];
+    overlay.badgeTargets = [];
+    overlay.badges = [];
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
@@ -3519,13 +3521,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.names = [];
     selection.groupPath = [];
     viewport = null;
-    overlayBoxes = [];
-    overlayUnion = null;
-    overlayAncestors = [];
-    overlayGuides = [];
+    overlay.boxes = [];
+    overlay.union = null;
+    overlay.ancestors = [];
+    overlay.guides = [];
     currentSlideEffects = [];
-    badgeTargets = [];
-    overlayBadges = [];
+    overlay.badgeTargets = [];
+    overlay.badges = [];
     rebuildFrame("allow-scripts");
     notify();
     notifyOverlay();
