@@ -780,21 +780,20 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // currentSlideEffects and re-sent to the runtime as a `measure` command
   // once it reports "runtime-ready". `overlay.badges` holds the last
   // successful `measured` reply, converted to parent client px.
-  // [E2.T17] the embed overlay's own state channel. `embedEntries` is the
+  // [E2.T17] the embed overlay's own state channel. `embeds.entries` is the
   // current slide's `stageEmbedsFor` table (set at render time, parent
-  // side); `embedBoxes` is where each of those elements last reported
+  // side); `embeds.boxes` is where each of those elements last reported
   // itself to be, already converted to parent client px. Kept apart from
   // `OverlayState` because the embed overlay must also render in play
   // mode, where `OverlayLayer` is unmounted entirely (Stage.tsx's
   // `shellVisible` gate).
-  let embedEntries: Record<string, StageEmbedEntry> = {};
-  let embedBoxes: Record<string, Rect> = {};
+  const embeds = { entries: {} as Record<string, StageEmbedEntry>, boxes: {} as Record<string, Rect> };
   const embedListeners = new Set<(state: EmbedState) => void>();
   const embedCommandListeners = new Set<(command: EmbedCommand) => void>();
 
   /** Validates an `embed-command` payload and fans it out. Both fields come from untrusted slide-side script (ADR-0010), so an unknown id or command is dropped, never forwarded to a player. */
   function emitEmbedCommand(rawId: unknown, rawCommand: unknown): void {
-    if (typeof rawId !== "string" || !Object.prototype.hasOwnProperty.call(embedEntries, rawId)) return;
+    if (typeof rawId !== "string" || !Object.prototype.hasOwnProperty.call(embeds.entries, rawId)) return;
     if (rawCommand !== "play" && rawCommand !== "pause") return;
     const command: EmbedCommand = { id: rawId, command: rawCommand };
     for (const listener of embedCommandListeners) listener(command);
@@ -805,17 +804,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     const items = Array.isArray(rawItems) ? rawItems.filter(isMeasuredItem) : [];
     const next: Record<string, Rect> = {};
     for (const item of items) next[item.id] = item.rect;
-    embedBoxes = next;
+    embeds.boxes = next;
     notifyEmbeds();
   }
 
   /** Converts the stored runtime-px embed boxes to parent client px against the frame.element's rect *right now* — same contract, and same reason, as `buildOverlayState`. An entry whose element has not reported a box yet is simply absent, never rendered at a guessed position. */
   function buildEmbedState(): EmbedState {
     const items: EmbedItem[] = [];
-    for (const id of Object.keys(embedEntries)) {
-      const rect = embedBoxes[id];
+    for (const id of Object.keys(embeds.entries)) {
+      const rect = embeds.boxes[id];
       if (!rect) continue;
-      items.push({ id, url: embedEntries[id].url, provider: embedEntries[id].provider, rect: toParentClientRect(rect) });
+      items.push({ id, url: embeds.entries[id].url, provider: embeds.entries[id].provider, rect: toParentClientRect(rect) });
     }
     return { items, interactive: mode === "play" };
   }
@@ -3071,8 +3070,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // runtime is only told which ids to measure. Boxes are cleared here
     // and refilled by the runtime's first `embed-boxes` report, so a
     // stale slide's geometry is never painted under the new slide.
-    embedEntries = stageEmbedsFor(svgMarkup);
-    embedBoxes = {};
+    embeds.entries = stageEmbedsFor(svgMarkup);
+    embeds.boxes = {};
     notifyEmbeds();
 
     frame.element.srcdoc = wrapSelectionDocument(
@@ -3080,7 +3079,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
       stageMediaFor(svgMarkup),
-      Object.keys(embedEntries),
+      Object.keys(embeds.entries),
     );
     frame.paintedView = { slidePath, key: paintKey };
 
@@ -3280,8 +3279,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
-    embedEntries = stageEmbedsFor(svgMarkup);
-    embedBoxes = {};
+    embeds.entries = stageEmbedsFor(svgMarkup);
+    embeds.boxes = {};
     notifyEmbeds();
 
     frame.paintedView = null;
