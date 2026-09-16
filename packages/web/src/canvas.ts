@@ -706,7 +706,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // Cell-range-selection routing seam (plan "supplement (b)"): always
   // returns null until a real implementation replaces it — see
   // `clipboard/dispatch.ts`'s `CellRangeProvider` doc comment.
-  const cellRangeProvider: CellRangeProvider = () => null;
   // The element(s) a just-finished insert/paste command created,
   // still waiting for the reload()/render() its own write triggers over
   // /api/events. reload() would otherwise clear the selection like every
@@ -745,9 +744,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /** E2.T14r2 §4.1: `subscribeTableRange`'s listeners — a real state channel (unlike `tableListeners` above), so a late subscriber gets the current value immediately, same contract as `overlayListeners`. */
   const tableRangeListeners = new Set<(value: { tableId: string; range: CellRange } | null) => void>();
   /** The active cell range, or `null`. Built from `table-cell-click`/`table-cell-contextmenu` reports (handleSelectionMessage below) and cleared whenever the selection changes away from this table (§4.1's lifecycle table). */
-  let tableRange: { tableId: string; range: CellRange } | null = null;
-  /** The cell a range gesture started from — set on a non-additive click/contextmenu, read on a ⇧-click to build the range via `normalizeRange`. Private to this module: not part of the public `tableRange`, exactly like `TableOverlay`'s old local `anchorRef` this replaces. */
-  let tableRangeAnchor: { row: number; col: number } | null = null;
+  const tableRange = {
+    current: null as { tableId: string; range: CellRange } | null,
+    anchor: null as { row: number; col: number } | null,
+    provider: (() => null) as CellRangeProvider,
+    pendingDblclick: null as TableRuntimeEvent | null,
+  };
+  /** The cell a range gesture started from — set on a non-additive click/contextmenu, read on a ⇧-click to build the range via `normalizeRange`. Private to this module: not part of the public `tableRange.current`, exactly like `TableOverlay`'s old local `anchorRef` this replaces. */
   // E2.T12 plan §2.8/§4.5: at most one chart data window open at a time
   // (`chartWindowTarget`, `null` = closed) — opened by the runtime's
   // "dblclick-chart" report, closed by Esc (ChartWindow.tsx's own
@@ -1028,7 +1031,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // E2.T14r2 §4.1 lifecycle table: a range only survives while its own
       // table stays the sole selection — any other shape (a different
       // element, no selection, a multi-selection) drops it.
-      if (tableRange && (selection.ids.length !== 1 || selection.ids[0] !== tableRange.tableId)) {
+      if (tableRange.current && (selection.ids.length !== 1 || selection.ids[0] !== tableRange.current.tableId)) {
         setTableRange(null);
       }
       return;
@@ -1287,10 +1290,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         // else (plain click, or a ⇧-click that arrives with no anchor of
         // its own — e.g. right after a table id change already cleared it
         // above) starts a fresh single-cell range and a fresh anchor.
-        if (message.additive && tableRangeAnchor && tableRange && tableRange.tableId === id) {
-          setTableRange({ tableId: id, range: normalizeRange(tableRangeAnchor, { row, col }) });
+        if (message.additive && tableRange.anchor && tableRange.current && tableRange.current.tableId === id) {
+          setTableRange({ tableId: id, range: normalizeRange(tableRange.anchor, { row, col }) });
         } else {
-          tableRangeAnchor = { row, col };
+          tableRange.anchor = { row, col };
           setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
         }
       }
@@ -1314,8 +1317,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         // leaves it untouched (the menu acts on the whole range); right-
         // clicking outside it starts a fresh single-cell range/anchor.
         const cell = { row, col };
-        if (!tableRange || tableRange.tableId !== id || !isCellInRange(cell, tableRange.range)) {
-          tableRangeAnchor = cell;
+        if (!tableRange.current || tableRange.current.tableId !== id || !isCellInRange(cell, tableRange.current.range)) {
+          tableRange.anchor = cell;
           setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
         }
       }
@@ -1339,7 +1342,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       if (typeof message.key !== "string") return;
       // The runtime only ever sends this while its own `tableRangeId` flag
       // is set (§4.2) — `handleTableRangeKey` re-derives everything else
-      // (which range, which table) from this module's own `tableRange`, the
+      // (which range, which table) from this module's own `tableRange.current`, the
       // single source of truth both input paths share.
       handleTableRangeKey(message.key, { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) });
       return;
@@ -1347,23 +1350,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
-  let pendingTableDblclick: TableRuntimeEvent | null = null;
 
   function emitTableEvent(event: TableRuntimeEvent): void {
     if (event.type === "cell-dblclick" && tableListeners.size === 0) {
-      pendingTableDblclick = event;
+      tableRange.pendingDblclick = event;
       return;
     }
     for (const listener of tableListeners) listener(event);
   }
 
   function notifyTableRange(): void {
-    for (const listener of tableRangeListeners) listener(tableRange);
+    for (const listener of tableRangeListeners) listener(tableRange.current);
   }
 
   /** `CanvasController.setTableRange` (§4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
   function setTableRange(value: { tableId: string; range: CellRange } | null): void {
-    tableRange = value;
+    tableRange.current = value;
     notifyTableRange();
     postToFrame({ command: "table-range", id: value ? value.tableId : null });
   }
@@ -1377,8 +1379,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * `App.tsx:610`'s own comment already documents).
    */
   function handleTableRangeKey(key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }): boolean {
-    if (!tableRange) return false;
-    if (selection.ids.length !== 1 || selection.ids[0] !== tableRange.tableId) {
+    if (!tableRange.current) return false;
+    if (selection.ids.length !== 1 || selection.ids[0] !== tableRange.current.tableId) {
       // The selection moved on without the range ever being told (should
       // not normally happen — the "select"/"clear" branches above already
       // clear it — but this is the behaviour contract's own explicit row,
@@ -1391,7 +1393,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       setTableRange(null);
       return false;
     }
-    const { tableId, range } = tableRange;
+    const { tableId, range } = tableRange.current;
     const slidePath = slides[currentIndex];
 
     if (key === "Tab") {
@@ -1587,7 +1589,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.groupPath = groupPath;
     notify();
     pushSelectionToRuntime(selection.ids);
-    if (tableRange) setTableRange(null);
+    if (tableRange.current) setTableRange(null);
   }
 
   /**
@@ -1966,7 +1968,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function cellRangeTarget(): ClipboardTarget {
     if (currentIndex === -1) return null;
-    const range = cellRangeProvider();
+    const range = tableRange.provider();
     return range ? { kind: "cells", slidePath: slides[currentIndex], range } : null;
   }
 
@@ -3827,9 +3829,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     },
     subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
       tableListeners.add(listener);
-      if (pendingTableDblclick) {
-        const replay = pendingTableDblclick;
-        pendingTableDblclick = null;
+      if (tableRange.pendingDblclick) {
+        const replay = tableRange.pendingDblclick;
+        tableRange.pendingDblclick = null;
         listener(replay);
       }
       return () => {
@@ -3846,7 +3848,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     },
     subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => {
       tableRangeListeners.add(listener);
-      listener(tableRange);
+      listener(tableRange.current);
       return () => {
         tableRangeListeners.delete(listener);
       };
