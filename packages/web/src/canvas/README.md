@@ -2,7 +2,9 @@
 
 Internal modules extracted out of `../canvas.ts` ([S10]/#379). `canvas.ts` stays the public entry
 point — every name in `CanvasController` and the rest of the frozen surface still comes from
-`./canvas.js`, and this directory is not imported from anywhere outside it. Two shapes of module live
+`./canvas.js`, and this directory is not imported by other product code in `packages/web/src`; unit
+tests do import the stateless helpers here directly (e.g. `test/canvas-gesture-geometry.test.ts`
+imports `canvas/gesture-geometry.js`). Two shapes of module live
 here: **stateless helpers** (pure functions and types, no dependency object) and **domain factories**
 (a `create*(deps)` function that returns the handlers `mountCanvas` wires up, reachable only through
 the fields its dependency interface declares). See `AGENTS.md` for how a move or a rename in this
