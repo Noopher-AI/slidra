@@ -52,6 +52,29 @@ can operate on this demo deck via the primitives in `qa/agent_helpers.py` — se
 details and the primitive list. When done, wrap up with `./scripts/quick_start.sh --qa-stop`, which tears down
 both the background `serve` and Chromium. Behavior without `--qa` is completely unaffected.
 
+## S9 checklist steps (Deck Space, continuous save, sandbox, master mode, history)
+
+Both the default and `--blank` checklists now include a shared S9 block covering what [S9] The deck
+file is the workspace (#338) shipped: Deck Space entry/deck creation/switching/deletion, continuous
+save's "Saved" / "Saving…" / "Save failed" states, the agent sandbox boundary, master view mode, and
+chat/undo history surviving a restart. Two of these steps need commands the script itself doesn't run:
+
+- The "Save failed" check requires you to make an edit, then `chmod 444` the open deck's `.slidra` file
+  from a separate terminal *within the debounce window* (before "Saving…" fires) to force the write
+  itself to fail, then `chmod 644` it back before clicking "Retry". Doing the `chmod` before editing
+  just makes the edit fail outright at the CLI layer (the deck file is a live SQLite database) and never
+  exercises the "Save failed" banner.
+- The sandbox-boundary check requires asking the connected agent, via chat, to write to a path outside
+  its sandbox (e.g. `~/slidra-escape-test.txt`), then confirming with `ls` from a separate terminal that
+  the file was never created.
+
+The master-view-mode step requires at least one saved template to exist first; if none does yet, the
+checklist tells you to ask the agent to save the current slide as one before the "Edit template" button
+becomes enabled.
+
+None of this changes what `npm run verify:setup` itself covers or requires a new flag — it's all
+exercised against the same demo or blank deck the script already prepares.
+
 ## When you must use `--fresh`
 
 After changing anything under `demo/`. The script doesn't automatically repackage the existing demo

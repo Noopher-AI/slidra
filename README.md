@@ -171,13 +171,22 @@ npm run verify:setup
 ```
 
 This installs dependencies, builds the CLI, and starts a local server (`slidra serve`) with a demo
-deck open in the web editor.
+deck open in the web editor at `http://127.0.0.1:5173`.
 
 To begin with an empty deck instead:
 
 ```sh
 npm run verify:setup -- --blank
 ```
+
+A few flags cover the rest of everyday local use (see `./scripts/quick_start.sh --help` for the full list):
+
+| Flag | Effect |
+| --- | --- |
+| `--open` | Also open a browser tab once the server is up (off by default, so repeated runs don't pile up stale tabs) |
+| `--agent <claude\|codex\|pi>` | Pick which connected agent handles chat, instead of falling back to your last-used setting |
+| `--fresh` | Discard the existing demo/blank deck and recreate it (needed after editing `docs/demo/`) |
+| `--port <n>` | Run on a port other than the default `5173` |
 
 From there, point an agent at the CLI shown in [CLI](#cli): inspect the deck with `ls`/`cat`, make a
 bounded edit, and run `validate`.
