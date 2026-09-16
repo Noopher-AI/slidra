@@ -674,19 +674,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   let mode: CanvasMode = "view";
   // The paint key (`slidePaintKey`) of the slide the view-mode iframe
   // currently shows, or null whenever `srcdoc` was last set by something
-  // other than `render()` (empty deck, play/preview, a rebuilt frame) —
+  // other than `render()` (empty deck, play/preview, a rebuilt frame.element) —
   // those never count as "already painted". `render()` compares against
   // it to skip a repaint that would show the exact same picture.
-  let paintedView: { slidePath: string; key: string } | null = null;
-  // The play-mode twin of `paintedView`. A live reload while playing
+  // The play-mode twin of `frame.paintedView`. A live reload while playing
   // (`reload()` → `renderPlay(…, playEnter=false)`) used to reassign
   // `srcdoc` unconditionally, which restarts the play runtime — the step
   // position jumps back to the start and the page blinks — even when the
   // agent's command only touched `<metadata>`. Same key, same slide, same
-  // frame ⇒ keep the running document; the plan cache was already
+  // frame.element ⇒ keep the running document; the plan cache was already
   // invalidated by reload(), so the next real navigation re-reads it.
-  let paintedPlay: { slidePath: string; key: string } | null = null;
-  let playerHasFocus = false;
   let error: string | null = null;
   // The selection Preview entered from, restored (top-level ids
   // only — drill-in group scope is not preserved, a deliberate
@@ -809,7 +806,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notifyEmbeds();
   }
 
-  /** Converts the stored runtime-px embed boxes to parent client px against the frame's rect *right now* — same contract, and same reason, as `buildOverlayState`. An entry whose element has not reported a box yet is simply absent, never rendered at a guessed position. */
+  /** Converts the stored runtime-px embed boxes to parent client px against the frame.element's rect *right now* — same contract, and same reason, as `buildOverlayState`. An entry whose element has not reported a box yet is simply absent, never rendered at a guessed position. */
   function buildEmbedState(): EmbedState {
     const items: EmbedItem[] = [];
     for (const id of Object.keys(embedEntries)) {
@@ -852,7 +849,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // The runtime's last-reported client-px <-> user-unit mapping. `null`
   // until the runtime's "viewport" message arrives (on the iframe's own
   // `load`), which is also the state a gesture message must be ignored in.
-  let viewport: Viewport | null = null;
   let activeGesture: ActiveGesture | null = null;
   // The in-place text edit in progress, or null between edits — see
   // TextEditState's own doc comment. Independent of activeGesture: the
@@ -873,20 +869,26 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // captured by each call's own closure. Nothing orders concurrent calls
   // against each other, so a slower earlier one can resolve after a
   // faster later one and paint stale content over it. Comparing the
-  // captured generation against the current one right before each await's
+  // captured frame.generation against the current one right before each await's
   // result is applied discards a superseded call's result instead of
   // applying it. play()/exitPlay() bump it too — not just reload()/
   // showSlide() — because they replace the iframe element itself: without
   // that, a slow in-flight view-mode render() could resume after play()
   // has already swapped in the fresh play iframe and write into it via the
-  // still-current `frame` reference (see the mode-switch note below).
-  let generation = 0;
+  // still-current `frame.element` reference (see the mode-switch note below).
 
-  let frame = buildFrame("allow-scripts");
-  container.appendChild(frame);
+  const frame = {
+    element: buildFrame("allow-scripts"),
+    generation: 0,
+    paintedView: null as { slidePath: string; key: string } | null,
+    paintedPlay: null as { slidePath: string; key: string } | null,
+    viewport: null as Viewport | null,
+    playerHasFocus: false,
+  };
+  container.appendChild(frame.element);
 
-  // One listener for the whole controller's lifetime, not per-frame: it
-  // reads `frame` (the current, possibly-rebuilt element) at call time
+  // One listener for the whole controller's lifetime, not per-frame.element: it
+  // reads `frame.element` (the current, possibly-rebuilt element) at call time
   // rather than closing over a specific iframe, so it keeps working across
   // play()/exitPlay() rebuilds without being re-attached.
   window.addEventListener("message", onWindowMessage);
@@ -895,8 +897,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // doc comment for why the iframe alone cannot see that part of the drag.
   window.addEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
   window.addEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
-  // [E2.T17]: the embed overlay's parent-side conversion reads the frame's
-  // rect at message time, so a window resize that moves/scales the frame
+  // [E2.T17]: the embed overlay's parent-side conversion reads the frame.element's
+  // rect at message time, so a window resize that moves/scales the frame.element
   // without the runtime re-reporting would leave the player behind. The
   // stored runtime-local boxes are still correct — only the conversion has
   // to be redone.
@@ -915,7 +917,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // could self-issue "advance-past-end" and drive the same privileged
     // path play mode uses, on open, with no click from the author (found
     // in gate review round 1, #56).
-    if (event.source !== frame.contentWindow) return;
+    if (event.source !== frame.element.contentWindow) return;
 
     if (isSelectionMessage(event.data)) {
       // Selection/gesture messages are only ever meaningful in view mode —
@@ -950,7 +952,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     if (message.event === "focus") {
       if (mode === "play") {
-        playerHasFocus = Boolean(message.hasFocus);
+        frame.playerHasFocus = Boolean(message.hasFocus);
         notify();
       }
       return;
@@ -997,7 +999,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   function handleSelectionMessage(message: SelectionMessage): void {
     if (message.event === "viewport") {
       if (isValidRect(message.svgRect) && isValidRect(message.viewBox)) {
-        viewport = { svgRect: message.svgRect, viewBox: message.viewBox };
+        frame.viewport = { svgRect: message.svgRect, viewBox: message.viewBox };
       }
       return;
     }
@@ -1445,8 +1447,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * for the stage relay: a unit conversion, never a zoom/pan decision.
    */
   function toParentClientPoint(point: { x: number; y: number }): { x: number; y: number } {
-    const rect = frame.getBoundingClientRect();
-    const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1;
+    const rect = frame.element.getBoundingClientRect();
+    const scale = frame.element.offsetWidth > 0 ? rect.width / frame.element.offsetWidth : 1;
     return { x: rect.left + point.x * scale, y: rect.top + point.y * scale };
   }
 
@@ -1459,15 +1461,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * every other input this host acts on originates inside the iframe.
    */
   function toFrameClientPoint(point: { x: number; y: number }): { x: number; y: number } {
-    const rect = frame.getBoundingClientRect();
-    const scale = frame.offsetWidth > 0 ? rect.width / frame.offsetWidth : 1;
+    const rect = frame.element.getBoundingClientRect();
+    const scale = frame.element.offsetWidth > 0 ? rect.width / frame.element.offsetWidth : 1;
     return { x: (point.x - rect.left) / scale, y: (point.y - rect.top) / scale };
   }
 
   /** Same conversion as `toParentClientPoint`, applied to a whole rect — width/height scale by the same factor the corner point does (uniform iframe scaling, never a separate X/Y factor). Used for the "bounds" event's per-item/union rects (§4.6). */
   function toParentClientRect(rect: Rect): Rect {
-    const frameRect = frame.getBoundingClientRect();
-    const scale = frame.offsetWidth > 0 ? frameRect.width / frame.offsetWidth : 1;
+    const frameRect = frame.element.getBoundingClientRect();
+    const scale = frame.element.offsetWidth > 0 ? frameRect.width / frame.element.offsetWidth : 1;
     return {
       x: frameRect.left + rect.x * scale,
       y: frameRect.top + rect.y * scale,
@@ -1485,7 +1487,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return { text, path };
   }
 
-  /** Converts the stored runtime-px overlay geometry to parent client px against the frame's rect *right now* — the one place that conversion happens, shared by `notifyOverlay` and `subscribeOverlay`'s initial push. Guides are the exception: they only exist mid-drag and are converted where they are computed. */
+  /** Converts the stored runtime-px overlay geometry to parent client px against the frame.element's rect *right now* — the one place that conversion happens, shared by `notifyOverlay` and `subscribeOverlay`'s initial push. Guides are the exception: they only exist mid-drag and are converted where they are computed. */
   function buildOverlayState(): OverlayState {
     return {
       boxes: overlay.boxes.map(toParentClientRect),
@@ -1617,27 +1619,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   function postToFrame(message: Record<string, unknown>): void {
-    frame.contentWindow?.postMessage({ source: "slidra-host", ...message }, "*");
+    frame.element.contentWindow?.postMessage({ source: "slidra-host", ...message }, "*");
   }
 
   function toUserPoint(point: { x: number; y: number }): { x: number; y: number } {
-    if (!viewport) return { x: 0, y: 0 };
-    const scaleX = viewport.viewBox.width / viewport.svgRect.width;
-    const scaleY = viewport.viewBox.height / viewport.svgRect.height;
+    if (!frame.viewport) return { x: 0, y: 0 };
+    const scaleX = frame.viewport.viewBox.width / frame.viewport.svgRect.width;
+    const scaleY = frame.viewport.viewBox.height / frame.viewport.svgRect.height;
     return {
-      x: viewport.viewBox.x + (point.x - viewport.svgRect.x) * scaleX,
-      y: viewport.viewBox.y + (point.y - viewport.svgRect.y) * scaleY,
+      x: frame.viewport.viewBox.x + (point.x - frame.viewport.svgRect.x) * scaleX,
+      y: frame.viewport.viewBox.y + (point.y - frame.viewport.svgRect.y) * scaleY,
     };
   }
 
   function userXToClient(x: number): number {
-    const scaleX = viewport!.svgRect.width / viewport!.viewBox.width;
-    return viewport!.svgRect.x + (x - viewport!.viewBox.x) * scaleX;
+    const scaleX = frame.viewport!.svgRect.width / frame.viewport!.viewBox.width;
+    return frame.viewport!.svgRect.x + (x - frame.viewport!.viewBox.x) * scaleX;
   }
 
   function userYToClient(y: number): number {
-    const scaleY = viewport!.svgRect.height / viewport!.viewBox.height;
-    return viewport!.svgRect.y + (y - viewport!.viewBox.y) * scaleY;
+    const scaleY = frame.viewport!.svgRect.height / frame.viewport!.viewBox.height;
+    return frame.viewport!.svgRect.y + (y - frame.viewport!.viewBox.y) * scaleY;
   }
 
   function elementIndex(): Map<string, { element: SlideElement; ancestors: Matrix[]; ancestorIds: string[] }> {
@@ -1907,12 +1909,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** `+3% / +4%` of the viewBox (prototype's own `slidra-logic-v3.js` offset) — `runCommand`'s existing `SELECT_AFTER_COMMAND` entry for `"element duplicate"` selects the new copy on success. */
   async function duplicateSelection(): Promise<void> {
-    if (mode !== "view" || selection.ids.length === 0 || !viewport) return;
+    if (mode !== "view" || selection.ids.length === 0 || !frame.viewport) return;
     await runCommand("element duplicate", {
       slidePath: slides[currentIndex],
       elementIds: [...selection.ids],
-      dx: 0.03 * viewport.viewBox.width,
-      dy: 0.04 * viewport.viewBox.height,
+      dx: 0.03 * frame.viewport.viewBox.width,
+      dy: 0.04 * frame.viewport.viewBox.height,
     });
   }
 
@@ -2030,8 +2032,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // wrong — every subsequent delta is then measured from the wrong
     // origin (NOOP-328: traced to a 180px-off drag landing spot). Declining
     // to start the gesture at all is the same posture updateMoveGesture
-    // already takes on every subsequent move while viewport is null.
-    if (!viewport) {
+    // already takes on every subsequent move while frame.viewport is null.
+    if (!frame.viewport) {
       console.warn("[beginMoveGesture] abort: viewport is null (first 'viewport' message has not landed yet)");
       return;
     }
@@ -2063,7 +2065,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function updateMoveGesture(point: { x: number; y: number }, modifiers: { shift: boolean; alt: boolean }): void {
     const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "move" || !viewport) return;
+    if (!gesture || gesture.kind !== "move" || !frame.viewport) return;
     const now = toUserPoint(point);
     let dx = now.x - gesture.startUser.x;
     let dy = now.y - gesture.startUser.y;
@@ -2095,19 +2097,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
           const bounds = computeBounds(id);
           if (bounds) candidates.push({ id, bounds });
         }
-        const thresholdUser = SNAP_THRESHOLD_PX * (viewport.viewBox.width / viewport.svgRect.width);
+        const thresholdUser = SNAP_THRESHOLD_PX * (frame.viewport.viewBox.width / frame.viewport.svgRect.width);
         try {
           const result = snapTranslation({
             moving,
             candidates,
-            canvas: { width: viewport.viewBox.width, height: viewport.viewBox.height },
+            canvas: { width: frame.viewport.viewBox.width, height: frame.viewport.viewBox.height },
             threshold: thresholdUser,
           });
           dx += result.dx;
           dy += result.dy;
           guides = result.guides;
         } catch {
-          // Malformed viewport/bounds (should not happen given the
+          // Malformed frame.viewport/bounds (should not happen given the
           // isValidRect/computeBounds guards above) — fall back to the
           // unsnapped delta rather than freezing the drag.
         }
@@ -2175,7 +2177,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("element move", {
       slidePath: slides[currentIndex],
       elementIds: gesture.ids,
@@ -2186,7 +2188,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // author navigating away) superseded this gesture while the request
     // was in flight — its result is stale, and the reload's own render()
     // has already replaced the srcdoc wholesale, discarding any preview.
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
 
     if (!result.ok) {
       revertMovePreview(gesture);
@@ -2259,8 +2261,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function beginScaleGesture(point: { x: number; y: number }, corner: "nw" | "ne" | "sw" | "se"): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
-    if (!viewport) return;
+    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet (NOOP-328).
+    if (!frame.viewport) return;
     if (selection.ids.length !== 1) return;
     const id = selection.ids[0];
     const entry = elementIndex().get(id);
@@ -2357,7 +2359,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** Minimum size a live resize preview/commit is clamped to — 3% of the slide's own width, 0.6% of its height (05-INTERACTIONS.feature's "resize" scenario). The command layer does not enforce this (decision 7: purely a GUI usability floor). */
   function minResizeSize(): { width: number; height: number } {
-    return { width: 0.03 * viewport!.viewBox.width, height: 0.006 * viewport!.viewBox.height };
+    return { width: 0.03 * frame.viewport!.viewBox.width, height: 0.006 * frame.viewport!.viewBox.height };
   }
 
   /**
@@ -2369,7 +2371,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * `minResizeSize` (decision 7).
    */
   function clampToViewBox(point: { x: number; y: number }): { x: number; y: number } {
-    const box = viewport!.viewBox;
+    const box = frame.viewport!.viewBox;
     return {
       x: Math.min(Math.max(point.x, box.x), box.x + box.width),
       y: Math.min(Math.max(point.y, box.y), box.y + box.height),
@@ -2461,7 +2463,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         revertScalePreview(gesture);
         return;
       }
-      const thisGeneration = generation;
+      const thisGeneration = frame.generation;
       const result = await postCommand("element resize", {
         slidePath: slides[currentIndex],
         elementIds: [gesture.id],
@@ -2469,7 +2471,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         height: gesture.lastHeight,
         anchor: OPPOSITE_CORNER[gesture.corner],
       });
-      if (destroyed || thisGeneration !== generation) return;
+      if (destroyed || thisGeneration !== frame.generation) return;
       if (!result.ok) {
         revertScalePreview(gesture);
         error = result.message;
@@ -2493,13 +2495,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("element scale", {
       slidePath: slides[currentIndex],
       elementIds: [gesture.id],
       factor,
     });
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
     if (!result.ok) {
       revertScalePreview(gesture);
       error = result.message;
@@ -2514,8 +2516,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function beginRotateGesture(point: { x: number; y: number }): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
-    if (!viewport) return;
+    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet (NOOP-328).
+    if (!frame.viewport) return;
     if (selection.ids.length !== 1) return;
     const id = selection.ids[0];
     const entry = elementIndex().get(id);
@@ -2591,13 +2593,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("element rotate", {
       slidePath: slides[currentIndex],
       elementIds: [gesture.id],
       degrees,
     });
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
     if (!result.ok) {
       revertRotatePreview(gesture);
       error = result.message;
@@ -2611,8 +2613,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when viewport hasn't arrived yet.
-    if (!viewport) return;
+    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet.
+    if (!frame.viewport) return;
     if (selection.ids.length !== 1) return;
     const id = selection.ids[0];
     const entry = elementIndex().get(id);
@@ -2675,13 +2677,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("textbox width", {
       slidePath: slides[currentIndex],
       elementId: gesture.id,
       width,
     });
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
     if (!result.ok) {
       previewTextboxWidth(gesture.id, gesture.originalWidth);
       error = result.message;
@@ -2752,14 +2754,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       endEditingLease();
       return;
     }
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("text set", {
       slidePath: state.slidePath,
       elementId: state.id,
       newText: state.currentText,
     });
     endEditingLease();
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
     if (!result.ok) {
       // The runtime has already exited its own edit session by now (it
       // calls exitRuntimeTextEdit() synchronously before ever sending
@@ -2798,7 +2800,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     activeGesture = null;
     if (!gesture || gesture.kind !== "marquee") return;
     postToFrame({ command: "marquee", rect: null });
-    if (cancelled || !currentSlideModel || !viewport) return;
+    if (cancelled || !currentSlideModel || !frame.viewport) return;
 
     const a = toUserPoint(gesture.startClient);
     const b = toUserPoint(point);
@@ -2846,11 +2848,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // moment after a page change (the iframe is only rebuilt once
     // renderPlay() below actually finishes), so repeated ArrowRight
     // presses before that finishes can fire several advance-past-end
-    // messages back to back. Bumping generation here — the same guard
+    // messages back to back. Bumping frame.generation here — the same guard
     // play()/exitPlay()/showSlide() already use — makes an earlier one of
     // these calls' renderPlay() discard its own result instead of racing
     // a later one to paint last.
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     // §4.6: the page currently on screen plays its own exit first — this
     // is the "leave" half of the page change, and it must finish (or be
     // aborted) before currentIndex moves at all.
@@ -2867,10 +2869,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (currentIndex <= 0) return;
     // Same race guard as advancePastEnd(): a stale runtime in the old play
     // iframe can still fire repeated retreat-past-start messages for a
-    // moment after a page change, and bumping generation here makes an
+    // moment after a page change, and bumping frame.generation here makes an
     // earlier one of these calls' renderPlay() discard its own result
     // instead of racing a later one to paint last.
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     currentIndex -= 1;
     notify();
     await renderPlay(thisGeneration, "last", true);
@@ -2893,7 +2895,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // `text set` landing back over /api/events, and any OTHER external
     // change must not silently drop text the author already typed. Not
     // awaited: the re-render a few lines down already repaints from
-    // whatever the file holds next, and commitTextEdit()'s own generation
+    // whatever the file holds next, and commitTextEdit()'s own frame.generation
     // guard discards its result if a second reload() or a mode change
     // supersedes it first.
     if (editingState) void commitTextEdit();
@@ -2908,14 +2910,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // arrives afterwards finds activeGesture already null and no-ops.
     activeGesture = null;
 
-    // Claim this call's generation before the first await, then compare
+    // Claim this call's frame.generation before the first await, then compare
     // against the live counter after every await: if another call already
-    // bumped `generation` past what this call captured, this call's result
+    // bumped `frame.generation` past what this call captured, this call's result
     // is stale and must be discarded — no matter how much later it settles.
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
 
     const project = await fetchJson<ProjectJson>("/api/presentation");
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
 
     // Before any slide document is built from this load: the deck's own
     // embedded faces (#305).
@@ -2942,7 +2944,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.ids = [];
     selection.names = [];
     selection.groupPath = [];
-    viewport = null;
+    frame.viewport = null;
     overlay.boxes = [];
     overlay.union = null;
     overlay.ancestors = [];
@@ -2978,7 +2980,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /**
    * Paints the currently selected slide in view mode. Takes the caller's
-   * captured generation so navigation shares reload()'s race guard: rapid
+   * captured frame.generation so navigation shares reload()'s race guard: rapid
    * arrow presses issue overlapping slide fetches, and a slower earlier one
    * must never paint over the newer page the author actually asked for.
    */
@@ -2998,29 +3000,29 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       currentSlideEffects = [];
       overlay.badgeTargets = [];
       overlay.badges = [];
-      paintedView = null;
-      frame.srcdoc = EMPTY_DECK_DOCUMENT;
+      frame.paintedView = null;
+      frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
       notifyChartWindow();
       return;
     }
 
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
     currentSlideMarkup = svgMarkup;
 
     // #303: a reload whose only difference is `<metadata>` (an effect, a
     // note, a comment, a transition landed) paints the same picture — skip
     // the `srcdoc` navigation, which would blank the stage for nothing.
     // A pending post-load selection still forces a repaint: it waits on
-    // the frame's `load` event (`selectOnceLoaded`), which only a
+    // the frame.element's `load` event (`selectOnceLoaded`), which only a
     // navigation fires.
     const paintKey = slidePaintKey(svgMarkup);
     const repaint =
       selectAfterLoad !== null ||
-      paintedView === null ||
-      paintedView.slidePath !== slidePath ||
-      paintedView.key !== paintKey;
+      frame.paintedView === null ||
+      frame.paintedView.slidePath !== slidePath ||
+      frame.paintedView.key !== paintKey;
 
     // Parsed once per render so gestures never re-fetch/re-parse mid-drag.
     // A non-compliant slide (should not happen — every write path asserts
@@ -3049,7 +3051,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     } catch {
       currentSlideEffects = [];
     }
-    if (destroyed || thisGeneration !== generation) return;
+    if (destroyed || thisGeneration !== frame.generation) return;
 
     if (!repaint) {
       // #303: same picture, same document. reload() already dropped this
@@ -3071,14 +3073,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     embedBoxes = {};
     notifyEmbeds();
 
-    frame.srcdoc = wrapSelectionDocument(
+    frame.element.srcdoc = wrapSelectionDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       selectionColors(),
       stageMediaFor(svgMarkup),
       Object.keys(embedEntries),
     );
-    paintedView = { slidePath, key: paintKey };
+    frame.paintedView = { slidePath, key: paintKey };
 
     // E2.T12: re-derive the open chart window's model off the just-loaded
     // markup so a committed edit's normalized result (formatSvgNumber
@@ -3094,7 +3096,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // its own notify() — reload()'s own notify() (before this function even
     // runs) was always followed by SOME selection-changing call that
     // notified again. `selectOnceLoaded` below still fires its own later
-    // notify() once the frame's `load` event lands; this one is what makes
+    // notify() once the frame.element's `load` event lands; this one is what makes
     // a plain navigation/reload with no pending selection visible at all.
     notify();
 
@@ -3102,23 +3104,23 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   /**
-   * NOOP-227: `frame.srcdoc` just changed, which means selection-runtime.js
+   * NOOP-227: `frame.element.srcdoc` just changed, which means selection-runtime.js
    * has not attached its `message` listener yet — a `postMessage` sent now
    * would race the navigation and be silently dropped. `load` fires only
    * once the new document (and every synchronous script in it, the
    * listener included) has finished, so waiting for it is what makes this
    * safe. Captures its own target iframe rather than reading the closure's
-   * `frame` variable, so a `play()`/`exitPlay()` swap in the meantime
+   * `frame.element` variable, so a `play()`/`exitPlay()` swap in the meantime
    * cannot redirect the listener onto a different element.
    */
   function selectOnceLoaded(elementIds: string[], thisGeneration: number): void {
-    const targetFrame = frame;
+    const targetFrame = frame.element;
     const onLoad = () => {
       targetFrame.removeEventListener("load", onLoad);
       // Whatever happens next, the wait is over — never leave the context
       // bar stuck hidden behind a stale `overlay.settling`.
       overlay.settling = false;
-      if (destroyed || thisGeneration !== generation || mode !== "view") return;
+      if (destroyed || thisGeneration !== frame.generation || mode !== "view") return;
       // Only the ids that still resolve are selected — a paste of several
       // elements where one was concurrently deleted still gives feedback
       // for the rest, rather than discarding the whole selection.
@@ -3193,17 +3195,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
      */
     previewEffectIndices?: number[] | null,
   ): Promise<void> {
-    const captured = thisGeneration ?? generation;
+    const captured = thisGeneration ?? frame.generation;
     if (currentIndex === -1) {
-      paintedView = null;
-      paintedPlay = null;
-      frame.srcdoc = EMPTY_DECK_DOCUMENT;
+      frame.paintedView = null;
+      frame.paintedPlay = null;
+      frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
       return;
     }
 
     const slidePath = slides[currentIndex];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
-    if (destroyed || captured !== generation) return;
+    if (destroyed || captured !== frame.generation) return;
 
     // #303: only reload()'s background refresh (playEnter=false, no preview,
     // startAt "first") may keep the running document; every arrival —
@@ -3213,15 +3215,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       !playEnter &&
       previewEffectIndices === undefined &&
       startAt === "first" &&
-      paintedPlay !== null &&
-      paintedPlay.slidePath === slidePath &&
-      paintedPlay.key === playKey;
+      frame.paintedPlay !== null &&
+      frame.paintedPlay.slidePath === slidePath &&
+      frame.paintedPlay.key === playKey;
 
     let planScript: string;
     let hideStyle: string;
     try {
       const plan = await computePlayerPlan(svgMarkup, slidePath);
-      if (destroyed || captured !== generation) return;
+      if (destroyed || captured !== frame.generation) return;
       const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
@@ -3248,12 +3250,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         notify();
       }
     } catch (planError) {
-      // A stale generation's own rejection (e.g. a superseded navigation's
+      // A stale frame.generation's own rejection (e.g. a superseded navigation's
       // /api/effects/ fetch resolving after a newer renderPlay() already
       // took over) must not clobber state a newer, still-live call owns.
-      if (destroyed || captured !== generation) return;
+      if (destroyed || captured !== frame.generation) return;
       // Surfaced, never silently swallowed (design doc). Play the static
-      // slide with no runtime rather than leaving the frame blank — the
+      // slide with no runtime rather than leaving the frame.element blank — the
       // author still sees the slide, plus the reason nothing animates.
       error = planError instanceof Error ? planError.message : "effect list could not be parsed";
       notify();
@@ -3262,9 +3264,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // call leaving this (static) page does not act on stale data left
       // over from whichever slide was last painted successfully.
       currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
-      paintedView = null;
-      paintedPlay = null;
-      frame.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+      frame.paintedView = null;
+      frame.paintedPlay = null;
+      frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
 
@@ -3280,40 +3282,40 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     embedBoxes = {};
     notifyEmbeds();
 
-    paintedView = null;
-    frame.srcdoc = wrapPlayDocument(
+    frame.paintedView = null;
+    frame.element.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       hideStyle,
       planScript,
     );
-    paintedPlay = { slidePath, key: playKey };
+    frame.paintedPlay = { slidePath, key: playKey };
 
     const { effect, duration } = currentPageTransition.enter;
     if (playEnter && effect !== "none" && duration > 0) {
       const ms = duration * 1000;
-      frame.style.transition = "none";
-      frame.style.opacity = "0";
-      frame.style.transform = pageTransitionTransform(effect, "enter-start");
+      frame.element.style.transition = "none";
+      frame.element.style.opacity = "0";
+      frame.element.style.transform = pageTransitionTransform(effect, "enter-start");
       // The "none" transition and the start values above must land in a
       // rendered frame before switching to the real transition, or the
       // browser coalesces both style writes into one paint and nothing
       // animates.
       requestAnimationFrame(() => {
-        if (destroyed || captured !== generation) return;
-        frame.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
-        frame.style.opacity = "1";
-        frame.style.transform = "none";
+        if (destroyed || captured !== frame.generation) return;
+        frame.element.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
+        frame.element.style.opacity = "1";
+        frame.element.style.transform = "none";
       });
       // [E2.T17]: the embed overlay converts runtime-local px against
-      // `frame.getBoundingClientRect()` *at message time*, and the runtime
+      // `frame.element.getBoundingClientRect()` *at message time*, and the runtime
       // reports its boxes while this transform is still mid-flight — which
-      // lands the player offset by however far the frame still had to
+      // lands the player offset by however far the frame.element still had to
       // travel. Re-converting once the transition has settled (the stored
-      // runtime-local boxes are unchanged; only the frame's own rect moved)
+      // runtime-local boxes are unchanged; only the frame.element's own rect moved)
       // is what puts it back on its placeholder.
       window.setTimeout(() => {
-        if (destroyed || captured !== generation) return;
+        if (destroyed || captured !== frame.generation) return;
         notifyEmbeds();
       }, ms + 50);
     } else {
@@ -3324,15 +3326,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // animating, defensively — clearing a value while `transition` is
       // still declared risks animating the removal itself instead of
       // jumping straight to the resting state.
-      frame.style.removeProperty("transition");
-      frame.style.removeProperty("opacity");
-      frame.style.removeProperty("transform");
+      frame.element.style.removeProperty("transition");
+      frame.element.style.removeProperty("opacity");
+      frame.element.style.removeProperty("transform");
     }
   }
 
   /**
    * Plays the page currently on screen's own exit transition (§4.6),
-   * before a forward page change replaces `frame.srcdoc`. Unlike
+   * before a forward page change replaces `frame.element.srcdoc`. Unlike
    * renderPlay()'s enter fade-in, no two-step rAF commit is needed here:
    * the `<iframe>` is already sitting at its resting opacity/transform (no
    * inline style forced it there a moment ago), so setting `transition`
@@ -3343,7 +3345,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * Returns `false` when the caller must NOT proceed to the page change at
    * all: either a forward request arrived while an earlier one is still
    * exiting (§4.6 decision: ignored outright, never queued or stacked), or
-   * `generation` moved on mid-exit — some other navigation (reload(),
+   * `frame.generation` moved on mid-exit — some other navigation (reload(),
    * exitPlay(), a second showSlide()) superseded this one, and the caller
    * must abandon its own page change rather than apply it on top.
    */
@@ -3354,16 +3356,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     exiting = true;
     const ms = duration * 1000;
-    frame.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
-    frame.style.opacity = "0";
-    frame.style.transform = pageTransitionTransform(effect, "exit-end");
+    frame.element.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
+    frame.element.style.opacity = "0";
+    frame.element.style.transform = pageTransitionTransform(effect, "exit-end");
     await new Promise<void>((resolve) => window.setTimeout(resolve, ms));
     exiting = false;
 
-    if (destroyed || thisGeneration !== generation) {
-      frame.style.removeProperty("transition");
-      frame.style.removeProperty("opacity");
-      frame.style.removeProperty("transform");
+    if (destroyed || thisGeneration !== frame.generation) {
+      frame.element.style.removeProperty("transition");
+      frame.element.style.removeProperty("opacity");
+      frame.element.style.removeProperty("transform");
       return false;
     }
     return true;
@@ -3377,7 +3379,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     // Captured before currentIndex moves — "forward" decides whether the
     // page being left plays an exit (§4.6: only a forward change does),
     // same intent as advancePastEnd()'s "+= 1" vs retreatPastStart()'s
@@ -3401,7 +3403,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     selection.ids = [];
     selection.names = [];
     selection.groupPath = [];
-    viewport = null;
+    frame.viewport = null;
     overlay.boxes = [];
     overlay.union = null;
     overlay.ancestors = [];
@@ -3421,7 +3423,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // new document's `load` fires" mechanism `SELECT_AFTER_COMMAND`
       // parks in `pendingSelectionIds` — calling the public `selectElement`
       // immediately after this promise resolves would race `render()`'s
-      // `frame.srcdoc` navigation (NOOP-227: the runtime hasn't attached
+      // `frame.element.srcdoc` navigation (NOOP-227: the runtime hasn't attached
       // its `message` listener yet) and be silently dropped, exactly the
       // failure `render()`'s own `selectOnceLoaded` exists to avoid.
       if (selectAfter && selectAfter.length > 0) pendingSelectionIds = [...selectAfter];
@@ -3443,16 +3445,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || mode === "play") return;
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     mode = "play";
-    playerHasFocus = false;
+    frame.playerHasFocus = false;
     error = null;
     // Entering play mode destroys the view-mode iframe (selection-runtime.js
     // included), so any selection it reported is gone with it.
     selection.ids = [];
     selection.names = [];
     selection.groupPath = [];
-    viewport = null;
+    frame.viewport = null;
     overlay.boxes = [];
     overlay.union = null;
     overlay.ancestors = [];
@@ -3473,16 +3475,16 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || mode === "view") return;
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     mode = "view";
-    playerHasFocus = false;
+    frame.playerHasFocus = false;
     error = null;
     // Returning to view mode rebuilds the iframe with a fresh
     // selection-runtime.js instance that has never heard a click yet.
     selection.ids = [];
     selection.names = [];
     selection.groupPath = [];
-    viewport = null;
+    frame.viewport = null;
     overlay.boxes = [];
     overlay.union = null;
     overlay.ancestors = [];
@@ -3513,14 +3515,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (destroyed || mode !== "view") return;
     if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
     activeGesture = null;
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     mode = "preview";
     previewReturnSelectionIds = [...selection.ids];
     error = null;
     selection.ids = [];
     selection.names = [];
     selection.groupPath = [];
-    viewport = null;
+    frame.viewport = null;
     overlay.boxes = [];
     overlay.union = null;
     overlay.ancestors = [];
@@ -3544,7 +3546,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   function exitPreview(): void {
     if (destroyed || mode !== "preview") return;
-    const thisGeneration = ++generation;
+    const thisGeneration = ++frame.generation;
     mode = "view";
     error = null;
     const restoreIds = previewReturnSelectionIds ?? [];
@@ -3558,31 +3560,31 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function focusPlayer(): void {
     if (destroyed || mode !== "play") return;
-    frame.focus();
-    frame.contentWindow?.focus();
+    frame.element.focus();
+    frame.element.contentWindow?.focus();
     // Belt-and-braces, confirmed necessary (not merely defensive) by
     // e2e/player-mode.test.ts: a bare cross-document `.focus()` call from
     // the parent alone did not reliably fire the runtime's own `focus`
     // listener in headless Chromium during testing. Asking the runtime to
     // call `window.focus()` on itself, from inside its own document, is
     // the half that actually lands.
-    frame.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
-    playerHasFocus = true;
+    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
+    frame.playerHasFocus = true;
     notify();
   }
 
   function stepPlayer(direction: "advance" | "retreat"): void {
     if (destroyed || mode !== "play") return;
-    frame.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
+    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
   }
 
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
-    const old = frame;
-    paintedView = null; // #303: a new element has painted nothing yet.
-    paintedPlay = null;
-    frame = buildFrame(sandbox);
-    container.insertBefore(frame, old);
+    const old = frame.element;
+    frame.paintedView = null; // #303: a new element has painted nothing yet.
+    frame.paintedPlay = null;
+    frame.element = buildFrame(sandbox);
+    container.insertBefore(frame.element, old);
     old.remove();
   }
 
@@ -3597,7 +3599,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   async function setStyle(attr: string, value: string): Promise<boolean> {
     if (selection.ids.length === 0 || currentIndex < 0) return false;
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("element style set", {
       slidePath: slides[currentIndex],
       elementIds: [...selection.ids],
@@ -3606,7 +3608,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     });
     // Same race guard as endMoveGesture: a reload superseding this call
     // while it was in flight means the result is stale.
-    if (destroyed || thisGeneration !== generation) return false;
+    if (destroyed || thisGeneration !== frame.generation) return false;
     if (!result.ok) {
       error = result.message;
       notify();
@@ -3621,14 +3623,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function setTextAlign(align: "left" | "center" | "right"): Promise<boolean> {
     if (selection.ids.length === 0 || currentIndex < 0) return false;
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     for (const elementId of selection.ids) {
       const result = await postCommand("textbox align", {
         slidePath: slides[currentIndex],
         elementId,
         align,
       });
-      if (destroyed || thisGeneration !== generation) return false;
+      if (destroyed || thisGeneration !== frame.generation) return false;
       if (!result.ok) {
         error = result.message;
         notify();
@@ -3641,12 +3643,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   async function setPageStyle(update: { background?: string; accent?: string }): Promise<boolean> {
     if (currentIndex < 0) return false;
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("slide style set", {
       slidePath: slides[currentIndex],
       ...update,
     });
-    if (destroyed || thisGeneration !== generation) return false;
+    if (destroyed || thisGeneration !== frame.generation) return false;
     if (!result.ok) {
       error = result.message;
       notify();
@@ -3662,12 +3664,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     opacity?: number;
   }): Promise<boolean> {
     if (currentIndex < 0) return false;
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("slide background set", {
       slidePath: slides[currentIndex],
       ...update,
     });
-    if (destroyed || thisGeneration !== generation) return false;
+    if (destroyed || thisGeneration !== frame.generation) return false;
     if (!result.ok) {
       error = result.message;
       notify();
@@ -3678,9 +3680,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   async function setCanvasSize(width: number, height: number): Promise<boolean> {
-    const thisGeneration = generation;
+    const thisGeneration = frame.generation;
     const result = await postCommand("presentation canvas set", { width, height });
-    if (destroyed || thisGeneration !== generation) return false;
+    if (destroyed || thisGeneration !== frame.generation) return false;
     if (!result.ok) {
       error = result.message;
       notify();
@@ -3698,7 +3700,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       slides: [...slides],
       currentIndex,
       mode,
-      playerHasFocus,
+      playerHasFocus: frame.playerHasFocus,
       error,
       selection: {
         ids: [...selection.ids],
@@ -3720,7 +3722,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       slides: [...slides],
       currentIndex,
       mode,
-      playerHasFocus,
+      playerHasFocus: frame.playerHasFocus,
       error,
       selection: {
         ids: [...selection.ids],
@@ -3770,7 +3772,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     setBackgroundImage,
     setCanvasSize,
     get frameElement() {
-      return frame;
+      return frame.element;
     },
     subscribeStageInput: (listener: (event: StageInputEvent) => void) => {
       stageInputListeners.add(listener);
@@ -3889,7 +3891,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // (ADR-0001); this module has no business deciding what else lives
       // in it. `.remove()` is also a no-op if the iframe is already
       // detached, so double-destroy stays safe.
-      frame.remove();
+      frame.element.remove();
     },
   };
 }
