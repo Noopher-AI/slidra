@@ -45,3 +45,38 @@ The checklist's starting point is always `npm run verify:setup`.
 CI runs `npm test` and `npm run test:e2e:core`. The browser gate is intentionally limited to the cross-layer authoring flows that cannot be established by unit tests: browser/agent edits, playback, undo/redo, and save/open persistence.
 
 `npm run test:e2e` remains the broader manual or on-demand E2E suite. The repository currently has no committed product appearance baselines, so CI does not claim a pixel-comparison gate. Add a visual gate only with explicit core screenshot coverage, a reviewed baseline-generation workflow, and corresponding policy here.
+
+### Verifying a refactor
+
+Green tests do not demonstrate that a refactor was faithful. If a change does not alter behaviour,
+the existing test suite passes whether the change was a clean move or a rewrite along the way — a
+dropped negation or a missing `notify()` inside a large moved block passes every existing test just
+as well as a correct move does ([S10]/#379). A refactor PR is instead verified mechanically, with
+`scripts/verify_refactor.sh`:
+
+- **A move is verified by sorted-diff equality.** For a commit that moves code without renaming
+  anything, run:
+
+  ```
+  scripts/verify_refactor.sh moved <sha>...
+  ```
+
+  It takes the commit's diff, strips the +/- prefixes, drops the lines the commit's own
+  `Verbatim-move-exempt:` trailer declares (new import/export lines the move needed), sorts each side,
+  and diffs them. A pure move produces the same bag of lines added and removed; any other difference
+  means content changed during the move, and the script exits non-zero and prints what did not match.
+
+- **A rename is verified by reverse substitution against a mapping table.** For a commit that renames
+  bindings, the commit message carries a `Rename-map:` trailer (one `old -> new` per line). Run:
+
+  ```
+  scripts/verify_refactor.sh renamed <sha>...
+  ```
+
+  It substitutes every `new` name back to `old` in the commit's new blobs and diffs the result against
+  the old blobs. Lines the commit's own `Rename-exempt:` trailer declares (the record's own
+  declaration/initialization) are dropped first. Any residual diff means the commit changed more than
+  the name.
+
+Run both against every commit in a "split module X out of file Y" PR before claiming it is a pure
+move or rename; see the script's own header comment for the trailer syntax.
