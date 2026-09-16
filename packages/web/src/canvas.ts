@@ -752,13 +752,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   };
   /** The cell a range gesture started from — set on a non-additive click/contextmenu, read on a ⇧-click to build the range via `normalizeRange`. Private to this module: not part of the public `tableRange.current`, exactly like `TableOverlay`'s old local `anchorRef` this replaces. */
   // E2.T12 plan §2.8/§4.5: at most one chart data window open at a time
-  // (`chartWindowTarget`, `null` = closed) — opened by the runtime's
+  // (`chartWindow.target`, `null` = closed) — opened by the runtime's
   // "dblclick-chart" report, closed by Esc (ChartWindow.tsx's own
   // listener) or a slide change (`showSlide`). A separate channel from
   // `subscribeOverlay`/`CanvasState` for the same reason those are: high-
   // frequency during local editing, and shaped nothing like either.
   const chartWindowListeners = new Set<(state: ChartWindowState | null) => void>();
-  let chartWindowTarget: string | null = null;
+  const chartWindow = { target: null as string | null };
   const overlay = {
     boxes: [] as Rect[],
     union: null as Rect | null,
@@ -1543,21 +1543,21 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * E2.T12: re-derives the open chart window's `ChartModel` off
    * `currentSlideMarkup` and pushes it to every `subscribeChartWindow`
    * listener — called after every render() (so a committed edit's
-   * normalized result reflects back) and whenever `chartWindowTarget`
+   * normalized result reflects back) and whenever `chartWindow.target`
    * itself changes (open/close). A target that no longer resolves to a
    * chart (deleted, or the slide changed under it) closes the window
    * rather than surfacing a parse error — same "silently do nothing"
    * posture `enterTextEdit` gives an id that no longer resolves.
    */
-  /** Reads `chartWindowTarget`'s current `ChartModel` off `currentSlideMarkup`; closes the window (clears `chartWindowTarget`) as a side effect when the target no longer resolves to a chart. Shared by `notifyChartWindow` and `subscribeChartWindow`'s initial push. */
+  /** Reads `chartWindow.target`'s current `ChartModel` off `currentSlideMarkup`; closes the window (clears `chartWindow.target`) as a side effect when the target no longer resolves to a chart. Shared by `notifyChartWindow` and `subscribeChartWindow`'s initial push. */
   function buildChartWindowState(): ChartWindowState | null {
-    if (chartWindowTarget === null) return null;
+    if (chartWindow.target === null) return null;
     try {
       if (currentSlideMarkup === null) throw new Error("no slide loaded");
-      const model = readChartModel(currentSlideMarkup, chartWindowTarget);
-      return { id: chartWindowTarget, slidePath: slides[currentIndex], model };
+      const model = readChartModel(currentSlideMarkup, chartWindow.target);
+      return { id: chartWindow.target, slidePath: slides[currentIndex], model };
     } catch {
-      chartWindowTarget = null;
+      chartWindow.target = null;
       return null;
     }
   }
@@ -1570,7 +1570,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /** The runtime's "dblclick-chart" report (selection-runtime.js, plan §3.6) — a plain double-click on a chart container opens its data window. No-op outside view mode, or when `id` does not resolve to a chart (`notifyChartWindow` closes it again in that case). */
   function openChartWindow(id: string): void {
     if (mode !== "view") return;
-    chartWindowTarget = id;
+    chartWindow.target = id;
     notifyChartWindow();
   }
 
@@ -2699,7 +2699,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** `CanvasController.closeChartWindow` (Esc): just closes the window — every control already commits straight to a `chart *` command, so there is nothing local left to revert. */
   function closeChartWindow(): void {
-    chartWindowTarget = null;
+    chartWindow.target = null;
     notifyChartWindow();
   }
 
@@ -3397,7 +3397,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // resolves on the wrong slide), but that happens after the slide fetch
     // resolves — closing it here means the window never lingers open for a
     // beat while the next slide loads.
-    chartWindowTarget = null;
+    chartWindow.target = null;
     notifyChartWindow();
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
