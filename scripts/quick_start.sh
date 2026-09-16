@@ -272,6 +272,66 @@ else
   fi
 fi
 
+# S9 checklist steps -----------------------------------------------------------
+# Shared between the demo and --blank checklists below: Deck Space, continuous
+# save, the agent sandbox boundary, master view mode, and chat/undo history
+# persistence all behave the same regardless of which deck is currently open.
+# $PRESENTATION_ID is set above in both branches; this heredoc is deliberately
+# unquoted so it expands.
+S9_CHECKLIST="$(cat <<S9EOF
+Deck Space (workspace entry, deck creation/switching/deletion)
+  - Click the "Deck Space" button in the title bar: it opens as a full-screen overlay; the currently
+    open deck's card shows a "Current" badge.
+  - Click "New deck": a new deck appears in the list; click its card to switch into it — the title bar's
+    deck name changes and the "Current" badge moves to the new deck.
+  - On a deck that is NOT current, click its trash "Delete" icon, then "Confirm delete": the card
+    disappears from the list. (Delete/Rename are disabled on the current deck itself — switch away first.)
+  - Click "Close" (only shown once a deck is open) to return to the editor on the deck you started with.
+Continuous save
+  - Edit an element (e.g. type "change the title to Q3 Report" in the chat box, or drag an element):
+    the status next to the deck name in the title bar shows "Saving…" then "Saved" within about a
+    second. There is no manual Save button any more.
+  - Force a save failure: make an edit, then immediately (within about a second, before the "Saving…"
+    debounce fires) chmod 444 the open deck's .slidra file (path printed above) from another terminal —
+    the status shows "Save failed" and a banner reading "Permission denied writing <filename>." with a
+    "Retry" button appears. (chmod-ing the file before editing just makes the edit itself fail outright,
+    since the deck file is a live SQLite database — it does not exercise this banner.)
+  - chmod 644 the file back to writable, click "Retry": the banner disappears and the status returns to
+    "Saved".
+Agent sandbox boundary
+  - In the chat box, ask the agent to run a shell command that writes outside its sandbox, e.g.
+    "run: echo test > ~/slidra-escape-test.txt".
+  - The command fails (non-zero exit, reported back through the chat) and the file is never created —
+    confirm from a separate terminal:
+        ls ~/slidra-escape-test.txt
+    (expect "No such file or directory"). The refusal happens at the OS level (Landlock/Seatbelt),
+    not a string-based command filter.
+Master view mode
+  - In the left rail, click "Edit template" (disabled with the tooltip "Save a slide as a template
+    first" if no template exists yet — ask the agent to save the current slide as a template first
+    in that case).
+  - The button becomes "Back to slides", the rail switches to listing templates, and a bar reads
+    "Editing this template. Existing slides don't change until you use the action below." with a
+    "Let the agent update the slides" button. Drag-reorder is disabled while in this mode.
+  - Edit the template, then click "Let the agent update the slides": the agent runs and propagates the
+    change to the real slides that use the template.
+  - Click "Back to slides": the slides that used the template now show the propagated change.
+Chat and undo history surviving a restart
+  - In the chat box, make one more edit (e.g. "change the title to Persistence Check"), then press
+    Ctrl+C to stop this script.
+  - Relaunch the same command (same presentation id — don't pass --fresh): the chat panel shows the
+    same conversation on load, and Ctrl+Z (undo) still reverts the edit made just before the restart.
+  - Cross-check from the terminal — this should print the same entries before and after the restart:
+        node_modules/.bin/slidra chat-history $PRESENTATION_ID
+Agent-switch divider
+  - Switch the connected agent mid-conversation (via the agent picker in the side panel), or click the
+    "New session" ("+") button: the chat thread inserts a system divider message, e.g. "Switched to
+    <Agent>. It will handle messages from here. Above is the conversation before it joined — the agent
+    has no memory of it; it can read it back with slidra chat-history if it needs to." ("Started a new
+    conversation. ..." for "New session".)
+S9EOF
+)"
+
 # 5. Launch ---------------------------------------------------------------
 SERVE_ARGS=("serve" "$PRESENTATION_ID" "--port" "$PORT")
 if [ -n "$AGENT" ]; then
@@ -324,6 +384,8 @@ Verification checklist (blank presentation, verifying the from-scratch path):
     the screen updates automatically with the new element showing up: this is the first command ever issued against this presentation.
   - View the same content from the terminal:
       node_modules/.bin/slidra cat $PRESENTATION_ID project.json
+
+$S9_CHECKLIST
 
 Other:
   - Press Ctrl+C to stop.
@@ -390,6 +452,8 @@ Verification checklist (covering what's done so far):
     - Once rewound all the way to the very start of page 1, pressing the left arrow key again does nothing and doesn't crash.
     - Throughout the whole rewind: no error message ever appears on screen, and no video or audio
       is left playing.
+
+$S9_CHECKLIST
 
 Other:
   - View the same content from the terminal:
