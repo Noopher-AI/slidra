@@ -698,11 +698,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // slide changes, reload() runs, play() is entered, or exitPlay()
   // returns — a selection surviving a page change would point at a
   // different slide's DOM entirely.
-  let selectionIds: string[] = [];
-  let selectionNames: (string | null)[] = [];
+  const selection = { ids: [] as string[], names: [] as (string | null)[], groupPath: [] as string[] };
   // Mirrors selection-runtime.js's own `groupPath` — cleared alongside
-  // selectionIds/Names everywhere they are cleared (see that comment).
-  let selectionGroupPath: string[] = [];
+  // selection.ids/Names everywhere they are cleared (see that comment).
   // `paste-offset.ts`'s own state, one instance per editor session
   // (that module's own doc comment) — advanced by a successful `copySelection`/
   // `cutSelection`/`pasteFromText`, never by a `table cell paste` (offsets
@@ -1005,28 +1003,28 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       const id = typeof message.id === "string" ? message.id : "";
       const name = typeof message.name === "string" ? message.name : null;
       if (message.additive) {
-        const index = selectionIds.indexOf(id);
+        const index = selection.ids.indexOf(id);
         if (index >= 0) {
-          selectionIds.splice(index, 1);
-          selectionNames.splice(index, 1);
+          selection.ids.splice(index, 1);
+          selection.names.splice(index, 1);
         } else {
-          selectionIds.push(id);
-          selectionNames.push(name);
+          selection.ids.push(id);
+          selection.names.push(name);
         }
       } else {
-        selectionIds = [id];
-        selectionNames = [name];
+        selection.ids = [id];
+        selection.names = [name];
       }
       // "select"/"clear" always describe the runtime's FULL current
       // groupPath, never a delta — a missing field means "no group", the
       // same as an explicit `[]` (see selection-runtime.js's withGroupPath).
-      selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
+      selection.groupPath = isStringArray(message.groupPath) ? message.groupPath : [];
       notify();
-      pushSelectionToRuntime(selectionIds);
+      pushSelectionToRuntime(selection.ids);
       // E2.T14r2 §4.1 lifecycle table: a range only survives while its own
       // table stays the sole selection — any other shape (a different
       // element, no selection, a multi-selection) drops it.
-      if (tableRange && (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId)) {
+      if (tableRange && (selection.ids.length !== 1 || selection.ids[0] !== tableRange.tableId)) {
         setTableRange(null);
       }
       return;
@@ -1049,7 +1047,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // selection itself is untouched, only the scope. No handle-flags
       // push needed: which element(s) are selected, and therefore which
       // handles apply, has not changed.
-      selectionGroupPath = isStringArray(message.groupPath) ? message.groupPath : [];
+      selection.groupPath = isStringArray(message.groupPath) ? message.groupPath : [];
       notify();
       return;
     }
@@ -1376,7 +1374,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    */
   function handleTableRangeKey(key: string, modifiers: { meta: boolean; ctrl: boolean; shift: boolean }): boolean {
     if (!tableRange) return false;
-    if (selectionIds.length !== 1 || selectionIds[0] !== tableRange.tableId) {
+    if (selection.ids.length !== 1 || selection.ids[0] !== tableRange.tableId) {
       // The selection moved on without the range ever being told (should
       // not normally happen — the "select"/"clear" branches above already
       // clear it — but this is the behaviour contract's own explicit row,
@@ -1478,9 +1476,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** `OverlayState.label` (§4.6): `null` with nothing selected, `"N elements"` (no path) for a multi-selection, or the single selected element's own name/id plus its ancestor-chain names (outermost first, from the runtime's last-reported `bounds` event) otherwise. */
   function computeOverlayLabel(): { text: string; path: string[] } | null {
-    if (selectionIds.length === 0) return null;
-    if (selectionIds.length > 1) return { text: `${selectionIds.length} elements`, path: [] };
-    const text = selectionNames[0] ?? selectionIds[0];
+    if (selection.ids.length === 0) return null;
+    if (selection.ids.length > 1) return { text: `${selection.ids.length} elements`, path: [] };
+    const text = selection.names[0] ?? selection.ids[0];
     const path = overlayAncestors.map((ancestor) => ancestor.name ?? ancestor.id);
     return { text, path };
   }
@@ -1493,7 +1491,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       label: computeOverlayLabel(),
       guides: [...overlayGuides],
       dragging: (activeGesture !== null && activeGesture.kind !== "marquee") || overlaySettling,
-      hasAnimation: selectionIds.some((id) => currentSlideEffects.some((effect) => effect.target === id)),
+      hasAnimation: selection.ids.some((id) => currentSlideEffects.some((effect) => effect.target === id)),
       badges: overlayBadges,
     };
   }
@@ -1580,11 +1578,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** Shared by handleSelectionMessage's "clear" case and the public clearSelection() (NOOP-83 §4.5) — same four steps either way. */
   function clearSelectionState(groupPath: string[]): void {
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = groupPath;
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = groupPath;
     notify();
-    pushSelectionToRuntime(selectionIds);
+    pushSelectionToRuntime(selection.ids);
     if (tableRange) setTableRange(null);
   }
 
@@ -1646,10 +1644,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     return index;
   }
 
-  /** `CanvasSelection.elements` (NOOP-143 §1 decision 2/3): `selectionIds[i]`'s parsed `SlideElement`, or `null` when it is not (or no longer) in the current model. */
+  /** `CanvasSelection.elements` (NOOP-143 §1 decision 2/3): `selection.ids[i]`'s parsed `SlideElement`, or `null` when it is not (or no longer) in the current model. */
   function selectedElements(): (SlideElement | null)[] {
     const index = elementIndex();
-    return selectionIds.map((id) => index.get(id)?.element ?? null);
+    return selection.ids.map((id) => index.get(id)?.element ?? null);
   }
 
   /** `id`'s full container-chain bounds, off the runtime's last `element-bounds` report — `null` when the runtime never measured it (not currently rendered, or a test environment with no real SVG geometry). */
@@ -1834,7 +1832,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   /** Pushes the current selection's handle-visibility (and group-scope) state down to the runtime. Called after every selection-mutating path so the corner/rotate/textbox-width handles always reflect the live selection, regardless of which side (runtime click, or host-driven marquee) originated the change. */
   function pushSelectionToRuntime(ids: readonly string[]): void {
-    postToFrame({ command: "selection", ids: [...ids], ...computeHandleFlags(ids), groupPath: [...selectionGroupPath] });
+    postToFrame({ command: "selection", ids: [...ids], ...computeHandleFlags(ids), groupPath: [...selection.groupPath] });
   }
 
   // --- Select all / delete / duplicate / order (NOOP-90/T2 §4.4/§4.5) ---
@@ -1856,22 +1854,22 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     if (mode !== "view" || !currentSlideModel) return;
     const entry = elementIndex().get(id);
     if (!entry) return;
-    selectionIds = [id];
-    selectionNames = [entry.element.name];
-    selectionGroupPath = [];
+    selection.ids = [id];
+    selection.names = [entry.element.name];
+    selection.groupPath = [];
     notify();
-    pushSelectionToRuntime(selectionIds);
+    pushSelectionToRuntime(selection.ids);
   }
 
   /** ⌘A: every TOP-LEVEL element on the current slide — never a group's own children, matching `05-INTERACTIONS.feature`'s "every top-level element on this page" wording. `groupPath` resets to top level, same as any other host-driven selection change. */
   function selectAll(): void {
     if (mode !== "view" || !currentSlideModel) return;
     if (currentSlideModel.elements.length === 0) return;
-    selectionIds = currentSlideModel.elements.map((element) => element.id);
-    selectionNames = currentSlideModel.elements.map((element) => element.name);
-    selectionGroupPath = [];
+    selection.ids = currentSlideModel.elements.map((element) => element.id);
+    selection.names = currentSlideModel.elements.map((element) => element.name);
+    selection.groupPath = [];
     notify();
-    pushSelectionToRuntime(selectionIds);
+    pushSelectionToRuntime(selection.ids);
   }
 
   /**
@@ -1892,25 +1890,25 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       .map((id) => [id, index.get(id)] as const)
       .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== undefined);
     if (entries.length === 0) return;
-    selectionIds = entries.map(([id]) => id);
-    selectionNames = entries.map(([, entry]) => entry.element.name);
-    selectionGroupPath = [];
+    selection.ids = entries.map(([id]) => id);
+    selection.names = entries.map(([, entry]) => entry.element.name);
+    selection.groupPath = [];
     notify();
-    pushSelectionToRuntime(selectionIds);
+    pushSelectionToRuntime(selection.ids);
   }
 
   async function deleteSelection(): Promise<void> {
-    if (mode !== "view" || selectionIds.length === 0) return;
-    const result = await runCommand("element delete", { slidePath: slides[currentIndex], elementIds: [...selectionIds] });
+    if (mode !== "view" || selection.ids.length === 0) return;
+    const result = await runCommand("element delete", { slidePath: slides[currentIndex], elementIds: [...selection.ids] });
     if (result.ok) clearSelectionState([]);
   }
 
   /** `+3% / +4%` of the viewBox (prototype's own `slidra-logic-v3.js` offset) — `runCommand`'s existing `SELECT_AFTER_COMMAND` entry for `"element duplicate"` selects the new copy on success. */
   async function duplicateSelection(): Promise<void> {
-    if (mode !== "view" || selectionIds.length === 0 || !viewport) return;
+    if (mode !== "view" || selection.ids.length === 0 || !viewport) return;
     await runCommand("element duplicate", {
       slidePath: slides[currentIndex],
-      elementIds: [...selectionIds],
+      elementIds: [...selection.ids],
       dx: 0.03 * viewport.viewBox.width,
       dy: 0.04 * viewport.viewBox.height,
     });
@@ -1932,9 +1930,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * untouched — the caller only writes when this resolves non-null.
    */
   async function copySelection(): Promise<string | null> {
-    if (mode !== "view" || selectionIds.length === 0 || currentIndex === -1) return null;
+    if (mode !== "view" || selection.ids.length === 0 || currentIndex === -1) return null;
     const slidePath = slides[currentIndex];
-    const result = await runCommand("element copy", { slidePath, elementIds: [...selectionIds] });
+    const result = await runCommand("element copy", { slidePath, elementIds: [...selection.ids] });
     const svg = result.ok ? svgFromCommandData(result.data) : null;
     if (svg !== null) pasteOffsetState = clipboardWritten(slidePath);
     return svg;
@@ -1951,9 +1949,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * App.tsx's keydown handler).
    */
   async function cutSelection(): Promise<string | null> {
-    if (mode !== "view" || selectionIds.length === 0 || currentIndex === -1) return null;
+    if (mode !== "view" || selection.ids.length === 0 || currentIndex === -1) return null;
     const slidePath = slides[currentIndex];
-    const elementIds = [...selectionIds];
+    const elementIds = [...selection.ids];
     const result = await runCommand("element cut", { slidePath, elementIds });
     const svg = result.ok ? svgFromCommandData(result.data) : null;
     if (svg === null) return null;
@@ -1980,18 +1978,18 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   async function orderSelection(direction: "up" | "down" | "front" | "back"): Promise<void> {
-    if (mode !== "view" || selectionIds.length === 0) return;
-    await runCommand("element order", { slidePath: slides[currentIndex], elementIds: [...selectionIds], direction });
+    if (mode !== "view" || selection.ids.length === 0) return;
+    await runCommand("element order", { slidePath: slides[currentIndex], elementIds: [...selection.ids], direction });
   }
 
   async function alignSelection(direction: "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom"): Promise<void> {
-    if (mode !== "view" || selectionIds.length < 2) return;
-    await runCommand("element align", { slidePath: slides[currentIndex], elementIds: [...selectionIds], direction });
+    if (mode !== "view" || selection.ids.length < 2) return;
+    await runCommand("element align", { slidePath: slides[currentIndex], elementIds: [...selection.ids], direction });
   }
 
   async function distributeSelection(axis: "horizontal" | "vertical"): Promise<void> {
-    if (mode !== "view" || selectionIds.length < 3) return;
-    await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selectionIds], axis });
+    if (mode !== "view" || selection.ids.length < 3) return;
+    await runCommand("element distribute", { slidePath: slides[currentIndex], elementIds: [...selection.ids], axis });
   }
 
   async function insertTextBox(input: {
@@ -2016,7 +2014,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // the console to say why. Each guard below now warns identifiably so a
     // future regression in any of these preconditions is diagnosable from
     // the console alone instead of requiring a fresh investigation.
-    if (selectionIds.length === 0) {
+    if (selection.ids.length === 0) {
       console.warn("[beginMoveGesture] abort: no selection");
       return;
     }
@@ -2037,7 +2035,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     }
     const index = elementIndex();
     const originals = new Map<string, OriginalTransform>();
-    for (const id of selectionIds) {
+    for (const id of selection.ids) {
       const entry = index.get(id);
       if (!entry) continue;
       try {
@@ -2149,8 +2147,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * (selectOnceLoaded resets groupPath), same as those commands.
    */
   function keepSelectionAcrossReload(): void {
-    if (selectionIds.length === 0) return;
-    pendingSelectionIds = [...selectionIds];
+    if (selection.ids.length === 0) return;
+    pendingSelectionIds = [...selection.ids];
     // The context bar stays down until that re-selection has landed (see the
     // gesture-end handler) — otherwise it flashes: shown the instant the
     // gesture ends, gone when the reload drops the selection, shown again
@@ -2261,8 +2259,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
     // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
     if (!viewport) return;
-    if (selectionIds.length !== 1) return;
-    const id = selectionIds[0];
+    if (selection.ids.length !== 1) return;
+    const id = selection.ids[0];
     const entry = elementIndex().get(id);
     if (!entry) return;
     // NOOP-65 §7-I: a four-corner handle on a text box only ever changes
@@ -2516,8 +2514,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
     // silently returns {x:0,y:0} when viewport hasn't arrived yet (NOOP-328).
     if (!viewport) return;
-    if (selectionIds.length !== 1) return;
-    const id = selectionIds[0];
+    if (selection.ids.length !== 1) return;
+    const id = selection.ids[0];
     const entry = elementIndex().get(id);
     if (!entry) return;
     let parts: TransformParts;
@@ -2613,8 +2611,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // Same guard as beginMoveGesture: without it, toUserPoint(point) below
     // silently returns {x:0,y:0} when viewport hasn't arrived yet.
     if (!viewport) return;
-    if (selectionIds.length !== 1) return;
-    const id = selectionIds[0];
+    if (selection.ids.length !== 1) return;
+    const id = selection.ids[0];
     const entry = elementIndex().get(id);
     if (!entry || entry.element.textWidth === null) return;
 
@@ -2827,13 +2825,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         hitNames.push(element.name);
       }
     }
-    selectionIds = hitIds;
-    selectionNames = hitNames;
+    selection.ids = hitIds;
+    selection.names = hitNames;
     // Marquee always operates at the top level (the loop above walks
     // currentSlideModel.elements, never a group's children) — it
     // unconditionally exits any group-edit scope, same as clicking outside
     // the entered group would.
-    selectionGroupPath = [];
+    selection.groupPath = [];
     notify();
     pushSelectionToRuntime(hitIds);
   }
@@ -2939,9 +2937,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // An external edit can rewrite the very elements the author had
     // selected (or remove them entirely) — the ids it points at are no
     // longer trustworthy, so the selection does not survive a reload.
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = [];
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = [];
     viewport = null;
     overlayBoxes = [];
     overlayUnion = null;
@@ -3129,11 +3127,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
         notifyOverlay();
         return;
       }
-      selectionIds = entries.map(([id]) => id);
-      selectionNames = entries.map(([, entry]) => entry.element.name);
-      selectionGroupPath = [];
+      selection.ids = entries.map(([id]) => id);
+      selection.names = entries.map(([, entry]) => entry.element.name);
+      selection.groupPath = [];
       notify();
-      pushSelectionToRuntime(selectionIds);
+      pushSelectionToRuntime(selection.ids);
     };
     targetFrame.addEventListener("load", onLoad);
   }
@@ -3398,9 +3396,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = [];
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = [];
     viewport = null;
     overlayBoxes = [];
     overlayUnion = null;
@@ -3449,9 +3447,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     error = null;
     // Entering play mode destroys the view-mode iframe (selection-runtime.js
     // included), so any selection it reported is gone with it.
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = [];
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = [];
     viewport = null;
     overlayBoxes = [];
     overlayUnion = null;
@@ -3479,9 +3477,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     error = null;
     // Returning to view mode rebuilds the iframe with a fresh
     // selection-runtime.js instance that has never heard a click yet.
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = [];
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = [];
     viewport = null;
     overlayBoxes = [];
     overlayUnion = null;
@@ -3515,11 +3513,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     activeGesture = null;
     const thisGeneration = ++generation;
     mode = "preview";
-    previewReturnSelectionIds = [...selectionIds];
+    previewReturnSelectionIds = [...selection.ids];
     error = null;
-    selectionIds = [];
-    selectionNames = [];
-    selectionGroupPath = [];
+    selection.ids = [];
+    selection.names = [];
+    selection.groupPath = [];
     viewport = null;
     overlayBoxes = [];
     overlayUnion = null;
@@ -3596,11 +3594,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * own, same as every other direct-manipulation command in this module.
    */
   async function setStyle(attr: string, value: string): Promise<boolean> {
-    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    if (selection.ids.length === 0 || currentIndex < 0) return false;
     const thisGeneration = generation;
     const result = await postCommand("element style set", {
       slidePath: slides[currentIndex],
-      elementIds: [...selectionIds],
+      elementIds: [...selection.ids],
       attr,
       value,
     });
@@ -3620,9 +3618,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   async function setTextAlign(align: "left" | "center" | "right"): Promise<boolean> {
-    if (selectionIds.length === 0 || currentIndex < 0) return false;
+    if (selection.ids.length === 0 || currentIndex < 0) return false;
     const thisGeneration = generation;
-    for (const elementId of selectionIds) {
+    for (const elementId of selection.ids) {
       const result = await postCommand("textbox align", {
         slidePath: slides[currentIndex],
         elementId,
@@ -3701,9 +3699,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       playerHasFocus,
       error,
       selection: {
-        ids: [...selectionIds],
-        names: [...selectionNames],
-        groupPath: [...selectionGroupPath],
+        ids: [...selection.ids],
+        names: [...selection.names],
+        groupPath: [...selection.groupPath],
         elements: selectedElements(),
       },
       dragSignal,
@@ -3723,9 +3721,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       playerHasFocus,
       error,
       selection: {
-        ids: [...selectionIds],
-        names: [...selectionNames],
-        groupPath: [...selectionGroupPath],
+        ids: [...selection.ids],
+        names: [...selection.names],
+        groupPath: [...selection.groupPath],
         elements: selectedElements(),
       },
       dragSignal,
