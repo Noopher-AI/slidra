@@ -96,7 +96,7 @@ import { readChartModel, type ChartModel } from "./chart-model.js";
 import { isMeasuredItem, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
 export type { TableRuntimeEvent } from "./canvas/runtime-messages.js";
 import { flattenElements, type Viewport, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
-import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
+import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapSelectionDocument } from "./canvas/frame-documents.js";
 export { presentationFontFaces, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 import { normalizeTemplatePaths, type ProjectJson } from "./canvas/project-io.js";
 export { fetchAssetList } from "./canvas/project-io.js";
