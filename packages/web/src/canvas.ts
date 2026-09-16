@@ -63,19 +63,7 @@ import type { EmbedProvider } from "./embed.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
 import type { Effect, SlideTransition } from "./effects.js";
-import {
-  decomposeMatrix,
-  formatTransform,
-  snapTranslation,
-  composeMatrices,
-  applyMatrixToPoint,
-  invertMatrix,
-  type Matrix,
-  type Rect,
-  type TransformParts,
-  type SnapCandidate,
-  type SnapGuide,
-} from "./geometry.js";
+import { type Matrix, type Rect } from "./geometry.js";
 import {
   parseSlide,
   type BackgroundImage,
@@ -86,15 +74,18 @@ import {
 import { INITIAL_PASTE_OFFSET_STATE, clipboardWritten, nextPasteOffset, type PasteOffsetState } from "./paste-offset.js";
 import { classifyClipboardText } from "./clipboard/payload.js";
 import { pasteCommandFor, type CellRangeProvider, type ClipboardTarget } from "./clipboard/dispatch.js";
-import { tabTarget, cellsInRange, normalizeRange, isCellInRange, type CellRange } from "./table-overlay.js";
+import { tabTarget, cellsInRange, type CellRange } from "./table-overlay.js";
 import { readChartModel, type ChartModel } from "./chart-model.js";
-import { isPlayerMessage, isSelectionMessage, isNonNegativeRect, isBoundsItem, isMeasuredItem, isElementBoundsItem, isTableCellRectItem, isFiniteNumber, isValidPoint, isValidRect, isStringArray, type SelectionMessage, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
+import { isMeasuredItem, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
 export type { TableRuntimeEvent } from "./canvas/runtime-messages.js";
-import { SNAP_THRESHOLD_PX, HUMAN_RENEW_THROTTLE_MS, roundsToZero, rectsIntersect, flattenElements, subtreeIds, subtreeForcesUniformScale, OPPOSITE_CORNER, cornerPoint, type Viewport, type OriginalTransform, type MoveGesture, type ScaleGesture, type RotateGesture, type TextboxWidthGesture, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
+import { flattenElements, type Viewport, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
 import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 export { presentationFontFaces, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 import { normalizeTemplatePaths, pageTransitionTransform, type ProjectJson } from "./canvas/project-io.js";
 export { fetchAssetList } from "./canvas/project-io.js";
+import { createGestures, type GestureDeps } from "./canvas/gestures.js";
+import { createRuntimeMessageHandlers, type RuntimeMessageDeps } from "./canvas/runtime-message-handlers.js";
+import type { PlayModeDeps } from "./canvas/play-mode.js";
 
 export type CanvasMode = "view" | "play" | "preview";
 
@@ -634,13 +625,6 @@ export interface EmbedCommand {
 }
 
 
-/** Read directly rather than through a container ref (unlike App.tsx's `isCanvasAreaFullscreen`): this module has no reference to the "well" element `toggleFullscreen()` requests fullscreen on, and the app only ever fullscreens that one element while playing — so "is anything fullscreen at all" answers the same question. */
-function isAnyElementFullscreen(): boolean {
-  const doc = document as Document & { webkitFullscreenElement?: Element | null };
-  return (doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null) !== null;
-}
-
-
 
 
 export function mountCanvas(container: HTMLElement): CanvasController {
@@ -891,16 +875,253 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   };
   container.appendChild(frame.element);
 
+  /**
+   * [E8.T3] Everything the move/scale/rotate/textbox-width/marquee gesture
+   * functions defined below read or write off the rest of this closure,
+   * gathered into one object (ADR-0024) — a rehearsal for
+   * `canvas/gestures.ts` taking those functions over verbatim: routing
+   * every read through this object first, while the functions are still
+   * defined right here, means a missing field shows up as a type error in
+   * this same file rather than a runtime crash after the move. Built here,
+   * before the event listeners below, because the two host pointer
+   * handlers those listeners register are wired through this object's
+   * eventual factory output (next commit) — `const` bindings are subject
+   * to TDZ where function declarations are not.
+   */
+  const gestureDeps: GestureDeps = {
+    activeGesture: {
+      get: () => activeGesture,
+      set: (value) => {
+        activeGesture = value;
+      },
+    },
+    frame,
+    selection,
+    overlay,
+    slide: {
+      slidePath: () => slides[currentIndex],
+      currentSlideModel: () => currentSlideModel,
+      elementIndex,
+      computeBounds,
+      get elementBoundsById() {
+        return elementBoundsById;
+      },
+    },
+    editingLease: {
+      begin: beginEditingLease,
+      end: endEditingLease,
+      lastRenewAt: () => lastEditingLeaseAt,
+    },
+    pendingSelection: {
+      keepAcrossReload: keepSelectionAcrossReload,
+      pendingSelectionIds: () => pendingSelectionIds,
+    },
+    publish: {
+      notify,
+      notifyOverlay,
+      pushSelectionToRuntime,
+    },
+    coords: {
+      toFrameClientPoint,
+      toUserPoint,
+      userXToClient,
+      userYToClient,
+      offsetUnion,
+    },
+    toParentClientPoint,
+    postToFrame,
+    postCommand,
+    setError: (message) => {
+      error = message;
+    },
+    isDestroyed: () => destroyed,
+  };
+  const gestures = createGestures(gestureDeps);
+
+  /**
+   * [E8.T3] Same rehearsal as `gestureDeps` above, for the `onWindowMessage`/
+   * `handleSelectionMessage` pair defined below: every read/write against
+   * the rest of this closure routed through this object first, so
+   * `canvas/runtime-message-handlers.ts` can take the two functions over
+   * verbatim in a later commit. `gestures` is the factory output built
+   * just above — the callback seam ADR-0024 requires instead of one
+   * extracted module importing another.
+   */
+  const runtimeMessageDeps: RuntimeMessageDeps = {
+    frame,
+    selection,
+    overlay,
+    tableRange,
+    activeGesture: {
+      get: () => activeGesture,
+      set: (value) => {
+        activeGesture = value;
+      },
+    },
+    gestures,
+    session: {
+      isDestroyed: () => destroyed,
+      mode: () => mode,
+      setError: (message) => {
+        error = message;
+      },
+      bumpDragSignal: () => {
+        dragSignal++;
+      },
+      setElementBounds: (value) => {
+        elementBoundsById = value;
+      },
+      pendingSelectionIds: () => pendingSelectionIds,
+      stageHandMode: () => stageHandMode,
+    },
+    editing: {
+      getEditingState: () => editingState,
+      setEditingState: (value) => {
+        editingState = value;
+      },
+      enterTextEdit,
+      commitTextEdit,
+      beginLease: beginEditingLease,
+      endLease: endEditingLease,
+      lastRenewAt: () => lastEditingLeaseAt,
+    },
+    playback: {
+      focusPlayer,
+      advancePastEnd,
+      retreatPastStart,
+      exitPreview,
+      exitPlay,
+      next,
+      previous,
+    },
+    commands: {
+      selectAll,
+      deleteSelection,
+      duplicateSelection,
+      orderSelection,
+      undoRedo: (kind) => undoRedoHandler?.(kind),
+      copySelection,
+      cutSelection,
+      pasteFromText,
+      closeChartWindow,
+      openChartWindow,
+      requestBadgeMeasurement,
+      clearSelectionState,
+    },
+    table: {
+      emitTableEvent,
+      setTableRange,
+      handleTableRangeKey,
+    },
+    host: {
+      postToFrame,
+      toParentClientPoint,
+      toParentClientRect,
+      emitStageInput,
+      emitStageHover,
+      applyEmbedBoxes,
+      emitEmbedCommand,
+    },
+    publish: {
+      notify,
+      notifyOverlay,
+      pushSelectionToRuntime,
+    },
+  };
+  const runtimeMessages = createRuntimeMessageHandlers(runtimeMessageDeps);
+
+  /**
+   * [E8.T3] Same rehearsal as `gestureDeps`/`runtimeMessageDeps` above, for
+   * the twelve play-mode functions defined further down this file — this
+   * ticket only measures their dependency surface (its own field count is
+   * the number [S10.F4] decides on), it moves none of them.
+   */
+  const playModeDeps: PlayModeDeps = {
+    frame,
+    selection,
+    activeGesture: {
+      get: () => activeGesture,
+      set: (value) => {
+        activeGesture = value;
+      },
+    },
+    overlay,
+    chartWindow,
+    embeds,
+    container,
+    deck: {
+      slides: () => slides,
+      currentIndex: () => currentIndex,
+      setCurrentIndex: (index) => {
+        currentIndex = index;
+      },
+    },
+    session: {
+      isDestroyed: () => destroyed,
+      mode: {
+        get: () => mode,
+        set: (value) => {
+          mode = value;
+        },
+      },
+      exiting: {
+        get: () => exiting,
+        set: (value) => {
+          exiting = value;
+        },
+      },
+      error: {
+        get: () => error,
+        set: (value) => {
+          error = value;
+        },
+      },
+    },
+    slideState: {
+      pageTransition: {
+        get: () => currentPageTransition,
+        set: (value) => {
+          currentPageTransition = value;
+        },
+      },
+      setSlideEffects: (effects) => {
+        currentSlideEffects = effects;
+      },
+    },
+    selectionState: {
+      setPendingSelectionIds: (ids) => {
+        pendingSelectionIds = ids;
+      },
+      previewReturnSelectionIds: {
+        get: () => previewReturnSelectionIds,
+        set: (value) => {
+          previewReturnSelectionIds = value;
+        },
+      },
+    },
+    publish: {
+      notify,
+      notifyOverlay,
+      notifyChartWindow,
+      notifyEmbeds,
+    },
+    commitTextEditIfEditing: () => {
+      if (editingState) void commitTextEdit();
+    },
+    render,
+  };
+
   // One listener for the whole controller's lifetime, not per-frame.element: it
   // reads `frame.element` (the current, possibly-rebuilt element) at call time
   // rather than closing over a specific iframe, so it keeps working across
   // play()/exitPlay() rebuilds without being re-attached.
-  window.addEventListener("message", onWindowMessage);
+  window.addEventListener("message", runtimeMessages.onWindowMessage);
   // NOOP-382: catches the tail of a move drag once the pointer has crossed
-  // the sandboxed slide iframe's own edge — see onHostPointerMoveDuringMoveGesture's
-  // doc comment for why the iframe alone cannot see that part of the drag.
-  window.addEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
-  window.addEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
+  // the sandboxed slide iframe's own edge — see canvas/gestures.ts's
+  // `onHostPointerMove`'s doc comment for why the iframe alone cannot see
+  // that part of the drag.
+  window.addEventListener("pointermove", gestures.onHostPointerMove, true);
+  window.addEventListener("pointerup", gestures.onHostPointerUp, true);
   // [E2.T17]: the embed overlay's parent-side conversion reads the frame.element's
   // rect at message time, so a window resize that moves/scales the frame.element
   // without the runtime re-reporting would leave the player behind. The
@@ -908,447 +1129,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // to be redone.
   window.addEventListener("resize", notifyEmbeds);
 
-  function onWindowMessage(event: MessageEvent): void {
-    if (destroyed) return;
-    // Authenticate by sender identity, never by trusting `event.origin` —
-    // an opaque-origin document's `event.origin` is literally the string
-    // "null", which proves nothing about who sent it (ADR-0010). Sender
-    // identity only proves *which iframe* the message came from, though —
-    // never which script inside that iframe sent it. Any slide markup
-    // running in that iframe (view mode has `allow-scripts` too, since
-    // ADR-0011) can forge either message shape by hand, so the mode gate
-    // below is load-bearing, not defensive: without it a view-mode deck
-    // could self-issue "advance-past-end" and drive the same privileged
-    // path play mode uses, on open, with no click from the author (found
-    // in gate review round 1, #56).
-    if (event.source !== frame.element.contentWindow) return;
-
-    if (isSelectionMessage(event.data)) {
-      // Selection/gesture messages are only ever meaningful in view mode —
-      // selection-runtime.js is not even injected into the play-mode
-      // srcdoc (wrapPlayDocument), so any of these arriving while
-      // mode === "play" can only be a forgery from slide script.
-      if (mode !== "view") return;
-      handleSelectionMessage(event.data);
-      return;
-    }
-
-    if (!isPlayerMessage(event.data)) return;
-    // Player messages are only legitimate from the player runtime, which
-    // only ever runs while mode === "play" or mode === "preview" ([E2.T7]/
-    // D8 — Preview reuses the exact same runtime/wrapPlayDocument, just
-    // with `plan.preview` set). A view-mode slide has no business sending
-    // any of these — reject the whole message rather than gating
-    // individual events, so a future new event type is safe by default
-    // instead of needing its own opt-in gate.
-    if (mode !== "play" && mode !== "preview") return;
-
-    const message = event.data;
-    if (message.event === "ready") {
-      // Entering play mode hands focus to the player (acceptance
-      // criterion); "ready" is the runtime's own signal that its listeners
-      // are attached and it can actually receive the focus/keydown.
-      // Preview never takes focus (D8: the side panel stays interactive
-      // while it plays) — the runtime still posts "ready" as the last
-      // message of its own boot sequence regardless of mode.
-      if (mode === "play") focusPlayer();
-      return;
-    }
-    if (message.event === "focus") {
-      if (mode === "play") {
-        frame.playerHasFocus = Boolean(message.hasFocus);
-        notify();
-      }
-      return;
-    }
-    if (message.event === "error") {
-      error = message.message ?? "unknown error during playback";
-      notify();
-      return;
-    }
-    if (message.event === "embed-boxes") {
-      applyEmbedBoxes(message.items);
-      return;
-    }
-    if (message.event === "embed-command") {
-      emitEmbedCommand(message.id, message.command);
-      return;
-    }
-    if (message.event === "advance-past-end") {
-      if (mode === "play") void advancePastEnd();
-      return;
-    }
-    if (message.event === "retreat-past-start") {
-      if (mode === "play") void retreatPastStart();
-      return;
-    }
-    if (message.event === "preview-done") {
-      if (mode === "preview") exitPreview();
-      return;
-    }
-    if (message.event === "exit-play") {
-      // §4.5: fullscreen owns Esc first — the browser's own fullscreen
-      // exit is already underway by the time this message arrives, and
-      // leaving play mode too would drop the author straight out of both
-      // at once instead of just the one Esc asked for. The runtime cannot
-      // make this check itself (it has no notion of fullscreen), which is
-      // why it is repeated here rather than only in App.tsx's own Escape
-      // listener (the other route to the same call).
-      if (mode === "play" && !isAnyElementFullscreen()) void exitPlay();
-      return;
-    }
-  }
-
-  /** Dispatches one already-validated-as-slidra-selection message to the right handler (NOOP-91 §4.1). */
-  function handleSelectionMessage(message: SelectionMessage): void {
-    if (message.event === "viewport") {
-      if (isValidRect(message.svgRect) && isValidRect(message.viewBox)) {
-        frame.viewport = { svgRect: message.svgRect, viewBox: message.viewBox };
-      }
-      return;
-    }
-    if (message.event === "select") {
-      const id = typeof message.id === "string" ? message.id : "";
-      const name = typeof message.name === "string" ? message.name : null;
-      if (message.additive) {
-        const index = selection.ids.indexOf(id);
-        if (index >= 0) {
-          selection.ids.splice(index, 1);
-          selection.names.splice(index, 1);
-        } else {
-          selection.ids.push(id);
-          selection.names.push(name);
-        }
-      } else {
-        selection.ids = [id];
-        selection.names = [name];
-      }
-      // "select"/"clear" always describe the runtime's FULL current
-      // groupPath, never a delta — a missing field means "no group", the
-      // same as an explicit `[]` (see selection-runtime.js's withGroupPath).
-      selection.groupPath = isStringArray(message.groupPath) ? message.groupPath : [];
-      notify();
-      pushSelectionToRuntime(selection.ids);
-      // E2.T14r2 §4.1 lifecycle table: a range only survives while its own
-      // table stays the sole selection — any other shape (a different
-      // element, no selection, a multi-selection) drops it.
-      if (tableRange.current && (selection.ids.length !== 1 || selection.ids[0] !== tableRange.current.tableId)) {
-        setTableRange(null);
-      }
-      return;
-    }
-    if (message.event === "clear") {
-      clearSelectionState(isStringArray(message.groupPath) ? message.groupPath : []);
-      return;
-    }
-    if (message.event === "drag-enter") {
-      // No payload to validate — see selection-runtime.js's dragenter
-      // listener: it deliberately sends nothing but the bare event, ADR-0010
-      // (the sandboxed slide's own dataTransfer content is never trusted
-      // across postMessage).
-      dragSignal++;
-      notify();
-      return;
-    }
-    if (message.event === "group-path") {
-      // Esc popping one level (or already at top) while not mid-gesture —
-      // selection itself is untouched, only the scope. No handle-flags
-      // push needed: which element(s) are selected, and therefore which
-      // handles apply, has not changed.
-      selection.groupPath = isStringArray(message.groupPath) ? message.groupPath : [];
-      notify();
-      return;
-    }
-    if (message.event === "bounds") {
-      const items = Array.isArray(message.items) ? message.items.filter(isBoundsItem) : [];
-      overlay.boxes = items.map((item) => item.rect);
-      overlay.union = isNonNegativeRect(message.union) ? message.union : null;
-      overlay.ancestors = items.length === 1 ? items[0].ancestors : [];
-      notifyOverlay();
-      return;
-    }
-    if (message.event === "stage-key") {
-      if (typeof message.key !== "string") return;
-      const modifiers = { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) };
-      if (message.key === "Delete" || message.key === "Backspace") void deleteSelection();
-      else if (message.key === "a" && (modifiers.meta || modifiers.ctrl)) selectAll();
-      else if (message.key === "d" && (modifiers.meta || modifiers.ctrl)) void duplicateSelection();
-      else if (
-        (message.key === "]" || message.key === "}" || message.code === "BracketRight") &&
-        (modifiers.meta || modifiers.ctrl)
-      )
-        void orderSelection(modifiers.shift ? "front" : "up");
-      else if (
-        (message.key === "[" || message.key === "{" || message.code === "BracketLeft") &&
-        (modifiers.meta || modifiers.ctrl)
-      )
-        void orderSelection(modifiers.shift ? "back" : "down");
-      else if ((message.key === "z" || message.key === "Z") && (modifiers.meta || modifiers.ctrl)) undoRedoHandler?.(modifiers.shift ? "redo" : "undo");
-      // F-02: ←/→ paging, relayed here for the same reason every other key
-      // in this branch is — App.tsx's own document-level keydown listener
-      // for ArrowLeft/ArrowRight never sees a keypress that landed inside
-      // this iframe. selection-runtime.js's `isRelayedStageKey` already
-      // withholds this while a text edit or gesture is in progress, so no
-      // extra guard is needed here (unlike App.tsx's listener, which guards
-      // against caret movement in a chat/text field itself instead — that
-      // guard has no equivalent inside this iframe because a real DOM
-      // textarea there also owns `editingId`, the same thing the relay
-      // already checks).
-      else if (message.key === "ArrowLeft") void previous();
-      else if (message.key === "ArrowRight") void next();
-      // Plan §3.8/A0: the same async `navigator.clipboard` logic as
-      // App.tsx's keydown handler, just triggered by the relayed
-      // "stage-key" from focus inside the iframe rather than the parent
-      // document's own keydown — the two paths call the same set of
-      // controller methods, so they never drift apart.
-      else if (message.key === "c" && (modifiers.meta || modifiers.ctrl)) {
-        void copySelection().then((svg) => {
-          if (svg) void navigator.clipboard.writeText(svg);
-        });
-      } else if (message.key === "x" && (modifiers.meta || modifiers.ctrl)) {
-        void cutSelection().then((svg) => {
-          if (svg) void navigator.clipboard.writeText(svg);
-        });
-      } else if (message.key === "v" && (modifiers.meta || modifiers.ctrl)) {
-        void navigator.clipboard.readText().then((text) => pasteFromText(text));
-      }
-      // E2.T12 plan §4.5: Esc closes the chart data window — relayed here
-      // because opening it (a double-click on the slide) leaves focus
-      // inside this sandboxed iframe, where the parent document's own
-      // `window` keydown listener (ChartWindow.tsx) never sees the
-      // keypress at all (same reason ⌘Z/Delete/etc. above need relaying).
-      else if (message.key === "Escape") closeChartWindow();
-      return;
-    }
-    if (message.event === "gesture-start") {
-      if (!isValidPoint(message.point)) return;
-      if (message.kind === "move") beginMoveGesture(message.point);
-      else if (message.kind === "marquee") beginMarqueeGesture(message.point);
-      else if (message.kind === "scale" && isScaleHandle(message.handle)) beginScaleGesture(message.point, message.handle);
-      else if (message.kind === "rotate") beginRotateGesture(message.point);
-      else if (message.kind === "textbox-width" && isTextboxHandle(message.handle)) beginTextboxWidthGesture(message.point, message.handle);
-      // Marquee never writes to the file, so it never contends with the
-      // agent for the editing lock (T5/NOOP-110) — only the four
-      // write-capable gestures take a human lease.
-      if (message.kind !== "marquee") beginEditingLease();
-      return;
-    }
-    if (message.event === "gesture-move") {
-      if (!isValidPoint(message.point)) return;
-      const modifiers = { shift: Boolean(message.modifiers?.shift), alt: Boolean(message.modifiers?.alt) };
-      if (activeGesture?.kind === "move") updateMoveGesture(message.point, modifiers);
-      else if (activeGesture?.kind === "marquee") updateMarqueeGesture(message.point);
-      else if (activeGesture?.kind === "scale") updateScaleGesture(message.point, modifiers);
-      else if (activeGesture?.kind === "rotate") updateRotateGesture(message.point);
-      else if (activeGesture?.kind === "textbox-width") updateTextboxWidthGesture(message.point);
-      if (
-        activeGesture &&
-        activeGesture.kind !== "marquee" &&
-        Date.now() - lastEditingLeaseAt >= HUMAN_RENEW_THROTTLE_MS
-      ) {
-        beginEditingLease();
-      }
-      return;
-    }
-    if (message.event === "gesture-end") {
-      if (!isValidPoint(message.point)) {
-        // No usable endpoint at all: still tear the gesture down rather
-        // than leaving a stale preview and a phantom activeGesture around.
-        const wasLeaseHolder = activeGesture !== null && activeGesture.kind !== "marquee";
-        activeGesture = null;
-        if (wasLeaseHolder) endEditingLease();
-        return;
-      }
-      const cancelled = Boolean(message.cancelled);
-      const gesture = activeGesture;
-      // Keep the context bar hidden through the gesture's tail: the end
-      // handlers null `activeGesture` and notify the overlay *before* their
-      // command round-trips, and a committed write then reloads the slide.
-      // `settle` lifts it only when no reload is coming (cancelled, no-op,
-      // or failed — nothing was parked in pendingSelectionIds); otherwise
-      // render()/selectOnceLoaded clear it once the re-selection has landed.
-      if (gesture && gesture.kind !== "marquee") overlay.settling = true;
-      const settle = () => {
-        if (pendingSelectionIds === null && activeGesture === null) {
-          overlay.settling = false;
-          notifyOverlay();
-        }
-        endEditingLease();
-      };
-      if (gesture?.kind === "move") void endMoveGesture(cancelled).then(settle);
-      else if (gesture?.kind === "marquee") endMarqueeGesture(message.point, cancelled);
-      else if (gesture?.kind === "scale") void endScaleGesture(message.point, cancelled).then(settle);
-      else if (gesture?.kind === "rotate") void endRotateGesture(message.point, cancelled).then(settle);
-      else if (gesture?.kind === "textbox-width") void endTextboxWidthGesture(message.point, cancelled).then(settle);
-      // activeGesture is already null (e.g. a stray gesture-end with no
-      // matching start) — still release the lease so it does not sit until
-      // HUMAN_LEASE_MAX_MS expires.
-      else endEditingLease();
-      return;
-    }
-    if (message.event === "dblclick-textbox") {
-      if (typeof message.id === "string") void enterTextEdit(message.id);
-      return;
-    }
-    if (message.event === "dblclick-chart") {
-      if (typeof message.id === "string") openChartWindow(message.id);
-      return;
-    }
-    if (message.event === "text-edit-input") {
-      if (!editingState || message.id !== editingState.id) return;
-      // Decision T1: no repaint round trip any more — the runtime already
-      // repainted itself before sending this report (its own `input`
-      // handler). This side only mirrors the string for commitTextEdit.
-      editingState.currentText = typeof message.text === "string" ? message.text : "";
-      return;
-    }
-    if (message.event === "text-edit-commit") {
-      if (!editingState || message.id !== editingState.id) return;
-      void commitTextEdit();
-      return;
-    }
-    if (message.event === "text-edit-denied") {
-      // The runtime's own lock check rejected a host-initiated
-      // begin-text-edit (defense in depth — the dblclick path never even
-      // reaches here, since findSelectable already refuses to resolve a
-      // locked element to a click target). No error: this mirrors the
-      // silent "don't enter edit mode" the dblclick path gives a locked box.
-      if (editingState && editingState.id === message.id) {
-        endEditingLease();
-        editingState = null;
-      }
-      return;
-    }
-    if (message.event === "stage-wheel") {
-      if (!isValidPoint(message.point) || !isFiniteNumber(message.deltaX) || !isFiniteNumber(message.deltaY)) return;
-      const point = toParentClientPoint(message.point);
-      if (message.zoomModifier) emitStageInput({ type: "wheel-zoom", point, deltaY: message.deltaY });
-      else emitStageInput({ type: "wheel-pan", deltaX: message.deltaX, deltaY: message.deltaY });
-      return;
-    }
-    if (message.event === "stage-pan-start") {
-      if (!isValidPoint(message.point)) return;
-      emitStageInput({ type: "pan-start", point: toParentClientPoint(message.point) });
-      return;
-    }
-    if (message.event === "stage-pan-move") {
-      if (!isValidPoint(message.point)) return;
-      emitStageInput({ type: "pan-move", point: toParentClientPoint(message.point) });
-      return;
-    }
-    if (message.event === "stage-pan-end") {
-      emitStageInput({ type: "pan-end" });
-      return;
-    }
-    if (message.event === "stage-space") {
-      emitStageInput({ type: message.down ? "space-down" : "space-up" });
-      return;
-    }
-    if (message.event === "stage-hover") {
-      if (!isValidPoint(message.point)) return;
-      emitStageHover(toParentClientPoint(message.point));
-      return;
-    }
-    if (message.event === "runtime-ready") {
-      // A fresh srcdoc (slide change) starts its own copy of
-      // selection-runtime.js with `stageHandMode = false` — re-push this
-      // side's last-known value so hand/grab mode does not silently drop on
-      // every slide change (§2.1(c)).
-      postToFrame({ command: "stage-mode", hand: stageHandMode });
-      // [E2.T7]/D9: a fresh document has never been asked to measure
-      // anything — re-request the current slide's badge targets so the
-      // overlay is not stuck showing the PREVIOUS slide's badge positions.
-      requestBadgeMeasurement();
-      return;
-    }
-    if (message.event === "embed-boxes") {
-      applyEmbedBoxes(message.items);
-      return;
-    }
-    if (message.event === "measured") {
-      const items = Array.isArray(message.items) ? message.items.filter(isMeasuredItem) : [];
-      const rectByTarget = new Map(items.map((item) => [item.id, item.rect]));
-      overlay.badges = overlay.badgeTargets.flatMap((entry) => {
-        const rect = rectByTarget.get(entry.target);
-        return rect ? [{ target: entry.target, n: entry.n, rect: toParentClientRect(rect) }] : [];
-      });
-      notifyOverlay();
-      return;
-    }
-    if (message.event === "element-bounds") {
-      const items = Array.isArray(message.items) ? message.items.filter(isElementBoundsItem) : [];
-      elementBoundsById = new Map(items.map((item) => [item.id, { slide: item.rect, local: item.local }]));
-      return;
-    }
-    if (message.event === "table-cell-click") {
-      const id = typeof message.id === "string" ? message.id : null;
-      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
-        const row = message.row;
-        const col = message.col;
-        emitTableEvent({ type: "cell-click", id, row, col, additive: Boolean(message.additive) });
-        // E2.T14r2 §4.1 lifecycle table: a ⇧-click while a range is already
-        // active on THIS table extends it from the stored anchor; anything
-        // else (plain click, or a ⇧-click that arrives with no anchor of
-        // its own — e.g. right after a table id change already cleared it
-        // above) starts a fresh single-cell range and a fresh anchor.
-        if (message.additive && tableRange.anchor && tableRange.current && tableRange.current.tableId === id) {
-          setTableRange({ tableId: id, range: normalizeRange(tableRange.anchor, { row, col }) });
-        } else {
-          tableRange.anchor = { row, col };
-          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
-        }
-      }
-      return;
-    }
-    if (message.event === "table-cell-dblclick") {
-      const id = typeof message.id === "string" ? message.id : null;
-      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col)) {
-        emitTableEvent({ type: "cell-dblclick", id, row: message.row, col: message.col, atRow: isFiniteNumber(message.atRow) ? message.atRow : message.row });
-      }
-      return;
-    }
-    if (message.event === "table-cell-contextmenu") {
-      const id = typeof message.id === "string" ? message.id : null;
-      if (id !== null && isFiniteNumber(message.row) && isFiniteNumber(message.col) && isFiniteNumber(message.x) && isFiniteNumber(message.y)) {
-        const row = message.row;
-        const col = message.col;
-        const point = toParentClientPoint({ x: message.x, y: message.y });
-        emitTableEvent({ type: "cell-contextmenu", id, row, col, x: point.x, y: point.y });
-        // §4.1 lifecycle table: right-clicking inside the current range
-        // leaves it untouched (the menu acts on the whole range); right-
-        // clicking outside it starts a fresh single-cell range/anchor.
-        const cell = { row, col };
-        if (!tableRange.current || tableRange.current.tableId !== id || !isCellInRange(cell, tableRange.current.range)) {
-          tableRange.anchor = cell;
-          setTableRange({ tableId: id, range: { r0: row, c0: col, r1: row, c1: col } });
-        }
-      }
-      return;
-    }
-    if (message.event === "table-cells") {
-      const id = typeof message.id === "string" ? message.id : null;
-      const cells = Array.isArray(message.cells) ? message.cells.filter(isTableCellRectItem) : [];
-      const box = isNonNegativeRect(message.box) ? message.box : null;
-      if (id !== null && box !== null) {
-        emitTableEvent({
-          type: "cells",
-          id,
-          cells: cells.map((cell) => ({ ...cell, rect: toParentClientRect(cell.rect) })),
-          box: toParentClientRect(box),
-        });
-      }
-      return;
-    }
-    if (message.event === "table-key") {
-      if (typeof message.key !== "string") return;
-      // The runtime only ever sends this while its own `tableRangeId` flag
-      // is set (§4.2) — `handleTableRangeKey` re-derives everything else
-      // (which range, which table) from this module's own `tableRange.current`, the
-      // single source of truth both input paths share.
-      handleTableRangeKey(message.key, { meta: Boolean(message.meta), ctrl: Boolean(message.ctrl), shift: Boolean(message.shift) });
-      return;
-    }
-  }
 
   /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
 
@@ -1613,13 +1393,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     void fetch("/api/editing/end", { method: "POST" }).catch(() => {});
   }
 
-  function isScaleHandle(value: unknown): value is "nw" | "ne" | "sw" | "se" {
-    return value === "nw" || value === "ne" || value === "sw" || value === "se";
-  }
-
-  function isTextboxHandle(value: unknown): value is "left" | "right" {
-    return value === "left" || value === "right";
-  }
 
   function postToFrame(message: Record<string, unknown>): void {
     frame.element.contentWindow?.postMessage({ source: "slidra-host", ...message }, "*");
@@ -2015,135 +1788,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   // --- Drag-to-move (§4.2) ---
 
-  function beginMoveGesture(point: { x: number; y: number }): void {
-    // NOOP-382: every early return here used to be silent — a drag would
-    // simply not start, with no preview, no history entry, and nothing in
-    // the console to say why. Each guard below now warns identifiably so a
-    // future regression in any of these preconditions is diagnosable from
-    // the console alone instead of requiring a fresh investigation.
-    if (selection.ids.length === 0) {
-      console.warn("[beginMoveGesture] abort: no selection");
-      return;
-    }
-    if (!currentSlideModel) {
-      console.warn("[beginMoveGesture] abort: currentSlideModel is null");
-      return;
-    }
-    // Without this guard, toUserPoint(point) silently returns { x: 0, y: 0 }
-    // when the runtime's first "viewport" message has not landed yet, and
-    // that becomes the gesture's startUser with no indication anything went
-    // wrong — every subsequent delta is then measured from the wrong
-    // origin (NOOP-328: traced to a 180px-off drag landing spot). Declining
-    // to start the gesture at all is the same posture updateMoveGesture
-    // already takes on every subsequent move while frame.viewport is null.
-    if (!frame.viewport) {
-      console.warn("[beginMoveGesture] abort: viewport is null (first 'viewport' message has not landed yet)");
-      return;
-    }
-    const index = elementIndex();
-    const originals = new Map<string, OriginalTransform>();
-    for (const id of selection.ids) {
-      const entry = index.get(id);
-      if (!entry) continue;
-      try {
-        originals.set(id, { transform: entry.element.transform, parts: decomposeMatrix(entry.element.matrix) });
-      } catch {
-        // A skewed/degenerate matrix cannot be decomposed — skip this id
-        // rather than aborting the whole gesture for the rest of a
-        // multi-selection.
-      }
-    }
-    if (originals.size === 0) {
-      console.warn("[beginMoveGesture] abort: none of the selected ids resolved to a decomposable transform");
-      return;
-    }
-    activeGesture = {
-      kind: "move",
-      ids: [...originals.keys()],
-      originals,
-      startUser: toUserPoint(point),
-      lastDelta: { dx: 0, dy: 0 },
-    };
-  }
-
-  function updateMoveGesture(point: { x: number; y: number }, modifiers: { shift: boolean; alt: boolean }): void {
-    const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "move" || !frame.viewport) return;
-    const now = toUserPoint(point);
-    let dx = now.x - gesture.startUser.x;
-    let dy = now.y - gesture.startUser.y;
-    let guides: SnapGuide[] = [];
-
-    if (!modifiers.alt) {
-      const index = elementIndex();
-      const movingRects = gesture.ids.map((id) => computeBounds(id)).filter((r): r is Rect => r !== null);
-      if (movingRects.length > 0) {
-        const moving = offsetUnion(movingRects, dx, dy);
-        // Excludes the dragged id(s) themselves (as before), PLUS every one
-        // of their own ancestors and descendants (NOOP-91 follow-up: group
-        // editing is the first scenario that can drag a NESTED element).
-        // Without this, a single-child group is its own snap candidate —
-        // its bounds are identical to its only child's, so dragging that
-        // child would spuriously "snap" against its own unmoving parent
-        // (found while building this ticket's own group-edit test, not
-        // from any prior gate).
-        const excluded = new Set<string>(gesture.ids);
-        for (const id of gesture.ids) {
-          const entry = index.get(id);
-          if (!entry) continue;
-          for (const ancestorId of entry.ancestorIds) excluded.add(ancestorId);
-          subtreeIds(entry.element, excluded);
-        }
-        const candidates: SnapCandidate[] = [];
-        for (const id of index.keys()) {
-          if (excluded.has(id)) continue;
-          const bounds = computeBounds(id);
-          if (bounds) candidates.push({ id, bounds });
-        }
-        const thresholdUser = SNAP_THRESHOLD_PX * (frame.viewport.viewBox.width / frame.viewport.svgRect.width);
-        try {
-          const result = snapTranslation({
-            moving,
-            candidates,
-            canvas: { width: frame.viewport.viewBox.width, height: frame.viewport.viewBox.height },
-            threshold: thresholdUser,
-          });
-          dx += result.dx;
-          dy += result.dy;
-          guides = result.guides;
-        } catch {
-          // Malformed frame.viewport/bounds (should not happen given the
-          // isValidRect/computeBounds guards above) — fall back to the
-          // unsnapped delta rather than freezing the drag.
-        }
-      }
-    }
-
-    gesture.lastDelta = { dx, dy };
-    const items = gesture.ids.map((id) => {
-      const original = gesture.originals.get(id)!;
-      const parts: TransformParts = { ...original.parts, translateX: original.parts.translateX + dx, translateY: original.parts.translateY + dy };
-      return { id, transform: formatTransform(parts) };
-    });
-    postToFrame({ command: "preview", items });
-    // NOOP-90/T2 ADR-0011 amend: guides are drawn by the PARENT document's
-    // own GuideLayer overlay now, not inside the sandboxed iframe — a
-    // client-px position converts the same way a point's own coordinate
-    // does (toParentClientPoint), just for one axis at a time.
-    overlay.guides = guides.map((guide) => ({
-      orientation: guide.orientation,
-      position:
-        guide.orientation === "v"
-          ? toParentClientPoint({ x: userXToClient(guide.position), y: 0 }).x
-          : toParentClientPoint({ x: 0, y: userYToClient(guide.position) }).y,
-    }));
-    notifyOverlay();
-  }
-
-  function revertMovePreview(gesture: MoveGesture): void {
-    const items = gesture.ids.map((id) => ({ id, transform: gesture.originals.get(id)!.transform ?? "" }));
-    postToFrame({ command: "preview", items });
-  }
 
   /**
    * A committed gesture's write comes back over /api/events and drives a full
@@ -2163,538 +1807,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     overlay.settling = true;
   }
 
-  async function endMoveGesture(cancelled: boolean): Promise<void> {
-    const gesture = activeGesture;
-    activeGesture = null;
-    if (!gesture || gesture.kind !== "move") return;
-    overlay.guides = [];
-    notifyOverlay();
-
-    if (cancelled) {
-      revertMovePreview(gesture);
-      return;
-    }
-    if (roundsToZero(gesture.lastDelta.dx) && roundsToZero(gesture.lastDelta.dy)) {
-      // No real movement after snapping — do not create an empty undo step.
-      revertMovePreview(gesture);
-      return;
-    }
-
-    const thisGeneration = frame.generation;
-    const result = await postCommand("element move", {
-      slidePath: slides[currentIndex],
-      elementIds: gesture.ids,
-      dx: gesture.lastDelta.dx,
-      dy: gesture.lastDelta.dy,
-    });
-    // A reload() (e.g. from the live-reload /api/events push, or the
-    // author navigating away) superseded this gesture while the request
-    // was in flight — its result is stale, and the reload's own render()
-    // has already replaced the srcdoc wholesale, discarding any preview.
-    if (destroyed || thisGeneration !== frame.generation) return;
-
-    if (!result.ok) {
-      revertMovePreview(gesture);
-      error = result.message;
-      notify();
-      return;
-    }
-    keepSelectionAcrossReload();
-    // Success: the preview already shows the final position. The write
-    // this command just made will arrive back over /api/events and drive
-    // reload() on its own — this module deliberately adds no second
-    // refresh path (§4.9's closing note).
-  }
-
-  /**
-   * NOOP-382 root cause: the slide iframe is sandboxed (`allow-scripts`,
-   * no `allow-same-origin`), which puts it in its own out-of-process
-   * document. A move drag that carries the pointer past the iframe's own
-   * rendered edge stops delivering pointermove/pointerup to
-   * selection-runtime.js entirely — the browser's normal cross-document
-   * hit-testing routes those events to whatever THIS host document shows
-   * at that point instead, silently, with nothing to catch or log on
-   * either side. `Element.setPointerCapture()` called inside the iframe
-   * does not override this for an out-of-process sandboxed frame (verified
-   * empirically against this app: the same drag still lost every event
-   * past the boundary with capture requested). Confirmed with the actual
-   * demo deck: a drag that stays inside the iframe's rendered area — same
-   * distance, different direction — always worked, which is why the scale
-   * handles looked fine while drag-to-move looked completely broken; the
-   * demo's title merely sits close enough to the iframe's edge that a
-   * sideways drag on it crosses the boundary.
-   *
-   * These two host-level listeners are the fallback for exactly the
-   * portion of a move drag the iframe can no longer see once the cursor
-   * has left it — registered once for the controller's lifetime (same
-   * pattern as `onWindowMessage`), scoped to `activeGesture.kind === "move"`
-   * only. Scale/rotate/textbox-width/marquee keep the pre-existing
-   * (iframe-only) behavior untouched, matching this ticket's scope.
-   */
-  function onHostPointerMoveDuringMoveGesture(event: PointerEvent): void {
-    if (!activeGesture || activeGesture.kind !== "move") return;
-    updateMoveGesture(toFrameClientPoint({ x: event.clientX, y: event.clientY }), {
-      shift: event.shiftKey,
-      alt: event.altKey,
-    });
-    // Same renewal this gesture kind already gets from the iframe's own
-    // "gesture-move" (handleSelectionMessage) — a drag that spends most of
-    // its time past the boundary must not let the human editing lease
-    // lapse just because it is this path, not that one, doing the reporting.
-    if (Date.now() - lastEditingLeaseAt >= HUMAN_RENEW_THROTTLE_MS) beginEditingLease();
-  }
-
-  function onHostPointerUpDuringMoveGesture(): void {
-    if (!activeGesture || activeGesture.kind !== "move") return;
-    // No point conversion needed: endMoveGesture commits gesture.lastDelta,
-    // already up to date from the last updateMoveGesture call (host- or
-    // iframe-driven) — exactly what the iframe-originated "gesture-end"
-    // path (handleSelectionMessage) also relies on.
-    overlay.settling = true;
-    void endMoveGesture(false).then(() => {
-      if (pendingSelectionIds === null && activeGesture === null) {
-        overlay.settling = false;
-        notifyOverlay();
-      }
-      endEditingLease();
-    });
-  }
-
-  // --- Scale handles (§4.2-follow-up) ---
-
-  function beginScaleGesture(point: { x: number; y: number }, corner: "nw" | "ne" | "sw" | "se"): void {
-    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet (NOOP-328).
-    if (!frame.viewport) return;
-    if (selection.ids.length !== 1) return;
-    const id = selection.ids[0];
-    const entry = elementIndex().get(id);
-    if (!entry) return;
-    // NOOP-65 §7-I: a four-corner handle on a text box only ever changes
-    // its declared WIDTH — font-size and the container's own transform
-    // never move, and height is whatever the content re-wraps to. This
-    // reuses the exact same `textbox width` gesture the left/right
-    // mid-edge handles already drive (`beginTextboxWidthGesture`), just
-    // entered from a corner instead: "nw"/"sw" behave like the left edge,
-    // "ne"/"se" like the right edge (`computeTextboxWidth` only ever reads
-    // the horizontal component of the drag). Core's `element scale`
-    // command itself is untouched — this is purely a front-end handle
-    // remapping (§2 item 8).
-    if (entry.element.textWidth !== null) {
-      beginTextboxWidthGesture(point, corner === "nw" || corner === "sw" ? "left" : "right");
-      return;
-    }
-    let parts: TransformParts;
-    try {
-      parts = decomposeMatrix(entry.element.matrix);
-    } catch {
-      return; // Skewed/degenerate matrix — cannot decompose, no gesture.
-    }
-    const origin = { x: parts.translateX, y: parts.translateY };
-    let parentInverse: Matrix;
-    try {
-      parentInverse = invertMatrix(composeMatrices(entry.ancestors));
-    } catch {
-      return; // Degenerate (zero-scale) ancestor chain — no ray to project onto.
-    }
-    const startUser = applyMatrixToPoint(parentInverse, toUserPoint(point));
-    if (startUser.x === origin.x && startUser.y === origin.y) return; // No ray to project onto.
-
-    let forceUniform = subtreeForcesUniformScale(entry.element);
-    let localBox: Rect | null = null;
-    let fullInverse: Matrix | null = null;
-    let anchorLocal = { x: 0, y: 0 };
-    if (!forceUniform) {
-      // `elementBoundsById`'s `local` entry is exactly the box `elementBounds({
-      // ancestors: [invertMatrix(own matrix)] })` used to fake by cancelling
-      // the chain out (decision G1) — the runtime reports it
-      // directly (`getBBox()`) instead. Absent (unmeasurable — jsdom, or a
-      // genuinely gone element) or a degenerate own-matrix both fall back to
-      // uniform-only rather than refusing the gesture outright.
-      const local = elementBoundsById.get(id)?.local ?? null;
-      try {
-        if (local === null) throw new Error("unmeasurable");
-        fullInverse = invertMatrix(composeMatrices([...entry.ancestors, entry.element.matrix]));
-        localBox = local;
-        anchorLocal = cornerPoint(OPPOSITE_CORNER[corner], localBox);
-      } catch {
-        forceUniform = true;
-        localBox = null;
-        fullInverse = null;
-      }
-    }
-
-    activeGesture = {
-      kind: "scale",
-      id,
-      corner,
-      original: { transform: entry.element.transform, parts },
-      originalMatrix: entry.element.matrix,
-      forceUniform,
-      origin,
-      startUser,
-      parentInverse,
-      localBox,
-      anchorLocal,
-      fullInverse,
-      lastMode: "scale",
-      lastFactor: 1,
-      lastWidth: localBox?.width ?? 0,
-      lastHeight: localBox?.height ?? 0,
-    };
-  }
-
-  /** `factor = ((now - origin) · (down - origin)) / |down - origin|²` — the scalar projection of "origin -> now" onto the ray "origin -> pointer-down", expressed as a fraction of that ray's own length. Both ends of the ray live in the element's parent coordinate space (see `ScaleGesture`'s doc comment). */
-  function computeScaleFactor(gesture: ScaleGesture, point: { x: number; y: number }): number {
-    const now = applyMatrixToPoint(gesture.parentInverse, toUserPoint(point));
-    const downX = gesture.startUser.x - gesture.origin.x;
-    const downY = gesture.startUser.y - gesture.origin.y;
-    const nowX = now.x - gesture.origin.x;
-    const nowY = now.y - gesture.origin.y;
-    const denom = downX * downX + downY * downY;
-    if (denom === 0) return NaN;
-    return (nowX * downX + nowY * downY) / denom;
-  }
-
-  function revertScalePreview(gesture: ScaleGesture): void {
-    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: gesture.original.transform ?? "" }] });
-  }
-
-  /** Minimum size a live resize preview/commit is clamped to — 3% of the slide's own width, 0.6% of its height (05-INTERACTIONS.feature's "resize" scenario). The command layer does not enforce this (decision 7: purely a GUI usability floor). */
-  function minResizeSize(): { width: number; height: number } {
-    return { width: 0.03 * frame.viewport!.viewBox.width, height: 0.006 * frame.viewport!.viewBox.height };
-  }
-
-  /**
-   * Clamps a slide-frame (viewBox-space) point to the slide's own boundary —
-   * 05-INTERACTIONS.feature's "resize" scenario, "never exceeds the slide":
-   * dragging a resize handle past the visible edge of the slide must not
-   * push the dragged corner any further than that edge, no matter how the
-   * target itself is rotated or nested. Same GUI-only floor as
-   * `minResizeSize` (decision 7).
-   */
-  function clampToViewBox(point: { x: number; y: number }): { x: number; y: number } {
-    const box = frame.viewport!.viewBox;
-    return {
-      x: Math.min(Math.max(point.x, box.x), box.x + box.width),
-      y: Math.min(Math.max(point.y, box.y), box.y + box.height),
-    };
-  }
-
-  /**
-   * The non-uniform resize path's live preview: computes `(sx, sy)` against
-   * the gesture-start `localBox`, then the SAME anchor-preserving translate
-   * delta `packages/core`'s `resizeOneTarget` computes server-side — but
-   * expressed as a temporary `scale(sx sy)` transform component rather than
-   * a native-attribute change, since that is all the existing `preview`
-   * protocol can show (see `ScaleGesture`'s doc comment for why this is
-   * visually identical to the real thing). Returns `false` (no preview
-   * applied) when the dragged corner has not moved past the origin at all —
-   * `updateScaleGesture` then simply holds last frame's preview, the same
-   * "freeze rather than show garbage" posture the uniform path already has.
-   */
-  function applyResizePreview(gesture: ScaleGesture, point: { x: number; y: number }): boolean {
-    if (!gesture.localBox || !gesture.fullInverse) return false;
-    const draggedLocal = applyMatrixToPoint(gesture.fullInverse, clampToViewBox(toUserPoint(point)));
-    const { width: minWidth, height: minHeight } = minResizeSize();
-    const width = Math.max(Math.abs(draggedLocal.x - gesture.anchorLocal.x), minWidth);
-    const height = Math.max(Math.abs(draggedLocal.y - gesture.anchorLocal.y), minHeight);
-    if (!(width > 0) || !(height > 0)) return false;
-
-    const sx = width / gesture.localBox.width;
-    const sy = height / gesture.localBox.height;
-    const cornerLocalNew = { x: gesture.anchorLocal.x * sx, y: gesture.anchorLocal.y * sy };
-    const deltaLocal = { x: gesture.anchorLocal.x - cornerLocalNew.x, y: gesture.anchorLocal.y - cornerLocalNew.y };
-    const m = gesture.originalMatrix;
-    // The matrix's linear part only (no translation) — deltaLocal is a
-    // vector, not a point, so `m.e`/`m.f` must not be added in.
-    const deltaParent = { x: m.a * deltaLocal.x + m.c * deltaLocal.y, y: m.b * deltaLocal.x + m.d * deltaLocal.y };
-
-    gesture.lastMode = "resize";
-    gesture.lastWidth = width;
-    gesture.lastHeight = height;
-    const parts: TransformParts = {
-      ...gesture.original.parts,
-      translateX: gesture.original.parts.translateX + deltaParent.x,
-      translateY: gesture.original.parts.translateY + deltaParent.y,
-      scaleX: gesture.original.parts.scaleX * sx,
-      scaleY: gesture.original.parts.scaleY * sy,
-    };
-    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: formatTransform(parts) }] });
-    return true;
-  }
-
-  function updateScaleGesture(point: { x: number; y: number }, modifiers: { shift: boolean; alt: boolean }): void {
-    const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "scale") return;
-    if (!(gesture.forceUniform || modifiers.shift)) {
-      if (applyResizePreview(gesture, point)) return;
-      // Not computable this frame (e.g. dragged exactly onto the anchor) —
-      // fall through to holding the last preview rather than freezing on a
-      // stale non-uniform frame while the user is still trying to drag.
-      return;
-    }
-    const factor = computeScaleFactor(gesture, point);
-    // Non-positive, NaN or infinite: dragged past the origin (would flip)
-    // or otherwise invalid. Freeze the preview at the last valid factor
-    // rather than showing a flipped/garbage transform — endScaleGesture
-    // recomputes from the final point and aborts explicitly if it is
-    // still invalid there.
-    if (!(factor > 0) || !Number.isFinite(factor)) return;
-    gesture.lastMode = "scale";
-    gesture.lastFactor = factor;
-    const parts: TransformParts = {
-      ...gesture.original.parts,
-      scaleX: gesture.original.parts.scaleX * factor,
-      scaleY: gesture.original.parts.scaleY * factor,
-    };
-    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: formatTransform(parts) }] });
-  }
-
-  async function endScaleGesture(point: { x: number; y: number }, cancelled: boolean): Promise<void> {
-    const gesture = activeGesture;
-    activeGesture = null;
-    if (!gesture || gesture.kind !== "scale") return;
-
-    if (cancelled) {
-      revertScalePreview(gesture);
-      return;
-    }
-
-    if (gesture.lastMode === "resize" && gesture.localBox) {
-      if (roundsToZero(gesture.lastWidth - gesture.localBox.width) && roundsToZero(gesture.lastHeight - gesture.localBox.height)) {
-        revertScalePreview(gesture);
-        return;
-      }
-      const thisGeneration = frame.generation;
-      const result = await postCommand("element resize", {
-        slidePath: slides[currentIndex],
-        elementIds: [gesture.id],
-        width: gesture.lastWidth,
-        height: gesture.lastHeight,
-        anchor: OPPOSITE_CORNER[gesture.corner],
-      });
-      if (destroyed || thisGeneration !== frame.generation) return;
-      if (!result.ok) {
-        revertScalePreview(gesture);
-        error = result.message;
-        notify();
-        return;
-      }
-      keepSelectionAcrossReload();
-      // Success: same "no second refresh path" reasoning as endMoveGesture.
-      return;
-    }
-
-    const factor = computeScaleFactor(gesture, point);
-    if (!(factor > 0) || !Number.isFinite(factor)) {
-      revertScalePreview(gesture);
-      error = "scale factor must be positive (dragged past the origin)";
-      notify();
-      return;
-    }
-    if (roundsToZero(factor - 1)) {
-      revertScalePreview(gesture);
-      return;
-    }
-
-    const thisGeneration = frame.generation;
-    const result = await postCommand("element scale", {
-      slidePath: slides[currentIndex],
-      elementIds: [gesture.id],
-      factor,
-    });
-    if (destroyed || thisGeneration !== frame.generation) return;
-    if (!result.ok) {
-      revertScalePreview(gesture);
-      error = result.message;
-      notify();
-      return;
-    }
-    keepSelectionAcrossReload();
-    // Success: same "no second refresh path" reasoning as endMoveGesture.
-  }
-
-  // --- Rotate handle (§4.2-follow-up) ---
-
-  function beginRotateGesture(point: { x: number; y: number }): void {
-    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet (NOOP-328).
-    if (!frame.viewport) return;
-    if (selection.ids.length !== 1) return;
-    const id = selection.ids[0];
-    const entry = elementIndex().get(id);
-    if (!entry) return;
-    let parts: TransformParts;
-    try {
-      parts = decomposeMatrix(entry.element.matrix);
-    } catch {
-      return;
-    }
-    const origin = { x: parts.translateX, y: parts.translateY };
-    let parentInverse: Matrix;
-    try {
-      parentInverse = invertMatrix(composeMatrices(entry.ancestors));
-    } catch {
-      return; // Degenerate (zero-scale) ancestor chain — angle undefined.
-    }
-    const startUser = applyMatrixToPoint(parentInverse, toUserPoint(point));
-    const vx = startUser.x - origin.x;
-    const vy = startUser.y - origin.y;
-    if (vx === 0 && vy === 0) return; // Pointer-down coincides with the origin — angle undefined, gesture never starts.
-    activeGesture = {
-      kind: "rotate",
-      id,
-      original: { transform: entry.element.transform, parts },
-      origin,
-      parentInverse,
-      lastAngleDeg: (Math.atan2(vy, vx) * 180) / Math.PI,
-      cumulativeDeltaDeg: 0,
-    };
-  }
-
-  /** Advances `gesture`'s unwrapped cumulative angle to `point`, normalizing each frame's own delta into (-180, 180] before accumulating — this is what lets a drag exceed ±360° across multiple revolutions instead of clamping at the atan2 discontinuity. Returns false (and leaves the gesture untouched) when `point` sits exactly on the origin, where the angle is undefined. `point` is mapped into the element's parent coordinate space via `gesture.parentInverse` before its angle relative to `origin` is measured (see `RotateGesture`'s doc comment). */
-  function advanceRotateGesture(gesture: RotateGesture, point: { x: number; y: number }): boolean {
-    const now = applyMatrixToPoint(gesture.parentInverse, toUserPoint(point));
-    const vx = now.x - gesture.origin.x;
-    const vy = now.y - gesture.origin.y;
-    if (vx === 0 && vy === 0) return false;
-    const nowAngleDeg = (Math.atan2(vy, vx) * 180) / Math.PI;
-    let diff = nowAngleDeg - gesture.lastAngleDeg;
-    while (diff > 180) diff -= 360;
-    while (diff <= -180) diff += 360;
-    gesture.cumulativeDeltaDeg += diff;
-    gesture.lastAngleDeg = nowAngleDeg;
-    return true;
-  }
-
-  function revertRotatePreview(gesture: RotateGesture): void {
-    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: gesture.original.transform ?? "" }] });
-  }
-
-  function updateRotateGesture(point: { x: number; y: number }): void {
-    const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "rotate") return;
-    if (!advanceRotateGesture(gesture, point)) return;
-    const parts: TransformParts = { ...gesture.original.parts, rotation: gesture.original.parts.rotation + gesture.cumulativeDeltaDeg };
-    postToFrame({ command: "preview", items: [{ id: gesture.id, transform: formatTransform(parts) }] });
-  }
-
-  async function endRotateGesture(point: { x: number; y: number }, cancelled: boolean): Promise<void> {
-    const gesture = activeGesture;
-    activeGesture = null;
-    if (!gesture || gesture.kind !== "rotate") return;
-
-    if (cancelled) {
-      revertRotatePreview(gesture);
-      return;
-    }
-    advanceRotateGesture(gesture, point);
-    const degrees = gesture.cumulativeDeltaDeg;
-    if (roundsToZero(degrees)) {
-      revertRotatePreview(gesture);
-      return;
-    }
-
-    const thisGeneration = frame.generation;
-    const result = await postCommand("element rotate", {
-      slidePath: slides[currentIndex],
-      elementIds: [gesture.id],
-      degrees,
-    });
-    if (destroyed || thisGeneration !== frame.generation) return;
-    if (!result.ok) {
-      revertRotatePreview(gesture);
-      error = result.message;
-      notify();
-      return;
-    }
-    keepSelectionAcrossReload();
-  }
-
-  // --- Textbox-width handles (decision (b): only the box updates during the drag, the <text> stays put) ---
-
-  function beginTextboxWidthGesture(point: { x: number; y: number }, handle: "left" | "right"): void {
-    // Same guard as beginMoveGesture: without it, toUserPoint(point) below
-    // silently returns {x:0,y:0} when frame.viewport hasn't arrived yet.
-    if (!frame.viewport) return;
-    if (selection.ids.length !== 1) return;
-    const id = selection.ids[0];
-    const entry = elementIndex().get(id);
-    if (!entry || entry.element.textWidth === null) return;
-
-    activeGesture = {
-      kind: "textbox-width",
-      id,
-      handle,
-      originalWidth: entry.element.textWidth,
-      originalTransform: entry.element.transform,
-      startUserX: toUserPoint(point).x,
-      lastWidth: entry.element.textWidth,
-    };
-  }
-
-  function computeTextboxWidth(gesture: TextboxWidthGesture, point: { x: number; y: number }): number {
-    const nowX = toUserPoint(point).x;
-    const dx = nowX - gesture.startUserX;
-    // The container's own transform never changes (`textbox width` has no
-    // position input) — the box's left edge stays pinned at the local
-    // origin regardless of which handle is dragged (see TextboxWidthGesture's
-    // own doc comment). Dragging the right handle further right, or the
-    // left handle further left (away from the box), both grow the width.
-    return gesture.handle === "right" ? gesture.originalWidth + dx : gesture.originalWidth - dx;
-  }
-
-  /** Tells the runtime to show `width` — it only ever updates `data-slidra-text-width` and the selection box/handles (`selectionClientRect` in selection-runtime.js), never the `<text>` content itself. */
-  function previewTextboxWidth(id: string, width: number): void {
-    postToFrame({ command: "preview-textbox-width", id, width });
-  }
-
-  function updateTextboxWidthGesture(point: { x: number; y: number }): void {
-    const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "textbox-width") return;
-    const width = computeTextboxWidth(gesture, point);
-    if (!(width > 0)) return; // Would go non-positive — freeze at the last valid preview.
-    gesture.lastWidth = width;
-    previewTextboxWidth(gesture.id, width);
-  }
-
-  async function endTextboxWidthGesture(point: { x: number; y: number }, cancelled: boolean): Promise<void> {
-    const gesture = activeGesture;
-    activeGesture = null;
-    if (!gesture || gesture.kind !== "textbox-width") return;
-
-    if (cancelled) {
-      previewTextboxWidth(gesture.id, gesture.originalWidth);
-      return;
-    }
-    const width = computeTextboxWidth(gesture, point);
-    if (!(width > 0) || roundsToZero(width)) {
-      previewTextboxWidth(gesture.id, gesture.originalWidth);
-      error = "text box width must be greater than 0";
-      notify();
-      return;
-    }
-    if (roundsToZero(width - gesture.originalWidth)) {
-      previewTextboxWidth(gesture.id, gesture.originalWidth);
-      return;
-    }
-
-    const thisGeneration = frame.generation;
-    const result = await postCommand("textbox width", {
-      slidePath: slides[currentIndex],
-      elementId: gesture.id,
-      width,
-    });
-    if (destroyed || thisGeneration !== frame.generation) return;
-    if (!result.ok) {
-      previewTextboxWidth(gesture.id, gesture.originalWidth);
-      error = result.message;
-      notify();
-      return;
-    }
-    keepSelectionAcrossReload();
-  }
 
   // --- Chart data window (decision (c): no local preview any more) ---
 
@@ -2780,68 +1892,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // path relies on.
   }
 
-  // --- Marquee select (§4.8's "marquee select" row) ---
-
-  function beginMarqueeGesture(point: { x: number; y: number }): void {
-    activeGesture = { kind: "marquee", startClient: point };
-  }
-
-  function updateMarqueeGesture(point: { x: number; y: number }): void {
-    const gesture = activeGesture;
-    if (!gesture || gesture.kind !== "marquee") return;
-    const rect: Rect = {
-      x: Math.min(gesture.startClient.x, point.x),
-      y: Math.min(gesture.startClient.y, point.y),
-      width: Math.abs(point.x - gesture.startClient.x),
-      height: Math.abs(point.y - gesture.startClient.y),
-    };
-    postToFrame({ command: "marquee", rect });
-  }
-
-  function endMarqueeGesture(point: { x: number; y: number }, cancelled: boolean): void {
-    const gesture = activeGesture;
-    activeGesture = null;
-    if (!gesture || gesture.kind !== "marquee") return;
-    postToFrame({ command: "marquee", rect: null });
-    if (cancelled || !currentSlideModel || !frame.viewport) return;
-
-    const a = toUserPoint(gesture.startClient);
-    const b = toUserPoint(point);
-    const marqueeRect: Rect = {
-      x: Math.min(a.x, b.x),
-      y: Math.min(a.y, b.y),
-      width: Math.abs(b.x - a.x),
-      height: Math.abs(b.y - a.y),
-    };
-
-    const hitIds: string[] = [];
-    const hitNames: (string | null)[] = [];
-    for (const element of currentSlideModel.elements) {
-      // A locked element is not selectable at all (ADR-0013). The click
-      // path already refuses it inside the runtime; the marquee resolves
-      // hits out here against reported bounds, which include every element
-      // with an id — so without this the full-bleed background image was
-      // caught by every single marquee.
-      if (element.locked) continue;
-      const bounds = computeBounds(element.id);
-      // An element the runtime never reported bounds for (jsdom in tests,
-      // or a genuinely gone element) is simply not selectable by marquee —
-      // same degradation `computeBounds`'s callers already apply elsewhere.
-      if (bounds && rectsIntersect(marqueeRect, bounds)) {
-        hitIds.push(element.id);
-        hitNames.push(element.name);
-      }
-    }
-    selection.ids = hitIds;
-    selection.names = hitNames;
-    // Marquee always operates at the top level (the loop above walks
-    // currentSlideModel.elements, never a group's children) — it
-    // unconditionally exits any group-edit scope, same as clicking outside
-    // the entered group would.
-    selection.groupPath = [];
-    notify();
-    pushSelectionToRuntime(hitIds);
-  }
 
   async function advancePastEnd(): Promise<void> {
     // On the last slide of the presentation, advancing past the end does
@@ -3198,17 +2248,17 @@ export function mountCanvas(container: HTMLElement): CanvasController {
      */
     previewEffectIndices?: number[] | null,
   ): Promise<void> {
-    const captured = thisGeneration ?? frame.generation;
-    if (currentIndex === -1) {
-      frame.paintedView = null;
-      frame.paintedPlay = null;
-      frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
+    const captured = thisGeneration ?? playModeDeps.frame.generation;
+    if (playModeDeps.deck.currentIndex() === -1) {
+      playModeDeps.frame.paintedView = null;
+      playModeDeps.frame.paintedPlay = null;
+      playModeDeps.frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
       return;
     }
 
-    const slidePath = slides[currentIndex];
+    const slidePath = playModeDeps.deck.slides()[playModeDeps.deck.currentIndex()];
     const svgMarkup = await fetchText(`/api/files/${slidePath}`);
-    if (destroyed || captured !== frame.generation) return;
+    if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
 
     // #303: only reload()'s background refresh (playEnter=false, no preview,
     // startAt "first") may keep the running document; every arrival —
@@ -3218,15 +2268,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       !playEnter &&
       previewEffectIndices === undefined &&
       startAt === "first" &&
-      frame.paintedPlay !== null &&
-      frame.paintedPlay.slidePath === slidePath &&
-      frame.paintedPlay.key === playKey;
+      playModeDeps.frame.paintedPlay !== null &&
+      playModeDeps.frame.paintedPlay.slidePath === slidePath &&
+      playModeDeps.frame.paintedPlay.key === playKey;
 
     let planScript: string;
     let hideStyle: string;
     try {
       const plan = await computePlayerPlan(svgMarkup, slidePath);
-      if (destroyed || captured !== frame.generation) return;
+      if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
       const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
       const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
       planScript = renderPlanScript(planForWire, startStep);
@@ -3242,34 +2292,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // rather than a second one, since even a cache-hit await is one more
       // microtask on a path PlayChrome.tsx's 2.5s auto-hide timer races
       // against).
-      currentPageTransition = plan.transition;
+      playModeDeps.slideState.pageTransition.set(plan.transition);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
       // previous, broken slide would keep showing on top of a page that
       // is in fact playing fine (found in gate review round 2).
-      if (error !== null) {
-        error = null;
-        notify();
+      if (playModeDeps.session.error.get() !== null) {
+        playModeDeps.session.error.set(null);
+        playModeDeps.publish.notify();
       }
     } catch (planError) {
       // A stale frame.generation's own rejection (e.g. a superseded navigation's
       // /api/effects/ fetch resolving after a newer renderPlay() already
       // took over) must not clobber state a newer, still-live call owns.
-      if (destroyed || captured !== frame.generation) return;
+      if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
       // Surfaced, never silently swallowed (design doc). Play the static
       // slide with no runtime rather than leaving the frame.element blank — the
       // author still sees the slide, plus the reason nothing animates.
-      error = planError instanceof Error ? planError.message : "effect list could not be parsed";
-      notify();
+      playModeDeps.session.error.set(planError instanceof Error ? planError.message : "effect list could not be parsed");
+      playModeDeps.publish.notify();
       // A broken page has no transition to play on the way out either —
       // reset to the all-"none" default so a later playExitTransition()
       // call leaving this (static) page does not act on stale data left
       // over from whichever slide was last painted successfully.
-      currentPageTransition = { enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } };
-      frame.paintedView = null;
-      frame.paintedPlay = null;
-      frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+      playModeDeps.slideState.pageTransition.set({ enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } });
+      playModeDeps.frame.paintedView = null;
+      playModeDeps.frame.paintedPlay = null;
+      playModeDeps.frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
       return;
     }
 
@@ -3281,34 +2331,34 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
-    embeds.entries = stageEmbedsFor(svgMarkup);
-    embeds.boxes = {};
-    notifyEmbeds();
+    playModeDeps.embeds.entries = stageEmbedsFor(svgMarkup);
+    playModeDeps.embeds.boxes = {};
+    playModeDeps.publish.notifyEmbeds();
 
-    frame.paintedView = null;
-    frame.element.srcdoc = wrapPlayDocument(
+    playModeDeps.frame.paintedView = null;
+    playModeDeps.frame.element.srcdoc = wrapPlayDocument(
       svgMarkup,
       `/api/raw/${slideDirectory(slidePath)}`,
       hideStyle,
       planScript,
     );
-    frame.paintedPlay = { slidePath, key: playKey };
+    playModeDeps.frame.paintedPlay = { slidePath, key: playKey };
 
-    const { effect, duration } = currentPageTransition.enter;
+    const { effect, duration } = playModeDeps.slideState.pageTransition.get().enter;
     if (playEnter && effect !== "none" && duration > 0) {
       const ms = duration * 1000;
-      frame.element.style.transition = "none";
-      frame.element.style.opacity = "0";
-      frame.element.style.transform = pageTransitionTransform(effect, "enter-start");
+      playModeDeps.frame.element.style.transition = "none";
+      playModeDeps.frame.element.style.opacity = "0";
+      playModeDeps.frame.element.style.transform = pageTransitionTransform(effect, "enter-start");
       // The "none" transition and the start values above must land in a
       // rendered frame before switching to the real transition, or the
       // browser coalesces both style writes into one paint and nothing
       // animates.
       requestAnimationFrame(() => {
-        if (destroyed || captured !== frame.generation) return;
-        frame.element.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
-        frame.element.style.opacity = "1";
-        frame.element.style.transform = "none";
+        if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+        playModeDeps.frame.element.style.transition = `opacity ${ms}ms var(--ease-out), transform ${ms}ms var(--ease-out)`;
+        playModeDeps.frame.element.style.opacity = "1";
+        playModeDeps.frame.element.style.transform = "none";
       });
       // [E2.T17]: the embed overlay converts runtime-local px against
       // `frame.element.getBoundingClientRect()` *at message time*, and the runtime
@@ -3318,8 +2368,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // runtime-local boxes are unchanged; only the frame.element's own rect moved)
       // is what puts it back on its placeholder.
       window.setTimeout(() => {
-        if (destroyed || captured !== frame.generation) return;
-        notifyEmbeds();
+        if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+        playModeDeps.publish.notifyEmbeds();
       }, ms + 50);
     } else {
       // Instant path must actively clear any inline opacity/transition/
@@ -3329,9 +2379,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // animating, defensively — clearing a value while `transition` is
       // still declared risks animating the removal itself instead of
       // jumping straight to the resting state.
-      frame.element.style.removeProperty("transition");
-      frame.element.style.removeProperty("opacity");
-      frame.element.style.removeProperty("transform");
+      playModeDeps.frame.element.style.removeProperty("transition");
+      playModeDeps.frame.element.style.removeProperty("opacity");
+      playModeDeps.frame.element.style.removeProperty("transform");
     }
   }
 
@@ -3353,73 +2403,73 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * must abandon its own page change rather than apply it on top.
    */
   async function playExitTransition(thisGeneration: number): Promise<boolean> {
-    if (exiting) return false;
-    const { effect, duration } = currentPageTransition.exit;
+    if (playModeDeps.session.exiting.get()) return false;
+    const { effect, duration } = playModeDeps.slideState.pageTransition.get().exit;
     if (effect === "none" || duration === 0) return true;
 
-    exiting = true;
+    playModeDeps.session.exiting.set(true);
     const ms = duration * 1000;
-    frame.element.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
-    frame.element.style.opacity = "0";
-    frame.element.style.transform = pageTransitionTransform(effect, "exit-end");
+    playModeDeps.frame.element.style.transition = `opacity ${ms}ms var(--ease-in), transform ${ms}ms var(--ease-in)`;
+    playModeDeps.frame.element.style.opacity = "0";
+    playModeDeps.frame.element.style.transform = pageTransitionTransform(effect, "exit-end");
     await new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-    exiting = false;
+    playModeDeps.session.exiting.set(false);
 
-    if (destroyed || thisGeneration !== frame.generation) {
-      frame.element.style.removeProperty("transition");
-      frame.element.style.removeProperty("opacity");
-      frame.element.style.removeProperty("transform");
+    if (playModeDeps.session.isDestroyed() || thisGeneration !== playModeDeps.frame.generation) {
+      playModeDeps.frame.element.style.removeProperty("transition");
+      playModeDeps.frame.element.style.removeProperty("opacity");
+      playModeDeps.frame.element.style.removeProperty("transform");
       return false;
     }
     return true;
   }
 
   async function showSlide(index: number, selectAfter?: readonly string[]): Promise<void> {
-    if (destroyed) return;
-    if (!Number.isInteger(index) || index < 0 || index >= slides.length) {
+    if (playModeDeps.session.isDestroyed()) return;
+    if (!Number.isInteger(index) || index < 0 || index >= playModeDeps.deck.slides().length) {
       throw new Error(`slide index out of range: ${index}`);
     }
 
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
     // Captured before currentIndex moves — "forward" decides whether the
     // page being left plays an exit (§4.6: only a forward change does),
     // same intent as advancePastEnd()'s "+= 1" vs retreatPastStart()'s
     // "-= 1".
-    const forward = index > currentIndex;
-    if (mode === "play" && forward) {
+    const forward = index > playModeDeps.deck.currentIndex();
+    if (playModeDeps.session.mode.get() === "play" && forward) {
       if (!(await playExitTransition(thisGeneration))) return;
     }
-    currentIndex = index;
+    playModeDeps.deck.setCurrentIndex(index);
     // Plan §4.5: "close on slide change" — a chart window's edits target
     // a specific element id on the slide being left; render()'s own
     // notifyChartWindow() below would eventually close it anyway (the id
     // resolves on the wrong slide), but that happens after the slide fetch
     // resolves — closing it here means the window never lingers open for a
     // beat while the next slide loads.
-    chartWindow.target = null;
-    notifyChartWindow();
+    playModeDeps.chartWindow.target = null;
+    playModeDeps.publish.notifyChartWindow();
     // A selection points at elements' ids on the slide the author was
     // looking at; a stale selection surviving onto a different slide's DOM
     // is a defect, not a convenience.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
-    notify();
-    notifyOverlay();
-    if (mode === "play") {
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    if (playModeDeps.session.mode.get() === "play") {
       await renderPlay(thisGeneration, "first", true);
     } else {
       // [E2.T8]: `selectAfter` reuses the exact same "reselect once the
@@ -3429,79 +2479,79 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // `frame.element.srcdoc` navigation (NOOP-227: the runtime hasn't attached
       // its `message` listener yet) and be silently dropped, exactly the
       // failure `render()`'s own `selectOnceLoaded` exists to avoid.
-      if (selectAfter && selectAfter.length > 0) pendingSelectionIds = [...selectAfter];
-      await render(thisGeneration);
+      if (selectAfter && selectAfter.length > 0) playModeDeps.selectionState.setPendingSelectionIds([...selectAfter]);
+      await playModeDeps.render(thisGeneration);
     }
   }
 
   async function next(): Promise<void> {
-    if (currentIndex === -1 || currentIndex >= slides.length - 1) return;
-    await showSlide(currentIndex + 1);
+    if (playModeDeps.deck.currentIndex() === -1 || playModeDeps.deck.currentIndex() >= playModeDeps.deck.slides().length - 1) return;
+    await showSlide(playModeDeps.deck.currentIndex() + 1);
   }
 
   async function previous(): Promise<void> {
-    if (currentIndex <= 0) return;
-    await showSlide(currentIndex - 1);
+    if (playModeDeps.deck.currentIndex() <= 0) return;
+    await showSlide(playModeDeps.deck.currentIndex() - 1);
   }
 
   async function play(): Promise<void> {
-    if (destroyed || mode === "play") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "play";
-    frame.playerHasFocus = false;
-    error = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() === "play") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("play");
+    playModeDeps.frame.playerHasFocus = false;
+    playModeDeps.session.error.set(null);
     // Entering play mode destroys the view-mode iframe (selection-runtime.js
     // included), so any selection it reported is gone with it.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
     await renderPlay(thisGeneration);
   }
 
   async function exitPlay(): Promise<void> {
-    if (destroyed || mode === "view") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "view";
-    frame.playerHasFocus = false;
-    error = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() === "view") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("view");
+    playModeDeps.frame.playerHasFocus = false;
+    playModeDeps.session.error.set(null);
     // Returning to view mode rebuilds the iframe with a fresh
     // selection-runtime.js instance that has never heard a click yet.
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
     // [E2.T7]: the slide/mode is changing — the previous slide's badge
     // targets and measured positions no longer apply, and render()/
     // renderPlay() (or leaving view mode entirely) will repopulate them.
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
-    await render(thisGeneration);
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    await playModeDeps.render(thisGeneration);
   }
 
   /**
@@ -3515,27 +2565,27 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * while the preview plays. No-op outside view mode.
    */
   async function previewEffects(effectIndices: number[] | null): Promise<void> {
-    if (destroyed || mode !== "view") return;
-    if (editingState) void commitTextEdit(); // See reload()'s own comment on why this is fire-and-forget.
-    activeGesture = null;
-    const thisGeneration = ++frame.generation;
-    mode = "preview";
-    previewReturnSelectionIds = [...selection.ids];
-    error = null;
-    selection.ids = [];
-    selection.names = [];
-    selection.groupPath = [];
-    frame.viewport = null;
-    overlay.boxes = [];
-    overlay.union = null;
-    overlay.ancestors = [];
-    overlay.guides = [];
-    currentSlideEffects = [];
-    overlay.badgeTargets = [];
-    overlay.badges = [];
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "view") return;
+    playModeDeps.commitTextEditIfEditing(); // See reload()'s own comment on why this is fire-and-forget.
+    playModeDeps.activeGesture.set(null);
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("preview");
+    playModeDeps.selectionState.previewReturnSelectionIds.set([...playModeDeps.selection.ids]);
+    playModeDeps.session.error.set(null);
+    playModeDeps.selection.ids = [];
+    playModeDeps.selection.names = [];
+    playModeDeps.selection.groupPath = [];
+    playModeDeps.frame.viewport = null;
+    playModeDeps.overlay.boxes = [];
+    playModeDeps.overlay.union = null;
+    playModeDeps.overlay.ancestors = [];
+    playModeDeps.overlay.guides = [];
+    playModeDeps.slideState.setSlideEffects([]);
+    playModeDeps.overlay.badgeTargets = [];
+    playModeDeps.overlay.badges = [];
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
     await renderPlay(thisGeneration, "first", false, effectIndices);
   }
 
@@ -3548,46 +2598,46 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * AnimateObjectPanel's own Escape handling). No-op outside preview mode.
    */
   function exitPreview(): void {
-    if (destroyed || mode !== "preview") return;
-    const thisGeneration = ++frame.generation;
-    mode = "view";
-    error = null;
-    const restoreIds = previewReturnSelectionIds ?? [];
-    previewReturnSelectionIds = null;
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "preview") return;
+    const thisGeneration = ++playModeDeps.frame.generation;
+    playModeDeps.session.mode.set("view");
+    playModeDeps.session.error.set(null);
+    const restoreIds = playModeDeps.selectionState.previewReturnSelectionIds.get() ?? [];
+    playModeDeps.selectionState.previewReturnSelectionIds.set(null);
     rebuildFrame("allow-scripts");
-    notify();
-    notifyOverlay();
-    pendingSelectionIds = restoreIds.length > 0 ? restoreIds : null;
-    void render(thisGeneration);
+    playModeDeps.publish.notify();
+    playModeDeps.publish.notifyOverlay();
+    playModeDeps.selectionState.setPendingSelectionIds(restoreIds.length > 0 ? restoreIds : null);
+    void playModeDeps.render(thisGeneration);
   }
 
   function focusPlayer(): void {
-    if (destroyed || mode !== "play") return;
-    frame.element.focus();
-    frame.element.contentWindow?.focus();
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "play") return;
+    playModeDeps.frame.element.focus();
+    playModeDeps.frame.element.contentWindow?.focus();
     // Belt-and-braces, confirmed necessary (not merely defensive) by
     // e2e/player-mode.test.ts: a bare cross-document `.focus()` call from
     // the parent alone did not reliably fire the runtime's own `focus`
     // listener in headless Chromium during testing. Asking the runtime to
     // call `window.focus()` on itself, from inside its own document, is
     // the half that actually lands.
-    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
-    frame.playerHasFocus = true;
-    notify();
+    playModeDeps.frame.element.contentWindow?.postMessage({ source: "slidra-host", command: "focus" }, "*");
+    playModeDeps.frame.playerHasFocus = true;
+    playModeDeps.publish.notify();
   }
 
   function stepPlayer(direction: "advance" | "retreat"): void {
-    if (destroyed || mode !== "play") return;
-    frame.element.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
+    if (playModeDeps.session.isDestroyed() || playModeDeps.session.mode.get() !== "play") return;
+    playModeDeps.frame.element.contentWindow?.postMessage({ source: "slidra-host", command: direction }, "*");
   }
 
   /** Destroys the current iframe and builds a fresh one with the given sandbox tokens, in the same container position. */
   function rebuildFrame(sandbox: string): void {
-    const old = frame.element;
-    frame.paintedView = null; // #303: a new element has painted nothing yet.
-    frame.paintedPlay = null;
-    frame.element = buildFrame(sandbox);
-    container.insertBefore(frame.element, old);
+    const old = playModeDeps.frame.element;
+    playModeDeps.frame.paintedView = null; // #303: a new element has painted nothing yet.
+    playModeDeps.frame.paintedPlay = null;
+    playModeDeps.frame.element = buildFrame(sandbox);
+    playModeDeps.container.insertBefore(playModeDeps.frame.element, old);
     old.remove();
   }
 
@@ -3886,9 +2936,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       listeners.table.clear();
       listeners.tableRange.clear();
       listeners.chartWindow.clear();
-      window.removeEventListener("message", onWindowMessage);
-      window.removeEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
-      window.removeEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
+      window.removeEventListener("message", runtimeMessages.onWindowMessage);
+      window.removeEventListener("pointermove", gestures.onHostPointerMove, true);
+      window.removeEventListener("pointerup", gestures.onHostPointerUp, true);
       // Remove exactly the element this call created — never the
       // container's other children. The container belongs to React
       // (ADR-0001); this module has no business deciding what else lives
