@@ -727,10 +727,19 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // told to apply — resent to the runtime whenever it reports
   // "runtime-ready" (a slide change rebuilds the srcdoc and loses whatever
   // the previous document's `stageHandMode` variable held).
-  const stageInputListeners = new Set<(event: StageInputEvent) => void>();
+  const listeners = {
+    stageInput: new Set<(event: StageInputEvent) => void>(),
+    stageHover: new Set<(point: { x: number; y: number }) => void>(),
+    overlay: new Set<(state: OverlayState) => void>(),
+    table: new Set<(event: TableRuntimeEvent) => void>(),
+    tableRange: new Set<(value: { tableId: string; range: CellRange } | null) => void>(),
+    chartWindow: new Set<(state: ChartWindowState | null) => void>(),
+    embed: new Set<(state: EmbedState) => void>(),
+    embedCommand: new Set<(command: EmbedCommand) => void>(),
+    state: new Set<(state: CanvasState) => void>(),
+  };
   let stageHandMode = false;
-  /** `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `stageInputListeners`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
-  const stageHoverListeners = new Set<(point: { x: number; y: number }) => void>();
+  /** `subscribeStageHover`'s listeners — same "transient event, no persisted state" shape as `listeners.stageInput`, kept separate rather than folded into `StageInputEvent` (its own doc comment) because this is not stage navigation, it drives the context bar's own ghost/solid toggle in `OverlayLayer`. */
   // NOOP-90/T2 §4.6: the runtime's last-reported per-selected-element
   // bounds/ancestors, kept in the runtime's OWN
   // iframe client px — the conversion to this parent document's client px
@@ -738,11 +747,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // needs `refreshOverlay()` to re-emit, not a fresh "bounds" round trip.
   // See `OverlayState`'s own doc comment for why this is a separate,
   // high-frequency channel rather than `CanvasState`.
-  const overlayListeners = new Set<(state: OverlayState) => void>();
   /** E2.T14 §4.5: table cell hit reports and `table-cells` replies — transient events, same "listener set, no persisted state" shape as `subscribeStageInput`, not folded into `CanvasState`/`OverlayState` since neither is about a table specifically. */
-  const tableListeners = new Set<(event: TableRuntimeEvent) => void>();
-  /** E2.T14r2 §4.1: `subscribeTableRange`'s listeners — a real state channel (unlike `tableListeners` above), so a late subscriber gets the current value immediately, same contract as `overlayListeners`. */
-  const tableRangeListeners = new Set<(value: { tableId: string; range: CellRange } | null) => void>();
+  /** E2.T14r2 §4.1: `subscribeTableRange`'s listeners — a real state channel (unlike `listeners.table` above), so a late subscriber gets the current value immediately, same contract as `listeners.overlay`. */
   /** The active cell range, or `null`. Built from `table-cell-click`/`table-cell-contextmenu` reports (handleSelectionMessage below) and cleared whenever the selection changes away from this table (§4.1's lifecycle table). */
   const tableRange = {
     current: null as { tableId: string; range: CellRange } | null,
@@ -757,7 +763,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // listener) or a slide change (`showSlide`). A separate channel from
   // `subscribeOverlay`/`CanvasState` for the same reason those are: high-
   // frequency during local editing, and shaped nothing like either.
-  const chartWindowListeners = new Set<(state: ChartWindowState | null) => void>();
   const chartWindow = { target: null as string | null };
   const overlay = {
     boxes: [] as Rect[],
@@ -788,15 +793,13 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // mode, where `OverlayLayer` is unmounted entirely (Stage.tsx's
   // `shellVisible` gate).
   const embeds = { entries: {} as Record<string, StageEmbedEntry>, boxes: {} as Record<string, Rect> };
-  const embedListeners = new Set<(state: EmbedState) => void>();
-  const embedCommandListeners = new Set<(command: EmbedCommand) => void>();
 
   /** Validates an `embed-command` payload and fans it out. Both fields come from untrusted slide-side script (ADR-0010), so an unknown id or command is dropped, never forwarded to a player. */
   function emitEmbedCommand(rawId: unknown, rawCommand: unknown): void {
     if (typeof rawId !== "string" || !Object.prototype.hasOwnProperty.call(embeds.entries, rawId)) return;
     if (rawCommand !== "play" && rawCommand !== "pause") return;
     const command: EmbedCommand = { id: rawId, command: rawCommand };
-    for (const listener of embedCommandListeners) listener(command);
+    for (const listener of listeners.embedCommand) listener(command);
   }
 
   /** Validates and stores an `embed-boxes` payload from either runtime, then pushes the new state out. Every field is untrusted slide-side data (ADR-0010), so nothing is stored before `isMeasuredItem` has checked its shape. */
@@ -821,7 +824,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function notifyEmbeds(): void {
     const state = buildEmbedState();
-    for (const listener of embedListeners) listener(state);
+    for (const listener of listeners.embed) listener(state);
   }
   // The current slide's parsed model plus its raw markup, kept only so
   // gestures can compute bounding boxes/candidates without re-fetching —
@@ -866,7 +869,6 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // move is rAF-throttled but still fires dozens of times a second, which
   // would otherwise hammer the server.
   let lastEditingLeaseAt = 0;
-  const listeners = new Set<(state: CanvasState) => void>();
   // Bumped on every reload()/showSlide()/play()/exitPlay() call and
   // captured by each call's own closure. Nothing orders concurrent calls
   // against each other, so a slower earlier one can resolve after a
@@ -1351,15 +1353,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /** A `cell-dblclick` that arrived before any `TableOverlay` subscribed — the drill-in double-click selects the table and reports the cell in the same runtime handler, so the overlay for that table mounts one React render later. Replayed to the first subscriber. */
 
   function emitTableEvent(event: TableRuntimeEvent): void {
-    if (event.type === "cell-dblclick" && tableListeners.size === 0) {
+    if (event.type === "cell-dblclick" && listeners.table.size === 0) {
       tableRange.pendingDblclick = event;
       return;
     }
-    for (const listener of tableListeners) listener(event);
+    for (const listener of listeners.table) listener(event);
   }
 
   function notifyTableRange(): void {
-    for (const listener of tableRangeListeners) listener(tableRange.current);
+    for (const listener of listeners.tableRange) listener(tableRange.current);
   }
 
   /** `CanvasController.setTableRange` (§4.1/§4.2) — also tells the runtime which table (if any) owns the range, so its own keyboard relay can decide Delete/Tab/⌘B/Esc's routing. */
@@ -1535,7 +1537,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function notifyOverlay(): void {
     const state = buildOverlayState();
-    for (const listener of overlayListeners) listener(state);
+    for (const listener of listeners.overlay) listener(state);
   }
 
   /**
@@ -1563,7 +1565,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
 
   function notifyChartWindow(): void {
     const state = buildChartWindowState();
-    for (const listener of chartWindowListeners) listener(state);
+    for (const listener of listeners.chartWindow) listener(state);
   }
 
   /** The runtime's "dblclick-chart" report (selection-runtime.js, plan §3.6) — a plain double-click on a chart container opens its data window. No-op outside view mode, or when `id` does not resolve to a chart (`notifyChartWindow` closes it again in that case). */
@@ -1574,11 +1576,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   function emitStageInput(event: StageInputEvent): void {
-    for (const listener of stageInputListeners) listener(event);
+    for (const listener of listeners.stageInput) listener(event);
   }
 
   function emitStageHover(point: { x: number; y: number }): void {
-    for (const listener of stageHoverListeners) listener(point);
+    for (const listener of listeners.stageHover) listener(point);
   }
 
   /** Shared by handleSelectionMessage's "clear" case and the public clearSelection() (NOOP-83 §4.5) — same four steps either way. */
@@ -3694,7 +3696,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   }
 
   function notify(): void {
-    // A fresh object per notification: listeners keep it as React state,
+    // A fresh object per notification: listeners.state keep it as React state,
     // and handing out a mutable reference to internal arrays would let a
     // later reload silently rewrite what a listener already read.
     const state: CanvasState = {
@@ -3714,11 +3716,11 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       backgroundImage: currentSlideModel?.backgroundImage ?? null,
       pageSource,
     };
-    for (const listener of listeners) listener(state);
+    for (const listener of listeners.state) listener(state);
   }
 
   function subscribe(listener: (state: CanvasState) => void): () => void {
-    listeners.add(listener);
+    listeners.state.add(listener);
     listener({
       slides: [...slides],
       currentIndex,
@@ -3737,7 +3739,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       pageSource,
     });
     return () => {
-      listeners.delete(listener);
+      listeners.state.delete(listener);
     };
   }
 
@@ -3776,15 +3778,15 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return frame.element;
     },
     subscribeStageInput: (listener: (event: StageInputEvent) => void) => {
-      stageInputListeners.add(listener);
+      listeners.stageInput.add(listener);
       return () => {
-        stageInputListeners.delete(listener);
+        listeners.stageInput.delete(listener);
       };
     },
     subscribeStageHover: (listener: (point: { x: number; y: number }) => void) => {
-      stageHoverListeners.add(listener);
+      listeners.stageHover.add(listener);
       return () => {
-        stageHoverListeners.delete(listener);
+        listeners.stageHover.delete(listener);
       };
     },
     setStageHandMode: (hand: boolean) => {
@@ -3800,26 +3802,26 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       undoRedoHandler = handler;
     },
     subscribeOverlay: (listener: (state: OverlayState) => void) => {
-      overlayListeners.add(listener);
+      listeners.overlay.add(listener);
       listener(buildOverlayState());
       return () => {
-        overlayListeners.delete(listener);
+        listeners.overlay.delete(listener);
       };
     },
     subscribeEmbeds: (listener: (state: EmbedState) => void) => {
-      embedListeners.add(listener);
+      listeners.embed.add(listener);
       listener(buildEmbedState());
       return () => {
-        embedListeners.delete(listener);
+        listeners.embed.delete(listener);
       };
     },
     refreshEmbeds: () => {
       notifyEmbeds();
     },
     subscribeEmbedCommand: (listener: (command: EmbedCommand) => void) => {
-      embedCommandListeners.add(listener);
+      listeners.embedCommand.add(listener);
       return () => {
-        embedCommandListeners.delete(listener);
+        listeners.embedCommand.delete(listener);
       };
     },
     refreshOverlay: () => {
@@ -3827,14 +3829,14 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       notifyOverlay();
     },
     subscribeTable: (listener: (event: TableRuntimeEvent) => void) => {
-      tableListeners.add(listener);
+      listeners.table.add(listener);
       if (tableRange.pendingDblclick) {
         const replay = tableRange.pendingDblclick;
         tableRange.pendingDblclick = null;
         listener(replay);
       }
       return () => {
-        tableListeners.delete(listener);
+        listeners.table.delete(listener);
       };
     },
     requestTableCells: (id: string) => {
@@ -3846,10 +3848,10 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       postToFrame({ command: "preview-table-cols", id, cols: [...cols] });
     },
     subscribeTableRange: (listener: (value: { tableId: string; range: CellRange } | null) => void) => {
-      tableRangeListeners.add(listener);
+      listeners.tableRange.add(listener);
       listener(tableRange.current);
       return () => {
-        tableRangeListeners.delete(listener);
+        listeners.tableRange.delete(listener);
       };
     },
     setTableRange,
@@ -3866,24 +3868,24 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     distributeSelection,
     insertTextBox,
     subscribeChartWindow: (listener: (state: ChartWindowState | null) => void) => {
-      chartWindowListeners.add(listener);
+      listeners.chartWindow.add(listener);
       listener(buildChartWindowState());
       return () => {
-        chartWindowListeners.delete(listener);
+        listeners.chartWindow.delete(listener);
       };
     },
     closeChartWindow,
     destroy: () => {
       destroyed = true;
       window.removeEventListener("resize", notifyEmbeds);
-      listeners.clear();
-      embedListeners.clear();
-      embedCommandListeners.clear();
-      stageInputListeners.clear();
-      overlayListeners.clear();
-      tableListeners.clear();
-      tableRangeListeners.clear();
-      chartWindowListeners.clear();
+      listeners.state.clear();
+      listeners.embed.clear();
+      listeners.embedCommand.clear();
+      listeners.stageInput.clear();
+      listeners.overlay.clear();
+      listeners.table.clear();
+      listeners.tableRange.clear();
+      listeners.chartWindow.clear();
       window.removeEventListener("message", onWindowMessage);
       window.removeEventListener("pointermove", onHostPointerMoveDuringMoveGesture, true);
       window.removeEventListener("pointerup", onHostPointerUpDuringMoveGesture, true);
