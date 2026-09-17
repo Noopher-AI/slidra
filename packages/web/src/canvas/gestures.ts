@@ -90,7 +90,7 @@ export interface GestureCoordsDeps {
 /**
  * What `canvas/gestures.ts`'s move/scale/rotate/textbox-width/marquee
  * factory needs from the `mountCanvas` closure — declared here (the module
- * it serves, this directory's own convention) and constructed once by the entry.
+ * it serves, ADR-0013's own convention) and constructed once by the entry.
  * Circularity with the rest of the closure is broken by these callback
  * fields, never by an import in the other direction.
  */

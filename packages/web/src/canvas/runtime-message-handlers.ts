@@ -118,7 +118,7 @@ export interface RuntimeMessagePublishDeps {
  * `-move`/`-end` report dispatches to — structurally the same shape
  * `canvas/gestures.ts`'s own `GestureHandlers` exports (minus the two host
  * pointer listeners, which this module never calls), declared again here
- * rather than imported from that module: this directory's convention forbids one extracted
+ * rather than imported from that module: ADR-0013 forbids one extracted
  * module importing another, so the entry hands over an object satisfying
  * this shape instead of this file naming `canvas/gestures.ts` at all.
  */
@@ -143,11 +143,11 @@ export interface RuntimeMessageGestureDeps {
 /**
  * What `canvas/runtime-message-handlers.ts`'s `onWindowMessage`/
  * `handleSelectionMessage` factory needs from the `mountCanvas` closure —
- * declared here (the module it serves, this directory's own convention) and
+ * declared here (the module it serves, ADR-0013's own convention) and
  * constructed once by the entry. `gestures` is the exact object
  * `canvas/gestures.ts`'s own factory returned — the callback seam that
  * breaks the circularity between gesture handling and runtime-message
- * handling, since neither extracted module ever imports the
+ * handling (ADR-0013), since neither extracted module ever imports the
  * other.
  */
 export interface RuntimeMessageDeps {

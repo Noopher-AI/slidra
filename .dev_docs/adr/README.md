@@ -46,10 +46,11 @@ Cite a record by number, never by filename.
 | 0010 | Fonts are packaged; a standalone slide degrades |
 | 0011 | A deck is a database, not an archive |
 | 0012 | A deck has an owner |
+| 0013 | An extracted module takes a named dependency object |
 
 ## Map from the previous set
 
-The set this replaces had 23 records. Numbers are not reused, so the mapping is recorded here
+The set this replaces had 24 records. Numbers are not reused, so the mapping is recorded here
 rather than preserved as gaps.
 
 | Was | Now |
@@ -67,5 +68,7 @@ rather than preserved as gaps.
 | 0020 — superseding 0003 | 0011 |
 | 0023 | 0012 |
 | 0007 | A consequence of 0011, not its own record |
-| 0014, 0017, 0022 | `docs/spec/` — all three record facts that move |
+| 0014 | 0002 — the styling exception is recorded there as a consequence |
+| 0017, 0022 | `docs/spec/` — both record facts that move |
+| 0024 | 0013 |
 | 0018 | Split. Its surviving clause — a new deck starts empty — fails the hard-to-reverse gate: putting a starter slide back is an afternoon's work. Spec. |

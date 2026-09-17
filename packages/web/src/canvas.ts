@@ -895,7 +895,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /**
    * [E8.T3] Everything the move/scale/rotate/textbox-width/marquee gesture
    * functions defined below read or write off the rest of this closure,
-   * gathered into one object — a rehearsal for
+   * gathered into one object (ADR-0013) — a rehearsal for
    * `canvas/gestures.ts` taking those functions over verbatim: routing
    * every read through this object first, while the functions are still
    * defined right here, means a missing field shows up as a type error in
@@ -1046,7 +1046,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * the rest of this closure routed through this object first, so
    * `canvas/runtime-message-handlers.ts` can take the two functions over
    * verbatim in a later commit. `gestures` is the factory output built
-   * just above — the callback seam this directory's convention requires instead of one
+   * just above — the callback seam ADR-0013 requires instead of one
    * extracted module importing another.
    */
   const runtimeMessageDeps: RuntimeMessageDeps = {
