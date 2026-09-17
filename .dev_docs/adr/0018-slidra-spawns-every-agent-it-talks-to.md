@@ -1,8 +1,8 @@
-# ADR-0015 — Slidra spawns every agent it talks to
+# ADR-0018 — Slidra spawns every agent it talks to
 
 *Status: in force.*
 
-A policy that says what an agent may reach (ADR-0015) is worth nothing unless the agent runs
+A policy that says what an agent may reach (ADR-0016) is worth nothing unless the agent runs
 inside something that enforces it. Enforcement comes from the operating system, and the
 operating system can only be asked at the moment a process is created.
 
