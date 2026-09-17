@@ -1,4 +1,4 @@
-# ADR-0017 — Rendering is its own service
+# ADR-0016 — Rendering is its own service
 
 *Status: in force.*
 
