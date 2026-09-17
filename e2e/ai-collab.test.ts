@@ -10,6 +10,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { waitForAgentConnected } from "./helpers/launch.js";
 
@@ -129,7 +130,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ presentationId,
+  const server = await startServe({ policy: openPolicy, presentationId,
     port: 0,
     agent,
     skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },

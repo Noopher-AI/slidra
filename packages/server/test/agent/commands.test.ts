@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
+import { openPolicy } from "../../src/policy/open.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import {
   collectSlashCommands,
@@ -270,6 +271,7 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     const opened = await runCli<{ id: string }>(["open", deckPath]);
     expect(opened.ok).toBe(true);
     const server = await startServe({
+      policy: openPolicy,
       presentationId: opened.data!.id,
       port: 0,
       agent,

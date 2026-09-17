@@ -10,6 +10,7 @@ import { expect } from "vitest";
 import { createDefaultRegistry, type CommandRegistry } from "./cli.js";
 import { packDirectory } from "./pack.js";
 import { startServe, type RunningServer } from "../../packages/server/src/serve.js";
+import { openPolicy } from "../../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../../packages/server/src/agent/session.js";
 import type { AgentKind } from "../../packages/server/src/agent/adapters.js";
 import type { AgentSource } from "../../packages/server/src/agent/manager.js";
@@ -155,6 +156,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   };
 
   const server = await startServe({
+    policy: openPolicy,
     presentationId,
     port: 0,
     agent,

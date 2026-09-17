@@ -20,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleShimExec } from "../../src/sandbox/shim-endpoint.js";
 import { resolveShimScriptPath } from "../../src/sandbox/shim-wrapper.js";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
+import { setActivePolicy } from "../../src/sandbox/policy.js";
+import { openPolicy } from "../../src/policy/open.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -88,6 +90,12 @@ let fakeBinPath: string;
 let currentDeckId: string | null;
 
 beforeEach(async () => {
+  // NOOP-617: `buildCliSandboxPolicy` (called by `runShimCommand`) now
+  // reads the active policy `serve.ts` sets at startup — this file drives
+  // `handleShimExec` directly, bypassing `startServe`, so it must set the
+  // same precondition itself (same reasoning as `SLIDRA_SANDBOX=off` below:
+  // this file is about the shim's own contract, not policy selection).
+  setActivePolicy(openPolicy);
   sandboxRoot = await mkdtemp(path.join(tmpdir(), "shim-endpoint-root-"));
   slidraHome = await mkdtemp(path.join(tmpdir(), "shim-endpoint-home-"));
   process.env.SLIDRA_HOME = slidraHome;
@@ -124,6 +132,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setActivePolicy(undefined);
   await new Promise<void>((resolve) => {
     server.closeAllConnections();
     server.close(() => resolve());

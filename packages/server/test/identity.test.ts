@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import { createAnonymousProvider } from "../src/identity/anonymous-provider.js";
 import { createFakeProvider } from "../src/identity/fake-provider.js";
 import { SlidraError } from "../src/slidra/errors.js";
@@ -74,7 +75,7 @@ afterEach(async () => {
 });
 
 async function serve(overrides: Partial<Parameters<typeof startServe>[0]> = {}): Promise<RunningServer> {
-  const server = await startServe({ port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides });
+  const server = await startServe({ policy: openPolicy, port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides });
   servers.push(server);
   return server;
 }

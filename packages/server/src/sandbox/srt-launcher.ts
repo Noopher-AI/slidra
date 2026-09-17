@@ -22,7 +22,7 @@ import { accessSync, constants } from "node:fs";
 import path from "node:path";
 
 import { SandboxManager, type SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
-import type { SandboxLauncher, SandboxPolicy, SandboxSpawn, WrappedSpawn } from "./launcher.js";
+import type { SandboxConfig, SandboxLauncher, SandboxSpawn, WrappedSpawn } from "./launcher.js";
 
 /**
  * Quotes one argv element for `/bin/sh -c`: wraps in single quotes, and
@@ -100,16 +100,27 @@ function assertPreludeResolvable(args: string[], env: NodeJS.ProcessEnv): void {
  * no zod validation on its input (also verified against 0.0.76's source),
  * so this cast is the only place that gap between the real contract and the
  * published type needs to be bridged.
+ *
+ * `policy.network.outbound === "denied"` maps to `{ allowedDomains: [] }` —
+ * verified against 0.0.76's own source (`sandbox-manager.js`'s
+ * `needsNetworkRestriction` comment): "An empty `allowedDomains` array
+ * means 'no domains allowed' = block all network access", not "no
+ * restriction". `policy.network` is optional on `SandboxConfig` and
+ * missing/`"unrestricted"` both mean today's unconditional `{}` — the open
+ * edition (the only one exercised end-to-end by this change) never sets
+ * `outbound: "denied"`, so this branch's only witness in this change is the
+ * unit-level `enforces`/translation test, not a real network probe (that is
+ * [E10.T12]'s closed-policy fixture).
  */
-function buildRuntimeConfig(policy: SandboxPolicy): SandboxRuntimeConfig {
+function buildRuntimeConfig(policy: SandboxConfig): SandboxRuntimeConfig {
   return {
-    network: {},
+    network: policy.network?.outbound === "denied" ? { allowedDomains: [] } : {},
     filesystem: {
       allowWrite: [...policy.allowWrite],
       denyWrite: [...policy.denyWrite],
       denyRead: [...policy.denyRead],
     },
-  } as SandboxRuntimeConfig;
+  } as unknown as SandboxRuntimeConfig;
 }
 
 export async function createSrtLauncher(): Promise<SandboxLauncher> {
@@ -128,7 +139,8 @@ export async function createSrtLauncher(): Promise<SandboxLauncher> {
   return {
     active: true,
     degradedReason: null,
-    async wrap(spawn: SandboxSpawn, policy: SandboxPolicy): Promise<WrappedSpawn> {
+    enforces: { write: true, network: true },
+    async wrap(spawn: SandboxSpawn, policy: SandboxConfig): Promise<WrappedSpawn> {
       if (disposed) {
         throw new Error("sandbox launcher already disposed");
       }

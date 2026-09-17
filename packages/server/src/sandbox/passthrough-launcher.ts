@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import type { SandboxLauncher, SandboxPolicy, SandboxSpawn, WrappedSpawn } from "./launcher.js";
+import type { SandboxConfig, SandboxLauncher, SandboxSpawn, WrappedSpawn } from "./launcher.js";
 
 /**
  * The degraded/off launcher (NOOP-425 D8): `wrap()` returns the spawn
@@ -14,7 +14,8 @@ export function createPassthroughLauncher(reason: string): SandboxLauncher {
   return {
     active: false,
     degradedReason: reason,
-    wrap(spawn: SandboxSpawn, _policy: SandboxPolicy): Promise<WrappedSpawn> {
+    enforces: { write: false, network: false },
+    wrap(spawn: SandboxSpawn, _policy: SandboxConfig): Promise<WrappedSpawn> {
       return Promise.resolve({
         command: spawn.command,
         args: [...spawn.args],

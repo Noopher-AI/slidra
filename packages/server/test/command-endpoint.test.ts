@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { startServe, type RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
@@ -99,6 +100,7 @@ async function openDeck(fileName: string): Promise<string> {
 
 async function serve(presentationId: string): Promise<RunningServer> {
   const server = await startServe({
+    policy: openPolicy,
     presentationId,
     port: 0,
     agent: fakeAgent,

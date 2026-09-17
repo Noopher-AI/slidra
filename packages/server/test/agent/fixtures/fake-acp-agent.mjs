@@ -177,8 +177,10 @@ class FakeAgent {
 
   async newSession(params) {
     // Logged so tests can assert on exactly what cwd the client sent
-    // (never a real project path, never under SLIDRA_HOME).
+    // (never a real project path, never under SLIDRA_HOME), and on the MCP
+    // allow-list the client sent alongside it (NOOP-617 AC3).
     log({ newSessionCwd: params.cwd });
+    log({ newSessionMcpServers: params.mcpServers });
     sessionCwd = params.cwd;
 
     const markerPath = config.failFirstAttemptMarkerPath;

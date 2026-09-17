@@ -19,7 +19,8 @@ import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
 import path from "node:path";
 import { getActiveLauncher } from "../sandbox/launcher.js";
-import { buildAgentSandboxPolicy } from "../sandbox/policy.js";
+import { collectSandboxContext, deriveSandboxConfig } from "../sandbox/policy.js";
+import type { McpServerSpec, WorkbenchPolicy } from "../policy/types.js";
 
 /**
  * `fs/write_text_file` is always refused (ADR-0003, first layer). The
@@ -282,6 +283,21 @@ interface ChatEvents {
 export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
 
 /**
+ * `WorkbenchPolicy.mcp.servers` in the shape `newSession`'s `mcpServers`
+ * param wants (NOOP-617): ACP's stdio variant carries no `type` discriminant
+ * of its own (only the http/sse variants do), and `env` is an array of
+ * `{name, value}` pairs, never a `Record`.
+ */
+function toAcpMcpServers(servers: readonly McpServerSpec[]): acp.McpServer[] {
+  return servers.map((server) => ({
+    name: server.name,
+    command: server.command,
+    args: [...server.args],
+    env: Object.entries(server.env ?? {}).map(([name, value]) => ({ name, value })),
+  }));
+}
+
+/**
  * Drives one ACP adapter subprocess for the lifetime of `slidra serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
@@ -443,11 +459,15 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly preferredModelId: string | null;
 
+  /** The workbench's policy (NOOP-617) — read at session-establish time for the sandbox config, and for `newSession`'s `mcpServers`. Never a constant: `agent/manager.ts`'s `buildSession` is the only caller, and it always passes what `serve.ts` started with. */
+  private readonly policy: WorkbenchPolicy;
+
   constructor(
     config: AgentAdapterConfig,
     presentationId: string,
     editingLock: EditingLock,
     workdirReal: string,
+    policy: WorkbenchPolicy,
     preferredModelId: string | null = null,
   ) {
     super();
@@ -455,6 +475,7 @@ export class AgentChatSession extends EventEmitter {
     this.presentationId = presentationId;
     this.editingLock = editingLock;
     this.workdirReal = workdirReal;
+    this.policy = policy;
     this.preferredModelId = preferredModelId;
   }
 
@@ -908,7 +929,7 @@ export class AgentChatSession extends EventEmitter {
     const wrapped = launcher
       ? await launcher.wrap(
           { command: this.config.command, args: this.config.args ?? [], env: rawEnv, cwd: this.workdirReal },
-          await buildAgentSandboxPolicy({ sandboxRoot: path.dirname(this.workdirReal) }),
+          deriveSandboxConfig(this.policy, await collectSandboxContext({ workbenchRoot: path.dirname(this.workdirReal) })),
         )
       : { command: this.config.command, args: this.config.args ?? [], env: rawEnv, shell: false };
     const child = spawn(wrapped.command, wrapped.args, {
@@ -974,7 +995,7 @@ export class AgentChatSession extends EventEmitter {
       // `fs/read_text_file` also serves it (see `readTextFile` below).
       // Never re-deployed per session: the same directory is handed to
       // every attempt, including a reconnect after an adapter crash.
-      session = await connection.newSession({ cwd: this.workdirReal, mcpServers: [] });
+      session = await connection.newSession({ cwd: this.workdirReal, mcpServers: toAcpMcpServers(this.policy.mcp.servers) });
     } catch (error) {
       // Errors that cross the JSON-RPC wire arrive as a plain
       // `{ code, message, data }` object (see the SDK's own

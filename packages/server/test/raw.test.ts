@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { handleRawRequest, rawContentTypeFor } from "../src/raw.js";
@@ -90,7 +91,7 @@ afterEach(async () => {
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ presentationId, port: 0 });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0 });
   servers.push(server);
   return server;
 }

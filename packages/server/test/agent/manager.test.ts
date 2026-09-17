@@ -12,6 +12,7 @@ import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
 import type { CommandOutcome, CommandRunner } from "../../src/agent/probe.js";
 import { readAgentSettings } from "../../src/agent/settings.js";
+import { openPolicy } from "../../src/policy/open.js";
 
 // Unit level (§6.2): AgentManager's own decision logic, driven purely
 // through injected `runCommand`/`resolveAdapter` — no HTTP, no real
@@ -81,6 +82,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       editingLock: new EditingLock(),
       initial: { kind: null, source: "none" },
       runCommand,
@@ -99,6 +101,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -116,6 +119,7 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -136,6 +140,7 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome, delayMs);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -161,6 +166,7 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock,
       initial: { kind: "claude", source: "cli" },
@@ -186,6 +192,7 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -214,6 +221,7 @@ describe("AgentManager", () => {
     let changed: { kind: AgentKind; label: string } | undefined;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -241,6 +249,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -260,6 +269,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       editingLock: new EditingLock(),
       initial: { kind: null, source: "none" },
       runCommand,
@@ -274,6 +284,7 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
       initial: { kind: "claude", source: "cli" },
@@ -296,6 +307,7 @@ describe("AgentManager", () => {
     try {
       const manager = new AgentManager({
         presentationId: "p1",
+        policy: openPolicy,
         workdir: "/tmp/deck-switch-test-wd1",
         editingLock: new EditingLock(),
         initial: { kind: "claude", source: "cli" },

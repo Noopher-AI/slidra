@@ -13,6 +13,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import { createChangeBroadcaster } from "../src/changes.js";
 import { deckPathFor } from "../src/slidra/home.js";
 
@@ -89,7 +90,7 @@ afterEach(async () => {
 });
 
 async function serve(presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ presentationId, port: 0 });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0 });
   servers.push(server);
   return server;
 }
@@ -309,7 +310,7 @@ describe("GET /api/events", () => {
 
     process.env.SLIDRA_BIN = fakeBinPath;
     try {
-      const server = await startServe({ presentationId: "unregistered-stub-id", port: 0 });
+      const server = await startServe({ policy: openPolicy, presentationId: "unregistered-stub-id", port: 0 });
       servers.push(server);
 
       const response = await fetch(`${server.url}/api/events`);
