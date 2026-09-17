@@ -1,4 +1,4 @@
-# ADR-0018 — Rendering is its own service
+# ADR-0017 — Rendering is its own service
 
 *Status: in force.*
 
@@ -23,8 +23,8 @@ part, alongside the editor, the deck server and the agent runner.
   with nowhere to render, which is the same work again.
 
 **Consequences.**
-- Rendering holds a read-only credential (ADR-0016) and can hold nothing else. Export is
-  therefore the first real user of the viewer kind, which stops it being untested.
+- Rendering holds a read-only credential and can hold nothing else. Export is therefore the
+  first real user of the read-only case, which stops it being untested.
 - The private HTTP server export used to start disappears: there is always a deck server and
   an editor service to point at.
 - A deployment that never exports can leave this part out entirely.

@@ -1,4 +1,4 @@
-# ADR-0017 — Slidra spawns every agent it talks to
+# ADR-0016 — Slidra spawns every agent it talks to
 
 *Status: in force.*
 
