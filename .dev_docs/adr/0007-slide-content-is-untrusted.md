@@ -23,4 +23,4 @@ is a well-known attack class; a browser sandbox hardened over many years is the 
   not computed by the parent.
 - Third-party embeds cannot live inside the sandbox and are drawn by the parent over it.
 
-*Which frame flags apply in which mode is in `docs/spec/rendering.md`.*
+*Which frame flags apply in which mode is implementation detail, not a decision.*

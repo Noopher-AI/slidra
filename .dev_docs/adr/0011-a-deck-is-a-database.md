@@ -26,4 +26,4 @@ exists to protect.
 - Undo history and conversation history live in the same file without being part of the deck's
   addressable content, so copying the file carries them along.
 
-*Schema, migration and concurrency guarantees are in `docs/spec/deck-format.md`.*
+*Schema, migration and concurrency guarantees are in `docs/spec/slidra-format.md` §1.*

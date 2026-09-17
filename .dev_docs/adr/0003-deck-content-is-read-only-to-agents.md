@@ -21,5 +21,6 @@ be tried.
 - Elements are addressed by opaque stable identifiers, with display names stored separately.
 - Output size is conversation cost, so generated SVG stays lean.
 
-*Which shell commands the gate blocks, and the OS-level isolation behind it, live in
-`docs/spec/agent-sandbox.md`. Both have changed several times without this decision changing.*
+*What the gate blocks, and the OS-level isolation behind it, are implementation: both have changed
+several times without this decision changing, and neither is recorded as a decision.
+`docs/spec/workspace.md` specifies what `SLIDRA_HOME` holds.*

@@ -31,4 +31,4 @@ main reason for the choice, not a side benefit.
   person asks for — never silent.
 
 *Container shapes that are exceptions, such as charts and tables, are in
-`docs/spec/slide-format.md`.*
+`docs/spec/slidra-format.md` §4.*
