@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
@@ -108,6 +109,7 @@ async function openFreshPresentation(name = "Test Presentation"): Promise<string
 
 async function serve(presentationId: string): Promise<RunningServer> {
   const server = await startServe({
+    policy: openPolicy,
     presentationId,
     port: 0,
     agent: fakeAgent,

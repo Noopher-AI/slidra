@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
+import { openPolicy } from "../../src/policy/open.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { requireCliBuilt } from "./require-cli-built.js";
 
@@ -178,7 +179,7 @@ function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
 }
 
 async function serve(agent: AgentAdapterConfig, presentationId: string): Promise<RunningServer> {
-  const server = await startServe({ presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
   servers.push(server);
   return server;
 }

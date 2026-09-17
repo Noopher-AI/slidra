@@ -13,6 +13,7 @@ import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 import { deckPathFor } from "../src/slidra/home.js";
+import { openPolicy } from "../src/policy/open.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -190,6 +191,7 @@ async function serve(presentationId: string, overrides: Partial<Parameters<typeo
   // staticDir is passed unconditionally, before ...overrides: no test in
   // this file can reach the real packages/web/dist by forgetting to opt out.
   const server = await startServe({
+    policy: openPolicy,
     presentationId,
     port: 0,
     agent: fakeAgent,

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
+import { openPolicy } from "../src/policy/open.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity } from "../src/deck-switch.js";
 import { readProjectsRegistry } from "../src/slidra/home.js";
@@ -89,7 +90,7 @@ async function createDeck(name: string): Promise<{ id: string; slidraPath: strin
 }
 
 async function serve(overrides: Partial<Parameters<typeof startServe>[0]> = {}): Promise<RunningServer> {
-  const server = await startServe({ port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides });
+  const server = await startServe({ policy: openPolicy, port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides });
   servers.push(server);
   return server;
 }

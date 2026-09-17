@@ -12,6 +12,7 @@ import {
   readAgentWorkdirFile,
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
+import { serializeMcpAllowList, type McpServerSpec } from "../../src/policy/types.js";
 
 // The product work directory `slidra serve` deploys into this serve
 // process's own sandbox root (`packages/server/agent-workdir/` ->
@@ -114,6 +115,19 @@ describe("deployAgentWorkdir", () => {
     const secondFiles = await listFilesRecursively(second);
     expect(second).toBe(first);
     expect(secondFiles).toEqual(firstFiles);
+  });
+
+  it("writes <target>/.agents/mcp-servers.json from policy.mcp.servers, byte-identical to serializeMcpAllowList's own output (AC3)", async () => {
+    const target = await deployAgentWorkdir(sandboxRoot, PRESENTATION, { mcp: { servers: [] } });
+    const emptyBytes = await readFile(path.join(target, ".agents", "mcp-servers.json"), "utf8");
+    expect(emptyBytes).toBe(serializeMcpAllowList({ mcp: { servers: [] } }));
+    expect(emptyBytes).toBe("[]\n");
+
+    const servers: McpServerSpec[] = [{ name: "fixture", command: "node", args: ["server.js"] }];
+    const target2 = await deployAgentWorkdir(sandboxRoot, "pres-with-mcp", { mcp: { servers } });
+    const bytes = await readFile(path.join(target2, ".agents", "mcp-servers.json"), "utf8");
+    expect(bytes).toBe(serializeMcpAllowList({ mcp: { servers } }));
+    expect(JSON.parse(bytes)).toEqual(servers);
   });
 
   // The concurrency regression this used to guard against (two `slidra

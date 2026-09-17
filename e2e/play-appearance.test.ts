@@ -10,6 +10,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
@@ -80,7 +81,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 
   return {
     server,
@@ -562,7 +563,7 @@ it("a slide with no background rect (a blank page from `slide add`) still render
         E2E_NEW_TITLE: "this test never sends a message",
       },
     };
-    const server = await startServe({ presentationId, port: 0, agent });
+    const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
     try {
       const page = await browser.newPage({ viewport: VIEWPORT });
       await page.goto(server.url);

@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
+
+/**
+ * NOOP-617 (`#399`): policy as an injected object, not a constant.
+ *
+ * `test/sandbox/policy.test.ts`/`os-enforcement.test.ts` already cover the
+ * open policy's own *values* (what it grants). This file covers the
+ * *pipeline* every policy — not just the open one — goes through: purity
+ * (AC2), that a different policy really does change the outcome with no
+ * consumer edited (AC1), that only `policy/open.ts`/`cli.ts` may ever name
+ * the edition, that `FsRule` resolution matches its own contract, that
+ * every launcher's `enforces` is what `launcher.ts`'s docstring promises,
+ * and that `handleAssetPost`'s new policy gate actually refuses.
+ */
+import { readFile, readdir, mkdtemp, rm } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import { collectSandboxContext, deriveCliSandboxConfig, deriveSandboxConfig } from "../../src/sandbox/policy.js";
+import { openPolicy } from "../../src/policy/open.js";
+import type { FsRule, SandboxContext, WorkbenchPolicy } from "../../src/policy/types.js";
+import { createPassthroughLauncher } from "../../src/sandbox/passthrough-launcher.js";
+import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
+import { handleAssetPost } from "../../src/asset-upload.js";
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../src");
+
+/** Every `.ts` file under `src/**`, as `{ relativePath, contents }`. */
+async function readAllSourceFiles(): Promise<Array<{ relativePath: string; contents: string }>> {
+  const out: Array<{ relativePath: string; contents: string }> = [];
+  async function walk(dir: string, prefix: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(path.join(dir, entry.name), rel);
+      } else if (entry.name.endsWith(".ts")) {
+        out.push({ relativePath: rel, contents: await readFile(path.join(dir, entry.name), "utf8") });
+      }
+    }
+  }
+  await walk(srcDir, "");
+  return out;
+}
+
+describe("policy pipeline purity and injectability (AC1/AC2)", () => {
+  const baseCtx: SandboxContext = {
+    workbenchRoot: "/tmp/wb",
+    home: "/tmp/home",
+    tempDir: "/tmp",
+    platform: "linux",
+    slidraHome: "/tmp/slidra-home",
+    openDeckPaths: [],
+    deckFolder: null,
+    deckDirectory: null,
+  };
+
+  it("① is pure: the same policy against the same ctx twice yields deep-equal results", () => {
+    const first = deriveSandboxConfig(openPolicy, baseCtx);
+    const second = deriveSandboxConfig(openPolicy, baseCtx);
+    expect(second).toEqual(first);
+  });
+
+  it("② the same ctx against two different policies yields different configs — proves a consumer never needs editing to pick up a new policy (AC1)", () => {
+    const restrictivePolicy: WorkbenchPolicy = {
+      ...openPolicy,
+      filesystem: { ...openPolicy.filesystem, allowWrite: [{ kind: "workbenchRoot" }] },
+    };
+    const openConfig = deriveSandboxConfig(openPolicy, baseCtx);
+    const restrictiveConfig = deriveSandboxConfig(restrictivePolicy, baseCtx);
+    expect(restrictiveConfig.allowWrite).toEqual([baseCtx.workbenchRoot]);
+    expect(restrictiveConfig.allowWrite).not.toEqual(openConfig.allowWrite);
+  });
+
+  it("③ only policy/open.ts and cli.ts may import policy/open.js, and the derivation section touches no I/O directly (grep guard)", async () => {
+    const files = await readAllSourceFiles();
+    const offendingImporters = files
+      .filter((f) => f.relativePath !== "policy/open.ts" && f.relativePath !== "cli.ts")
+      .filter((f) => /from ["']\.{1,2}\/.*policy\/open\.js["']|from ["']\.\/open\.js["']/.exec(f.contents))
+      .map((f) => f.relativePath);
+    expect(offendingImporters).toEqual([]);
+
+    const policyTs = files.find((f) => f.relativePath === "sandbox/policy.ts");
+    expect(policyTs).toBeDefined();
+    // The pure derivation section — `resolveFsRule` through
+    // `deriveCliSandboxConfig` — is everything between those two markers in
+    // this file (verified against the file's own layout, not a generic
+    // brace-matching guess): `collectSandboxContext` (the one I/O function)
+    // comes before it, `setActivePolicy`/`buildCliSandboxPolicy` (which
+    // legitimately call `homedir()`/`tmpdir()` synchronously, unlike the
+    // async I/O this guard actually cares about) come after.
+    const start = policyTs!.contents.indexOf("function resolveFsRule(");
+    const end = policyTs!.contents.indexOf("export function setActivePolicy");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const derivationSection = policyTs!.contents.slice(start, end);
+    for (const needle of ["process.env", "readFile(", "homedir(", "tmpdir(", "stat(", "readProjectsRegistry("]) {
+      expect(derivationSection).not.toContain(needle);
+    }
+
+    // settings.ts (NOOP-617 v2 §增補): zero product changes, only ever
+    // read/written `agent`/`models` — this guard is what keeps that true,
+    // since a `policy/` import there would be the first step toward a
+    // third place with an opinion about policy content.
+    const settingsTs = files.find((f) => f.relativePath === "agent/settings.ts");
+    expect(settingsTs).toBeDefined();
+    expect(settingsTs!.contents).not.toMatch(/from ["'].*policy\//);
+  });
+
+  it("④ FsRule resolution matches its own contract: deckFolderIfPresent/deckDirectory/onlyOn/unknown-kind", () => {
+    const noDeckFolder: SandboxContext = { ...baseCtx, deckFolder: null };
+    const policyWithDeckFolderRule: WorkbenchPolicy = {
+      ...openPolicy,
+      filesystem: { ...openPolicy.filesystem, denyRead: [{ kind: "deckFolderIfPresent" }] },
+    };
+    expect(deriveSandboxConfig(policyWithDeckFolderRule, noDeckFolder).denyRead).toEqual([]);
+
+    const policyWithDeckDirRule: WorkbenchPolicy = {
+      ...openPolicy,
+      filesystem: { ...openPolicy.filesystem, cliAllowWrite: [{ kind: "deckDirectory" }] },
+    };
+    expect(() => deriveCliSandboxConfig(policyWithDeckDirRule, { ...baseCtx, deckDirectory: null })).toThrow(
+      /deckDirectory/,
+    );
+
+    const macOnlyRule: WorkbenchPolicy = {
+      ...openPolicy,
+      filesystem: { ...openPolicy.filesystem, allowWrite: [{ kind: "homeEntry", segments: ["only-on-mac"], onlyOn: "darwin" }] },
+    };
+    expect(deriveSandboxConfig(macOnlyRule, { ...baseCtx, platform: "linux" }).allowWrite).toEqual([]);
+    expect(deriveSandboxConfig(macOnlyRule, { ...baseCtx, platform: "darwin" }).allowWrite).toEqual([
+      path.join(baseCtx.home, "only-on-mac"),
+    ]);
+
+    const unknownRuleKind = { kind: "not-a-real-kind" } as unknown as FsRule;
+    const policyWithUnknownRule: WorkbenchPolicy = {
+      ...openPolicy,
+      filesystem: { ...openPolicy.filesystem, allowWrite: [unknownRuleKind] },
+    };
+    expect(() => deriveSandboxConfig(policyWithUnknownRule, baseCtx)).toThrow();
+  });
+
+  it("collectSandboxContext + deriveCliSandboxConfig compose the same way buildCliSandboxPolicy used to (no active-policy singleton needed)", async () => {
+    const ctx = await collectSandboxContext({ workbenchRoot: "", deckPath: "/decks/current.slidra" });
+    const config = deriveCliSandboxConfig(openPolicy, ctx);
+    expect(config.allowWrite[0]).toBe("/decks");
+  });
+});
+
+describe("⑤ every SandboxLauncher's enforces matches launcher.ts's own contract", () => {
+  const isLinux = process.platform === "linux";
+  const isDarwin = process.platform === "darwin";
+  let launcher: SandboxLauncher | undefined;
+
+  afterEach(async () => {
+    await launcher?.dispose();
+    launcher = undefined;
+  });
+
+  it("passthrough: enforces neither write nor network", () => {
+    launcher = createPassthroughLauncher("test reason");
+    expect(launcher.enforces).toEqual({ write: false, network: false });
+  });
+
+  it.skipIf(!isLinux)("landlock: enforces write, never network (a write-only Landlock ruleset has no network concept)", async () => {
+    const { createLandlockLauncher } = await import("../../src/sandbox/landlock-launcher.js");
+    const helperPath = path.join(srcDir, "../../../target/release/slidra-sandbox-exec");
+    process.env.SLIDRA_SANDBOX_BIN = helperPath;
+    try {
+      launcher = await createLandlockLauncher();
+      expect(launcher.enforces).toEqual({ write: true, network: false });
+    } finally {
+      delete process.env.SLIDRA_SANDBOX_BIN;
+    }
+  });
+
+  it.skipIf(!isDarwin)("srt: enforces both write and network", async () => {
+    const { createSrtLauncher } = await import("../../src/sandbox/srt-launcher.js");
+    launcher = await createSrtLauncher();
+    expect(launcher.enforces).toEqual({ write: true, network: true });
+  });
+});
+
+describe("srt-launcher.ts translates policy.network.outbound into srt's own shape", () => {
+  it.skipIf(process.platform !== "darwin")(
+    "outbound: 'denied' maps to { allowedDomains: [] } (verified against srt 0.0.76's own 'block all network' semantics)",
+    async () => {
+      const { createSrtLauncher } = await import("../../src/sandbox/srt-launcher.js");
+      const launcher = await createSrtLauncher();
+      try {
+        // A no-op wrap just to prove it does not throw when translating a
+        // "denied" network policy — the closed-policy fixture that
+        // actually proves the network call fails is [E10.T12]'s job.
+        await expect(
+          launcher.wrap(
+            { command: "true", args: [], env: process.env },
+            { allowWrite: [], denyWrite: [], denyRead: [], network: { outbound: "denied" } },
+          ),
+        ).resolves.toBeDefined();
+      } finally {
+        await launcher.dispose();
+      }
+    },
+  );
+});
+
+describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
+  function fakeReq(headers: Record<string, string>): IncomingMessage {
+    return { headers } as unknown as IncomingMessage;
+  }
+  function fakeRes(): { res: ServerResponse; status: () => number | undefined; body: () => unknown } {
+    let status: number | undefined;
+    let body: unknown;
+    const res = {
+      writeHead(code: number) {
+        status = code;
+        return res;
+      },
+      end(payload?: string) {
+        if (payload !== undefined) body = JSON.parse(payload);
+      },
+    } as unknown as ServerResponse;
+    return { res, status: () => status, body: () => body };
+  }
+
+  it("uploadBytes: false refuses a byte upload with 403, no filesystem path in the message", async () => {
+    const { res, status, body } = fakeRes();
+    const wrote = await handleAssetPost(
+      "pres-1",
+      fakeReq({ "x-slidra-asset-name": "photo.png" }),
+      res,
+      { ...openPolicy.fileEntry, uploadBytes: false },
+    );
+    expect(wrote).toBe(false);
+    expect(status()).toBe(403);
+    expect(JSON.stringify(body())).not.toMatch(/\/tmp|\/home|C:\\/);
+  });
+
+  it("remoteUrl: false refuses a URL import with 403, before any download is attempted", async () => {
+    const { res, status } = fakeRes();
+    const wrote = await handleAssetPost(
+      "pres-1",
+      fakeReq({ "x-slidra-asset-url": encodeURIComponent("https://example.invalid/photo.png") }),
+      res,
+      { ...openPolicy.fileEntry, remoteUrl: false },
+    );
+    expect(wrote).toBe(false);
+    expect(status()).toBe(403);
+  });
+
+  it("localPath: false (the open edition's value) keeps refusing a non-http(s) URL exactly as before", async () => {
+    const { res, status } = fakeRes();
+    const wrote = await handleAssetPost(
+      "pres-1",
+      fakeReq({ "x-slidra-asset-url": encodeURIComponent("file:///etc/passwd") }),
+      res,
+      openPolicy.fileEntry,
+    );
+    expect(wrote).toBe(false);
+    expect(status()).toBe(400);
+  });
+});

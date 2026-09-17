@@ -12,6 +12,7 @@ import { packDirectory } from "./helpers/pack.js";
 import { listDeckFiles, readDeckFileBytes, readDeckFileText } from "./helpers/deck.js";
 import { deckPathFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
 
@@ -69,7 +70,7 @@ async function startHarness(): Promise<Harness> {
   // never touches the real host home directory.
   await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ deckFolder }));
 
-  const server = await startServe({ presentationId, port: 0, agent: fakeAgent, staticDir });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent: fakeAgent, staticDir });
 
   return { server, registry, presentationId, slidraPath, slidraHome, slidraDir, deckFolder, staticDir };
 }

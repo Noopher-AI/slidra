@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
-import { buildAgentSandboxPolicy, buildCliSandboxPolicy } from "../../src/sandbox/policy.js";
+import { collectSandboxContext, deriveCliSandboxConfig, deriveSandboxConfig } from "../../src/sandbox/policy.js";
+import { openPolicy } from "../../src/policy/open.js";
+import type { SandboxContext } from "../../src/policy/types.js";
 
 let slidraHome: string;
 let home: string;
@@ -23,10 +25,11 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true });
 });
 
-describe("buildAgentSandboxPolicy", () => {
+describe("deriveSandboxConfig(openPolicy, ctx) — the agent sandbox", () => {
   it("allow-list always includes the sandbox root, tmpdir, and the credential/cache directories every agent tool needs (AC4/AC8)", async () => {
     const sandboxRoot = "/tmp/some-sandbox-root";
-    const policy = await buildAgentSandboxPolicy({ sandboxRoot, home });
+    const ctx = await collectSandboxContext({ workbenchRoot: sandboxRoot, home });
+    const policy = deriveSandboxConfig(openPolicy, ctx);
     expect(policy.allowWrite).toContain(sandboxRoot);
     expect(policy.allowWrite).toContain(tmpdir());
     expect(policy.allowWrite).toContain(path.join(home, ".claude"));
@@ -44,7 +47,8 @@ describe("buildAgentSandboxPolicy", () => {
   });
 
   it("never allow-lists the home directory itself, ~/.ssh, or SLIDRA_HOME", async () => {
-    const policy = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
+    const ctx = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
+    const policy = deriveSandboxConfig(openPolicy, ctx);
     expect(policy.allowWrite).not.toContain(home);
     expect(policy.allowWrite).not.toContain(path.join(home, ".ssh"));
     expect(policy.allowWrite).not.toContain(slidraHome);
@@ -57,43 +61,60 @@ describe("buildAgentSandboxPolicy", () => {
         ["pres-b", { deckPath: "/decks/b.slidra" }],
       ]),
     );
-    const policy = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
+    const ctx = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
+    const policy = deriveSandboxConfig(openPolicy, ctx);
     expect(policy.denyRead).toContain(slidraHome);
     expect(policy.denyRead).toContain("/decks/a.slidra");
     expect(policy.denyRead).toContain("/original/a.slidra");
     expect(policy.denyRead).toContain("/decks/b.slidra");
   });
+});
 
-  // `denyRead` is consumed only by `srt-launcher.ts` (macOS) — Linux's
-  // `landlock-launcher.ts` ignores it entirely (NOOP-425 L6), since a
-  // write-only Landlock ruleset has no read-restriction concept to apply it
-  // to. Kept here (not moved/duplicated) because the array's *contents* are
-  // still produced by this platform-agnostic function.
+describe("collectSandboxContext", () => {
+  // `deckFolder` is consumed only by `srt-launcher.ts` (macOS) via
+  // `denyRead` — Linux's `landlock-launcher.ts` ignores `denyRead` entirely
+  // (NOOP-425 L6), since a write-only Landlock ruleset has no
+  // read-restriction concept to apply it to. This is the one place in the
+  // sandbox pipeline that touches the filesystem, so it is what this test
+  // exercises directly, rather than the pure `deriveSandboxConfig`.
   it("denies ~/Slidra only when it already exists as a directory — never a bare file, never a path absent from disk (macOS srt path only)", async () => {
     const { writeFile } = await import("node:fs/promises");
 
-    const beforeItExists = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(beforeItExists.denyRead).not.toContain(path.join(home, "Slidra"));
+    const beforeItExists = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
+    expect(beforeItExists.deckFolder).toBeNull();
 
     await writeFile(path.join(home, "Slidra"), "not a directory");
-    const asAFile = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(asAFile.denyRead).not.toContain(path.join(home, "Slidra"));
+    const asAFile = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
+    expect(asAFile.deckFolder).toBeNull();
 
     await rm(path.join(home, "Slidra"));
     await mkdir(path.join(home, "Slidra"));
-    const asADirectory = await buildAgentSandboxPolicy({ sandboxRoot: "/tmp/root", home });
-    expect(asADirectory.denyRead).toContain(path.join(home, "Slidra"));
+    const asADirectory = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
+    expect(asADirectory.deckFolder).toBe(path.join(home, "Slidra"));
   });
 });
 
-describe("buildCliSandboxPolicy", () => {
+describe("deriveCliSandboxConfig(openPolicy, ctx) — the CLI sandbox", () => {
+  function cliCtx(deckPath: string): SandboxContext {
+    return {
+      workbenchRoot: "",
+      home,
+      tempDir: tmpdir(),
+      platform: process.platform,
+      slidraHome,
+      openDeckPaths: [],
+      deckFolder: null,
+      deckDirectory: path.dirname(deckPath),
+    };
+  }
+
   it("allows the deck's parent directory (not just the deck by name), SLIDRA_HOME, and tmpdir (AC8, L5)", () => {
-    const policy = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
+    const policy = deriveCliSandboxConfig(openPolicy, cliCtx("/decks/current.slidra"));
     expect(policy.allowWrite).toEqual(["/decks", slidraHome, tmpdir()]);
   });
 
   it("never allows an arbitrary path outside the deck's directory and SLIDRA_HOME — the guard `slidra extract <deck> ~/.ssh/` depends on", () => {
-    const policy = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
+    const policy = deriveCliSandboxConfig(openPolicy, cliCtx("/decks/current.slidra"));
     expect(policy.allowWrite).not.toContain(path.join(home, ".ssh"));
     expect(policy.denyRead).toEqual([]);
   });
