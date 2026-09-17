@@ -50,6 +50,7 @@ Cite a record by number, never by filename.
 | 0014 | A workbench is one deck's session |
 | 0015 | Deck content is reached across a boundary, locally too |
 | 0016 | The deck server is the Rust crate |
+| 0017 | Capability comes from the program |
 
 ## Map from the previous set
 
