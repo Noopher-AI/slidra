@@ -41,4 +41,5 @@ pub mod svgnum;
 pub mod table;
 pub mod text;
 pub mod validate;
+pub mod workbench;
 pub mod workspace;
