@@ -49,7 +49,6 @@ Cite a record by number, never by filename.
 | 0013 | An extracted module takes a named dependency object |
 | 0014 | A workbench is one deck's session |
 | 0015 | The deck server is the crate, and there is no way round it |
-| 0016 | Rendering is its own service |
 
 ## Map from the previous set
 
