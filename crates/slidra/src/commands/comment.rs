@@ -34,6 +34,40 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["comment", "list"],
 ];
 
+/// This family's slice of the crate-wide category table ([S11.F2]
+/// `commands::category`), in `TAKEOVER`'s order. `add`/`edit`/`delete`
+/// write to this workbench's own deck; `list` only reads it.
+pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
+    (
+        "comment add",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "comment edit",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "comment delete",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "comment list",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: false,
+        },
+    ),
+];
+
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match &tokens[1..] {
         ["add"] => add::run(args),

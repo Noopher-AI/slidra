@@ -16,14 +16,23 @@ import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleShimExec } from "../../src/sandbox/shim-endpoint.js";
-import { resolveShimScriptPath } from "../../src/sandbox/shim-wrapper.js";
+import { deployShimWrapper } from "../../src/sandbox/shim-wrapper.js";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
 import { setActivePolicy } from "../../src/sandbox/policy.js";
 import { openPolicy } from "../../src/policy/open.js";
 
 const execFileAsync = promisify(execFile);
+const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const realSlidraBinPath = path.join(rootDir, "target/release/slidra");
+
+interface CliEnvelope<T = unknown> {
+  ok: boolean;
+  data?: T;
+  message: string;
+}
 
 const TOKEN = "test-shim-token";
 const FRAME_STDOUT = 1;
@@ -270,20 +279,59 @@ describe("POST /api/agent/exec — behavior contract", () => {
 
   /**
    * The three AC5 tests above stop at the endpoint's own response frames.
-   * This one runs the other half — the real `shim/slidra-shim.mjs` client
-   * the agent's shell actually invokes (`<sandboxRoot>/bin/slidra`) — with
-   * its stdout on a pipe, which is what every caller that captures a
-   * command's output gives it (`sh -c "slidra cat ... "` inside the fake
-   * ACP fixture, `$(slidra ...)`, a real agent's own command runner). A
-   * `slidra cat <id> slides/001.svg` of a real slide clears 64 KB easily,
-   * and AC5 names >1 MB explicitly.
+   * This one runs the other half — but [S11.F2] deleted the Node
+   * `slidra-shim.mjs` client this test used to spawn directly, and
+   * `deployShimWrapper` now writes a wrapper that execs the Rust binary's
+   * own `__shim` entry point instead (`shim_client.rs`). That binary picks
+   * its protocol from which env var is set; `SLIDRA_SHIM_TOKEN` (set here,
+   * same as `agent/manager.ts` sets it live) selects the SAME
+   * `POST /api/agent/exec` request shape the deleted script sent, so this
+   * endpoint (`handleShimExec`, unchanged) is still what answers it — only
+   * the client-side process is different, and only in that it is no
+   * longer Node. `cat`-ing a >1 MB real asset through a real deck (rather
+   * than the fake `large` stand-in the deleted script's own test drove)
+   * is what proves the DEPLOYED wrapper, not just the binary in isolation,
+   * behaves — `deployShimWrapper`'s own contract is what this file exists
+   * to cover.
    */
-  it("AC5: the real shim client relays >1 MB to a piped stdout byte-for-byte", async () => {
-    const shimScript = resolveShimScriptPath();
-    const direct = await execFileAsync(fakeBinPath, ["large"], { encoding: "buffer" as BufferEncoding, maxBuffer: 4_000_000 });
+  it("[S11.F2] AC5/AC10: the deployed Rust shim wrapper relays >1 MB to a piped stdout byte-for-byte, with no Node process on the client side", async () => {
+    // `SLIDRA_BIN` is what `resolveSlidraBin()` reads BOTH when
+    // `deployShimWrapper` builds the wrapper below AND, later, on every
+    // real request `handleShimExec` answers (it re-reads the env var per
+    // request, never caches it) — this test's own `afterEach` restores it
+    // to `fakeBinPath` for every other test in this file, so it is safe
+    // to leave pointed at the real binary for this whole test body.
+    process.env.SLIDRA_BIN = realSlidraBinPath;
+    await deployShimWrapper(sandboxRoot);
+    const wrapperPath = path.join(sandboxRoot, "bin", "slidra");
+
+    const deckPath = path.join(sandboxRoot, "real-deck.slidra");
+    await execFileAsync(realSlidraBinPath, ["new", deckPath, "--name", "real"], { env: { ...process.env, SLIDRA_HOME: slidraHome } });
+    const { stdout: openStdout } = await execFileAsync(realSlidraBinPath, ["open", deckPath, "--json"], {
+      env: { ...process.env, SLIDRA_HOME: slidraHome },
+    });
+    const openEnvelope = JSON.parse(openStdout) as CliEnvelope<{ id: string }>;
+    const realId = openEnvelope.data!.id;
+    currentDeckId = realId;
+
+    // `asset import` sniffs real media magic bytes (`media_format.rs`) —
+    // a RIFF/WAVE header followed by arbitrary padding is the cheapest
+    // valid audio file that clears 1 MB.
+    const largeSourcePath = path.join(sandboxRoot, "large-source.wav");
+    const largeBytes = Buffer.alloc(1_500_000, 0x61);
+    largeBytes.write("RIFF", 0, "ascii");
+    largeBytes.write("WAVE", 8, "ascii");
+    await writeFile(largeSourcePath, largeBytes);
+    const { stdout: importStdout } = await execFileAsync(
+      realSlidraBinPath,
+      ["asset", "import", realId, largeSourcePath, "--json"],
+      { env: { ...process.env, SLIDRA_HOME: slidraHome } },
+    );
+    const importEnvelope = JSON.parse(importStdout) as CliEnvelope<{ path: string }>;
+    const assetVirtualPath = importEnvelope.data!.path;
 
     const { stdout, stderr, code } = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>((resolve, reject) => {
-      const child = spawn(process.execPath, [shimScript, "large"], {
+      const child = spawn(wrapperPath, ["cat", realId, assetVirtualPath], {
         // The agent's shell always runs inside its own deployed work
         // directory; the endpoint rejects any cwd outside the sandbox root.
         cwd: path.join(sandboxRoot, "pres-1"),
@@ -312,11 +360,11 @@ describe("POST /api/agent/exec — behavior contract", () => {
     // the failure mode that matters here — output lost with nothing at all
     // to tell the caller it happened.
     expect({ bytes: stdout.length, stderr, code }).toEqual({
-      bytes: (direct.stdout as unknown as Buffer).length,
+      bytes: largeBytes.length,
       stderr: "",
       code: 0,
     });
-    expect(stdout.equals(direct.stdout as unknown as Buffer)).toBe(true);
+    expect(stdout.equals(largeBytes)).toBe(true);
   });
 
   /**
