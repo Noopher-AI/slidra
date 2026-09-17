@@ -101,6 +101,26 @@ describe("policy pipeline purity and injectability (AC1/AC2)", () => {
     for (const needle of ["process.env", "readFile(", "homedir(", "tmpdir(", "stat(", "readProjectsRegistry("]) {
       expect(derivationSection).not.toContain(needle);
     }
+    // The needles above are all ASYNC I/O, which a synchronous function
+    // cannot await in the first place — so none of them can actually occur
+    // here. The I/O that *can* be slipped into `resolveFsRule`/
+    // `deriveSandboxConfig` unnoticed is the synchronous kind, and every
+    // name below is absent from the async list on a technicality:
+    // `statSync(` does not contain the substring `stat(`. Reviewer check
+    // (NOOP-638): adding `statSync(ctx.workbenchRoot)` to `resolveFsRules`
+    // left this guard, and the whole sandbox suite, green.
+    for (const needle of [
+      "statSync(",
+      "readFileSync(",
+      "existsSync(",
+      "readdirSync(",
+      "accessSync(",
+      "realpathSync(",
+      "execSync(",
+      "spawnSync(",
+    ]) {
+      expect(derivationSection).not.toContain(needle);
+    }
 
     // settings.ts (NOOP-617 v2 §增補): zero product changes, only ever
     // read/written `agent`/`models` — this guard is what keeps that true,
