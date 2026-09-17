@@ -8,8 +8,8 @@ imports `canvas/gesture-geometry.js`). Two shapes of module live
 here: **stateless helpers** (pure functions and types, no dependency object) and **domain factories**
 (a `create*(deps)` function that returns the handlers `mountCanvas` wires up, reachable only through
 the fields its dependency interface declares). See `AGENTS.md` for how a move or a rename in this
-directory's history is verified, and the module descriptions below
-for why a dependency object and not a shared internals bag (ADR-0013).
+directory's history is verified, and ADR-0013 for why a dependency
+object and not a shared internals bag.
 
 ## Stateless helpers
 
