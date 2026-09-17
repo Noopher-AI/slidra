@@ -49,6 +49,7 @@ Cite a record by number, never by filename.
 | 0013 | An extracted module takes a named dependency object |
 | 0014 | A workbench is one deck's session |
 | 0015 | Deck content is reached across a boundary, locally too |
+| 0016 | The deck server is the Rust crate |
 
 ## Map from the previous set
 
