@@ -18,6 +18,9 @@
  * zod validation on its input) — confining them to this one module is what
  * keeps a later `srt` upgrade from being a whole-codebase diff.
  */
+import { accessSync, constants } from "node:fs";
+import path from "node:path";
+
 import { SandboxManager, type SandboxRuntimeConfig } from "@anthropic-ai/sandbox-runtime";
 import type { SandboxLauncher, SandboxPolicy, SandboxSpawn, WrappedSpawn } from "./launcher.js";
 
@@ -35,6 +38,55 @@ function shellQuote(value: string): string {
 
 function buildShellCommand(spawn: SandboxSpawn): string {
   return [spawn.command, ...spawn.args].map(shellQuote).join(" ");
+}
+
+/**
+ * `wrapWithSandboxArgv` hands back `["/bin/bash", "-c", "<prelude> <real
+ * command>"]`, and 0.0.76's prelude opens with a BARE `env ...` — resolved
+ * through whatever `PATH` the merged env below carries, not an absolute
+ * path. A caller that deliberately narrows `PATH` (the e2e and agent tests
+ * all do, to keep an ancestor `node_modules/.bin` from masking a broken
+ * workspace link) can therefore leave the wrapper unable to start at all.
+ * The failure that produces is `/bin/bash: env: command not found` on the
+ * child's stderr and nothing else: no agent, no session, no edit — every
+ * caller upstream just sees a turn that never happens and times out
+ * whatever it was polling for, half an hour from the actual cause.
+ *
+ * So check the one precondition here, where the answer is still known, and
+ * raise it as the author's problem rather than letting it become a silent
+ * timeout. Only a bare first token is checked: an absolute path needs no
+ * `PATH` to resolve, and a later `srt` that emits one makes this a no-op
+ * rather than a false alarm.
+ */
+function assertPreludeResolvable(args: string[], env: NodeJS.ProcessEnv): void {
+  const script = args[args.length - 1];
+  if (script === undefined) return;
+  const first = script.trim().split(/\s+/)[0];
+  if (first === undefined || first === "" || first.includes("/")) return;
+
+  const dirs = (env.PATH ?? "").split(path.delimiter).filter((dir) => dir !== "");
+  const found = dirs.some((dir) => {
+    try {
+      accessSync(path.join(dir, first), constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (found) return;
+
+  const message =
+    `the macOS sandbox wrapper starts with \`${first}\`, which is not on the PATH this agent will be spawned with ` +
+    `(PATH=${env.PATH ?? "<unset>"}). Add the directory holding \`${first}\` (normally /usr/bin) to that PATH.`;
+  // The throw reaches the author as a `chat-error` in the browser
+  // (`agent/session.ts`'s `runTurn`), which is right for someone sitting in
+  // front of the UI and useless for anyone reading a terminal — a test
+  // harness polling for an edit sees only a turn that never happened, and
+  // spends its whole timeout finding that out. This is a misconfiguration
+  // of the process, not one author's bad turn, so it also goes to the
+  // server's own log where a non-UI caller will actually read it.
+  console.error(`[sandbox] ${message}`);
+  throw new Error(message);
 }
 
 /**
@@ -92,6 +144,7 @@ export async function createSrtLauncher(): Promise<SandboxLauncher> {
       if (command === undefined) {
         throw new Error("sandbox runtime returned an empty argv");
       }
+      assertPreludeResolvable(args, { ...env, ...spawn.env });
       return {
         command,
         args,

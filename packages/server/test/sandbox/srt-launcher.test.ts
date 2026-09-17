@@ -37,7 +37,10 @@ beforeEach(() => {
   // verbatim, i.e. the PARENT's values, including a `PATH` the caller
   // deliberately replaced.
   wrapWithSandboxArgv.mockResolvedValue({
-    argv: ["/bin/sh", "-c", "sandbox-exec ..."],
+    // Shaped like 0.0.76's real macOS output: the prelude opens with a BARE
+    // `env`, resolved through whatever PATH the child is handed (see
+    // `assertPreludeResolvable` in the module under test).
+    argv: ["/bin/bash", "-c", "env SANDBOX_RUNTIME=1 /usr/bin/sandbox-exec -p '...' ..."],
     env: { PATH: "/parent/bin", PARENT_ONLY: "from-parent", SHARED: "parent-value" },
   });
 });
@@ -50,14 +53,14 @@ describe("createSrtLauncher().wrap()", () => {
         {
           command: "sh",
           args: ["-c", "slidra"],
-          env: { PATH: "/sandbox-root/bin:/parent/bin", SHARED: "caller-value", CALLER_ONLY: "from-caller" },
+          env: { PATH: "/sandbox-root/bin:/usr/bin", SHARED: "caller-value", CALLER_ONLY: "from-caller" },
         },
         EMPTY_POLICY,
       );
 
       // The whole point of the CLI-sandbox shim: `agent/manager.ts` puts
       // `<sandboxRoot>/bin` first in PATH and that must survive wrapping.
-      expect(wrapped.env?.PATH).toBe("/sandbox-root/bin:/parent/bin");
+      expect(wrapped.env?.PATH).toBe("/sandbox-root/bin:/usr/bin");
       expect(wrapped.env?.SHARED).toBe("caller-value");
       expect(wrapped.env?.CALLER_ONLY).toBe("from-caller");
       expect(wrapped.env?.PARENT_ONLY).toBe("from-parent");
@@ -70,10 +73,45 @@ describe("createSrtLauncher().wrap()", () => {
     const launcher = await createSrtLauncher();
     try {
       const wrapped = await launcher.wrap(
-        { command: "sh", args: ["-c", "true"], env: { SHARED: "" } },
+        { command: "sh", args: ["-c", "true"], env: { PATH: "/usr/bin", SHARED: "" } },
         EMPTY_POLICY,
       );
       expect(wrapped.env?.SHARED).toBe("");
+    } finally {
+      await launcher.dispose();
+    }
+  });
+
+  /**
+   * The wrapper's prelude is a bare `env`, so a caller that narrows PATH
+   * without `/usr/bin` produces a child that dies with
+   * `/bin/bash: env: command not found` and nothing else — upstream only
+   * ever sees a turn that never happens. Fail here, where the cause is
+   * still known, instead of as someone's 30-second poll timeout.
+   */
+  it("refuses a PATH the wrapper's own prelude cannot be resolved on", async () => {
+    const launcher = await createSrtLauncher();
+    try {
+      await expect(
+        launcher.wrap({ command: "sh", args: ["-c", "slidra"], env: { PATH: "/no/such/dir" } }, EMPTY_POLICY),
+      ).rejects.toThrow(/starts with `env`, which is not on the PATH/);
+    } finally {
+      await launcher.dispose();
+    }
+  });
+
+  it("stays out of the way when the prelude is an absolute path, which needs no PATH at all", async () => {
+    wrapWithSandboxArgv.mockResolvedValue({
+      argv: ["/bin/bash", "-c", "/usr/bin/env SANDBOX_RUNTIME=1 ..."],
+      env: {},
+    });
+    const launcher = await createSrtLauncher();
+    try {
+      const wrapped = await launcher.wrap(
+        { command: "sh", args: ["-c", "slidra"], env: { PATH: "/no/such/dir" } },
+        EMPTY_POLICY,
+      );
+      expect(wrapped.command).toBe("/bin/bash");
     } finally {
       await launcher.dispose();
     }
