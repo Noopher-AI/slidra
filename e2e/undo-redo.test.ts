@@ -190,7 +190,7 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     command: process.execPath,
     args: [agentFixture],
     env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: "frozen test doesn't look at this title",
       E2E_FREEZE_HOLD_MS: "3000",

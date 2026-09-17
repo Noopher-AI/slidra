@@ -95,7 +95,7 @@ async function startServerFor(): Promise<{ server: RunningServer; cleanup: () =>
     command: process.execPath,
     args: [agentFixture],
     env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: NEW_TITLE,
       E2E_FREEZE_HOLD_MS: String(FREEZE_HOLD_MS),
@@ -206,7 +206,7 @@ async function startServerForDrag(): Promise<{
     command: process.execPath,
     args: [agentFixture],
     env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: NEW_TITLE,
       E2E_FREEZE_HOLD_MS: String(FREEZE_HOLD_MS),
