@@ -23,7 +23,7 @@ ADR-0011 requires.
   a call naming a different workbench and there is no state machine to get wrong.
 - **A workbench that outlives the session.** Nothing needs to survive in it. The deck file
   carries the deck, its history and its conversation (ADR-0011); everything else in a
-  workbench comes from the program (ADR-0017). A persistent workbench would be a second place
+  workbench comes from the program (ADR-0015). A persistent workbench would be a second place
   for state to drift.
 
 **Consequences.**

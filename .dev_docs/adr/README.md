@@ -48,12 +48,11 @@ Cite a record by number, never by filename.
 | 0012 | A deck has an owner |
 | 0013 | An extracted module takes a named dependency object |
 | 0014 | A workbench is one deck's session |
-| 0015 | Deck content is reached across a boundary, locally too |
-| 0016 | The deck server is the Rust crate |
-| 0017 | Capability comes from the program |
-| 0018 | Every call names its caller |
-| 0019 | Slidra spawns every agent it talks to |
-| 0020 | Rendering is its own service |
+| 0015 | The deck server is the crate, and there is no way round it |
+| 0016 | Capability comes from the program |
+| 0017 | Every call names its caller |
+| 0018 | Slidra spawns every agent it talks to |
+| 0019 | Rendering is its own service |
 
 ## Map from the previous set
 

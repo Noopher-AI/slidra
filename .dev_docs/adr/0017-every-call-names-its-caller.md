@@ -1,4 +1,4 @@
-# ADR-0018 — Every call names its caller
+# ADR-0015 — Every call names its caller
 
 *Status: in force.*
 
@@ -24,7 +24,7 @@ handlers behind it.
 - Stripping paths out of agent responses becomes the door's job. It was every caller's job to
   remember, which is the shape of a rule that eventually gets forgotten once.
 - The viewer kind exists before anything issues one to a person. It is not dead code: the
-  render path holds one (ADR-0020), so the read-only case is exercised on every export.
+  render path holds one (ADR-0015), so the read-only case is exercised on every export.
 - Issuing credentials is whoever starts the services — locally that is the launcher, and in a
   hosted edition something that has resolved an identity first.
 - Sharing a deck for viewing becomes a question of issuing a credential, not of building a

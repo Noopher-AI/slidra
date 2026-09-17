@@ -1,4 +1,4 @@
-# ADR-0017 — Capability comes from the program
+# ADR-0015 — Capability comes from the program
 
 *Status: in force.*
 
