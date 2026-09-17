@@ -13,13 +13,13 @@
     <text x="640" y="150" text-anchor="middle" font-size="30" fill="#9aa7b4">Key point</text>
   </g>
 
-  <!-- Video placeholder element: shows this color block before playback; this spot is not a hole (ADR-0005). -->
+  <!-- Video placeholder element: shows this color block before playback; this spot is not a hole (ADR-0006). -->
   <g id="el-video-placeholder" data-slidra-name="Video" data-slidra-media="../assets/intro.webm">
     <rect
           x="240" y="220" width="400" height="300" fill="#3a4550"/>
   </g>
 
-  <!-- Audio is hung on a visible element: draws a speaker icon here (ADR-0009). -->
+  <!-- Audio is hung on a visible element: draws a speaker icon here (ADR-0006). -->
   <g id="el-audio-icon" data-slidra-name="Narration" data-slidra-media="../assets/narration.oga">
     <circle cx="960" cy="370" r="70" fill="#c66"/>
     <path d="M935 340 L935 400 L955 400 L985 425 L985 315 L955 340 Z" fill="#101418"/>

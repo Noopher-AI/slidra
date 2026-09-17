@@ -21,7 +21,7 @@ const PANEL_KIND: MediaAssetKind = "audio";
  * Audio insert panel. Same as `ImagePanel`: file/URL are mutually exclusive,
  * leaving both empty inserts a placeholder box, caption lands as
  * `element name set`. The actual format is always decided by `asset.kind`
- * (byte-sniffed), never by which panel was used (D9/ADR-0015).
+ * (byte-sniffed), never by which panel was used (D9).
  */
 export function AudioPanel({ onClose, controller, canvasSize, slidePath }: AudioPanelProps) {
   const [file, setFile] = useState<File | null>(null);

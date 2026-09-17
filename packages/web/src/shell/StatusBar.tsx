@@ -25,7 +25,7 @@ export function StatusBar({ state, controller }: StatusBarProps) {
   const slideCount = state.slides.length;
   const hasSlides = slideCount > 0;
 
-  // Shows data-slidra-name (ADR-0011) if present, otherwise falls back to
+  // Shows data-slidra-name (ADR-0007) if present, otherwise falls back to
   // id; a multi-selection shows a count.
   const selectionCount = state.selection.ids.length;
   const selectionLabel =

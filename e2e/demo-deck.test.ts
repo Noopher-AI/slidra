@@ -111,7 +111,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 }
 
 // Every element is a `<g>` container wrapping its primitives, and
-// the `id` lives on that container (ADR-0012). `textContent` on a container
+// the `id` lives on that container (ADR-0008). `textContent` on a container
 // therefore includes the indentation between its tags, so every text
 // assertion below reads through this trim rather than comparing raw
 // textContent. The alternative — pointing each locator at the inner
@@ -162,7 +162,7 @@ async function expectNoErrorBanner(page: import("playwright").Page): Promise<voi
 }
 
 // Same reasoning as e2e/player-media.test.ts's waitForPlayerFocus: the
-// sandbox attribute is "allow-scripts" in both view and play mode (ADR-0011),
+// sandbox attribute is "allow-scripts" in both view and play mode (ADR-0007),
 // so it can no longer distinguish "play mode has started" from "still
 // viewing". Wait for .titlebar (view mode's shell chrome) to unmount instead,
 // which is what actually flips only on entering play. Only once that has
@@ -224,7 +224,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
     .toBe("Page 4: audio/video");
-  // A page change is a srcdoc reload (ADR-0010): the runtime has to
+  // A page change is a srcdoc reload (ADR-0007): the runtime has to
   // complete the ready handshake again before hiding is applied, and before
   // the keyboard listener is remounted.
   await waitForPlayerFocus(page);
@@ -573,7 +573,7 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
     expect(newResult.ok).toBe(true);
     const opened = await registry.dispatch<{ id: string }>("open", { path: convertSlidraPath });
     const convertTestId = opened.data!.id;
-    // `new` creates no slides (ADR-0018); mint slides/001.svg so `convert` has a page to rewrite.
+    // `new` creates no slides; mint slides/001.svg so `convert` has a page to rewrite.
     await registry.dispatch("slide add", { id: convertTestId });
     const deckPath = await deckPathFor(convertTestId);
     await writeDeckFileText(deckPath, "slides/001.svg", bare);

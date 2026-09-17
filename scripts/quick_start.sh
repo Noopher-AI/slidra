@@ -375,7 +375,7 @@ Presentation file: $BLANK_SLIDRA
 URL: $URL
 
 Verification checklist (blank presentation, verifying the from-scratch path):
-  - The screen opens to a blank presentation with no slides at all (a new presentation has zero pages, ADR-0018); the stage has no white background, just a single centered line of white text reading "No slides now".
+  - The screen opens to a blank presentation with no slides at all (a new presentation has zero pages); the stage has no white background, just a single centered line of white text reading "No slides now".
   - Click New -> From outline... and paste in an outline: the message starts with /slidra-plan, and after the agent writes out
     plan/outline.md and plan/design-spec.md, the editor pops up a blocking plan-confirmation dialog.
   - Each question in the dialog defaults to the agent's suggestion, and can be switched or freely edited; after clicking "Confirm and build" the agent runs

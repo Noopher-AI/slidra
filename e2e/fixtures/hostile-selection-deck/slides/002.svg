@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <!--
     #56 gate review round 1: a view-mode slide has `allow-scripts` too
-    (ADR-0011), so it can forge a `slidra-player` message by hand — sender
+    (ADR-0007), so it can forge a `slidra-player` message by hand — sender
     identity only proves which iframe sent it, never which script inside
     that iframe did. This slide carries none of slide 1's hostile CSS
     (that fixture tests a different attack, the Shadow DOM covering one);

@@ -4,7 +4,7 @@
 //! Normalisation (`slidra convert`), ported from
 //! `packages/core/src/slide/normalise.ts` (full file, 234 lines): wraps bare
 //! primitives into `<g>` containers, and moves `id`/`data-slidra-name`/
-//! `data-slidra-media`/`transform` up onto the container (ADR-0012).
+//! `data-slidra-media`/`transform` up onto the container (ADR-0008).
 //!
 //! Does not re-serialize the document — every byte outside the spans it
 //! splices is preserved exactly. Does not hoist a primitive's native

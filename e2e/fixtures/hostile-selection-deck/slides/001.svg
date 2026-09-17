@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
   <!--
-    ADR-0011 / #56: the slide's own <style> tries specifically to hide or
+    ADR-0007 / #56: the slide's own <style> tries specifically to hide or
     cover a selection box drawn as ordinary light-DOM markup. A `*` rule
     cannot cross a Shadow DOM boundary, which is the whole reason
     selection-runtime.js draws its box inside one — this fixture exists to

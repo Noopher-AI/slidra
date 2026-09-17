@@ -20,8 +20,8 @@ import { runJsonCommand } from "./slidra/command.js";
  * in a header. [E4.T9]/F7: the format decision itself now lives entirely
  * in the Rust `slidra asset import <staged-file> --json` command — this
  * module writes the uploaded bytes to a temp file and spawns it, then
- * cleans the temp file up; it owns no format logic of its own (ADR-0015:
- * one place decides, never a second copy).
+ * cleans the temp file up; it owns no format logic of its own
+ * (one place decides, never a second copy).
  */
 
 /** Same order of magnitude headroom over a real screenshot/photo as the CLI's own import allows; large enough for real media, small enough to bound memory while reading. */
@@ -33,7 +33,7 @@ const ASSET_NAME_HEADER = "x-slidra-asset-name";
  * — GUI panels send the source as a URL instead of raw bytes. Only
  * `http(s)` is ever accepted here: `asset import`'s CLI `source` also
  * accepts a local filesystem path, and blanket-forwarding that same
- * flexibility to an HTTP endpoint would widen ADR-0004's "no reading
+ * flexibility to an HTTP endpoint would widen ADR-0003's "no reading
  * outside the presentation" hole from "the CLI operator's own machine" to
  * "anything this server process can open a file descriptor on" — `file:`,
  * a relative path, and an absolute path are all rejected the same way.
@@ -92,7 +92,7 @@ function readLimitedBinaryBody(req: IncomingMessage, limit: number): Promise<Buf
  * A missing/unreadable source file (`failureKind === "not-found"`) can only
  * ever mean OUR OWN staged temp file here — the caller never gets to name
  * a real filesystem path — so that message (which would otherwise quote
- * the real temp path, ADR-0004) is replaced with a fixed one (plan §4.5).
+ * the real temp path, ADR-0003) is replaced with a fixed one (plan §4.5).
  * Every other failure (an unsupported media format, ...) only ever names
  * virtual paths and is relayed verbatim.
  */

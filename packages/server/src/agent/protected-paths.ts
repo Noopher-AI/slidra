@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 
 /**
  * Decides whether a shell command reaches for a presentation's real files
- * (ADR-0004's second layer, as re-drawn: the CLI is the only way to change
+ * (ADR-0003's second layer, as re-drawn: the CLI is the only way to change
  * a `.slidra`; everything else the agent wants to run is its own business).
  *
  * The rule this enforces is one sentence: **a `.slidra`'s contents may only

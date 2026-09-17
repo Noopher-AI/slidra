@@ -44,7 +44,7 @@ export interface PlayModePublishDeps {
  * `play`, `exitPlay`, `previewEffects`, `exitPreview`, `focusPlayer`,
  * `stepPlayer`, and `rebuildFrame` read and write off the rest of the
  * `mountCanvas` closure — declared here (the module they were measured
- * against in [E8.T3] and now live in, ADR-0024's own convention). Its
+ * against in [E8.T3] and now live in, ADR-0013's own convention). Its
  * measured field count is the number a human decided [S10.F4] on (see the
  * pull request body's headline table); this ticket [E8.T4] moves the twelve
  * functions themselves in without widening it.

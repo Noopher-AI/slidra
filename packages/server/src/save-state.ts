@@ -22,7 +22,7 @@ const DEFAULT_MAX_WAIT_MS = 5000;
 /** How long to wait before retrying a debounce tick that found the editing floor held. */
 const LOCK_BUSY_RETRY_MS = 200;
 
-/** `<file>`-scoped reason strings for a failed write-back, keyed by the Node `fs` errno that caused it. Never includes a real filesystem path — only `path.basename` — per ADR-0004. */
+/** `<file>`-scoped reason strings for a failed write-back, keyed by the Node `fs` errno that caused it. Never includes a real filesystem path — only `path.basename` — per ADR-0003. */
 const REASON_BY_CODE: Record<string, (file: string) => string> = {
   ENOENT: (file) => `The folder holding ${file} is no longer available — it may have been unplugged or unmounted.`,
   EACCES: (file) => `Permission denied writing ${file}.`,
@@ -42,7 +42,7 @@ function errnoCode(error: unknown): string | undefined {
 /**
  * Turns a write-back failure into a `reason` safe to put on the wire.
  * Deliberately never relays `error.message` (a Node `fs` error or a
- * `pack` failure message can both carry a real absolute path, ADR-0004) —
+ * `pack` failure message can both carry a real absolute path, ADR-0003) —
  * only `path.basename(sourcePath)` plus a fixed sentence keyed off the
  * errno, when one is available.
  */

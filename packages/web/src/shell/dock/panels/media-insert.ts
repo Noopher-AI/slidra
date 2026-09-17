@@ -44,7 +44,7 @@ const MEDIA_BOX: Record<MediaAssetKind, { l: number; t: number; w: number; h: nu
 /**
  * `kind` is the asset's own byte-detected kind (`ImportedAsset.kind` from
  * `resolveAssetImport`) when `path` is non-null — NOT necessarily the panel
- * the user opened (ADR-0015: format identity never comes from which panel
+ * the user opened (format identity never comes from which panel
  * was open — e.g. picking a PNG in the Video panel). When `path` is null
  * (the "Insert" button pressed with no file/URL chosen), `kind` is instead
  * the panel's own identity, since there is no byte-detected asset to defer

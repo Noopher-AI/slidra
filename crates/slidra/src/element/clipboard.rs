@@ -4,7 +4,7 @@
 //! `element copy` / `element cut` / `element paste` / `element duplicate`
 //! (plan section 1.1, phase P7) — this ticket's
 //! technically riskiest phase (plan section 0): a from-scratch allowlist
-//! sanitizer over pasted markup (ADR-0010), a system-clipboard exchange SVG
+//! sanitizer over pasted markup (ADR-0007), a system-clipboard exchange SVG
 //! format, and a WHATWG-`URL`-shaped defense-in-depth check ported without
 //! a `URL` implementation to delegate to (plan decision D4: no `regex`, no
 //! new crate at all).
@@ -1131,7 +1131,7 @@ pub enum ClipboardMarkupKind {
 
 /// The one gate every pasted fragment — internal or from the system
 /// clipboard — must pass before it is spliced into a presentation
-/// (ADR-0010). Never patches a bad fragment into something acceptable:
+/// (ADR-0007). Never patches a bad fragment into something acceptable:
 /// every violation errors, none are silently stripped.
 pub fn sanitize_clipboard_markup(markup: &str, kind: ClipboardMarkupKind) -> SlidraResult<()> {
     if contains_doctype_entity_cdata_or_comment(markup) {

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! `element group` / `element ungroup` / `element name set` — the container
-//! structure commands (ADR-0012 nested groups), ported from
+//! structure commands (ADR-0008 nested groups), ported from
 //! `packages/core/src/element-group.ts` (plan section 1.1, phase P3).
 //!
 //! This file's small structural helpers (`require_svg_root`,
@@ -86,7 +86,7 @@ fn meaningful_children(node: &ScannedNode) -> Vec<&ScannedNode> {
         .collect()
 }
 
-/// ADR-0012: a container's children are all `<g>`, or all primitives —
+/// ADR-0008: a container's children are all `<g>`, or all primitives —
 /// never mixed. An unbound table's cells are all `<g data-slidra-cell>` too
 /// (E2.T14) — explicitly excluded so `ungroup_one` below never mistakes a
 /// table for an ordinary group and dissolves it into a pile of id-less
@@ -370,7 +370,7 @@ pub fn ungroup_elements(
 // ---------------------------------------------------------------------------
 
 /// Builds the splice that sets/removes `attr` on `node` — `value == ""`
-/// removes the attribute entirely (ADR-0004: no meaningless bytes).
+/// removes the attribute entirely (ADR-0003: no meaningless bytes).
 fn name_attr_splice(svg: &str, node: &ScannedNode, attr: &str, value: &str) -> Splice {
     let existing = attribute_of(node, attr);
     if value.is_empty() {

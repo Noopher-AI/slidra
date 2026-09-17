@@ -95,7 +95,7 @@ async function handleRequest(
 ): Promise<void> {
   try {
     // Same gate serve.ts's handleRequest applies, for the same reason
-    // (ADR-0010): the stacked play iframes are opaque-origin and their
+    // (ADR-0007): the stacked play iframes are opaque-origin and their
     // @font-face fetch is the one legitimate `Origin: null` request this
     // server ever sees.
     if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {

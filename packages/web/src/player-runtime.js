@@ -6,7 +6,7 @@
 // Its whole job: read window.__SLIDRA_PLAN__ (injected by the parent before
 // this script runs — see player-plan.ts / canvas.ts), listen for the
 // forward arrow key, apply each step's effects to the DOM via the Web
-// Animations API (ADR-0005: no SMIL, no CSS `animation`), and report what
+// Animations API (ADR-0006: no SMIL, no CSS `animation`), and report what
 // happened to the parent over postMessage (C4 in the design doc). It never
 // derives anything itself — all derivation (parsing the effect list,
 // grouping steps, computing which ids start hidden) happens in the parent,
@@ -31,7 +31,7 @@
   // reuse this element rather than creating (and playing) a second one.
   //
   // Object.create(null), not {}: element ids come straight from untrusted
-  // slide content (ADR-0010), and a legal SVG id can be "constructor",
+  // slide content (ADR-0007), and a legal SVG id can be "constructor",
   // "toString", "__proto__", or any other name Object.prototype happens to
   // carry. A plain {} already has a truthy `mediaElements["constructor"]`
   // before this target is ever reached the first time, so the idempotence
@@ -111,7 +111,7 @@
 
   /**
    * Positions an overlay element exactly over its placeholder's current
-   * on-screen box (ADR-0005: align to the SVG placeholder's geometry, never
+   * on-screen box (ADR-0006: align to the SVG placeholder's geometry, never
    * <foreignObject>). Document coordinates, not viewport coordinates —
    * getBoundingClientRect() is viewport-relative, and this element is
    * appended to document.body as position:absolute, which is positioned
@@ -225,7 +225,7 @@
   }
 
   // ── Third-party embeds ───────────────────────────────────────────────
-  // The <iframe> itself lives in the PARENT document (ADR-0011: this
+  // The <iframe> itself lives in the PARENT document (ADR-0007: this
   // document may never be granted allow-same-origin, and a nested iframe's
   // sandbox flags are the intersection with this one's, so the YouTube
   // player cannot be made to work from in here at all). All this runtime
@@ -233,7 +233,7 @@
   // so the parent can keep its overlay aligned.
   var embedIds = (plan && plan.embedIds) || [];
 
-  /** Whether `target` is one of this slide's third-party embeds. A linear scan over `embedIds` (never a lookup keyed by an untrusted id, ADR-0010) — the list is one entry per embed on a slide, so its length is measured in single digits. */
+  /** Whether `target` is one of this slide's third-party embeds. A linear scan over `embedIds` (never a lookup keyed by an untrusted id, ADR-0007) — the list is one entry per embed on a slide, so its length is measured in single digits. */
   function isEmbedTarget(target) {
     for (var i = 0; i < embedIds.length; i++) {
       if (embedIds[i] === target) return true;
@@ -402,7 +402,7 @@
   }
 
   /**
-   * `family: "path"` (D4.4, ADR-0005 amended): builds a detached `<path
+   * `family: "path"` (D4.4, ADR-0006 amended): builds a detached `<path
    * d="...">` purely to sample it — `getTotalLength`/`getPointAtLength`
    * work on a node that is never inserted into the document — and turns
    * those samples into a `transform: translate(dx,dy)` keyframe list, one
@@ -815,7 +815,7 @@
 
   // #305: wait for this document's OWN fonts before saying ready. The
   // presentation's `@font-face` is injected into every play document, but
-  // each one is an opaque origin (sandbox="allow-scripts", ADR-0010), so
+  // each one is an opaque origin (sandbox="allow-scripts", ADR-0007), so
   // the host awaiting `document.fonts.ready` on its own document only
   // warms the HTTP cache — it cannot know whether the face has been
   // applied *in here*. Saying ready before it is lets the PDF export print

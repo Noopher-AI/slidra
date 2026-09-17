@@ -9,7 +9,7 @@
 //!
 //! `packages/core/src/id.ts` itself is NOT modified to add a test seed hook
 //! (plan section 7.3 / 7.2): that file's opaque, non-guessable ids are a
-//! documented security property (ADR-0004). `SLIDRA_ID_SEED` is therefore
+//! documented security property (ADR-0003). `SLIDRA_ID_SEED` is therefore
 //! Rust-only — golden fixtures that need reproducible ids only get that
 //! reproducibility on the Rust side, and cross-engine golden comparisons
 //! normalize ids instead (see tests/unit_golden.rs).

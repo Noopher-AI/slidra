@@ -81,7 +81,7 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
 /**
  * Wraps the fetched slide markup for `srcdoc`. When `baseHref` is given, a
  * `<base>` element is injected so the browser's own relative-URL resolution
- * — not a regex rewrite of untrusted markup (ADR-0003) — turns a slide
+ * — not a regex rewrite of untrusted markup (ADR-0011) — turns a slide
  * reference like `href="../assets/photo.png"` into the byte-preserving
  * `/api/raw/` route's path for it. A `srcdoc` document otherwise resolves
  * relative URLs against the *parent* document's URL, which is why a
@@ -124,7 +124,7 @@ export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string
 }
 
 /**
- * Wraps the fetched slide markup for view mode's `srcdoc` (ADR-0011/#56):
+ * Wraps the fetched slide markup for view mode's `srcdoc` (ADR-0007/#56):
  * same shape as wrapSlideDocument, plus selection-runtime.js injected as a
  * second `<script>`, seeded with the accent/handle colours the parent read
  * from its own tokens.css (selectionColors() above) — the opaque-origin
@@ -178,7 +178,7 @@ export function wrapSelectionDocument(
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
   // Same `__proto__`-safety reasoning as renderPlanScript() in
   // player-plan.ts: `media` is keyed by untrusted SVG element ids
-  // (ADR-0010), and JSON.parse (not a bare object literal) is what keeps a
+  // (ADR-0007), and JSON.parse (not a bare object literal) is what keeps a
   // "__proto__" key a genuine own property on the far side of the wire.
   const safeMediaJson = JSON.stringify(JSON.stringify(media)).replace(/</g, "\\u003C");
   const safeEmbedIdsJson = JSON.stringify(JSON.stringify(embedIds)).replace(/</g, "\\u003C");
@@ -223,7 +223,7 @@ export function wrapSelectionDocument(
 export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
   const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
   // planScript is built from parsed slide attributes (target ids, effect
-  // names) — untrusted content (ADR-0010), and it lands inside a raw
+  // names) — untrusted content (ADR-0007), and it lands inside a raw
   // <script> element, not an HTML text node, so HTML-entity escaping
   // (escapeAttribute's job, above) does not apply here at all. Escaping
   // only a literal "</script" (an earlier version of this function) is

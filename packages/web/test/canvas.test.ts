@@ -55,7 +55,7 @@ describe("mountCanvas", () => {
     expect(sandbox).not.toContain("allow-same-origin");
   });
 
-  // ADR-0011 / #56: view mode now carries allow-scripts (for the selection
+  // ADR-0007 / #56: view mode now carries allow-scripts (for the selection
   // runtime's hit reporting) but must never carry allow-same-origin — the
   // pair together would let the iframe's own script escape its sandbox.
   it("view-mode iframe's sandbox has allow-scripts and never allow-same-origin", async () => {
@@ -137,7 +137,7 @@ describe("mountCanvas", () => {
   // otherwise resolve to the wrong place. Injecting a `<base>` pointing at
   // the slide's own directory inside the byte-preserving `/api/raw/` path
   // space makes the browser's own resolution do the right thing, without
-  // touching the (untrusted, ADR-0003) slide bytes themselves.
+  // touching the (untrusted, ADR-0011) slide bytes themselves.
   it("injects a <base> pointing at the slide's own directory inside /api/raw/", async () => {
     controller = mountCanvas(container);
     await controller.reload();
@@ -561,7 +561,7 @@ describe("mountCanvas play mode", () => {
     expect(doc).toContain('addEventListener("keydown"');
   });
 
-  // ADR-0011/#56: exitPlay() no longer returns to a zero-token sandbox —
+  // ADR-0007/#56: exitPlay() no longer returns to a zero-token sandbox —
   // view mode itself now carries allow-scripts, for the selection runtime
   // — but must still shed the play runtime's own plan/window global.
   it("exitPlay() returns to view mode's allow-scripts sandbox, without the play plan/runtime", async () => {
@@ -1205,7 +1205,7 @@ describe("mountCanvas animation", () => {
 
   it("previewEffects() enters preview mode and embeds the preview field into the plan; preview-done returns to view mode and restores the selection", async () => {
     // selectOnceLoaded (canvas.ts) only re-resolves an id through
-    // currentSlideModel's own <g>-container elements (ADR-0012) — unlike
+    // currentSlideModel's own <g>-container elements (ADR-0008) — unlike
     // the other tests in this block, this one needs that resolution to
     // succeed, so it uses a compliant fixture rather than playDeckMarkup's
     // bare <rect>s.
@@ -1472,7 +1472,7 @@ describe("mountCanvas slide enter/exit transitions", () => {
 });
 
 // Gate review round 3, P2: target ids come straight from untrusted slide
-// content (ADR-0010). A target containing "<!--<script>" (after XML entity
+// content (ADR-0007). A target containing "<!--<script>" (after XML entity
 // decoding) sends the HTML tokenizer into "script data double escaped"
 // state once embedded in the plan's <script> tag — the literal "</script>"
 // text this module writes to close that tag no longer counts as a real
@@ -1535,7 +1535,7 @@ describe("mountCanvas play mode: escaping when embedding the plan", () => {
   });
 });
 
-// ADR-0011/#56: element selection. The runtime itself only really runs in a
+// ADR-0007/#56: element selection. The runtime itself only really runs in a
 // real browser (same reasoning as the play-mode block above) — these tests
 // stay at the seam this module owns: the CanvasState.selection field and
 // how canvas.ts reacts to postMessage events selection-runtime.js would
@@ -1630,7 +1630,7 @@ describe("mountCanvas selection", () => {
   });
 
   // Same authentication rule as isPlayerMessage's own tests: identity, never
-  // event.origin (ADR-0010) — an impostor `source` must be ignored outright.
+  // event.origin (ADR-0007) — an impostor `source` must be ignored outright.
   it("a selection message not from the current iframe is ignored", async () => {
     controller = mountCanvas(container);
     await controller.reload();

@@ -22,8 +22,8 @@ const REQUIRED_DIRS = ["slides", "assets", "fonts"];
 /**
  * Recursively zips every file under `sourceDir` into a `.slidra` container at
  * `outputPath`. `slides/`, `assets/`, and `fonts/` are guaranteed to exist as
- * entries even when empty — the first two per ADR-0003, `fonts/` per its
- * ADR-0016 amendment.
+ * entries even when empty — the first two per ADR-0011, `fonts/` per its
+ * ADR-0010 amendment.
  */
 export async function packDirectory(sourceDir, outputPath) {
   const zippable = {};
@@ -31,7 +31,7 @@ export async function packDirectory(sourceDir, outputPath) {
     await collectFiles(sourceDir, sourceDir, zippable);
   } catch {
     // sourceDir is either a private staging directory or the hidden work
-    // directory (ADR-0004) — never quote it.
+    // directory (ADR-0003) — never quote it.
     throw new Error("Error reading presentation content");
   }
 

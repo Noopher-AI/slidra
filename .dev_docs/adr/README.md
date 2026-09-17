@@ -1,43 +1,74 @@
-# Architecture Decision Records
+# Architecture Decision Records — Slidra
 
-An ADR records one decision that is hard to reverse, confusing without context, and the product of a real trade-off. **ADRs are never deleted or rewritten** — a superseded decision stays in place, because the record of what was judged at the time is itself valuable information.
+A record here captures **one** decision that is hard to reverse, is the product of a real
+trade-off, and would confuse a newcomer without its context. All three, or it does not belong
+here.
 
-## File naming convention
+## What does not belong here
 
-| Filename | Meaning |
+| | Where it goes |
 | --- | --- |
-| `NNNN-slug.md` | Fully in force |
-| `NNNN-slug.amended.md` | **Some clauses no longer apply.** A banner at the top of the file lists what died, what replaced it, and what still stands |
+| A fact that moves with the version — format, command set, field types, migration rules | `docs/spec/` |
+| A target or a threshold | Product goals |
+| Vocabulary | `CONTEXT.md` |
+| Filenames, function names, test names, flag locations | Nowhere. The code is the record. |
 
-An amended ADR always does two things: the filename gets `.amended` appended, and a banner goes under the title. Finer-grained amendments are additionally noted inline, right where the original text they touch appears.
+Records may point at a spec file, and several do. That pointer is the mechanism: it is what
+lets the volatile half change without anyone editing a decision record.
 
-Always cite an ADR by number (`ADR-0002`), never by filename — filenames change when a document is amended. For the same reason, an ADR cites a symbol, never a line number: the reference has to survive the file changing underneath it. ADR-0017 cites `SELECT_AFTER_COMMAND` as `canvas.ts:957`/`971`; those line numbers were already stale within months (the file has moved on, and the symbol now lives at a different location) — a citation by symbol name would have survived unchanged.
+## Amendments
+
+A record is never deleted or rewritten. When something changes, there are exactly two endings:
+
+- **The decision was superseded.** Write a new record. The old one gets *one line* under its
+  title: `Status: superseded by ADR-NNNN.` No comparison, no accumulated diff. The reason
+  belongs in the record that replaced it.
+- **It was never a decision matter.** Update the spec. The record is untouched.
+
+There is no third ending. A banner longer than two lines means the wrong ending was chosen —
+what is being written is a changelog, and changelogs belong in version control.
+
+Cite a record by number, never by filename.
 
 ## Current list
 
-| | Decision | Status |
-| --- | --- | --- |
-| 0001 | SVG is the artifact | Partially superseded → 0016 |
-| 0002 | CLI is the only vocabulary | Partially superseded → 0014; later revised to "a single binary"; amended — `slidra` as sole reader (not only writer) is now OS-enforced on macOS via `denyRead` (ADR-0021), still discipline-based on Linux |
-| 0003 | The `.slidra` container | Partially superseded → 0016; the `transition` field was retired and `formatVersion` moved 2→3, then 3→4. Superseded → 0020 for the container format and hidden-work-directory model (`formatVersion` 5, SQLite, no `work/<id>/`) — see `docs/spec/slidra-format.md` (the current on-disk authority) |
-| 0004 | Presentation content is read-only to agents | Partially superseded → 0015; its second layer was overturned by 0019; amended — its third layer (no real-path leakage) gains an OS-enforced backstop on macOS (ADR-0021), and the working-directory path leak it had already conceded is closed |
-| 0005 | Step-driven animation | Substantially revised → 0007, 0009 |
-| 0006 | Connecting external agents via ACP | Partially superseded; amended — the agent now runs sandboxed (ADR-0021), the working directory moved off `<SLIDRA_HOME>/agent` to a per-serve scratch root, and conversations persist into the deck ([E6.T7]) |
-| 0007 | Playing a `.slidra` requires the app | |
-| 0008 | A slide is self-contained | |
-| 0009 | Motion is an ordered list of effects | |
-| 0010 | Slide content is untrusted | Partially superseded |
-| 0011 | View mode runs a hit-reporting script | Partially superseded |
-| 0012 | Every element is framed in a `<g transform>` | Extended with an exception (chart containers) |
-| 0013 | Templates and locking replace masters | Amended — master view mode and the `slidra-apply-master` skill added; the no-inheritance/no-sync/no-link position is unchanged |
-| 0014 | The style command uses SVG attribute names, gated by an allowlist | Extended with a section (table allowlist); revokes one clause of ADR-0002 |
-| 0015 | Agents may import assets | Extended with a guardrail exception (`--as csv` data assets) |
-| 0016 | Fonts are packaged with the `.slidra`; a standalone slide degrades to system fonts | |
-| 0017 | In-place editing caret and selection: `textarea.selectionStart/End` is the single source of truth, with zero offset against SVG character indices | |
-| 0018 | A new presentation starts empty; a plan is materialized as files inside the presentation, three roles hand off through a blocking gate, and validation is a CLI command | Amended — decision 9's file lock re-confirmed under SQLite; `plan/` outranks persisted chat history ([E6.T7]); `slidra-apply-master` added as a fourth independent skill |
-| 0019 | The command gate now protects "presentation files must go through the CLI," everything else is allowed | Overturns the second layer of ADR-0004; Follow-up → 0021 (an OS-level sandbox, bounding writes only — the prompt-injection chain this ADR opened remains open) |
-| 0020 | A deck is a database, not an archive | Supersedes ADR-0003 |
-| 0021 | The agent runs in an OS sandbox, and so does the CLI | Follow-up to ADR-0019 |
-| 0022 | One server, one current deck, switchable | |
-| 0023 | A deck has an owner | Deliberately kept separate from ADR-0020; Extended with a section (`owner: null` is anonymous, never backfilled) |
-| 0024 | An extracted module receives a named dependency object, never a shared internals bag | |
+| | Decision |
+| --- | --- |
+| 0001 | SVG is the slide artifact |
+| 0002 | The CLI is the only vocabulary |
+| 0003 | Deck content is read-only to agents |
+| 0004 | Agents attach through a published protocol |
+| 0005 | A slide is self-contained |
+| 0006 | Motion is an ordered list of effects |
+| 0007 | Slide content is untrusted |
+| 0008 | Every element is framed in a transform group |
+| 0009 | Templates replace masters, and a template dies on use |
+| 0010 | Fonts are packaged; a standalone slide degrades |
+| 0011 | A deck is a database, not an archive |
+| 0012 | A deck has an owner |
+| 0013 | An extracted module takes a named dependency object |
+
+## Map from the previous set
+
+The set this replaces had 24 records. Numbers are not reused, so the mapping is recorded here
+rather than preserved as gaps.
+
+| Was | Now |
+| --- | --- |
+| 0001 | 0001 |
+| 0002 | 0002 |
+| 0004, and the later amendments to it (0015, 0019, 0021) | 0003, with the volatile half in the spec |
+| 0006 | 0004 |
+| 0008 | 0005 |
+| 0009 — superseding 0005 | 0006 |
+| 0010, absorbing 0011 | 0007 |
+| 0012 | 0008 |
+| 0013 | 0009 |
+| 0016 | 0010 |
+| 0020 — superseding 0003 | 0011 |
+| 0023 | 0012 |
+| 0007 | A consequence of 0011, not its own record |
+| 0014 | 0002 — the styling exception is recorded there as a consequence |
+| 0017, 0022 | `docs/spec/` — both record facts that move |
+| 0024 | 0013 |
+| 0018 | Split. Its surviving clause — a new deck starts empty — fails the hard-to-reverse gate: putting a starter slide back is an afternoon's work. Spec. |

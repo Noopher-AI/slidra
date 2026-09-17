@@ -39,7 +39,7 @@ export interface RailProps {
   onCloseContextMenu: () => void;
   /** `OutlineModal`'s "Draft with agent" — sends the raw outline text; App.tsx assembles the fixed prefix and sends it as a chat message. */
   onDraftWithAgent: (outline: string) => void;
-  /** `CanvasState.pageSource` — `"templates"` while master mode (`.dev_docs/adr/0013-templates-not-masters.md`) is active; `slides`/`currentIndex` above index the template list in that case. */
+  /** `CanvasState.pageSource` — `"templates"` while master mode (`.dev_docs/adr/0009-templates-replace-masters.md`) is active; `slides`/`currentIndex` above index the template list in that case. */
   pageSource: "slides" | "templates";
   /** Agent holds the editing lock — disables entering/leaving master mode and its dispatch action, same gate `App.tsx`'s Save/undo/redo already use. */
   editingFrozen: boolean;

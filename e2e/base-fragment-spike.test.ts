@@ -17,7 +17,7 @@ import { renderHideStyle, renderPlanScript } from "../packages/web/src/player-pl
  *
  * The claim under test: the injected `<base href="/api/raw/<dir>/">` (which
  * exists so the browser's own URL resolution — not a regex rewrite of
- * untrusted markup, ADR-0003 — turns `href="../assets/photo.png"` into the
+ * untrusted markup, ADR-0011 — turns `href="../assets/photo.png"` into the
  * `/api/raw/` route) might ALSO change how same-document fragment
  * references resolve. If `url(#grad)` resolved against the base instead of
  * the document, the slide would silently paint incomplete — violating

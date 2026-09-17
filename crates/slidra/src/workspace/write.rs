@@ -44,7 +44,7 @@ pub struct RequiredSlide {
 }
 
 /// Confirms `virtual_path` is one of the presentation's declared slides OR
-/// templates (ADR-0013 widened this from slides-only), returning the parsed
+/// templates (ADR-0009 widened this from slides-only), returning the parsed
 /// `project.json` so the caller doesn't read it twice. `comment *`'s own,
 /// narrower "slides only, no templates" rule (plan section 3.7 / 4 table E)
 /// is intentionally NOT this function — it lives next to `commands::comment`

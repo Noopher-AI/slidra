@@ -106,7 +106,7 @@ async function openFreshPresentation(name = "Test Presentation"): Promise<{ id: 
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018): the tests below edit
+  // `new` creates no slides: the tests below edit
   // slides/001.svg, so mint one page with one title text box.
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
@@ -352,7 +352,7 @@ describe("GET /api/events", () => {
   });
 
   it("responds without the real deck path when fs.watch fails synchronously at startup", async () => {
-    // ADR-0004's third layer failing exactly where it matters: `fs.watch`
+    // ADR-0003's third layer failing exactly where it matters: `fs.watch`
     // throws synchronously (not only via its async `error` event) when the
     // deck file has vanished between server startup and the first
     // /api/events request — removing it here reproduces exactly that gap.

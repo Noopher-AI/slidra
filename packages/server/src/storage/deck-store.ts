@@ -335,7 +335,7 @@ async function createDeck(input: CreateDeckInput): Promise<CreatedDeck> {
 /**
  * Imports an external `.slidra` — AC3. A `sourcePath` already inside the
  * deck folder registers directly, no move/copy, no confirmation, and no
- * owner write — ADR-0023's register-in-place case, a pre-existing file's
+ * owner write — ADR-0012's register-in-place case, a pre-existing file's
  * `owner: null` is never backfilled. Outside the folder with no
  * `disposition` throws `ImportConfirmationRequiredError` before touching
  * anything; `disposition` picks move (source no longer exists afterward) or

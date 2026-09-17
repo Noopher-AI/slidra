@@ -1,124 +1,104 @@
 # Slidra
 
-An SVG-native presentation editor. Humans and agents edit the same deck together — the agent operates
-through the CLI, the human through the visual editor.
+An SVG-native presentation editor. Humans and agents edit the same deck together — the
+agent through the CLI, the human through the visual editor.
+
+## How to read this glossary
+
+A word earns a place here only if getting it wrong causes a concrete mistake. Ordinary
+words that happen to appear in the product are not terms. Every *Avoid* entry carries the
+reason it is dangerous; an avoid-list without reasons is broken by the first person under
+deadline pressure.
 
 ## Language
 
 ### Deck content
 
-**Deck**:
-A complete Slidra work, made up of ordered slides, assets, and settings.
-_Avoid_: project, PPT, file
+**Deck**
+A complete Slidra work: ordered slides, assets and settings, in one file.
+*Avoid*: **project** — it suggests a folder of loose files, and the single-file promise is
+the thing the storage model was built to keep.
 
-**Slide**:
-A single page within a deck, expressed as one SVG.
-_Avoid_: page
+**Slide**
+One page of a deck, expressed as one SVG.
+*Avoid*: **page** — it invites reflowable-document thinking; a slide is a fixed canvas.
 
-**Element**:
-A visual object inside a slide that can be independently addressed and manipulated.
-_Avoid_: object, layer, shape, node
+**Element**
+A visual object inside a slide that can be addressed and manipulated on its own.
+*Avoid*: **layer** — layers imply a global stack the format does not have; nesting is by
+containment, not by z-order bookkeeping.
 
-**Display name**:
-The human-facing name of an element. Distinct from the identifier used to address the element —
-changing it does not affect addressing.
-_Avoid_: label, alias
-
-**Canvas**:
+**Canvas**
 The deck's page dimensions. A deck has exactly one, and every slide is designed against it.
-_Avoid_: layout, page size, canvas size setting
+*Avoid*: **page size** — it implies a print setting that can differ per slide. It cannot.
 
-**Selection**:
-The element the user is currently pointing at. It exists only for the duration of that interaction —
-it is never written into the deck and never changes any content.
-_Avoid_: selected, focused, focus, active
+**Asset**
+An external media file a slide refers to — video, audio, a raster image.
+*Avoid*: **attachment** — attachments ride along; assets are inside the deck and playback
+depends on them being there.
 
-**Asset**:
-An external media file referenced by a slide — a video, audio, or raster image, for example.
-_Avoid_: material, media, resource, attachment
+**Group**
+Several elements treated as one. A group is itself an element and can be grouped again.
+*Avoid*: **collection** — it suggests a loose set; a group moves as one object.
 
-**Group**:
-Several elements treated as a single element. A group is itself an element, and can be grouped again.
-_Avoid_: composite, collection, layer group
+**Text box**
+An element holding text. It has a width, and text wraps on its own once it fills the box.
+A single line of text is not an element.
+*Avoid*: **label** — labels are atomic strings; a text box owns wrapping and its own width.
 
-**Text box**:
-An element that holds text. It has a width, and text wraps to the next line on its own once it fills
-the box. A single line of text is not itself an element.
-_Avoid_: text block, label, string
+**Template**
+A starting slide that can be applied. Applying it copies the whole thing onto a new slide;
+from that instant the two are unrelated. **A template dies the moment it is used.**
+*Avoid*: **master** — it implies that changing the master changes every slide made from it.
+It does not. Rejecting that inheritance is a deliberate decision (ADR-0009), not an omission.
 
-**Dynamic text**:
-Content that isn't typed in but computed by Slidra from the current context — a page number, for
-example.
-_Avoid_: field, variable, placeholder
+**Lock**
+A marker saying an element is structural scaffolding and should not be moved casually.
+It guards against slips, not against intent.
+*Avoid*: **read-only** — it suggests an absolute prohibition; a lock can be overridden on
+purpose, and that is the point.
 
-**Template**:
-A starting slide that can be applied. Applying it copies the whole thing onto a new slide; from that
-point on, the two are unrelated. A deck can have several templates.
-_Avoid_: master, layout, master slide, master layout, theme
-
-**Lock**:
-A marker on an element indicating it is structural scaffolding for the layout and shouldn't be touched
-casually. The human can't reach it in the editor. It guards against accidental slips, not an absolute
-prohibition.
-_Avoid_: read-only, immutable, frozen, protected
-
-**Speaker notes**:
-Text visible only to the presenter, attached to a slide, that never appears on the slide itself.
-_Avoid_: comment, script, notes, narration
+**Speaker notes**
+Text attached to a slide, visible only to the presenter, never on the slide itself.
+*Avoid*: **comment** — comments are addressed to other people and can be resolved; speaker
+notes are part of the delivery.
 
 ### Motion
 
-**Step**:
-The unit of advancement during playback. Each time the user advances, all effects belonging to that
-step happen together. Steps aren't stored directly — they're derived from the effect list: a group of
-effects starting with a "click" trigger forms one step. Scope is confined to a single slide.
-_Avoid_: animation frame, frame, time point, timeline
+**Step**
+The unit of advancement during playback. Advancing fires every effect belonging to that
+step. Steps are derived from the effect list, never stored, and never span slides.
+*Avoid*: **frame** — frames are time-driven; a step waits for a person.
 
-**Effect**:
-A single change applied to an element. Effects fall into families — entrance, emphasis, exit, and so
-on; for audio/video assets, playback itself is an effect. Every effect targets exactly one element, no
-exceptions.
-_Avoid_: animation, special effect, build
+**Effect**
+One change applied to exactly one element. Effects belong to families; media playback is
+itself an effect, not a separate mechanism.
+*Avoid*: **animation** — it implies a timeline; effects are triggered, not scheduled.
 
-**Effect list**:
-The explicit ordering of all effects on a slide, written into that slide's SVG. A slide is
-self-contained — swapping two slides requires touching no other file.
-_Avoid_: timeline, animation pane, sequence
+**Effect list**
+The explicit ordering of a slide's effects, written into that slide's SVG.
+*Avoid*: **timeline** — a timeline has a clock. This is a sequence with triggers.
 
-**Entrance**:
-An effect family: making a static element appear. Media playback is not part of this family — it's an
-effect in a different family.
-_Avoid_: animation, special effect, transition, effect
+**Transition**
+The change when moving between slides, split into an entering and a leaving half. Each
+slide decides its own; it is not shared across the deck.
+*Avoid*: **crossfade** — naming one effect as the category hides that the choice is per slide.
 
-**Transition**:
-The change that happens when moving from one slide to the next, split into an "Enter" half and an
-"Exit" half; each slide decides its own effect and duration for each half — it is not shared uniformly
-across the whole deck.
-_Avoid_: page-change effect, switch, crossfade
+### Human–agent collaboration
 
-**Play**:
-The mode of presenting a deck by advancing through steps, as opposed to editing. Whether it's fullscreen
-is up to the user — that's not part of the definition of playback.
-_Avoid_: presentation, screening, preview, presentation mode
+**Command**
+A semantic operation exposed by the CLI. Commands are the only way to modify a deck —
+humans and agents both go through them.
+*Avoid*: **API** — an API is a surface you can extend locally; the command set is the
+product specification, and adding one is a product decision (ADR-0002).
 
-**Overview**:
-A view that lays out every slide in the deck, shrunk down and in order, for at-a-glance navigation and
-jumping between slides.
-_Avoid_: filmstrip, outline, sidebar
+**Annotation**
+A one-line edit instruction a person attaches to an element for the agent to act on. It is
+bundled with the message the person sends.
+*Avoid*: **comment** — comments are for other humans and persist; an annotation is consumed.
 
-### Human-agent collaboration
-
-**Command**:
-A semantic operation exposed by the CLI. Commands are the only way to modify a deck — both humans and
-agents go through them.
-_Avoid_: API, instruction, action, operation
-
-**Annotation**:
-A one-line edit instruction the user attaches to an element for the agent to act on. It's bundled along
-when the user sends their message to the agent.
-_Avoid_: comment, remark, tag
-
-**Editing charter**:
-The first message sent to the agent at the start of a conversation, explaining Slidra's operating
-rules and available commands.
-_Avoid_: system prompt, skill, instructions
+**Editing charter**
+The first message sent to an agent in a conversation, explaining the operating rules and the
+available commands. It is an ordinary user message.
+*Avoid*: **system prompt** — implementing it as one makes behaviour diverge between agent
+vendors, which is exactly what sending it as a user message avoids.

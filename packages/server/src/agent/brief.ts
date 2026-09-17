@@ -4,7 +4,7 @@
 /**
  * Builds the "editorial brief": Slidra's own opening message to
  * whichever agent is connected, sent as a plain user message before the
- * author's first message ever reaches the agent (ADR-0006).
+ * author's first message ever reaches the agent (ADR-0004).
  *
  * This is part of Slidra, not user configuration — it must never be read
  * from a config file or environment variable. Kept in its own module so it

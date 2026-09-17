@@ -22,7 +22,7 @@
    iframes decide per mode), and `.table-range-box` (a purely visual
    selection-range box) — all three explicitly override back to `none` via
    `.stage-widgets > .X`. Third-party player iframes are forced to live in
-   the parent document due to sandboxing (ADR-0011), making them the one
+   the parent document due to sandboxing (ADR-0007), making them the one
    explicit exception in this layer. `CommentLayer` is not an empty
    container — when it renders `.comment-composer` it carries its own
    positioning, so it needs no extra full-cover container layer. */
@@ -98,7 +98,7 @@
   cursor: pointer;
 }
 
-/* Drag-snap guide line — drawn in the parent document (ADR-0011 amendment),
+/* Drag-snap guide line — drawn in the parent document (ADR-0007 amendment),
    replacing the old in-iframe `.guide` from selection-runtime.js. */
 .guide {
   position: absolute;

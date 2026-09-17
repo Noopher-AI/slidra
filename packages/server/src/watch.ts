@@ -95,7 +95,7 @@ export async function watchPresentation(
     // `fs.watch` throws synchronously (not just via its `error` event) when
     // the target has vanished or become unreadable between id resolution
     // above and this call. That raw error's message very likely embeds the
-    // real deck path (ADR-0004), exactly like the asynchronous
+    // real deck path (ADR-0003), exactly like the asynchronous
     // `error` event handled below, so it gets the same sanitised treatment.
     throw new SlidraError("Error watching presentation files");
   }
@@ -111,7 +111,7 @@ export async function watchPresentation(
     }
     watcher.close();
     // The underlying error object very likely embeds the real work
-    // directory path (ADR-0004) — it is never logged or rethrown verbatim.
+    // directory path (ADR-0003) — it is never logged or rethrown verbatim.
     onError(new SlidraError("Error watching presentation files"));
   });
 

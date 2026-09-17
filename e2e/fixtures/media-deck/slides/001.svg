@@ -7,11 +7,11 @@
   </metadata>
   <text id="el-title" x="640" y="100" text-anchor="middle" font-size="56">Media Playback Test</text>
 
-  <!-- Video placeholder: shows this colored rectangle before playback starts; this spot is not a hole (ADR-0005). -->
+  <!-- Video placeholder: shows this colored rectangle before playback starts; this spot is not a hole (ADR-0006). -->
   <rect id="el-video-placeholder" data-slidra-media="../assets/clip.webm"
         x="140" y="200" width="400" height="300" fill="#889" />
 
-  <!-- Audio attached to a visible element: a speaker shape stands in for it here (ADR-0009). -->
+  <!-- Audio attached to a visible element: a speaker shape stands in for it here (ADR-0006). -->
   <circle id="el-audio-icon" data-slidra-media="../assets/narration.oga"
           cx="900" cy="350" r="60" fill="#c66" />
   <text x="900" y="440" text-anchor="middle" font-size="28">Narration</text>

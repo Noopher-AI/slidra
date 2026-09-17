@@ -108,7 +108,7 @@ const fakeAgent: AgentAdapterConfig = {
 const isRunningAsRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
 // Seam B: start the real server, drive it over HTTP, never open a browser.
-// Every test points SLIDRA_HOME at its own temp directory (ADR-0004
+// Every test points SLIDRA_HOME at its own temp directory (ADR-0003
 // testing convention) and always binds port 0, reading the assigned port
 // back — a fixed port would collide with this file's own server tests.
 
@@ -149,7 +149,7 @@ async function openFreshPresentation(name = "Test Presentation"): Promise<string
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  // `new` creates no slides; the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
   expect(added.ok).toBe(true);
   return opened.data!.id;
@@ -180,7 +180,7 @@ async function openPresentationWithRampAsset(): Promise<string> {
   await writeFile(slidraPath, zipped);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018); the tests below address slides/001.svg.
+  // `new` creates no slides; the tests below address slides/001.svg.
   const added = await runCli(["slide", "add", opened.data!.id]);
   expect(added.ok).toBe(true);
   return opened.data!.id;
@@ -299,7 +299,7 @@ describe("startServe", () => {
     expect(server.url).toBe(`http://127.0.0.1:${server.port}`);
   });
 
-  // ADR-0010: an opaque-origin document (the play iframe, once
+  // ADR-0007: an opaque-origin document (the play iframe, once
   // it has `allow-scripts`) sends the literal header value "Origin: null"
   // on a cross-origin request. Rejecting it closes the write-blind gap that
   // opening `allow-scripts` creates — the two are one gate, checked ahead
@@ -321,9 +321,9 @@ describe("startServe", () => {
     expect(postResponse.status).toBe(403);
   });
 
-  // ADR-0011: view mode's iframe now also carries allow-scripts, so
+  // ADR-0007: view mode's iframe now also carries allow-scripts, so
   // it is opaque-origin too and can send the same "Origin: null" writes
-  // ADR-0010 already worried about for play mode. The gate above
+  // ADR-0007 already worried about for play mode. The gate above
   // (`req.headers.origin === "null"`, serve.ts:203) is checked ahead of
   // every route already — this pins that it holds for the specific route
   // view mode's own iframe fetches (`/api/files/<slide>`, canvas.ts's
@@ -436,7 +436,7 @@ describe("startServe", () => {
     await expect(serve(id, { port: first.port })).rejects.toThrow(/port already in use/i);
   });
 
-  it("serves a presentation with no slides (ADR-0018: `new` creates none; the editor makes the first page)", async () => {
+  it("serves a presentation with no slides (`new` creates none; the editor makes the first page)", async () => {
     const { zipSync } = await import("fflate");
     const { writeFile } = await import("node:fs/promises");
     const zipped = zipSync({
@@ -473,7 +473,7 @@ describe("startServe", () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
 
-    // The virtual path space is the only path space (ADR-0004): a ".."
+    // The virtual path space is the only path space (ADR-0003): a ".."
     // segment is just a literal name that was never discovered on disk, so
     // this is structurally a 404, not a filesystem escape. The traversal
     // string is percent-encoded so the HTTP client's own URL normalization
@@ -511,7 +511,7 @@ describe("startServe", () => {
       expect(body.error).toBeTruthy();
       // A real I/O failure must never be told back as "the file is missing".
       expect(body.error).not.toBe("file not found: slides/001.svg");
-      // The real filesystem path must never leak (ADR-0004, third layer).
+      // The real filesystem path must never leak (ADR-0003, third layer).
       expect(body.error).not.toContain(deckPath);
       expect(body.error).not.toContain(slidraHome);
       expect(body.error).not.toContain("EACCES");
@@ -620,8 +620,8 @@ describe("startServe", () => {
   describe("GET /api/effects/", () => {
     /**
      * A presentation whose slides/001.svg holds exactly one element.
-     * `openFreshPresentation`'s `slide add` leaves the page empty
-     * (ADR-0018), and `effect add` needs something to target, so the page
+     * `openFreshPresentation`'s `slide add` leaves the page empty,
+     * and `effect add` needs something to target, so the page
      * is written once with a bare shape: `slide set --svg` wraps it in a
      * `<g>` and mints its id, and returns that id — no need to scrape the
      * SVG for it.
@@ -744,7 +744,7 @@ describe("startServe", () => {
 
   it("never leaks the hidden work directory's path in project.json validation errors", async () => {
     // Echoing back the .slidra path the caller supplied is legitimate
-    // (ADR-0004) — it's the user's own argument, not the work directory.
+    // (ADR-0003) — it's the user's own argument, not the work directory.
     // What must never appear is SLIDRA_HOME's hidden work directory.
     const message = await openMalformedPresentation(
       JSON.stringify({ formatVersion: 1, name: "Broken Presentation", canvas: { width: 1280, height: 720 } }),

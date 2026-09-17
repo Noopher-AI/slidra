@@ -2,7 +2,7 @@
   <metadata>
     <slidra:effects xmlns:slidra="https://slidra.app/ns/2026">
       <!-- Breakage: el-speaker is a "media" family effect target but has no
-           data-slidra-media attribute (ADR-0005's invariant: an element
+           data-slidra-media attribute (ADR-0006's invariant: an element
            targeted by a media effect must carry data-slidra-media). This is
            a real mistake the author of this ticket made writing demo/ by
            hand, reused here as this test's first kind of breakage. -->

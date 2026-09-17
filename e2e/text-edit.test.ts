@@ -218,7 +218,7 @@ async function waitForEditTextareaFocus(page: Page): Promise<void> {
 }
 
 /**
- * ADR-0017 — caret/selection geometry helpers below. Every one of these
+ * Caret/selection geometry helpers below. Every one of these
  * reads its numbers straight off the browser's own SVG text geometry APIs
  * (`getStartPositionOfChar`/`getEndPositionOfChar`/`getScreenCTM`,
  * `<tspan>.getBoundingClientRect()`) — never off the runtime's own
@@ -282,7 +282,7 @@ async function iframeOffset(page: Page): Promise<{ x: number; y: number }> {
   return { x: box.x, y: box.y };
 }
 
-/** Clicks the point 1/4 of the way across character `index` — inside the half `indexAtPoint`'s midpoint rule (ADR-0017 §4.2) resolves to that same index, away from the exact midpoint boundary. */
+/** Clicks the point 1/4 of the way across character `index` — inside the half `indexAtPoint`'s midpoint rule resolves to that same index, away from the exact midpoint boundary. */
 async function clickChar(page: Page, elementId: string, index: number): Promise<void> {
   const rect = await charClientRect(page, elementId, index);
   const offset = await iframeOffset(page);
@@ -844,7 +844,7 @@ it("during Chinese IME composition the cursor does not jump around; pressing dow
     const xs: number[] = [];
     // Simulate an IME composing "你好" one candidate character at a time —
     // compositionstart, then a growing composition string on each `input`,
-    // never compositionend until the final step (ADR-0017 §4.4).
+    // never compositionend until the final step.
     await frame.locator("body").evaluate((body) => {
       const doc = body.ownerDocument as Document;
       const host = doc.querySelector("[data-slidra-selection-host]") as HTMLElement;
@@ -872,7 +872,7 @@ it("during Chinese IME composition the cursor does not jump around; pressing dow
     // Clicks the horizontal midpoint of the edited element itself, not a
     // specific character: the box's resize/rotate handles stay visible and
     // interactive during text edit, clustered within ~9px of its left/right
-    // edges (ADR-0017 doesn't hide them mid-edit) — a point on the element
+    // edges (the editor doesn't hide them mid-edit) — a point on the element
     // itself, away from those edges, is what a pointerdown-inside-the-edited-
     // element assertion needs, so this must land on the text rather than a
     // handle intercepting the click first.

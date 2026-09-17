@@ -194,7 +194,7 @@ it("clicking the button really enters fullscreen (container fills the screen, if
 
   await page.locator('.play-button').click();
   await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
-  // Sandbox posture asserted, never just commented (ADR-0010): allow-scripts
+  // Sandbox posture asserted, never just commented (ADR-0007): allow-scripts
   // for the runtime, never allow-same-origin alongside it. Unaffected by
   // switching the fullscreen target — canvas.ts (untouched) still owns the
   // iframe's sandbox attribute.
@@ -392,7 +392,7 @@ it("exiting play while fullscreen: a real button click exits it, the document ne
   await expect
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(false);
-  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // ADR-0007: view mode now runs a script too (selection-runtime.js), so
   // the sandbox no longer goes back to "" here. What this line pins is
   // that it carries only allow-scripts — never allow-same-origin.
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");

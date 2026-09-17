@@ -130,7 +130,7 @@ export async function runExport(): Promise<void> {
   applyPageLayout(presentation.canvas.width, presentation.canvas.height);
   // §4.6: the export wait condition must include `document.fonts.ready`.
   // Each stacked iframe is an opaque origin (sandbox="allow-scripts", no
-  // allow-same-origin — ADR-0010), so this document cannot reach into any
+  // allow-same-origin — ADR-0007), so this document cannot reach into any
   // of them to await their own font loading directly. Awaiting it here,
   // on the outer document, before any iframe exists, warms the browser's
   // font cache for the shared `/api/raw/fonts/...` URL every iframe's own

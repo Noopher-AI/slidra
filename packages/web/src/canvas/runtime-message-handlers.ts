@@ -118,7 +118,7 @@ export interface RuntimeMessagePublishDeps {
  * `-move`/`-end` report dispatches to — structurally the same shape
  * `canvas/gestures.ts`'s own `GestureHandlers` exports (minus the two host
  * pointer listeners, which this module never calls), declared again here
- * rather than imported from that module: ADR-0024 forbids one extracted
+ * rather than imported from that module: ADR-0013 forbids one extracted
  * module importing another, so the entry hands over an object satisfying
  * this shape instead of this file naming `canvas/gestures.ts` at all.
  */
@@ -143,11 +143,11 @@ export interface RuntimeMessageGestureDeps {
 /**
  * What `canvas/runtime-message-handlers.ts`'s `onWindowMessage`/
  * `handleSelectionMessage` factory needs from the `mountCanvas` closure —
- * declared here (the module it serves, ADR-0024's own convention) and
+ * declared here (the module it serves, ADR-0013's own convention) and
  * constructed once by the entry. `gestures` is the exact object
  * `canvas/gestures.ts`'s own factory returned — the callback seam that
  * breaks the circularity between gesture handling and runtime-message
- * handling (ADR-0024), since neither extracted module ever imports the
+ * handling (ADR-0013), since neither extracted module ever imports the
  * other.
  */
 export interface RuntimeMessageDeps {
@@ -191,11 +191,11 @@ export function createRuntimeMessageHandlers(runtimeMessageDeps: RuntimeMessageD
     if (runtimeMessageDeps.session.isDestroyed()) return;
     // Authenticate by sender identity, never by trusting `event.origin` —
     // an opaque-origin document's `event.origin` is literally the string
-    // "null", which proves nothing about who sent it (ADR-0010). Sender
+    // "null", which proves nothing about who sent it (ADR-0007). Sender
     // identity only proves *which iframe* the message came from, though —
     // never which script inside that iframe sent it. Any slide markup
     // running in that iframe (view mode has `allow-scripts` too, since
-    // ADR-0011) can forge either message shape by hand, so the mode gate
+    // ADR-0007) can forge either message shape by hand, so the mode gate
     // below is load-bearing, not defensive: without it a view-mode deck
     // could self-issue "advance-past-end" and drive the same privileged
     // path play mode uses, on open, with no click from the author (found
@@ -326,7 +326,7 @@ export function createRuntimeMessageHandlers(runtimeMessageDeps: RuntimeMessageD
     }
     if (message.event === "drag-enter") {
       // No payload to validate — see selection-runtime.js's dragenter
-      // listener: it deliberately sends nothing but the bare event, ADR-0010
+      // listener: it deliberately sends nothing but the bare event, ADR-0007
       // (the sandboxed slide's own dataTransfer content is never trusted
       // across postMessage).
       runtimeMessageDeps.session.bumpDragSignal();

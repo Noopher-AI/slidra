@@ -477,7 +477,7 @@ pub fn rename_template(id: &str, template_path: &str, new_name: &str) -> SlidraR
 
 /// `slidra template delete`: deletes the SVG file and removes its
 /// `templates` entry in one history group. Never touches, scans, or warns
-/// about slides already built from it (ADR-0013).
+/// about slides already built from it (ADR-0009).
 pub fn delete_template(id: &str, template_path: &str) -> SlidraResult<()> {
     let project = read_project_json(&workspace::resolve_work_dir(id)?)?;
     let entries = read_template_entries(&project);

@@ -11,7 +11,7 @@
  * calls it directly when the watched file changes on disk, redrawing the
  * slide without React re-rendering anything.
  *
- * A `.slidra` is meant to be opened by people other than its author (ADR-0003
+ * A `.slidra` is meant to be opened by people other than its author (ADR-0011
  * — that's the point of it being a single shareable file). Slide markup is
  * therefore untrusted: a legal SVG can carry `onload`/`onerror` handlers or
  * an active `<foreignObject>`, and if it were injected with `innerHTML` into
@@ -24,12 +24,12 @@
  *
  * Play mode reuses the same posture with one deliberate
  * loosening: the play iframe gets `allow-scripts` so the player runtime can
- * run, but never `allow-same-origin` (ADR-0010) — the pair together would
+ * run, but never `allow-same-origin` (ADR-0007) — the pair together would
  * let the iframe script itself free of its own sandbox. Because the
  * `sandbox` attribute cannot be changed on a live iframe, entering or
  * leaving play mode destroys the current iframe and builds a fresh one.
  *
- * Element selection (ADR-0011) extends the same loosening to view mode:
+ * Element selection (ADR-0007) extends the same loosening to view mode:
  * a zero-token sandbox delivers no clicks to the parent at all (no script,
  * no `allow-same-origin`, nothing bubbles out), so the view-mode iframe now
  * also carries `allow-scripts` — with the same `allow-same-origin` ban —
@@ -41,7 +41,7 @@
  *
  * That runtime resolves a click to the OUTERMOST id-carrying
  * ancestor — an element's `<g>` container, or the whole group when the
- * element sits inside one (ADR-0012). Nothing changes on this side of the
+ * element sits inside one (ADR-0008). Nothing changes on this side of the
  * seam: the `{ id, name }` arriving over postMessage has always been the
  * resolved node's own `id` and `data-slidra-name`, and after conversion
  * that node is the container.
@@ -259,7 +259,7 @@ export interface CanvasState {
   /**
    * Which page list `slides`/`currentIndex` currently index — `"slides"`
    * normally, `"templates"` while master mode
-   * (`.dev_docs/adr/0013-templates-not-masters.md`) is active. Only
+   * (`.dev_docs/adr/0009-templates-replace-masters.md`) is active. Only
    * `setPageSource` changes this.
    */
   pageSource: "slides" | "templates";
@@ -284,7 +284,7 @@ export interface CanvasController {
   /**
    * Switches the page list `CanvasState.slides`/`currentIndex` index
    * between the deck's slides and its templates (master-mode
-   * `.dev_docs/adr/0013-templates-not-masters.md`) — the one seam every
+   * `.dev_docs/adr/0009-templates-replace-masters.md`) — the one seam every
    * other read/write path (`showSlide`, `runCommand`, every
    * `slides[currentIndex]` call site) stays unaware of. A no-op when
    * already on the requested source. Resets `currentIndex` to the head of
@@ -320,7 +320,7 @@ export interface CanvasController {
   destroy: () => void;
   /** Rebuilds the iframe with `allow-scripts` and enters play mode on the current slide. */
   play: () => Promise<void>;
-  /** Rebuilds the iframe back to view mode's `allow-scripts` sandbox (ADR-0011). */
+  /** Rebuilds the iframe back to view mode's `allow-scripts` sandbox (ADR-0007). */
   exitPlay: () => Promise<void>;
   /**
    * Plays `effectIndices` (a specific card's own effect-list
@@ -440,7 +440,7 @@ export interface CanvasController {
    * fullscreening the iframe itself left the parent document's own
    * controls unreachable to a real click once the iframe sat alone in the
    * browser's fullscreen top layer (see
-   * ADR-0010, docs/adr/). This getter remains the
+   * ADR-0007, docs/adr/). This getter remains the
    * live reference to the current iframe for whatever else needs one, and
    * the "never cache it" rule above still applies to any such caller.
    */
@@ -691,7 +691,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // simplification) once the runtime posts "preview-done" and this module
   // returns to view mode. `null` between previews.
   let previewReturnSelectionIds: string[] | null = null;
-  // The elements the author has selected in view mode (ADR-0011,
+  // The elements the author has selected in view mode (ADR-0007,
   // extended to a list). Cleared (with notify()) whenever the
   // slide changes, reload() runs, play() is entered, or exitPlay()
   // returns — a selection surviving a page change would point at a
@@ -795,7 +795,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   // `shellVisible` gate).
   const embeds = { entries: {} as Record<string, StageEmbedEntry>, boxes: {} as Record<string, Rect> };
 
-  /** Validates an `embed-command` payload and fans it out. Both fields come from untrusted slide-side script (ADR-0010), so an unknown id or command is dropped, never forwarded to a player. */
+  /** Validates an `embed-command` payload and fans it out. Both fields come from untrusted slide-side script (ADR-0007), so an unknown id or command is dropped, never forwarded to a player. */
   function emitEmbedCommand(rawId: unknown, rawCommand: unknown): void {
     if (typeof rawId !== "string" || !Object.prototype.hasOwnProperty.call(embeds.entries, rawId)) return;
     if (rawCommand !== "play" && rawCommand !== "pause") return;
@@ -803,7 +803,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     for (const listener of listeners.embedCommand) listener(command);
   }
 
-  /** Validates and stores an `embed-boxes` payload from either runtime, then pushes the new state out. Every field is untrusted slide-side data (ADR-0010), so nothing is stored before `isMeasuredItem` has checked its shape. */
+  /** Validates and stores an `embed-boxes` payload from either runtime, then pushes the new state out. Every field is untrusted slide-side data (ADR-0007), so nothing is stored before `isMeasuredItem` has checked its shape. */
   function applyEmbedBoxes(rawItems: unknown): void {
     const items = Array.isArray(rawItems) ? rawItems.filter(isMeasuredItem) : [];
     const next: Record<string, Rect> = {};
@@ -895,7 +895,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   /**
    * [E8.T3] Everything the move/scale/rotate/textbox-width/marquee gesture
    * functions defined below read or write off the rest of this closure,
-   * gathered into one object (ADR-0024) — a rehearsal for
+   * gathered into one object (ADR-0013) — a rehearsal for
    * `canvas/gestures.ts` taking those functions over verbatim: routing
    * every read through this object first, while the functions are still
    * defined right here, means a missing field shows up as a type error in
@@ -1046,7 +1046,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * the rest of this closure routed through this object first, so
    * `canvas/runtime-message-handlers.ts` can take the two functions over
    * verbatim in a later commit. `gestures` is the factory output built
-   * just above — the callback seam ADR-0024 requires instead of one
+   * just above — the callback seam ADR-0013 requires instead of one
    * extracted module importing another.
    */
   const runtimeMessageDeps: RuntimeMessageDeps = {
@@ -2215,7 +2215,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
    * Reads the selection box's colours from this document's own tokens.css
    * so selection-runtime.js — living in an opaque-origin document with no
    * access to this document's :root — never has to hard-code them
-   * (ADR-0011). Read fresh on every render() call rather than cached, so a
+   * (ADR-0007). Read fresh on every render() call rather than cached, so a
    * future token change takes effect immediately.
    *
    * NOOP-90/T2 §0: reads the design package's own tokens, replacing the

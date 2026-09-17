@@ -1,10 +1,10 @@
 # RFC 0001: SQLite container format — the deck file is the workspace
 
 Status: accepted, implemented.
-Supersedes: ADR-0003's ZIP-and-hidden-work-directory model.
-Related: ADR-0004 (real paths never leaked; `slidra extract` named there as
-the escape hatch, ahead of this RFC actually building it), ADR-0019 (the
-CLI is the only writer of content).
+Supersedes: ADR-0011's ZIP-and-hidden-work-directory model.
+Related: ADR-0003 (real paths never leaked, and the CLI is the only writer
+of content; `slidra extract` named there as the escape hatch, ahead of this
+RFC actually building it).
 
 ## Summary
 
@@ -194,7 +194,7 @@ bytes, staged then renamed, overwriting whatever was there — no directory
 walk, no re-compression, because the deck already *is* the container
 format.
 
-**`extract <id-or-path> <dir>`** (new — named in ADR-0004 as the intended
+**`extract <id-or-path> <dir>`** (new — named in ADR-0003 as the intended
 escape hatch, built here): writes every virtual path in a deck out as plain
 real files under `dir`, including empty directories. Accepts either an
 already-`open`ed id or a raw filesystem path (legacy ZIP or SQLite) not yet
@@ -204,11 +204,11 @@ already exist as a non-empty directory (no overwrite, no merge).
 
 ## 6. What this changes elsewhere
 
-- **ADR-0003** (`.slidra` is a ZIP unpacked to `~/.slidra/work/<id>/`) is
+- **ADR-0011** (`.slidra` is a ZIP unpacked to `~/.slidra/work/<id>/`) is
   superseded by this RFC for the container format and working-directory
   claims; its claims about `project.json`'s own field shape
   (`formatVersion`/`name`/`canvas`/`slides`/`fonts`) are unaffected.
-- **ADR-0004**'s repeated "`work/<id>` remains unreadable outside the CLI"
+- **ADR-0003**'s repeated "`work/<id>` remains unreadable outside the CLI"
   invariant is moot rather than violated: there is no `work/<id>` any more
   for that statement to be about. The invariant it was protecting — an
   agent can only reach presentation content through the CLI's virtual

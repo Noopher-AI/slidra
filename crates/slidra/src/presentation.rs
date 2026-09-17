@@ -25,7 +25,7 @@ const PRESENTATION_FONT_FILE: &str = "fonts/NotoSansTC-Presentation.ttf";
 const PRESENTATION_FONT_LICENSE_FILE: &str = "fonts/LICENSE-NotoSansTC.txt";
 
 /// The project's bundled default font and its license text, embedded at
-/// compile time (ADR-0016) — same relative-path convention `text::font`'s
+/// compile time (ADR-0010) — same relative-path convention `text::font`'s
 /// `DEFAULT_FONT_BYTES` uses.
 const PRESENTATION_FONT_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -36,11 +36,11 @@ const PRESENTATION_FONT_LICENSE_BYTES: &[u8] = include_bytes!(concat!(
     "/../../assets/fonts/LICENSE-NotoSansTC.txt"
 ));
 
-/// Builds the file set for a minimal presentation (ADR-0003 container
-/// shape): `project.json` with **no slides** (ADR-0018: a new presentation
+/// Builds the file set for a minimal presentation (ADR-0011 container
+/// shape): `project.json` with **no slides** (a new presentation
 /// starts empty so the first page is whatever the author or the agent
 /// makes first, never an unstyled placeholder) + the embedded presentation
-/// font (ADR-0016) + its license text. Returns `(relative_path, bytes)`
+/// font (ADR-0010) + its license text. Returns `(relative_path, bytes)`
 /// pairs — `assets/`/`fonts/`/`slides/` themselves are not listed (the
 /// caller creates them, or `container::pack_directory` adds empty
 /// directory entries for them automatically).

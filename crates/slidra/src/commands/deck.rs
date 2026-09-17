@@ -12,7 +12,7 @@
 //! filesystem path as their first positional, not a `<presentation-id>` —
 //! the same reason `new`/`open` do: the folder `deck list` scans has not
 //! been opened yet, so there is no id to resolve through the registry
-//! (ADR-0002/0019: `packages/server`'s TS side never reads `.slidra` bytes
+//! (ADR-0002: `packages/server`'s TS side never reads `.slidra` bytes
 //! itself, so this scan has to be a Rust subprocess call).
 //!
 //! `deck list`'s per-entry failure handling deliberately mirrors

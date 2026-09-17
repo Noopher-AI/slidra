@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! `plan/` — the presentation's own plan files (#303, ADR-0018):
+//! `plan/` — the presentation's own plan files (#303):
 //! `plan/outline.md` (page roster, mode, gate questions, status) and
 //! `plan/design-spec.md` (density, palette, type scale). Each file opens
 //! with one ```` ```json ```` fence — the machine-readable part this module

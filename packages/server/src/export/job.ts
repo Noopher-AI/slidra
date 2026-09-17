@@ -30,7 +30,7 @@ export type ExportEvent =
 export interface ExportRunResult {
   pageCount: number;
   fileName: string;
-  /** A real filesystem path (ADR-0004) — never sent over the wire. `getFilePath` is the only way it leaves this module. */
+  /** A real filesystem path (ADR-0003) — never sent over the wire. `getFilePath` is the only way it leaves this module. */
   filePath: string;
 }
 
@@ -137,7 +137,7 @@ export class ExportJobManager {
         downloadPath: `/api/export/${jobId}/file`,
       });
     } catch (error) {
-      // ADR-0004: an export failure's message must never carry a real
+      // ADR-0003: an export failure's message must never carry a real
       // filesystem path. Every error this job can actually throw already
       // comes from `renderExportPdf`'s own `SlidraError`s (path-free by
       // that class's own contract) or a plain Error with a message this

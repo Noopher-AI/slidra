@@ -92,7 +92,7 @@ impl Drop for ScannedNode {
     /// The compiler-derived drop glue for a tree type recurses one native
     /// stack frame per nesting level. `scan_document` is required to handle
     /// a 100,000-level-deep document without overflowing the stack (SVG
-    /// content is untrusted input, ADR-0010) — making the *parser* iterative
+    /// content is untrusted input, ADR-0007) — making the *parser* iterative
     /// (see `scan_document` below) accomplishes nothing if the *tree it
     /// hands back* then blows the stack the moment it is dropped. This
     /// flattens teardown onto an explicit heap-allocated stack instead, so
@@ -173,7 +173,7 @@ fn is_tag_name_char(ch: char) -> bool {
 /// The character at Rust byte offset `byte_pos`, or `None` past the end —
 /// used in place of raw `&svg[byte_pos..]` indexing so a byte offset that
 /// (through a bug elsewhere) lands off a char boundary or past `svg.len()`
-/// fails soft instead of panicking. Untrusted SVG input (ADR-0010) should
+/// fails soft instead of panicking. Untrusted SVG input (ADR-0007) should
 /// never turn into a panic anywhere in this module, even from a bug this
 /// review didn't already catch.
 fn char_at(svg: &str, byte_pos: usize) -> Option<char> {
@@ -470,7 +470,7 @@ fn push_completed_node(
 /// scan.ts's `scanNodes` recurses once per nesting level, which is fine in
 /// JS's much larger default stack but is exactly the kind of thing that
 /// overflows Rust's default 8MB thread stack on adversarial input (SVG
-/// content is untrusted, ADR-0010: a 100,000-level-deep document is a
+/// content is untrusted, ADR-0007: a 100,000-level-deep document is a
 /// realistic attack, not a hypothetical). This port replaces that recursion
 /// with an explicit `Vec<OpenFrame>` stack: pushing a frame is "recurse into
 /// this element's children", popping one (on its matching close tag) is

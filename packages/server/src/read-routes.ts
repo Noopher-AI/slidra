@@ -66,7 +66,7 @@ export async function handleAssetsRoute(presentationId: string, res: ServerRespo
 
 /** `GET /api/files/<virtual path>`. `virtualPath` is already percent-decoded by the caller. */
 export async function handleFilesRoute(presentationId: string, virtualPath: string, res: ServerResponse): Promise<void> {
-  // The virtual path space is the only path space (ADR-0004): whatever the
+  // The virtual path space is the only path space (ADR-0003): whatever the
   // caller asks for goes straight into `cat`'s virtual-path lookup, which
   // structurally cannot resolve outside the presentation. There is no
   // separate "escape" case to special-case here — it is just another
@@ -167,7 +167,7 @@ export async function handleRawRoute(
   res: ServerResponse,
   rangeHeader: string | undefined,
 ): Promise<void> {
-  // The srcdoc iframe (canvas.ts) is an opaque-origin document (ADR-0009
+  // The srcdoc iframe (canvas.ts) is an opaque-origin document (ADR-0006
   // sandboxing), so its @font-face url("/api/raw/fonts/...") load is a
   // cross-origin fetch even though it targets this same server — without
   // this header the browser silently refuses to use the font. `*` is safe

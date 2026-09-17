@@ -19,7 +19,7 @@
 //! its undo history with it, and `~/.slidra/history/` is never created. It
 //! is a snapshot store, not an inverse-operation log: an entry is the
 //! complete prior content of one changed file, addressed only by its
-//! virtual path (ADR-0004) — this module has no idea what a slide or an
+//! virtual path (ADR-0003) — this module has no idea what a slide or an
 //! element is.
 //!
 //! Public API:
