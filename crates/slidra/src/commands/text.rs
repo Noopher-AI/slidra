@@ -28,6 +28,33 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["text", "list", "set"],
 ];
 
+/// This family's slice of the crate-wide category table ([S11.F2]
+/// `commands::category`), in `TAKEOVER`'s order. All three write text
+/// content into this workbench's own deck.
+pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
+    (
+        "text set",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "text style set",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "text list set",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+];
+
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match &tokens[1..] {
         ["set"] => set::run(args),

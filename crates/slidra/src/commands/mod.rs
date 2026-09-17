@@ -57,6 +57,7 @@
 pub mod argv;
 pub mod asset_import;
 pub mod cat;
+pub mod category;
 pub mod chart;
 pub mod chat_history;
 pub mod comment;

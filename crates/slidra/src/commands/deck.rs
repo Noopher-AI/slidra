@@ -30,6 +30,22 @@ use std::path::{Path, PathBuf};
 
 pub const TAKEOVER: &[CommandTokens] = &[&["deck", "list"], &["deck", "meta", "set"]];
 
+/// This family's slice of the crate-wide category table ([S11.F2]
+/// `commands::category`), in `TAKEOVER`'s order. Both commands take a raw
+/// filesystem path, not this workbench's own presentation id — `deck
+/// list` scans an arbitrary directory, and `deck meta set` names an
+/// arbitrary deck FILE by path, not through the registry at all. Neither
+/// is "this workbench's own deck", so both are `CrossDeck`, never
+/// `DeckScoped` — there is no id argument here for the door to rewrite in
+/// the first place.
+pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
+    ("deck list", crate::commands::category::Category::CrossDeck),
+    (
+        "deck meta set",
+        crate::commands::category::Category::CrossDeck,
+    ),
+];
+
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match &tokens[1..] {
         ["list"] => list::run(args),
