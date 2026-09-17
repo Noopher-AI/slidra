@@ -6,6 +6,11 @@ Once deck content is reached across a boundary (ADR-0015), calls need something 
 path cannot be it: a hosted edition has no path to give, and an agent must never see one
 (ADR-0003).
 
+This record settles how many decks a workbench holds and how long it lives. They are one
+decision, not two: because a workbench holds one deck it needs nothing that outlives the
+session, and because it does not outlive the session there is never a second deck to call the
+current one. Either half alone leaves the other unanswered.
+
 **Decision.** The unit named by every call is a **workbench**: exactly one deck, plus the
 policy it runs under. It is created when that deck is opened and destroyed when the session
 ends. The deck file itself is untouched by opening and closing — it is edited in place, as
