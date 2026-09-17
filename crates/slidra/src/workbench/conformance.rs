@@ -68,8 +68,57 @@ mod tests {
         store.remove_scratch().unwrap();
     }
 
+    /// A7(b): after running the contract flow through `&dyn WorkbenchStore`,
+    /// none of the strings the interface returned contains a fragment of the
+    /// real backing directory, nor looks like an absolute path — so a caller
+    /// holding only return values cannot derive a real path. A7(a) is a
+    /// compile-time property of the trait (no `Path`/`PathBuf` in any return
+    /// type) and A7(c) is covered by `local::tests`' id/directory-suffix
+    /// guard; this is the runtime half.
+    #[test]
+    fn local_nothing_returned_through_the_trait_reveals_a_real_path() {
+        let _guard = crate::workbench::lock_workbench_tests();
+        let deck = crate::deck::build_test_deck("conformance-local-no-path", &[]);
+        let store = LocalWorkbench::open(&deck, b"policy").unwrap();
+        let root = store.root_for_test().to_path_buf();
+
+        let mut returned = vec![store.id().to_string()];
+        store.create_deck_file("notes/new.txt", b"first").unwrap();
+        let upload = store.put_upload("report.pdf", b"one").unwrap();
+        returned.push(upload.to_string());
+        returned.push(store.upload_file_name(&upload).unwrap());
+        returned.extend(store.list_deck_entries("").unwrap());
+        returned.extend(store.list_deck_entries("notes").unwrap());
+
+        let root_text = root.to_string_lossy().into_owned();
+        let root_name = root
+            .file_name()
+            .expect("the workbench root always has a name")
+            .to_string_lossy()
+            .into_owned();
+        let temp_text = std::env::temp_dir().to_string_lossy().into_owned();
+        for value in &returned {
+            assert!(
+                !value.contains(&root_text) && !value.contains(&root_name),
+                "{value:?} reveals the workbench directory"
+            );
+            assert!(
+                !value.contains(&temp_text),
+                "{value:?} reveals the temp location"
+            );
+            assert!(
+                !value.starts_with('/'),
+                "{value:?} looks like an absolute path"
+            );
+        }
+
+        drop(store);
+        std::fs::remove_file(&deck).ok();
+    }
+
     #[test]
     fn local_deck_file_create_read_and_overwrite_round_trips() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = crate::deck::build_test_deck("conformance-local-crud", &[]);
         let store = LocalWorkbench::open(&deck, b"policy").unwrap();
         deck_file_create_read_and_overwrite_round_trips(&store);
@@ -85,6 +134,7 @@ mod tests {
 
     #[test]
     fn local_deck_file_operations_on_missing_path_error_without_returning_empty_bytes() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = crate::deck::build_test_deck("conformance-local-missing", &[]);
         let store = LocalWorkbench::open(&deck, b"policy").unwrap();
         deck_file_operations_on_missing_path_error_without_returning_empty_bytes(&store);
@@ -100,6 +150,7 @@ mod tests {
 
     #[test]
     fn local_upload_round_trips_and_same_filename_twice_yields_two_ids() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = crate::deck::build_test_deck("conformance-local-upload", &[]);
         let store = LocalWorkbench::open(&deck, b"policy").unwrap();
         upload_round_trips_and_same_filename_twice_yields_two_ids(&store);
@@ -115,6 +166,7 @@ mod tests {
 
     #[test]
     fn local_scratch_prepare_and_remove_are_idempotent() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = crate::deck::build_test_deck("conformance-local-scratch", &[]);
         let store = LocalWorkbench::open(&deck, b"policy").unwrap();
         scratch_prepare_and_remove_are_idempotent(&store);

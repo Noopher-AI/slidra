@@ -162,6 +162,22 @@ pub(crate) fn validate_upload_file_name(file_name: &str) -> SlidraResult<()> {
     Ok(())
 }
 
+/// Test-only: serializes the tests that build a `LocalWorkbench`. Several
+/// of them assert about which `slidra-workbench-*` directories exist under
+/// the shared temp location, and cargo runs tests in parallel threads — so
+/// without this, another test's `open` can create a directory in the middle
+/// of such an assertion. Same stance as `workspace::registry::ENV_LOCK` for
+/// tests that touch `SLIDRA_HOME`.
+#[cfg(test)]
+static WORKBENCH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn lock_workbench_tests() -> std::sync::MutexGuard<'static, ()> {
+    WORKBENCH_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[cfg(test)]
 mod guard_tests {
     use std::path::Path;

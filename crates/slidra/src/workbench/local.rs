@@ -301,6 +301,7 @@ mod tests {
 
     #[test]
     fn open_creates_a_workbench_directory_under_the_temp_location() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = temp_deck("lifecycle-create");
         let wb = LocalWorkbench::open(&deck, b"policy-bytes").unwrap();
         let root = wb.root_for_test().to_path_buf();
@@ -318,6 +319,7 @@ mod tests {
 
     #[test]
     fn drop_removes_the_workbench_directory() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = temp_deck("lifecycle-drop");
         let wb = LocalWorkbench::open(&deck, b"policy").unwrap();
         let root = wb.root_for_test().to_path_buf();
@@ -327,31 +329,113 @@ mod tests {
         std::fs::remove_file(&deck).ok();
     }
 
+    /// Every `slidra-workbench-*` directory currently under the temp
+    /// location. Scoped to that prefix on purpose: the temp location is
+    /// shared with unrelated fixtures (test decks, their SQLite journals,
+    /// font homes), so a snapshot of *every* entry says nothing about
+    /// whether `open` created a workbench.
+    fn workbench_dirs() -> std::collections::HashSet<PathBuf> {
+        let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+            return std::collections::HashSet::new();
+        };
+        entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with(WORKBENCH_DIR_PREFIX))
+            })
+            .collect()
+    }
+
     #[test]
     fn open_on_a_nonexistent_deck_path_is_not_found_and_creates_no_directory() {
+        let _guard = crate::workbench::lock_workbench_tests();
         let missing = std::env::temp_dir().join(format!(
             "slidra-test-missing-deck-{}.slidra",
             crate::id::random_hex_suffix()
         ));
-        let before: std::collections::HashSet<_> = std::fs::read_dir(std::env::temp_dir())
-            .unwrap()
-            .flatten()
-            .map(|e| e.path())
-            .collect();
+        let before = workbench_dirs();
 
         let err = LocalWorkbench::open(&missing, b"policy").unwrap_err();
         assert!(matches!(err, SlidraError::NotFound(_)));
 
-        let after: std::collections::HashSet<_> = std::fs::read_dir(std::env::temp_dir())
-            .unwrap()
-            .flatten()
-            .map(|e| e.path())
-            .collect();
+        let after = workbench_dirs();
         let new_entries: Vec<_> = after.difference(&before).collect();
         assert!(
             new_entries.is_empty(),
-            "open() on a missing deck must create no directory, found: {new_entries:?}"
+            "open() on a missing deck must create no workbench directory, found: {new_entries:?}"
         );
+    }
+
+    /// Recursively visits every file under `dir`.
+    fn visit_files(dir: &Path, visitor: &mut dyn FnMut(&Path)) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit_files(&path, visitor);
+            } else {
+                visitor(&path);
+            }
+        }
+    }
+
+    /// A3: opening a deck, using the workbench's own storage (an upload and
+    /// the scratch area) and then closing it leaves the deck file itself
+    /// untouched — same path, same bytes, same mtime — and never copies the
+    /// deck's bytes into the workbench directory. The workbench holds only a
+    /// *reference* to the deck's path.
+    #[test]
+    fn open_use_and_drop_leaves_the_deck_file_untouched_and_never_copies_it() {
+        let _guard = crate::workbench::lock_workbench_tests();
+        let deck = temp_deck("deck-untouched");
+        let deck_bytes = std::fs::read(&deck).unwrap();
+        let deck_mtime = std::fs::metadata(&deck).unwrap().modified().unwrap();
+
+        let wb = LocalWorkbench::open(&deck, b"policy").unwrap();
+        let root = wb.root_for_test().to_path_buf();
+        wb.put_upload("notes.txt", b"upload bytes").unwrap();
+        wb.prepare_scratch().unwrap();
+        std::fs::write(
+            wb.scratch_dir_for_local_spawn().join("agent.txt"),
+            b"scratch",
+        )
+        .unwrap();
+
+        let mut copies = Vec::new();
+        visit_files(&root, &mut |path| {
+            if std::fs::read(path).is_ok_and(|bytes| bytes == deck_bytes) {
+                copies.push(path.display().to_string());
+            }
+        });
+        assert!(
+            copies.is_empty(),
+            "the deck must never be copied into the workbench, found: {copies:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("deck")).unwrap(),
+            deck.canonicalize().unwrap().to_string_lossy(),
+            "the workbench must hold the deck's own path, not its content"
+        );
+
+        drop(wb);
+
+        assert!(deck.is_file(), "the deck file's own path must survive");
+        assert_eq!(
+            std::fs::read(&deck).unwrap(),
+            deck_bytes,
+            "the deck's bytes must be untouched"
+        );
+        assert_eq!(
+            std::fs::metadata(&deck).unwrap().modified().unwrap(),
+            deck_mtime,
+            "the deck's modification time must be untouched"
+        );
+        std::fs::remove_file(&deck).ok();
     }
 
     #[test]
@@ -387,6 +471,7 @@ mod tests {
     #[test]
     fn distinct_local_workbenches_get_distinct_ids_and_directory_suffixes_not_derived_from_each_other()
      {
+        let _guard = crate::workbench::lock_workbench_tests();
         let deck = temp_deck("guard-dirname");
         let a = LocalWorkbench::open(&deck, b"policy").unwrap();
         let b = LocalWorkbench::open(&deck, b"policy").unwrap();
