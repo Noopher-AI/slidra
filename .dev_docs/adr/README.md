@@ -52,6 +52,7 @@ Cite a record by number, never by filename.
 | 0016 | The deck server is the Rust crate |
 | 0017 | Capability comes from the program |
 | 0018 | Every call names its caller |
+| 0019 | Slidra spawns every agent it talks to |
 
 ## Map from the previous set
 
