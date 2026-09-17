@@ -6,7 +6,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
-import { collectSandboxContext, deriveCliSandboxConfig, deriveSandboxConfig } from "../../src/sandbox/policy.js";
+import {
+  buildCliSandboxPolicy,
+  collectSandboxContext,
+  deriveCliSandboxConfig,
+  deriveSandboxConfig,
+  setActivePolicy,
+} from "../../src/sandbox/policy.js";
 import { openPolicy } from "../../src/policy/open.js";
 import type { SandboxContext } from "../../src/policy/types.js";
 
@@ -117,5 +123,31 @@ describe("deriveCliSandboxConfig(openPolicy, ctx) — the CLI sandbox", () => {
     const policy = deriveCliSandboxConfig(openPolicy, cliCtx("/decks/current.slidra"));
     expect(policy.allowWrite).not.toContain(path.join(home, ".ssh"));
     expect(policy.denyRead).toEqual([]);
+  });
+});
+
+/**
+ * Added in review (NOOP-634): `buildCliSandboxPolicy` is the function
+ * `shim-endpoint.ts` actually calls, and after policy became an injected
+ * object it is no longer a self-contained builder — it assembles its own
+ * `SandboxContext` around the active policy. The tests above now cover the
+ * pure `deriveCliSandboxConfig`, which leaves that assembly unguarded:
+ * rewriting its `deckDirectory` to `"/"` (so the CLI sandbox may write
+ * anywhere) kept the whole sandbox suite green.
+ */
+describe("buildCliSandboxPolicy — the wrapper shim-endpoint.ts calls", () => {
+  afterEach(() => {
+    setActivePolicy(undefined);
+  });
+
+  it("resolves the deck's own parent directory against the active policy, never a wider root", () => {
+    setActivePolicy(openPolicy);
+    const config = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
+    expect(config.allowWrite).toEqual(["/decks", slidraHome, tmpdir()]);
+    expect(config.allowWrite).not.toContain("/");
+  });
+
+  it("refuses to build anything when no policy has been selected — never falls back to a built-in default", () => {
+    expect(() => buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" })).toThrow(/active policy/);
   });
 });
