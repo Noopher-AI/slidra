@@ -11,7 +11,7 @@ An ADR records one decision that is hard to reverse, confusing without context, 
 
 An amended ADR always does two things: the filename gets `.amended` appended, and a banner goes under the title. Finer-grained amendments are additionally noted inline, right where the original text they touch appears.
 
-Always cite an ADR by number (`ADR-0002`), never by filename — filenames change when a document is amended.
+Always cite an ADR by number (`ADR-0002`), never by filename — filenames change when a document is amended. For the same reason, an ADR cites a symbol, never a line number: the reference has to survive the file changing underneath it. ADR-0017 cites `SELECT_AFTER_COMMAND` as `canvas.ts:957`/`971`; those line numbers were already stale within months (the file has moved on, and the symbol now lives at a different location) — a citation by symbol name would have survived unchanged.
 
 ## Current list
 
@@ -40,3 +40,4 @@ Always cite an ADR by number (`ADR-0002`), never by filename — filenames chang
 | 0021 | The agent runs in an OS sandbox, and so does the CLI | Follow-up to ADR-0019 |
 | 0022 | One server, one current deck, switchable | |
 | 0023 | A deck has an owner | Deliberately kept separate from ADR-0020; Extended with a section (`owner: null` is anonymous, never backfilled) |
+| 0024 | An extracted module receives a named dependency object, never a shared internals bag | |

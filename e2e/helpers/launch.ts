@@ -141,7 +141,13 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     command: process.execPath,
     args: [agentFixtureOverride ?? agentFixture],
     env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      // Deliberately not the ambient PATH: an ancestor `node_modules/.bin`
+      // would mask a broken workspace link and the test would pass on the
+      // wrong binary. `/usr/bin:/bin` is not a relaxation of that — the
+      // macOS sandbox wrapper's own prelude starts with a bare `env`
+      // (`sandbox/srt-launcher.ts`), so without them the agent child never
+      // starts at all and every wait in this suite times out instead.
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: "this test does not send a message",
       ...agentEnv,

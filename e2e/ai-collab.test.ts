@@ -123,7 +123,7 @@ async function startServerFor(
     command: process.execPath,
     args: [agentFixture],
     env: {
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       ...agentEnv,
     },

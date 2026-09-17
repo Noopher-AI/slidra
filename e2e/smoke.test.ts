@@ -83,7 +83,7 @@ beforeAll(async () => {
       // one. The only two entries the agent's shell command legitimately
       // needs are this workspace's bin directory and the directory holding
       // the `node` its `#!/usr/bin/env node` shebang looks up.
-      PATH: `${binDir}:${path.dirname(process.execPath)}`,
+      PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
       E2E_PRESENTATION_ID: presentationId,
       E2E_NEW_TITLE: NEW_TITLE,
     },

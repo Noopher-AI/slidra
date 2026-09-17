@@ -2,15 +2,22 @@ name: ci
 
 on:
   # Gate: blocks a PR from merging (required status check on `Protect main`).
-  # Epic branches (`epic/<slug>`) collect a whole epic's ticket PRs before the
-  # epic is merged into main, so they need the same gate as main does.
+  # Only PRs into main. A ticket PR into an `epic/<slug>` branch does not run
+  # this: an epic collects many such PRs and re-running the whole gate for each
+  # one costs more than it catches, and the epic's own PR into main runs it
+  # before anything reaches main.
   pull_request:
-    branches: [main, 'epic/**']
+    branches: [main]
+    # The default types (opened/synchronize/reopened) all fire on a draft PR,
+    # and `on:` has no draft filter — the skip is the `if:` on each job below.
+    # `ready_for_review` is what makes the gate run the moment a PR leaves
+    # draft, instead of waiting for the next push to it.
+    types: [opened, synchronize, reopened, ready_for_review]
   # Post-merge canary: a squash merge lands a commit no run has tested, so
   # re-run the same gates on the branch itself to catch flakes and toolchain
-  # drift. Applies to epic branches too — that is where ticket PRs land.
+  # drift.
   push:
-    branches: [main, 'epic/**']
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -18,6 +25,12 @@ concurrency:
 
 jobs:
   required:
+    # Draft PRs skip the gate. Keep the `github.event_name` half: on a `push`
+    # event there is no `pull_request` object at all, and `null == false` is
+    # false in GitHub expressions, so the shorter condition would silently
+    # skip the post-merge canary on main — the one run that tests the commit
+    # a squash merge actually produced.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -61,6 +74,8 @@ jobs:
   # /repos/.../branches/main/protection returns 403). See the PR's Manual
   # verification checklist for the human step.
   required-macos:
+    # Same condition as `required` above, and for the same reason.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7

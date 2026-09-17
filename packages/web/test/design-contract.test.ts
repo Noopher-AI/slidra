@@ -140,7 +140,7 @@ interface InlineStyleException {
 
 /** The only hits in packages/web/src today (Plan §3.6, re-verified by this file's own scan below): generated faithful-rendering documents (canvas.ts, overview.ts) and a sandboxed-iframe runtime script (player-runtime.js) — the exception categories the architecture names. App.tsx's own former exception (insertImportedAsset()'s "#889"/"#c66" video/audio placeholder fills) is gone — those two literals moved into `packages/core/src/element-edit.ts` (not scanned here) once `insertImportedAsset` started sharing `media-insert.ts`'s geometry/kind decision with the Image/Video/Audio panels, so App.tsx no longer contains either literal (removing the row here is required, not optional — the self-check below fails loudly if a stale exception has no matching hit). */
 const INLINE_STYLE_EXCEPTIONS: InlineStyleException[] = [
-  { file: "canvas.ts", allowed: ["#fff"], reason: "Generated faithful-rendering document; #fff is the slide's own paper color, not product UI" },
+  { file: "canvas/frame-documents.ts", allowed: ["#fff"], reason: "Generated faithful-rendering document; #fff is the slide's own paper color, not product UI" },
   { file: "overview.ts", allowed: ["#fff"], reason: "Generated faithful-rendering document; #fff is the slide's own paper color, not product UI" },
   // Same category the ms-only duration pattern below already
   // structurally excuses this file for (see CODE_FORBIDDEN_PATTERNS'
