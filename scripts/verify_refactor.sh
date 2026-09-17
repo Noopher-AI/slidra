@@ -187,10 +187,28 @@ reverse_rename() {
   printf '%s' "$out"
 }
 
-# Drops the lines in range start..end (1-based, inclusive) from $1.
-drop_line_range() {
-  local text="$1" start="$2" end="$3"
-  awk -v s="$start" -v e="$end" 'NR < s || NR > e' <<<"$text"
+# Drops every line covered by the ranges in $2 from the text in $1. Ranges are
+# space-separated "start-end" pairs (1-based, inclusive), all numbered against
+# the text as passed in: they are applied in a single pass, so one range never
+# shifts the numbering seen by another.
+drop_line_ranges() {
+  local text="$1" ranges="$2"
+  [ -z "$ranges" ] && { printf '%s\n' "$text"; return 0; }
+  awk -v ranges="$ranges" '
+    BEGIN {
+      n = split(ranges, r, / +/)
+      for (i = 1; i <= n; i++) {
+        if (r[i] == "") continue
+        split(r[i], se, "-")
+        starts[++k] = se[1] + 0
+        ends[k] = se[2] + 0
+      }
+    }
+    {
+      for (i = 1; i <= k; i++) if (NR >= starts[i] && NR <= ends[i]) next
+      print
+    }
+  ' <<<"$text"
 }
 
 cmd_renamed() {
@@ -232,6 +250,10 @@ cmd_renamed() {
 
       # Rename-exempt entries for this file: "path:start-end" (new side,
       # default) or "path:old:start-end" (old side).
+      # Collect every range first, then apply each side's ranges in one pass:
+      # the trailer numbers all ranges against the untouched blob, so dropping
+      # them one at a time would renumber the text under the later ranges.
+      local new_ranges="" old_ranges=""
       if [ -n "$exempt_entries" ]; then
         while IFS= read -r entry; do
           [ -z "$entry" ] && continue
@@ -239,16 +261,15 @@ cmd_renamed() {
             "$file:"*)
               local rest="${entry#"$file:"}"
               if [[ "$rest" == old:* ]]; then
-                rest="${rest#old:}"
-                local start="${rest%-*}" end="${rest#*-}"
-                old_content="$(drop_line_range "$old_content" "$start" "$end")"
+                old_ranges="$old_ranges ${rest#old:}"
               else
-                local start="${rest%-*}" end="${rest#*-}"
-                reversed="$(drop_line_range "$reversed" "$start" "$end")"
+                new_ranges="$new_ranges $rest"
               fi
               ;;
           esac
         done <<<"$exempt_entries"
+        reversed="$(drop_line_ranges "$reversed" "$new_ranges")"
+        old_content="$(drop_line_ranges "$old_content" "$old_ranges")"
       fi
 
       local delta

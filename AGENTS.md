@@ -80,3 +80,10 @@ as well as a correct move does ([S10]/#379). A refactor PR is instead verified m
 
 Run both against every commit in a "split module X out of file Y" PR before claiming it is a pure
 move or rename; see the script's own header comment for the trailer syntax.
+
+Both checks read the trailers of the commit that wrote them, so they only work on the PR's
+individual commits — during review, or afterwards via `refs/pull/<n>/head`. This repository
+squash-merges, and a squash concatenates several commits' trailers into one commit whose line ranges
+no longer align and whose verbatim entries later commits have already overwritten, so the gate
+reports failures there that say nothing about the refactor. Never run it over `main..HEAD` on
+squashed history.
