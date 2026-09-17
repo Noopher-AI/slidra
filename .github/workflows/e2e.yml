@@ -2,15 +2,17 @@ name: ci
 
 on:
   # Gate: blocks a PR from merging (required status check on `Protect main`).
-  # Epic branches (`epic/<slug>`) collect a whole epic's ticket PRs before the
-  # epic is merged into main, so they need the same gate as main does.
+  # Only PRs into main. A ticket PR into an `epic/<slug>` branch does not run
+  # this: an epic collects many such PRs and re-running the whole gate for each
+  # one costs more than it catches, and the epic's own PR into main runs it
+  # before anything reaches main.
   pull_request:
-    branches: [main, 'epic/**']
+    branches: [main]
   # Post-merge canary: a squash merge lands a commit no run has tested, so
   # re-run the same gates on the branch itself to catch flakes and toolchain
-  # drift. Applies to epic branches too — that is where ticket PRs land.
+  # drift.
   push:
-    branches: [main, 'epic/**']
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
