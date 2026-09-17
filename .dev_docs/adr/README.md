@@ -51,6 +51,7 @@ Cite a record by number, never by filename.
 | 0015 | Deck content is reached across a boundary, locally too |
 | 0016 | The deck server is the Rust crate |
 | 0017 | Capability comes from the program |
+| 0018 | Every call names its caller |
 
 ## Map from the previous set
 
