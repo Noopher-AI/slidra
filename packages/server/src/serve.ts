@@ -14,9 +14,11 @@ import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashComma
 import { deployAgentWorkdir } from "./agent/workdir.js";
 import { createSandboxRoot } from "./sandbox/sandbox-root.js";
 import { createSandboxLauncher, setActiveLauncher } from "./sandbox/launcher.js";
+import { setActivePolicy } from "./sandbox/policy.js";
 import { deployShimWrapper } from "./sandbox/shim-wrapper.js";
 import { createShimToken, setShimConfig } from "./sandbox/shim-config.js";
 import { handleShimExec } from "./sandbox/shim-endpoint.js";
+import type { FileEntryPolicy, WorkbenchPolicy } from "./policy/types.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
 import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
 import type { CommandRunner } from "./agent/probe.js";
@@ -63,6 +65,17 @@ import { createDeckSession, DeckSwitchConflictError, type DeckIdentity, type Dec
  * directly.
  */
 export interface ServeOptions {
+  /**
+   * The workbench's policy (NOOP-617, `#399`) — the one object that decides
+   * outbound network, how files enter, the MCP allow-list, and the
+   * sandbox's read/write rules for every workbench this server process
+   * opens. Required, with no runtime default (`#399` arch: "no module that
+   * consumes policy may name an edition" — a default here would make this
+   * module the second place, after `cli.ts`, that has an opinion about
+   * which edition is running). `cli.ts` passes `openPolicy`; every test
+   * passes it explicitly too, for the same reason.
+   */
+  policy: WorkbenchPolicy;
   /**
    * Opaque id of an already-opened presentation (see `slidra open`) to
    * start already bound to.
@@ -212,9 +225,19 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     await sandboxLauncher.dispose();
   });
 
+  // NOOP-617: this process's one active policy — `buildCliSandboxPolicy`
+  // (`sandbox/policy.ts`, called from `shim-endpoint.ts`) reads it back,
+  // the same module-singleton shape `setActiveLauncher` above uses and for
+  // the same reason (that call site may only be touched minimally).
+  setActivePolicy(options.policy);
+  disposers.push(() => {
+    setActivePolicy(undefined);
+    return Promise.resolve();
+  });
+
   if (options.presentationId !== undefined) {
     initialDeck = await resolveDeckIdentity(options.presentationId);
-    initialWorkdir = await deployAgentWorkdir(sandboxRoot.path, options.presentationId);
+    initialWorkdir = await deployAgentWorkdir(sandboxRoot.path, options.presentationId, options.policy);
   }
 
   // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
@@ -308,6 +331,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       computeSlashCommands,
       sandboxRoot.path,
       shimToken,
+      options.policy.fileEntry,
       req,
       res,
     );
@@ -339,6 +363,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const manager = new AgentManager({
     presentationId: initialDeck?.id ?? null,
     editingLock,
+    policy: options.policy,
     workdir: initialWorkdir,
     initial: initialAgent,
     runCommand: options.agentManager?.runCommand,
@@ -435,7 +460,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       await sandboxRoot.disposePresentation(outgoing.id);
     },
     bind: async (incoming) => {
-      const workdir = await deployAgentWorkdir(sandboxRoot.path, incoming.id);
+      const workdir = await deployAgentWorkdir(sandboxRoot.path, incoming.id, options.policy);
       await manager.retarget({ id: incoming.id, workdir });
       await changeBroadcaster.retarget(incoming.id);
       // Flushes whatever is still pending on the OUTGOING deck (this
@@ -531,6 +556,7 @@ async function handleRequest(
   computeSlashCommands: () => Promise<SlashCommand[]>,
   sandboxRootPath: string,
   shimToken: string,
+  fileEntryPolicy: FileEntryPolicy,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -711,7 +737,7 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleAssetPost(deckId, req, res);
+        const wrote = await handleAssetPost(deckId, req, res, fileEntryPolicy);
         if (wrote) saveController.markDirty();
         return;
       }

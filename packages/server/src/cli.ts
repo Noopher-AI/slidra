@@ -5,6 +5,7 @@ import { startServe } from "./serve.js";
 import { readAgentSettings } from "./agent/settings.js";
 import { isAgentKind, type AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
+import { openPolicy } from "./policy/open.js";
 
 /**
  * Entry point for `slidra serve <presentation-id>`.
@@ -52,6 +53,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
   let server;
   try {
     server = await startServe({
+      policy: openPolicy,
       presentationId: parsed.presentationId,
       port: parsed.port,
       host: parsed.host,

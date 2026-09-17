@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { runJsonCommand } from "./slidra/command.js";
+import type { FileEntryPolicy } from "./policy/types.js";
 
 /**
  * `POST /api/asset` (T3/NOOP-142) — the front end's byte-upload path for
@@ -124,8 +125,20 @@ async function runAssetImport(presentationId: string, sourceBasename: string, by
  *
  * Resolves to whether the upload actually wrote to the deck (NOOP-422),
  * same convention as `handleCommandPost`.
+ *
+ * `policy` (NOOP-617, `#399`): `fileEntry.uploadBytes`/`remoteUrl` gate the
+ * two headers below, and `fileEntry.localPath` decides whether a non-http(s)
+ * URL is even worth trying to reach for beyond what `URL_SCHEME_PATTERN`
+ * already refuses. The open edition's values reproduce today's behaviour
+ * exactly (both upload paths on, no local-path support) — this only adds a
+ * gate that a closed edition (out of scope here, [E10.T12]) can close.
  */
-export async function handleAssetPost(presentationId: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+export async function handleAssetPost(
+  presentationId: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+  policy: FileEntryPolicy,
+): Promise<boolean> {
   const sourceNameHeader = req.headers[ASSET_NAME_HEADER];
   const sourceUrlHeader = req.headers[ASSET_URL_HEADER];
   const hasName = typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
@@ -137,7 +150,20 @@ export async function handleAssetPost(presentationId: string, req: IncomingMessa
   }
 
   if (hasUrl) {
-    return handleUrlAsset(presentationId, sourceUrlHeader as string, res);
+    if (!policy.remoteUrl) {
+      // Never echoes the header value: it may be an arbitrary attacker-
+      // controlled string, and ADR-0003 already bars any real filesystem
+      // path from this message — refusing to interpolate it at all is the
+      // simplest way to keep that true here too.
+      sendJson(res, 403, { error: "Remote URL uploads are disabled" });
+      return false;
+    }
+    return handleUrlAsset(presentationId, sourceUrlHeader as string, res, policy);
+  }
+
+  if (!policy.uploadBytes) {
+    sendJson(res, 403, { error: "Byte uploads are disabled" });
+    return false;
   }
 
   const sourceName = typeof sourceNameHeader === "string" ? sourceNameHeader : "";
@@ -218,8 +244,14 @@ async function downloadAssetSource(url: string, maxBytes: number): Promise<Uint8
  * (URL-encoded) instead of a raw-bytes body. Downloads server-side (bounded
  * by `MAX_ASSET_BODY_BYTES`) and stages the result the same way the
  * raw-bytes path does, then runs the same `asset import` spawn.
+ *
+ * `policy.localPath` (NOOP-617): the open edition's value is `false`, so
+ * this keeps refusing anything but http(s) exactly as before — the check
+ * now reads from the policy object instead of being an unconditional
+ * refusal, which is what lets a future edition widen it without touching
+ * this module.
  */
-async function handleUrlAsset(presentationId: string, urlHeader: string, res: ServerResponse): Promise<boolean> {
+async function handleUrlAsset(presentationId: string, urlHeader: string, res: ServerResponse, policy: FileEntryPolicy): Promise<boolean> {
   let url: string;
   try {
     url = decodeURIComponent(urlHeader);
@@ -228,7 +260,7 @@ async function handleUrlAsset(presentationId: string, urlHeader: string, res: Se
     return false;
   }
 
-  if (!URL_SCHEME_PATTERN.test(url)) {
+  if (!URL_SCHEME_PATTERN.test(url) && !policy.localPath) {
     sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
     return false;
   }

@@ -12,6 +12,7 @@ import { writeAgentModel, writeAgentSelection } from "./settings.js";
 import { getActiveLauncher } from "../sandbox/launcher.js";
 import { getShimConfig } from "../sandbox/shim-config.js";
 import path from "node:path";
+import type { WorkbenchPolicy } from "../policy/types.js";
 
 /** `AgentStatus.writeIsolation` (AC7): whether this server's write sandbox is actually enforcing, and why not when it isn't. */
 export interface WriteIsolationStatus {
@@ -74,6 +75,8 @@ export interface AgentManagerOptions {
   /** Null exactly while `serve` has no deck bound (NOOP-433) — `retarget()` is how this changes later. */
   presentationId: string | null;
   editingLock: EditingLock;
+  /** The workbench's policy (NOOP-617) — passed straight through to every `AgentChatSession` this manager builds, never inspected here. */
+  policy: WorkbenchPolicy;
   /** The deployed agent working directory (NOOP-231) every session runs in. Null in lockstep with `presentationId`. */
   workdir: string | null;
   /** What `serve` started with — the queryable "why is `current` what it is" (§4.3's `source` field). */
@@ -127,6 +130,7 @@ export class AgentManager {
   private presentationId: string | null;
   private workdir: string | null;
   private readonly editingLock: EditingLock;
+  private readonly policy: WorkbenchPolicy;
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
   private readonly onAgentChanged?: (payload: { kind: AgentKind; label: string }) => void;
@@ -164,6 +168,7 @@ export class AgentManager {
   constructor(options: AgentManagerOptions) {
     this.presentationId = options.presentationId;
     this.editingLock = options.editingLock;
+    this.policy = options.policy;
     this.workdir = options.workdir;
     this.runCommand = options.runCommand ?? spawnCommandRunner;
     this.resolveAdapter = options.resolveAdapter ?? resolveAdapterConfig;
@@ -210,6 +215,7 @@ export class AgentManager {
       presentationId,
       this.editingLock,
       workdir,
+      this.policy,
       this.preferredModels[kind] ?? null,
     );
   }
