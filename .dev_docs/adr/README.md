@@ -48,6 +48,7 @@ Cite a record by number, never by filename.
 | 0012 | A deck has an owner |
 | 0013 | An extracted module takes a named dependency object |
 | 0014 | A workbench is one deck's session |
+| 0015 | Deck content is reached across a boundary, locally too |
 
 ## Map from the previous set
 
