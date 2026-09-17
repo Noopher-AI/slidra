@@ -72,5 +72,11 @@ the proposed change, and open a PR for discussion before implementing it.
 
 ## Scope: open source vs. commercial
 
-Slidra (this repo) is and will remain Apache-2.0. Noopher AI builds Noopa, a commercial editor on top
-of Slidra. Anything that runs locally belongs here; hosted services and native apps are Noopa.
+Slidra (this repo) is and will remain Apache-2.0. Noopher AI builds Slidra Pro, a commercial,
+multi-tenant edition on top of Slidra.
+
+**Local execution belongs here.** Running Slidra on your own machine, against your own
+files, with an agent you chose and bound yourself, is what this repo is for, and it is not something
+the commercial edition offers as well. Slidra Pro is a hosted service: its decks live on a server,
+its agent is the one the service provides, and its Mac app is the web app in a desktop window that
+runs nothing locally.
