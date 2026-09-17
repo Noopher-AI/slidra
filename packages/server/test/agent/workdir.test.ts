@@ -92,26 +92,25 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
-    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge, and is idempotent", async () => {
+    const first = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    const firstFiles = await listFilesRecursively(first);
     const target = agentWorkdirTarget(sandboxRoot, PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "user-modified content");
     await mkdir(path.join(target, "extra-dir"), { recursive: true });
     await writeFile(path.join(target, "extra-dir", "extra-file.md"), "should-not-survive");
 
-    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    const second = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
 
     const sourceAgentsMd = await readFile(path.join(resolveAgentWorkdirSource(), "AGENTS.md"), "utf8");
     const deployedAgentsMd = await readFile(path.join(target, "AGENTS.md"), "utf8");
     expect(deployedAgentsMd).toBe(sourceAgentsMd);
 
     await expect(readdir(path.join(target, "extra-dir"))).rejects.toThrow();
-  });
 
-  it("is idempotent: deploying twice in a row leaves the same files behind", async () => {
-    const first = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
-    const firstFiles = await listFilesRecursively(first);
-    const second = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    // Deploying twice in a row (this is the second deploy) leaves the same
+    // set of files behind as the first — the edit/extra file above are
+    // gone, and nothing else changed.
     const secondFiles = await listFilesRecursively(second);
     expect(second).toBe(first);
     expect(secondFiles).toEqual(firstFiles);
