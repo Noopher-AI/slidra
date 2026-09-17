@@ -53,6 +53,7 @@ Cite a record by number, never by filename.
 | 0017 | Capability comes from the program |
 | 0018 | Every call names its caller |
 | 0019 | Slidra spawns every agent it talks to |
+| 0020 | Rendering is its own service |
 
 ## Map from the previous set
 
