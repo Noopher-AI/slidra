@@ -31,7 +31,7 @@ use crate::svgnum::format_svg_number;
 use crate::text::escape_xml_attr;
 
 /// Same value as `effects::edit::EFFECTS_NS` — the `<slidra:effects>`/
-/// `<slidra:notes>` namespace, reused for `<slidra:chart>` (ADR-0012
+/// `<slidra:notes>` namespace, reused for `<slidra:chart>` (ADR-0008
 /// amendment). Duplicated here as a literal rather than imported, to avoid
 /// a cross-module dependency for a single constant.
 pub const CHART_NS: &str = "https://slidra.app/ns/2026";
@@ -89,7 +89,7 @@ pub const CHART_TYPES: &[ChartType] = &[
     ChartType::Donut,
 ];
 
-/// Only these three types have a meaningful "stack" (ADR-0012 amendment).
+/// Only these three types have a meaningful "stack" (ADR-0008 amendment).
 pub const CHART_STACKABLE_TYPES: &[ChartType] = &[ChartType::Bar, ChartType::Hbar, ChartType::Area];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

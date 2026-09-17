@@ -15,7 +15,7 @@ interface PlayerMessage {
   // [E2.T17]: "embed-boxes" — where each third-party embed placeholder
   // currently sits on screen, so the parent's embed overlay can stay
   // aligned. The <iframe> itself can only live in the parent document
-  // (ADR-0011); see packages/core/src/embed.ts.
+  // (ADR-0007); see packages/core/src/embed.ts.
   // [E2.T17]: "embed-command" — a `family="media"` effect landed on a
   // third-party embed. The runtime has no <video> to drive (the player is
   // a cross-origin iframe in THIS document), so it forwards the intent and
@@ -47,7 +47,7 @@ function isPlayerMessage(data: unknown): data is PlayerMessage {
 }
 
 /**
- * Message shapes selection-runtime.js sends (ADR-0011/#56, extended by
+ * Message shapes selection-runtime.js sends (ADR-0007/#56, extended by
  * NOOP-91 §4.1 for direct manipulation). Every field below is untrusted —
  * the slide running inside the sandboxed iframe can forge any of them — so
  * every handler below validates shape and finiteness before using a value,
@@ -92,7 +92,7 @@ interface SelectionMessage {
     | "stage-hover"
     // §4.6: precise per-selected-element bounding boxes plus
     // each one's ancestor chain, replacing the old host-computed "guides"
-    // approach (ADR-0011 amend) — the runtime measures with
+    // approach (ADR-0007 amend) — the runtime measures with
     // `getBoundingClientRect()`, this side only converts coordinate spaces.
     | "bounds"
     // §4.5: right-click on an element (never on blank canvas —

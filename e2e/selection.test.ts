@@ -184,7 +184,7 @@ it("view mode's main canvas iframe sandbox is allow-scripts and does not include
   }
 });
 
-// ADR-0011: this loosening is cut in exactly one place, the main canvas —
+// ADR-0007: this loosening is cut in exactly one place, the main canvas —
 // the overview rail's thumbnails must stay zero-token.
 it("the overview thumbnails' iframe sandbox stays zero-token (this loosening applies only to the main canvas)", async () => {
   const { server, cleanup } = await startServerFor(demoDir);
@@ -265,7 +265,7 @@ it("the status bar shows the selected element's display name; an element with no
  * A deck built inside the test, so a test that needs a particular slide
  * shape does not have to bend `demo/` (or `e2e/fixtures/`, which other
  * tests own) into that shape. Written in the compliant container form
- * (ADR-0012).
+ * (ADR-0008).
  */
 async function makeDeckDir(slideSvg: string): Promise<{ dir: string; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-selection-deck-"));
@@ -489,7 +489,7 @@ it("the presentation file's bytes are completely unchanged after selection", asy
   }
 });
 
-// ADR-0011's own reasoning: a slide's `*`/`::before` rule cannot cross a
+// ADR-0007's own reasoning: a slide's `*`/`::before` rule cannot cross a
 // Shadow DOM boundary, which is what selection-runtime.js relies on to
 // keep its box visible under hostile CSS. This test proves the boundary
 // actually holds by building a second, deliberately naive light-DOM box
@@ -514,7 +514,7 @@ it("hostile slide CSS cannot cover the Shadow DOM selection box, though the same
       // The naive control: the *same* markup (`.sel` + `<i>`), but placed
       // directly in the light DOM with no shadow root and no inline
       // !important defence — exactly what selection-runtime.js would look
-      // like without ADR-0011's Shadow DOM requirement.
+      // like without ADR-0007's Shadow DOM requirement.
       const control = document.createElement("div");
       control.className = "sel";
       control.appendChild(document.createElement("i"));
@@ -563,7 +563,7 @@ it("hostile slide CSS cannot cover the Shadow DOM selection box, though the same
 });
 
 // the view-mode iframe has `allow-scripts` too
-// (ADR-0011), so any slide script can forge a `slidra-player` message by
+// (ADR-0007), so any slide script can forge a `slidra-player` message by
 // hand — `event.source === frame.contentWindow` only proves which iframe
 // sent it, never which script inside that iframe did. Before canvas.ts's
 // mode gate, this forged message drove advancePastEnd() and replaced the
@@ -652,7 +652,7 @@ it("selection still works after leaving play mode: the status bar shows the disp
     // Shell collapsing (titlebar unmounts) is direct evidence play mode
     // took effect — same signal e2e/shell.test.ts polls after this same
     // click, chosen over the sandbox attribute because both modes now
-    // carry allow-scripts (ADR-0011).
+    // carry allow-scripts (ADR-0007).
     await expect.poll(() => page.locator(".titlebar").count()).toBe(0);
 
     await page.locator('button:has-text("Exit Play")').click();
@@ -676,7 +676,7 @@ it("selection still works after leaving play mode: the status bar shows the disp
   }
 });
 
-// ADR-0012: a group is a container of containers, so clicking a child
+// ADR-0008: a group is a container of containers, so clicking a child
 // inside a group selects the whole group — PowerPoint's semantics. This is
 // what switching selection to recognize containers actually buys, and it
 // is invisible on `demo/` (which has no groups), so the test brings its
@@ -907,7 +907,7 @@ it("exiting one level at a time with Esc: each press collapses only the innermos
  * the whole group" geometrically. Two side-by-side children make the two
  * boxes visibly different sizes.
  */
-// ADR-0012's normal form requires every group's children to themselves be
+// ADR-0008's normal form requires every group's children to themselves be
 // `<g>` containers ("a group is a container of containers") and forbids an
 // id/data-slidra-name on a bare primitive — core's parseSlide (packages/core
 // src/slide/format.ts's toElement) only recurses into a `<g>`'s children as
@@ -1187,7 +1187,7 @@ it("nesting: selecting one existing group plus one element and clicking Group wr
 });
 
 // `makeNestedGroupDeck` (used by the group-frame test series) deliberately
-// mixes in an id-less decorative <rect> under el-outer — ADR-0012's
+// mixes in an id-less decorative <rect> under el-outer — ADR-0008's
 // compliance rule requires a container's children to be "all <g>, or all
 // primitives", so this fixture is only legal at selection-runtime's
 // rendering layer. Sending it into `element group/ungroup` (which goes

@@ -129,7 +129,7 @@ pub fn validate_project_json_value(value: &Value) -> SlidraResult<()> {
 /// Structural validation of an already-JSON-parsed `project.json`, ported
 /// from `validateProjectJson`. An empty `slides` array is structurally
 /// valid. Unknown extra fields are accepted, never rejected (forward
-/// compatibility, ADR-0003). Never includes a filesystem path (ADR-0004).
+/// compatibility, ADR-0011). Never includes a filesystem path (ADR-0003).
 fn validate_project_json(value: &Value) -> SlidraResult<&serde_json::Map<String, Value>> {
     // `Value::as_object()` returns `None` for a JSON array too (arrays and
     // objects are distinct `Value` variants here, unlike JS where

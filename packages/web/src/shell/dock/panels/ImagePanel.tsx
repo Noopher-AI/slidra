@@ -23,7 +23,7 @@ const PANEL_KIND: MediaAssetKind = "image";
  * exclusive (picking a file clears the URL, typing a URL clears the file);
  * leaving all three empty inserts an empty placeholder box. The actual
  * format is always decided by `asset.kind` (byte-sniffed), never by which
- * panel was used — D9/ADR-0015: panel identity is never the source of
+ * panel was used — D9: panel identity is never the source of
  * format, so picking a PNG in the Video panel legitimately inserts an image.
  */
 export function ImagePanel({ onClose, controller, canvasSize, slidePath }: ImagePanelProps) {

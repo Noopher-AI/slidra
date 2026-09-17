@@ -118,7 +118,7 @@ async function requireBuilt(filePath: string, message: string): Promise<void> {
 
 /**
  * Clicking Play rebuilds the iframe with `allow-scripts` immediately, but so
- * does view mode (ADR-0011) — the sandbox attribute can no longer tell "play
+ * does view mode (ADR-0007) — the sandbox attribute can no longer tell "play
  * mode has started" from "still viewing". Wait for .titlebar (view mode's
  * shell chrome) to unmount instead, which is the signal that actually flips
  * only on entering play — the point at which canvas.ts hands focus to the
@@ -468,7 +468,7 @@ it("leaving a slide stops all playing video and audio; returning to it never sho
       .toBe(false);
 
     // Advance past slide 1's last step: the runtime sends advance-past-end,
-    // canvas.ts reassigns the iframe's srcdoc, which — per ADR-0010 — is a
+    // canvas.ts reassigns the iframe's srcdoc, which — per ADR-0007 — is a
     // full navigation of the play document, not an in-place DOM update.
     await page.keyboard.press("ArrowRight");
     await expect

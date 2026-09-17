@@ -48,7 +48,7 @@ impl Fixture {
         Fixture { home, workspace }
     }
 
-    /// `new` creates no slides (ADR-0018); the tests below address
+    /// `new` creates no slides; the tests below address
     /// `slides/001.svg` and its first `el-…` element, so seed one text box
     /// there. `textbox add` writes a compliant `<g id="el-…">` container, so
     /// a later `convert` is a no-op on it.
@@ -514,7 +514,7 @@ fn undo_survives_closing_and_reopening_the_same_deck_file() {
     // "Closing the program" has no separate process state to tear down in
     // this CLI (every invocation is its own process already) — the part
     // that must survive is reopening the SAME deck path, which mints a
-    // fresh id (`open` always does; ADR-0004).
+    // fresh id (`open` always does; ADR-0003).
     let open2 = fixture.run_rust(&["open", slidra_path.to_str().unwrap()]);
     assert!(open2.status.success(), "reopen failed: {open2:?}");
     let id2 = extract_id(&open2);

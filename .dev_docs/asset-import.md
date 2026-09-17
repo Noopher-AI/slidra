@@ -1,7 +1,7 @@
 ## Asset import
 
 `asset import` copies (local source) or downloads (URL source) an image, video, or audio file into the
-deck's `assets/` directory. It always validates by header bytes — see ADR-0015.
+deck's `assets/` directory. It always validates by header bytes.
 
 ### Sources
 

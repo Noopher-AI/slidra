@@ -3,7 +3,7 @@
 
 //! The normal-form slide model.
 //!
-//! The single answer to "what is a compliant slide" (ADR-0012). The normal
+//! The single answer to "what is a compliant slide" (ADR-0008). The normal
 //! form: every element is one `<g>` container wrapping one or more
 //! primitives; a group is a container of containers; the identifier and the
 //! display name live on the container, never on the primitive; position and
@@ -12,7 +12,7 @@
 //!
 //! Compliance is about STRUCTURE only. It does not judge whether an element
 //! draws anything, and it does not sanitise: `on*` event handler attributes
-//! are not checked here (ADR-0010/0011 put that defence in the iframe
+//! are not checked here (ADR-0007 puts that defence in the iframe
 //! sandbox, not in a scrubber).
 //!
 //! ## Scope note: `element-text.ts` is NOT ported here
@@ -55,7 +55,7 @@ pub const SLIDE_PRIMITIVE_TAGS: &[&str] =
     &["text", "rect", "ellipse", "circle", "line", "image", "path"];
 
 /// Explicitly illegal, and `convert` will NOT remove them for you (spec #70,
-/// ADR-0005).
+/// ADR-0006).
 pub const FORBIDDEN_TAGS: &[&str] = &["foreignObject", "script"];
 
 /// Direct children of `<svg>` that are document furniture rather than
@@ -104,7 +104,7 @@ pub enum SlideElementKind {
     Line,
     Image,
     Path,
-    /// One container holding several primitives (ADR-0012 allows "one or
+    /// One container holding several primitives (ADR-0008 allows "one or
     /// more primitives").
     Compound,
     /// A table container.
@@ -177,7 +177,7 @@ pub struct SlideElement {
     /// `data-slidra-name`; `None` when absent — conversion never invents a
     /// display name.
     pub name: Option<String>,
-    /// `data-slidra-media`, verbatim (ADR-0005/0009).
+    /// `data-slidra-media`, verbatim (ADR-0006).
     pub media: Option<String>,
     pub kind: SlideElementKind,
     /// The container's `transform` attribute, verbatim; `None` when absent.
@@ -393,7 +393,7 @@ impl Checker<'_> {
             return;
         }
 
-        // A table container relaxes ADR-0012's normal partition.
+        // A table container relaxes ADR-0008's normal partition.
         if attribute_value(element, "data-slidra-type").as_deref() == Some(TABLE_CONTAINER_TYPE) {
             if let Some(problem) = describe_table_shape_problem(element) {
                 self.report(
@@ -410,7 +410,7 @@ impl Checker<'_> {
             return;
         }
 
-        // A chart container relaxes ADR-0012's normal partition.
+        // A chart container relaxes ADR-0008's normal partition.
         if attribute_value(element, "data-slidra-type").as_deref() == Some(CHART_CONTAINER_TYPE) {
             let others: Vec<&ScannedNode> = children
                 .iter()

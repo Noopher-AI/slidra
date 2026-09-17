@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! Author comments pinned to an element or a whole slide (ADR-0008, plan
+//! Author comments pinned to an element or a whole slide (ADR-0005, plan
 //! section 1.1, phase P8). Ported from `packages/core/src/slide/comments.ts`
 //! (166 lines, in full) — a pure `svg_content: &str -> String` splice,
 //! modeled on the same `<metadata>` shape `<slidra:effects>`/`<slidra:notes>`

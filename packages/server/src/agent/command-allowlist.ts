@@ -5,7 +5,7 @@
  * Recognises a `slidra` invocation written in a shape that is provably
  * free of shell syntax.
  *
- * **Its role changed with ADR-0019.** This used to be the gate: a command
+ * **Its role has changed.** This used to be the gate: a command
  * that did not match was refused. It is now the fast path — a command that
  * matches is the CLI and is allowed outright, and one that does not is
  * judged by `protected-paths.ts` instead (refused only if it names the

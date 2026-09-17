@@ -17,11 +17,11 @@ export interface EmbedLayerProps {
  *
  * Why it cannot live in the slide iframe: that document is a `srcdoc`
  * document sandboxed with `allow-scripts` and, deliberately, no
- * `allow-same-origin` (ADR-0011 — with both, untrusted slide content can
+ * `allow-same-origin` (ADR-0007 — with both, untrusted slide content can
  * script itself free of the sandbox, because `srcdoc` inherits the parent's
  * origin). Measured against the real player: under `allow-scripts` alone
  * YouTube refuses to load at all (`embedder.identity.missing.referrer`,
- * origin `null`), and adding `allow-same-origin` is exactly what ADR-0011
+ * origin `null`), and adding `allow-same-origin` is exactly what ADR-0007
  * forbids. A nested iframe's sandbox flags are the INTERSECTION with its
  * parent's, so the permission cannot be granted to just the embed from the
  * inside either. Hosting the player here is what keeps the sandbox token
@@ -144,7 +144,7 @@ export function EmbedLayer({ controller }: EmbedLayerProps) {
           title={item.url}
           // The player's own origin, not the slide's — this iframe loads a
           // real https document, so it is NOT the sandboxed srcdoc frame
-          // ADR-0011 is about and needs no sandbox token of its own.
+          // ADR-0007 is about and needs no sandbox token of its own.
           allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
           style={{
             left: `${item.rect.x - originX}px`,

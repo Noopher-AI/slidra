@@ -90,7 +90,7 @@ export interface GestureCoordsDeps {
 /**
  * What `canvas/gestures.ts`'s move/scale/rotate/textbox-width/marquee
  * factory needs from the `mountCanvas` closure — declared here (the module
- * it serves, ADR-0024's own convention) and constructed once by the entry.
+ * it serves, this directory's own convention) and constructed once by the entry.
  * Circularity with the rest of the closure is broken by these callback
  * fields, never by an import in the other direction.
  */
@@ -249,7 +249,7 @@ export function createGestures(gestureDeps: GestureDeps): GestureHandlers {
       return { id, transform: formatTransform(parts) };
     });
     gestureDeps.postToFrame({ command: "preview", items });
-    // NOOP-90/T2 ADR-0011 amend: guides are drawn by the PARENT document's
+    // NOOP-90/T2 ADR-0007 amend: guides are drawn by the PARENT document's
     // own GuideLayer overlay now, not inside the sandboxed iframe — a
     // client-px position converts the same way a point's own coordinate
     // does (toParentClientPoint), just for one axis at a time.
@@ -839,7 +839,7 @@ export function createGestures(gestureDeps: GestureDeps): GestureHandlers {
     const hitIds: string[] = [];
     const hitNames: (string | null)[] = [];
     for (const element of slideModel.elements) {
-      // A locked element is not selectable at all (ADR-0013). The click
+      // A locked element is not selectable at all (ADR-0009). The click
       // path already refuses it inside the runtime; the marquee resolves
       // hits out here against reported bounds, which include every element
       // with an id — so without this the full-bleed background image was

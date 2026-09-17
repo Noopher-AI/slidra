@@ -2,7 +2,7 @@
 
 Any text element's content can include `{{ variable_name }}` directly; at display time it's replaced
 with a value computed live. This is a lookup-based substitution only, **not a template engine** — no
-conditionals, loops, filters, or escape syntax (ADR-0010: slide content is untrusted input, and
+conditionals, loops, filters, or escape syntax (ADR-0007: slide content is untrusted input, and
 substitution happens outside the sandbox — it's a lookup, not execution).
 
 ### Supported variables

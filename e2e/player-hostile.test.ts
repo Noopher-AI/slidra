@@ -19,7 +19,7 @@ import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js
  * not have to change shape to make room for a hostile fourth slide). The
  * hostile payload lives in `fixtures/hostile-deck/slides/001.svg`'s own
  * inline `<script>` and only runs once play mode grants `allow-scripts`;
- * view mode also carries `allow-scripts` (ADR-0011), so the boundary this
+ * view mode also carries `allow-scripts` (ADR-0007), so the boundary this
  * test defends is the `postMessage` mode gate, not the sandbox token itself.
  */
 
@@ -128,7 +128,7 @@ it("a hostile slide's script still cannot reach presentation data once in play m
   // `TypeError: Failed to fetch`, and no request for
   // `/api/presentation` carrying `Origin: null` is ever observed on the
   // wire (confirmed by `opaqueOriginResponses` staying empty below). That
-  // is a *stronger* guarantee than ADR-0010's stated threat model assumes
+  // is a *stronger* guarantee than ADR-0007's stated threat model assumes
   // ("an opaque origin can still send simple requests — it just can't
   // read the response"): here it cannot even send this one. This is a
   // stronger result than the test strictly needs, not a problem to route

@@ -666,7 +666,7 @@ it("dragging within snap radius of another element's left edge: both left edges 
     const dx = targetLeft - 100; // el-a starts at x=100
     const dy = 250; // deliberately not aligned with anything, to isolate the x-axis snap
 
-    // Per ADR-0011: guides are drawn by the parent document's
+    // Per ADR-0007: guides are drawn by the parent document's
     // own `.guide-layer` (GuideLayer.tsx) now, not inside the sandboxed
     // iframe's shadow root — `page.evaluate`, not `frame.evaluate`.
     let guidesSeenDuringDrag = false;
@@ -859,7 +859,7 @@ it("dragging within snap radius of a text element's left edge: snaps to the text
     // same result as the text candidate.
     const dy = -140;
 
-    // Per ADR-0011: guides are drawn by the parent document's
+    // Per ADR-0007: guides are drawn by the parent document's
     // own `.guide-layer` (GuideLayer.tsx), positioned relative to
     // `.canvas-area`'s own box (its nearest positioned ancestor) — so the
     // expected "left" is the page-viewport x (same space `svgBox`/
@@ -927,7 +927,7 @@ it("holding Shift while dragging the se handle and releasing: scale changes by f
     // untouched. The live preview (canvas.ts) still renders via a
     // `scale()` transform on the container — mathematically identical for
     // any primitive whose native x/y sits at the element's own local
-    // origin, per ADR-0012's normal form — but the PERSISTED file never
+    // origin, per ADR-0008's normal form — but the PERSISTED file never
     // shows a `scale()` component, so this asserts the real on-disk shape
     // rather than the preview's.
     const rectMatch = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(after);

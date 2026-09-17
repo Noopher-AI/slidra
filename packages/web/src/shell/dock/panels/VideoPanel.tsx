@@ -23,7 +23,7 @@ const PANEL_KIND: MediaAssetKind = "video";
  * leaving both empty inserts a placeholder box, caption lands as
  * `element name set`. The actual format is always decided by `asset.kind`
  * (byte-sniffed), never by which panel was used — picking a PNG in the
- * Video panel legitimately inserts an image (D9/ADR-0015).
+ * Video panel legitimately inserts an image (D9).
  */
 export function VideoPanel({ onClose, controller, canvasSize, slidePath }: VideoPanelProps) {
   const [file, setFile] = useState<File | null>(null);

@@ -548,7 +548,7 @@ it("a slide with no background rect (a blank page from `slide add`) still render
     await registry.dispatch("new", { path: slidraPath, name: "Backgroundless playback test" });
     const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
     const presentationId = opened.data!.id;
-    // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
+    // `new` creates no slides; this test addresses slides/001.svg.
     await registry.dispatch("slide add", { id: presentationId });
 
     const agent: AgentAdapterConfig = {

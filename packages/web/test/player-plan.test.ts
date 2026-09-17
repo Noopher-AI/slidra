@@ -379,7 +379,7 @@ describe("computePlayerPlan: media", () => {
     expect((await computePlayerPlan(svg, SLIDE_PATH)).media).toEqual({});
   });
 
-  // SVG element ids are author-controlled, untrusted strings (ADR-0010) —
+  // SVG element ids are author-controlled, untrusted strings (ADR-0007) —
   // nothing stops a legal id from being "__proto__". A plain `{}` built up
   // via `media[target] = cue` does not create an own property for that key:
   // assigning to "__proto__" on an object whose prototype chain still has

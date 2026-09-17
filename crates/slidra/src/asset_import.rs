@@ -12,7 +12,7 @@
 //! - `resolve_asset_import(input) -> SlidraResult<ResolvedAssetImport>` — the
 //!   media-asset path (no `--as`).
 //! - `resolve_data_asset_import(input) -> SlidraResult<ResolvedDataAssetImport>`
-//!   — the `--as csv` path (ADR-0015's deliberate, explicit hole).
+//!   — the `--as csv` path (a deliberate, explicit hole).
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::media_format::{MediaFormatEntry, detect_media_format};
@@ -112,7 +112,7 @@ pub struct ResolvedAssetImport {
 /// bytes (never the source's claimed extension), then resolves a
 /// conflict-free destination filename. Errors when the bytes match no
 /// known media format — the only rejection this function raises, and the
-/// only one asset import raises for "wrong content" (ADR-0015: no fallback
+/// only one asset import raises for "wrong content" (no fallback
 /// to octet-stream, no guessing from the extension).
 pub fn resolve_asset_import(input: ResolveAssetImportInput) -> SlidraResult<ResolvedAssetImport> {
     let format = detect_media_format(input.bytes).ok_or_else(|| {
@@ -125,7 +125,7 @@ pub fn resolve_asset_import(input: ResolveAssetImportInput) -> SlidraResult<Reso
 }
 
 // ---------------------------------------------------------------------------
-// `asset import --as csv`: a deliberate, explicit hole in ADR-0015's "no
+// `asset import --as csv`: a deliberate, explicit hole in the "no
 // text files, ever" guard. Without `--as csv`, `resolve_asset_import` above
 // is untouched byte-for-byte — this path only runs when the caller opts in.
 // ---------------------------------------------------------------------------
@@ -297,7 +297,7 @@ mod tests {
     fn extension_lies_byte_header_wins() {
         // Source name claims .png, but the bytes are a JPEG header — the
         // imported file must be named with a .jpg extension, trusting the
-        // byte header, never the caller-supplied extension (ADR-0015).
+        // byte header, never the caller-supplied extension.
         let existing: Vec<String> = vec![];
         let resolved = resolve_asset_import(ResolveAssetImportInput {
             source_name: "photo.png",

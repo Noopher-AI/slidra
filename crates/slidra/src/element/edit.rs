@@ -165,7 +165,7 @@ pub struct InsertElementInput {
     pub stroke_width: Option<f64>,
     /// `image` only (required there); `video`/`audio` optional poster.
     pub href: Option<String>,
-    /// Any kind — ADR-0005 media placeholder marker.
+    /// Any kind — ADR-0006 media placeholder marker.
     pub media: Option<String>,
     /// `video` only: marks `media` as a third-party player URL.
     pub embed: Option<String>,
@@ -427,7 +427,7 @@ fn collect_container_ids(node: &ScannedNode, into: &mut HashSet<String>) {
     }
 }
 
-/// ADR-0009's effects list: finds every `<slidra:effect>` whose `target`
+/// ADR-0006's effects list: finds every `<slidra:effect>` whose `target`
 /// names an id being removed. Takes the FIRST `<metadata>`/`<slidra:effects>`
 /// found rather than erroring on a duplicate (unlike
 /// `effects::edit::remove_effects_targeting`'s `locate_effects_list`) — this is
@@ -766,7 +766,7 @@ pub fn reorder_elements(
 }
 
 // ---------------------------------------------------------------------------
-// element lock / unlock (ADR-0013)
+// element lock / unlock (ADR-0009)
 // ---------------------------------------------------------------------------
 
 /// Sets `data-slidra-lock="true"` on every target's container (`slidra
@@ -833,7 +833,7 @@ fn meaningful_children(node: &ScannedNode) -> Vec<&ScannedNode> {
         .collect()
 }
 
-/// ADR-0012: a container's children are all `<g>`, or all primitives — never
+/// ADR-0008: a container's children are all `<g>`, or all primitives — never
 /// mixed. An unbound table's cells are all `<g data-slidra-cell>` too
 /// (E2.T14) — explicitly excluded here so scale/resize/style-set's group
 /// recursion and lock-checking treat a table as a leaf, not a group whose
@@ -882,7 +882,7 @@ fn assert_not_chart_container(
 }
 
 /// Rejects `id` (and, if it is a group, every descendant container inside
-/// it) the moment any one of them is locked without `--force` (ADR-0013).
+/// it) the moment any one of them is locked without `--force` (ADR-0009).
 /// Runs entirely against the caller's `svg` snapshot before any splice, so a
 /// lock three levels deep still blocks the whole command atomically instead
 /// of leaving earlier siblings already rewritten.
@@ -1618,11 +1618,11 @@ pub fn resize_elements(
 }
 
 // ---------------------------------------------------------------------------
-// element style set (ADR-0014)
+// element style set (ADR-0002)
 // ---------------------------------------------------------------------------
 
-/// ADR-0014: the style command uses SVG attribute names directly. Nine
-/// entries, not to be extended — ADR-0014 explicitly forbids growing this
+/// ADR-0002: the style command uses SVG attribute names directly. Nine
+/// entries, not to be extended — ADR-0002 explicitly forbids growing this
 /// list from within this ticket.
 const STYLE_ATTRIBUTE_WHITELIST: &[&str] = &[
     "fill",
@@ -2780,7 +2780,7 @@ mod tests {
         );
     }
 
-    // --- element style set (ADR-0014, P4) ---
+    // --- element style set (ADR-0002, P4) ---
 
     #[test]
     fn style_set_sets_a_whitelisted_attribute_on_every_primitive() {

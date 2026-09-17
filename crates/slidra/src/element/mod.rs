@@ -22,7 +22,7 @@ pub mod text;
 use crate::slide::scan::{ScannedNode, attribute_value};
 
 /// `data-slidra-lock="true"` marks an element as a locked layout skeleton
-/// piece (ADR-0013). This constant has a single source of truth (every
+/// piece (ADR-0009). This constant has a single source of truth (every
 /// module that needs it imports it rather than redeclaring it), so unlike
 /// the four splice helpers this is not "one of several duplicated copies
 /// to consolidate" — it is simply this crate's one copy of what was always
@@ -30,11 +30,11 @@ use crate::slide::scan::{ScannedNode, attribute_value};
 pub const LOCK_ATTRIBUTE: &str = "data-slidra-lock";
 
 /// The one guard every editing command that targets an *existing* element
-/// checks before mutating it (ADR-0013): `element move`/`rotate`/`order`
+/// checks before mutating it (ADR-0009): `element move`/`rotate`/`order`
 /// here, plus `scale`/`resize`/`style set` (P4) and `text set`/`textbox
 /// width` (P6) once they land. `element insert` never calls this (a
 /// brand-new element cannot already be locked) and `element delete`/`cut`
-/// deliberately never call it either (ADR-0013: a locked element may still
+/// deliberately never call it either (ADR-0009: a locked element may still
 /// be deleted or cut, no `--force` required).
 ///
 /// `force: true` is the one-time bypass `--force` asks for explicitly on

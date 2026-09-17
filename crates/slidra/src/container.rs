@@ -123,7 +123,7 @@ fn validate_legacy_project_json(
         .map_err(|_| SlidraError::invalid(format!("project.json is not valid JSON: {display}")))?;
     // Field-specific messages below deliberately match
     // `workspace::project::validate_project_json`'s own wording exactly
-    // (never including `display` — ADR-0004: these are content-structure
+    // (never including `display` — ADR-0003: these are content-structure
     // errors, not filesystem errors) — the one difference is the
     // `formatVersion` check itself, tolerant of every pre-SQLite value
     // (1 through 4) rather than requiring the crate's current version.

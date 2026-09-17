@@ -130,7 +130,7 @@ it("full play path: entering play, stepping through effects, changing pages, exi
 
   // Before entering play: neither enter element has been hidden by the
   // runtime yet (that's play-exclusive); in view mode a slide is its own
-  // static, final appearance (ADR-0009).
+  // static, final appearance (ADR-0006).
   await expectVisible(fadeText);
 
   await page.locator('.play-button').click();
@@ -180,7 +180,7 @@ it("full play path: entering play, stepping through effects, changing pages, exi
 
   // Exit play mode, back to view.
   await page.locator('button:has-text("Exit Play")').click();
-  // ADR-0011: view mode now runs a script too (selection-runtime.js), so
+  // ADR-0007: view mode now runs a script too (selection-runtime.js), so
   // the sandbox no longer goes back to "" here. What this line pins is
   // that it carries only allow-scripts — never allow-same-origin.
   await expect.poll(() => page.locator("iframe.slide-frame").getAttribute("sandbox")).toBe("allow-scripts");

@@ -107,14 +107,14 @@ The full rules for parameter syntax (quoting, comma-separated lists, etc.) are i
 **Parameters** `<dir-or-file>` (a real filesystem path, not a `<presentation-id>`), `--owner <owner>` (optional; filters to an exact match).
 **Usage** Scans a folder for `.slidra` files (or describes a single one) without opening any of them — file name, display name, slide count, and owner.
 **Example** `slidra deck list ~/Slidra --owner alice`
-> This command's first argument is a real filesystem path, which the agent's own permission gate refuses regardless of this document (ADR-0019: any `.slidra` container, or anything under `<SLIDRA_HOME>`, is blocked). Listed here only for `docs/spec/cli.md` parity — the agent cannot actually run it.
+> This command's first argument is a real filesystem path, which the agent's own permission gate refuses regardless of this document (ADR-0003: any `.slidra` container, or anything under `<SLIDRA_HOME>`, is blocked). Listed here only for `docs/spec/cli.md` parity — the agent cannot actually run it.
 
 ## deck meta set
 
 **Parameters** `<deck-path>` (a real filesystem path, not a `<presentation-id>`), `--name <name>` (optional), `--owner <owner>` (optional; at least one of the two is required).
 **Usage** Overwrites `project.json`'s `name`/`owner` fields directly by file path, ahead of the deck ever being registered.
 **Example** `slidra deck meta set ~/Slidra/Q3.slidra --owner alice`
-> Same caveat as `deck list` above: its first argument is a `.slidra` path, which the agent's own permission gate refuses (ADR-0019). Listed here only for `docs/spec/cli.md` parity.
+> Same caveat as `deck list` above: its first argument is a `.slidra` path, which the agent's own permission gate refuses (ADR-0003). Listed here only for `docs/spec/cli.md` parity.
 
 ## font import
 
@@ -251,7 +251,7 @@ The full rules for parameter syntax (quoting, comma-separated lists, etc.) are i
 ## element style set
 
 **Parameters** `<presentation-id>` `<slide-path>` `<element-ids>` (comma-separated) `<attr>` `<value>`, `--force` (optional).
-**Usage** Set an SVG style attribute on elements (whitelisted; see ADR-0014).
+**Usage** Set an SVG style attribute on elements (whitelisted; see ADR-0002).
 **Example** `slidra element style set <presentation-id> slides/001.svg el-1 fill '#FF0000'`
 
 ## element ungroup

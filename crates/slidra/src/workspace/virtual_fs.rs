@@ -15,7 +15,7 @@
 //!   primitives `write.rs`, `history.rs` and `plan/mod.rs` build on.
 //!
 //! Every path is a row in the deck's `content` table (`path TEXT UNIQUE`,
-//! `kind` 0=file/1=dir, `data` BLOB) — ADR-0004's "never resolve a
+//! `kind` 0=file/1=dir, `data` BLOB) — ADR-0003's "never resolve a
 //! caller-supplied path by joining it onto a base directory" now reads as
 //! "never resolve one by string-concatenating it into SQL": every query
 //! here binds `virtual_path` as a parameter, and a segment like `..` or an
@@ -41,7 +41,7 @@ fn io_err(_: rusqlite::Error) -> SlidraError {
 }
 
 /// Opens the deck connection, stripping any real filesystem path out of a
-/// failure (ADR-0004): `deck::open_connection`'s own errors legitimately
+/// failure (ADR-0003): `deck::open_connection`'s own errors legitimately
 /// include `deck_path` when the caller of `deck::` itself supplied that
 /// path directly (`commands::open`'s own validation) — but every caller
 /// here reaches `deck_path` indirectly, through an opaque presentation id

@@ -88,7 +88,7 @@ async function openFreshPresentation(): Promise<string> {
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018): the tests below read and edit
+  // `new` creates no slides: the tests below read and edit
   // slides/001.svg, so mint one page with one title text box.
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
@@ -1363,7 +1363,7 @@ describe("chat: the whole loop — read via the file method, request permission,
     expect(permissionEntry?.permissionOutcome).toEqual({ outcome: "selected", optionId: "allow" });
 
     // The permission grant only authorizes the command — actually running
-    // it is the agent's own business (ADR-0006), which this fake agent does
+    // it is the agent's own business (ADR-0004), which this fake agent does
     // not simulate a real shell for. Applying it here, through the exact
     // `slidra` binary the agent's permission command names, is what the
     // agent's own Bash tool would have done once permission came back

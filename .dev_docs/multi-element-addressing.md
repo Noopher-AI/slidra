@@ -75,7 +75,7 @@ If an agent needs "these elements as one uniformly-scaled group," `element group
 recurses into every descendant container's offset and primitive geometry — see `docs/spec/cli.md`'s
 `element scale` entry for the exact recursive rule).
 
-### Cleaning up dangling effect entries on `element delete` (ADR-0009)
+### Cleaning up dangling effect entries on `element delete` (ADR-0006)
 
 After `element delete` removes an element, it also clears any `<slidra:effect>` (and `<slidra:comment>`)
 entries pointing at the removed id, including group descendant ids — silently, with no count reported in

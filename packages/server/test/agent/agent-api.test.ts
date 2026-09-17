@@ -600,7 +600,7 @@ describe("POST /api/agent/select", () => {
     const opened = await runCli<{ id: string }>(["open", slidraPath]);
     expect(opened.ok).toBe(true);
     const lockId = opened.data!.id;
-    // `new` creates no slides (ADR-0018): mint a page and a text box for the command to target.
+    // `new` creates no slides: mint a page and a text box for the command to target.
     expect((await runCli(["slide", "add", lockId])).ok).toBe(true);
     const added = await runCli<{ elementId: string }>([
       "textbox", "add", lockId, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Title",

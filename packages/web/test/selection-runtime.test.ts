@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * ADR-0011 / #56 — selection-runtime.js is deliberately plain, import-free
+ * ADR-0007 / #56 — selection-runtime.js is deliberately plain, import-free
  * JavaScript meant to be inlined into a sandboxed iframe's srcdoc (same
  * posture as player-runtime.js), so it is exercised the same way: evaluated
  * inside a real (nested) window/document, with postMessage as the only
@@ -128,7 +128,7 @@ async function tick(): Promise<void> {
  * iframe (verified directly — `win.parent !== window` here, and a real
  * cross-window `postMessage` delivers with `event.source` matching
  * neither `window` nor `win.parent`), so the runtime's own
- * `event.source !== parentWindow` guard (ADR-0011's host-authenticity
+ * `event.source !== parentWindow` guard (ADR-0007's host-authenticity
  * check — this is the one thing selection-runtime.js's message listener
  * checks that player-runtime.js's does not) would silently drop every
  * such message. Setting `source: win.parent` explicitly on a
@@ -348,7 +348,7 @@ describe("selection-runtime.js", () => {
 });
 
 /**
- * ADR-0017 — in-place editing's caret/selection state machine.
+ * In-place editing's caret/selection state machine.
  * jsdom has no layout engine and implements neither `getScreenCTM` nor
  * `getNumberOfChars` at all (verified directly against jsdom, not just
  * assumed), so `indexAtPoint()` always resolves to `null` here — every
@@ -358,11 +358,11 @@ describe("selection-runtime.js", () => {
  * don't need a resolved index at all — the IME composition guard around
  * Esc, and that a pointerdown landing inside the edited element never
  * falls through to the plain element-gesture code path it used to hit
- * before ADR-0017 (this only used to `return`; it now branches into
+ * before (this only used to `return`; it now branches into
  * text-selection first, so this guards against a future edit
  * accidentally letting it fall through into `gesture = {...}`).
  */
-describe("selection-runtime.js — in-place editing (ADR-0017)", () => {
+describe("selection-runtime.js — in-place editing", () => {
   it("Esc during IME composition does not commit or leave editing; Esc after composition ends commits", async () => {
     const { doc, win } = boot('<svg><g id="el-text"><text>Hi</text></g></svg>');
     await beginTextEdit(win, "el-text", "Hi");

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! `slidra plan set|list|delete` (ADR-0018): the presentation's
+//! `slidra plan set|list|delete`: the presentation's
 //! plan files under `plan/`. Reading is `cat <id> plan/outline.md`.
 
 use crate::commands::argv;

@@ -64,7 +64,7 @@ export interface SlideElement {
   textWidth: number | null;
   textHeight: number | null;
   textAlign: "left" | "center" | "right";
-  /** `data-slidra-lock="true"` — furniture the author cannot select or move (ADR-0013); today only the page background image. */
+  /** `data-slidra-lock="true"` — furniture the author cannot select or move (ADR-0009); today only the page background image. */
   locked: boolean;
   table: TableModel | null;
 }

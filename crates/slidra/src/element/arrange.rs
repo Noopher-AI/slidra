@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! `element align` / `element distribute` (ADR-0012, plan section 3.4).
+//! `element align` / `element distribute` (ADR-0008, plan section 3.4).
 //! Ported from `packages/core/src/element-arrange.ts`. Both commands only
 //! ever touch the translate component of a target's own container
 //! `transform` — never rotation/scale — and only for targets that share the
@@ -102,7 +102,7 @@ struct Target {
 /// is the only thing applied. That keeps union/center/delta math, and the
 /// resulting local-translate write-back, entirely inside the parent's
 /// frame — correct even when the parent itself (or one of its ancestors)
-/// carries a `scale`/`rotate` (ADR-0012 groups can nest), since that outer
+/// carries a `scale`/`rotate` (ADR-0008 groups can nest), since that outer
 /// transform never enters the computation at all.
 ///
 /// "Same parent" is TS's `entry.parent !== parent` reference equality —

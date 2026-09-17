@@ -30,7 +30,7 @@ export interface PlayerPlan {
    * Every target whose FIRST effect entry in the file (D12, [E2.T7]) is a
    * `family="enter"` effect, deduplicated, in first-appearance order. These
    * are the elements not on screen when the slide opens — everything else
-   * starts visible (ADR-0009: a slide's static look is the final state with
+   * starts visible (ADR-0006: a slide's static look is the final state with
    * all effects already run). A target whose first effect is `exit` (or
    * anything else) is NOT hidden at open, even if a later effect on it is
    * `enter` — it was already on screen.
@@ -140,7 +140,7 @@ export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"
 function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, MediaCue> {
   const mediaEffects = effects.filter((effect) => effect.family === "media" && effect.effect === "play");
   // Object.create(null) throughout this function, never {}: `target` comes
-  // straight from untrusted slide content (ADR-0010), and a legal SVG id
+  // straight from untrusted slide content (ADR-0007), and a legal SVG id
   // can be "__proto__". Building this table via plain-object assignment
   // (`media[target] = cue`) does not create an own property for that
   // specific key — assigning to "__proto__" on an object that still has
@@ -168,8 +168,8 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
     if (el.hasAttribute("data-slidra-embed")) continue;
     const src = el.getAttribute("data-slidra-media");
     if (!src) {
-      // ADR-0009: every effect points at an element, and a media effect's
-      // element must carry data-slidra-media (ADR-0005) — its absence is a
+      // ADR-0006: every effect points at an element, and a media effect's
+      // element must carry data-slidra-media (ADR-0006) — its absence is a
       // damaged presentation, not a silently-skipped effect.
       throw new Error(`Element "${target}"'s effect has family="media" but no data-slidra-media; the presentation is corrupted.`);
     }
@@ -199,7 +199,7 @@ export interface StageMediaEntry {
  * [E2.T17] plan §4.4: the stage (view-mode) counterpart of `mediaCuesFor`,
  * but scanning every `data-slidra-media` element in the slide rather than
  * only the ones a `family="media"` effect points at — a slide can (and, per
- * the existing fixtures, does) carry ADR-0005 media placeholders with no
+ * the existing fixtures, does) carry ADR-0006 media placeholders with no
  * effect on them at all. Kept in this module, not `selection-runtime.js`
  * (a `?raw`-injected, import-free script — D3), so kind derivation has
  * exactly one implementation shared with the player.
@@ -213,7 +213,7 @@ export interface StageMediaEntry {
  */
 export function stageMediaFor(svgMarkup: string): Record<string, StageMediaEntry> {
   const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
-  // Object.create(null): same ADR-0010 untrusted-id reasoning as
+  // Object.create(null): same ADR-0007 untrusted-id reasoning as
   // mediaCuesFor above — a legal SVG id can be "__proto__".
   const result: Record<string, StageMediaEntry> = Object.create(null);
   const elements = doc.querySelectorAll("[data-slidra-media]");
@@ -247,7 +247,7 @@ export interface StageEmbedEntry {
  * media entry becomes a `<video>` inside the sandboxed slide iframe, an
  * embed entry becomes an `<iframe>` in the PARENT document (measured:
  * the YouTube player refuses to load under `allow-scripts` alone, and
- * ADR-0011 forbids granting the slide document `allow-same-origin`; see
+ * ADR-0007 forbids granting the slide document `allow-same-origin`; see
  * `packages/core/src/embed.ts`).
  *
  * An unknown provider is skipped rather than thrown on, for the same
@@ -296,7 +296,7 @@ function mediaKindForStage(src: string): "video" | "audio" | null {
  * escaping-logic this decision avoids.
  *
  * `!important`: a legal slide element is free to carry its own inline
- * `style="opacity:1"` (ADR-0010 — slide content is untrusted, but even
+ * `style="opacity:1"` (ADR-0007 — slide content is untrusted, but even
  * honestly-authored markup can do this). Inline style normally wins the
  * cascade over any external/injected stylesheet rule, which would let that
  * one element flash fully visible at the very start of play regardless of
@@ -329,7 +329,7 @@ export function hideSelectorsFor(hidden: readonly string[]): Record<string, stri
  * Element ids in this project come from a fixed generator (`el-<hex>`), but
  * this function does not assume that — it escapes any character CSS would
  * otherwise treat specially in an id selector, defensively, since the id
- * ultimately comes from untrusted slide markup (ADR-0010). A hand-rolled,
+ * ultimately comes from untrusted slide markup (ADR-0007). A hand-rolled,
  * CSS.escape()-equivalent implementation, not a call to the real
  * `CSS.escape` — that function is not guaranteed present in every runtime
  * this module's tests run under (jsdom does not ship it). Handles the two
@@ -384,7 +384,7 @@ function cssEscapeId(id: string): string {
  * assignment (`window.__SLIDRA_PLAN__ = ${JSON.stringify(plan)}`, this
  * function's previous shape) — that distinction is load-bearing, not
  * stylistic. `plan.media` is keyed by untrusted SVG element ids
- * (ADR-0010), and a legal id can be "__proto__". ECMAScript object-literal
+ * (ADR-0007), and a legal id can be "__proto__". ECMAScript object-literal
  * syntax gives a non-computed `"__proto__": value` property key special
  * treatment at the *syntax* level: it sets the object's `[[Prototype]]`
  * instead of creating an own property — this is true no matter how the

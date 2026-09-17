@@ -135,7 +135,7 @@ export function resolveByteRange(rangeHeader: string | undefined, totalSize: num
  * error kind until someone noticed (ticket #11, fourth fix round). Either
  * way the response body is `error.message`, which — like every
  * `SlidraError` message — never contains the real filesystem path
- * (ADR-0004); only the caller-supplied virtual path may appear in it.
+ * (ADR-0003); only the caller-supplied virtual path may appear in it.
  *
  * `Range` handling (ticket #13) deliberately happens *after* the bytes have
  * been read successfully, so it cannot disturb that classification: a range

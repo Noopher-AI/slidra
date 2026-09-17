@@ -14,7 +14,7 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
- * Per ADR-0013: a locked element cannot be selected in view mode at all —
+ * Per ADR-0009: a locked element cannot be selected in view mode at all —
  * `selection-runtime.js`'s `findSelectable` returns `null` for a container
  * carrying `data-slidra-lock="true"`. Modeled on `e2e/selection.test.ts`'s
  * fixture-deck posture: real Playwright mouse clicks only, never

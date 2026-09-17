@@ -14,7 +14,7 @@
  * skips the repaint when the key of the slide it last painted matches.
  *
  * Only `<metadata>` is stripped — it is the one part of a slide the stage
- * never draws (ADR-0003/0008: notes, comments, effects, transition all live
+ * never draws (ADR-0011/0005: notes, comments, effects, transition all live
  * there). Anything else that differs is a real visual change.
  */
 export function slidePaintKey(svgMarkup: string): string {

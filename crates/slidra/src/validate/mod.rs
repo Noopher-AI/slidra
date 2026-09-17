@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! `slidra validate` — the deterministic design checker (#303,
-//! ADR-0018). Every rule is computed from the slide SVGs, `project.json`,
+//! `slidra validate` — the deterministic design checker (#303). Every rule is computed from the slide SVGs, `project.json`,
 //! the template list and the `plan/` files; nothing here is a judgement
 //! call the agent makes from memory. Rules that need a plan file are
 //! skipped (and the caller says so) when that file is absent.

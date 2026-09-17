@@ -3,8 +3,8 @@
 
 //! `slidra asset import <presentation-id> <source> [--as csv]` — copies
 //! or downloads a media (or, with `--as csv`, data) asset into the
-//! presentation's `assets/` (or `assets/data/`) directory (NOOP-90/T4,
-//! ADR-0015). Ported from `packages/cli/src/commands/asset-import.ts`'s
+//! presentation's `assets/` (or `assets/data/`) directory (NOOP-90/T4).
+//! Ported from `packages/cli/src/commands/asset-import.ts`'s
 //! `assetImportCommand`/`importAssetBytes`/`importDataAssetBytes`, with
 //! Node's `fetch`/`readFile` replaced by `crate::http::download_source`/
 //! `std::fs::read` and `createPresentationFile`/`listPresentationEntries`
@@ -95,7 +95,7 @@ pub fn run(args: &[String]) -> CommandResult {
             Ok(bytes) => bytes,
             Err(_) => {
                 // parsed.source is input the caller supplied directly (not
-                // the hidden work directory ADR-0004 forbids naming), so
+                // the hidden work directory ADR-0003 forbids naming), so
                 // echoing it back is fine.
                 return CommandResult::failure(
                     format!("source file not found: {}", parsed.source),

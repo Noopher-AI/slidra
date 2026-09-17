@@ -22,7 +22,7 @@ import { getActiveLauncher } from "../sandbox/launcher.js";
 import { buildAgentSandboxPolicy } from "../sandbox/policy.js";
 
 /**
- * `fs/write_text_file` is always refused (ADR-0004, first layer). The
+ * `fs/write_text_file` is always refused (ADR-0003, first layer). The
  * message names the one command that exists for editing text today, so an
  * agent that tries to write directly can correct itself on the very next
  * turn (user story 32) instead of merely learning that it failed.
@@ -110,7 +110,7 @@ const AUTH_REQUIRED_CODE = -32000;
 /**
  * JSON-RPC error codes for the file methods. The SDK's own factories
  * (`RequestError.resourceNotFound()`, `.internalError()`) hardcode English
- * messages, but ADR-0004 requires the existing Traditional-Chinese wording
+ * messages, but ADR-0003 requires the existing Traditional-Chinese wording
  * to survive verbatim — so these codes are used with the plain
  * `RequestError` constructor instead. `resourceNotFound`'s own code
  * (-32002) is reused for "genuinely absent" to stay consistent with the
@@ -125,7 +125,7 @@ const WRITE_REFUSED_CODE = -32603;
  * `fs/read_text_file` refusal for an absolute `path` that does not fall
  * under the session cwd (fix 3). Deliberately names no path at all — the
  * incoming string is, by definition, a real filesystem path in this branch,
- * and ADR-0004's third layer requires no real path ever appear in an error.
+ * and ADR-0003's third layer requires no real path ever appear in an error.
  */
 const PATH_OUTSIDE_SESSION_CWD_MESSAGE = "File not found: path is outside this session's scope";
 
@@ -291,7 +291,7 @@ export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
  */
 export class AgentChatSession extends EventEmitter {
   private readonly config: AgentAdapterConfig;
-  /** Opaque id of the presentation this session serves (ADR-0004: the agent itself never sees it). */
+  /** Opaque id of the presentation this session serves (ADR-0003: the agent itself never sees it). */
   private readonly presentationId: string;
   private child: ChildProcess | undefined;
   private connection: acp.ClientSideConnection | undefined;
@@ -953,15 +953,15 @@ export class AgentChatSession extends EventEmitter {
   private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
     await connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
-      // Both file methods are declared available (ADR-0004). readTextFile
+      // Both file methods are declared available (ADR-0003). readTextFile
       // is the obvious one — it serves the virtual file tree. writeTextFile
       // looks wrong at first glance: it is *always* refused, never once
-      // succeeds. But ADR-0004's first layer depends on the method being
+      // succeeds. But ADR-0003's first layer depends on the method being
       // reachable: the refusal is how the agent learns which command to use
       // instead (user story 32). A capability declared `false` here is
       // never attempted by a well-behaved agent, so the one mechanism that
       // redirects it would never fire. `terminal` stays false — command
-      // execution is the agent's own business (ADR-0006), never routed
+      // execution is the agent's own business (ADR-0004), never routed
       // through this client.
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
     });
@@ -1085,7 +1085,7 @@ export class AgentChatSession extends EventEmitter {
         return this.readTextFile(params);
       },
       writeTextFile: async () => {
-        // Always refused (ADR-0004, first layer) — see WRITE_REFUSED_MESSAGE
+        // Always refused (ADR-0003, first layer) — see WRITE_REFUSED_MESSAGE
         // for why the capability is nonetheless advertised as available.
         throw new acp.RequestError(WRITE_REFUSED_CODE, WRITE_REFUSED_MESSAGE);
       },
@@ -1107,14 +1107,14 @@ export class AgentChatSession extends EventEmitter {
    * stay off the author's screen.
    *
    * The command string is shown to the author verbatim, real paths and
-   * all. ADR-0004's third layer governs what the *agent* is allowed to
+   * all. ADR-0003's third layer governs what the *agent* is allowed to
    * see; this event travels the other way, to the person who owns the
    * machine ("it's the agent being blocked, not the human").
    */
   private relayCommandStart(update: { toolCallId: string; rawInput?: unknown; status?: acp.ToolCallStatus }): void {
     const command = extractCommand(update);
     if (command === undefined) return;
-    // Every command the agent runs is shown — since ADR-0019 that includes
+    // Every command the agent runs is shown — that includes
     // its own shell work (reading its references, grepping, temp files),
     // and the author is entitled to see what is happening on their
     // machine. What only the CLI gets is a *status*: running/complete/failed is
@@ -1196,7 +1196,7 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
-   * `session/request_permission` — the second layer of ADR-0004. Allows a
+   * `session/request_permission` — the second layer of ADR-0003. Allows a
    * request only when the command it names is structurally guaranteed to
    * invoke the `slidra` program and nothing else (see
    * `command-allowlist.ts`); refuses everything else, including any request
@@ -1216,7 +1216,7 @@ export class AgentChatSession extends EventEmitter {
    * `reject_always` are both acceptable there.
    */
   /**
-   * The permission policy (ADR-0004's second layer, as re-drawn): the CLI
+   * The permission policy (ADR-0003's second layer, as re-drawn): the CLI
    * is the only way to change a `.slidra`, and everything else the agent
    * wants to run is its own business. So a `slidra` command is allowed
    * because it *is* the CLI, and every other command is allowed unless it
@@ -1304,7 +1304,7 @@ export class AgentChatSession extends EventEmitter {
   }
 
   /**
-   * `fs/read_text_file` — third layer of ADR-0004. `params.path` is either
+   * `fs/read_text_file` — third layer of ADR-0003. `params.path` is either
    * a virtual path the brief or `reference/commands.md` names directly
    * (e.g. "slides/001.svg", "CLAUDE.md") or, per a real `claude-code-acp`
    * 0.12.6 probe, an *absolute* path rooted at the session cwd (fix 3 — a
@@ -1332,7 +1332,7 @@ export class AgentChatSession extends EventEmitter {
           : await readAgentWorkdirFile(this.workdirReal, target.relativePath);
     } catch (error) {
       // Preserve the existing Traditional-Chinese wording verbatim — these
-      // messages already never contain a real path (ADR-0004, third layer).
+      // messages already never contain a real path (ADR-0003, third layer).
       // The NotFound/other split mirrors the one the HTTP layer already
       // makes (readVirtualFile / raw.ts): only a positively-absent path
       // gets the "not found" JSON-RPC code, everything else is a generic

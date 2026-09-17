@@ -65,7 +65,7 @@ export async function runSlidra(args: string[]): Promise<SlidraProcessResult> {
     if (typeof err.stdout === "string" || typeof err.stderr === "string") {
       return { stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
     }
-    // SLIDRA_BIN's value is never echoed here (ADR-0004): it may be a
+    // SLIDRA_BIN's value is never echoed here (ADR-0003): it may be a
     // real filesystem path a test or a misconfigured environment pointed
     // somewhere that leaks host layout.
     throw new SlidraError("Failed to run slidra");
@@ -96,7 +96,7 @@ export async function runSlidraWithStdin(args: string[], stdin: string): Promise
       stderr += chunk;
     });
     child.once("error", () => {
-      // SLIDRA_BIN's value is never echoed here either — same ADR-0004
+      // SLIDRA_BIN's value is never echoed here either — same ADR-0003
       // reasoning as runSlidra's own catch block above.
       reject(new SlidraError("Failed to run slidra"));
     });

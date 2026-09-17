@@ -193,7 +193,7 @@ function subtreeIds(element: SlideElement, out: Set<string>): void {
   for (const child of element.children) subtreeIds(child, out);
 }
 
-/** True when `element` (or, recursively for a group, any descendant) contains a `<text>`, `<circle>`, or `<path>` primitive — none has a non-uniform representation (`packages/core`'s `element resize` rejects all three; ADR-0012's "compound" holds several primitives, so it is checked one by one). Used by the four-corner handle to decide whether the non-uniform resize path applies at all, regardless of Shift. */
+/** True when `element` (or, recursively for a group, any descendant) contains a `<text>`, `<circle>`, or `<path>` primitive — none has a non-uniform representation (`packages/core`'s `element resize` rejects all three; ADR-0008's "compound" holds several primitives, so it is checked one by one). Used by the four-corner handle to decide whether the non-uniform resize path applies at all, regardless of Shift. */
 function subtreeForcesUniformScale(element: SlideElement): boolean {
   if (element.kind === "group") return element.children.some(subtreeForcesUniformScale);
   if (element.kind === "text" || element.kind === "circle" || element.kind === "path") return true;

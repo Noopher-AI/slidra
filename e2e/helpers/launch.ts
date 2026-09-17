@@ -52,7 +52,7 @@ export interface StartServerOptions {
   prefix: string;
   /**
    * Inject `assets/fonts` into the deck's `fonts/` before
-   * packing (ADR-0016 decision 2). Defaults to `false` — most decks are not
+   * packing (ADR-0010 decision 2). Defaults to `false` — most decks are not
    * font-injected, and unconditional injection would change their `.slidra`
    * content and break byte-exact appearance baselines.
    */

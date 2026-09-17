@@ -165,7 +165,7 @@ const DEFAULT_HOST = "127.0.0.1";
  * Validates the presentation and starts the HTTP server. Validation
  * (unknown id) happens before the socket is ever bound, so a bad startup
  * fails loudly without a half-started server left behind. A presentation
- * with no slides is valid (ADR-0018: `new` creates none) — the editor
+ * with no slides is valid (`new` creates none) — the editor
  * shows "No slides now" and the first page is made from there.
  */
 export async function startServe(options: ServeOptions): Promise<RunningServer> {
@@ -477,7 +477,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
  * `SlidraNotFoundError` message ("no presentation found for id: <id>") an
  * unknown id must report (NOOP-433 §4's table); `readProjectsRegistry` is
  * consulted separately only for `sourcePath`, since `loadProject`'s own
- * `ProjectJson` never carries a real filesystem path (ADR-0004). A registry
+ * `ProjectJson` never carries a real filesystem path (ADR-0003). A registry
  * entry with no `sourcePath` (or, in principle, no entry at all for an id
  * `loadProject` otherwise accepts) is legal — `sourcePath` is just `null`,
  * never a reason to refuse the switch (NOOP-433 §4's table, "合法但奇怪" row).
@@ -489,7 +489,7 @@ async function resolveDeckIdentity(id: string): Promise<DeckIdentity> {
   return { id, name: project.name, sourcePath: entry?.sourcePath ?? null };
 }
 
-/** `DeckIdentity` -> the shape sent over the wire — never `sourcePath` itself (ADR-0004, NOOP-433 §7 decision 2), only its basename. */
+/** `DeckIdentity` -> the shape sent over the wire — never `sourcePath` itself (ADR-0003, NOOP-433 §7 decision 2), only its basename. */
 function toPublicDeck(deck: DeckIdentity): { id: string; name: string | null; fileName: string | null } {
   return { id: deck.id, name: deck.name, fileName: deck.sourcePath !== null ? path.basename(deck.sourcePath) : null };
 }
@@ -535,7 +535,7 @@ async function handleRequest(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    // ADR-0010: play mode gives the (untrusted, ADR-0003) slide's iframe
+    // ADR-0007: play mode gives the (untrusted, ADR-0011) slide's iframe
     // `allow-scripts`, which puts it in an opaque origin. An opaque origin
     // can still send cross-origin *simple* requests — it cannot read the
     // response, but it can write — so a hostile slide could otherwise fire
@@ -928,7 +928,7 @@ async function handleRequest(
     if (url.pathname.startsWith("/api/raw/")) {
       // Deliberately NOT `POST /api/command`'s whitelist, unlike every
       // other read in this file. Every whitelisted command is reachable by
-      // the agent (ADR-0004's permission hook allows `slidra *`). A
+      // the agent (ADR-0003's permission hook allows `slidra *`). A
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,

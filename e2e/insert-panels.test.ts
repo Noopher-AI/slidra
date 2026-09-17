@@ -216,7 +216,7 @@ describe("bottom glass toolbar — insert panels (insert always asks for type fi
       const afterAssets = await started.registry.dispatch<{ entries: string[] }>("ls", { id: started.presentationId, path: "assets" });
       expect(afterAssets.data!.entries).toEqual(beforeAssets.data!.entries);
 
-      // The player lives in the parent document (per ADR-0011: the slide's
+      // The player lives in the parent document (per ADR-0007: the slide's
       // srcdoc iframe never gets allow-same-origin, so the YouTube player
       // could never load there).
       const embed = page.locator(".embed-frame");

@@ -1,7 +1,7 @@
 // Plain JavaScript, no imports, self-contained — inlined into the view
 // `srcdoc`'s <script> by the parent (canvas.ts, via `?raw`). Runs inside a
 // sandboxed iframe with `allow-scripts` and no `allow-same-origin`
-// (ADR-0011), so it has no way to reach anything outside itself except
+// (ADR-0007), so it has no way to reach anything outside itself except
 // `postMessage`.
 //
 // Its job: report which
@@ -141,7 +141,7 @@
     // without these two the author cannot tell a double-click did
     // anything until they type. The frame says "this element is open for
     // editing"; the caret says where `textarea.selectionStart` currently
-    // sits (ADR-0017 — this replaced the older "caret is always at the end
+    // sits (this replaced the older "caret is always at the end
     // of the string" model, see updateEditDecoration()).
     ".edit-frame{position:fixed;box-sizing:border-box;border:1px dashed " +
     colors.accent +
@@ -274,7 +274,7 @@
   shadow.appendChild(editCaret);
 
   // Pool of selection-highlight divs, one per line touched by the current
-  // text selection (ADR-0017's §4.3 "each line gets its own block" rule) —
+  // text selection (the "each line gets its own block" rule) —
   // same reuse pattern as multiBoxEls/groupFrameEls above.
   var selectionBlockEls = [];
 
@@ -325,7 +325,7 @@
   var textarea = null;
   var isComposing = false;
 
-  // In-progress text-selection drag (ADR-0017 §4.5) — pointerdown landing
+  // In-progress text-selection drag — pointerdown landing
   // inside the box being edited starts this instead of an element gesture;
   // null between drags. `anchor` is the fixed end of the selection while
   // dragging; the moving end is whatever indexAtPoint() reports at the
@@ -402,7 +402,7 @@
       // `selectionStart`/`selectionEnd` have not been updated by the
       // browser yet at this point in the event (arrow keys, Home/End,
       // Ctrl/Cmd+A move them as part of the DEFAULT action) — deferred one
-      // tick by scheduleDecorationSync() itself (ADR-0017 §4.1).
+      // tick by scheduleDecorationSync() itself.
       scheduleDecorationSync();
     });
     el.addEventListener("keyup", scheduleDecorationSync);
@@ -428,7 +428,7 @@
 
   /**
    * Batches redraws of the caret/selection decoration to at most once per
-   * tick (ADR-0017 §4.1) — several of the events that can move
+   * tick — several of the events that can move
    * `selectionStart`/`selectionEnd` (keydown then keyup, or keydown then
    * input) fire back-to-back for the same user action, and `keydown`
    * itself fires BEFORE the browser applies the default action that moves
@@ -472,7 +472,7 @@
     ta.value = typeof initialText === "string" ? initialText : "";
     // Caret starts at the end of the existing string — the same place a
     // freshly-focused, freshly-valued textarea would put it, made explicit
-    // rather than relied upon (ADR-0017: entering edit no longer has an
+    // rather than relied upon (entering edit no longer has an
     // implicit "always at the end" model, but a fresh edit session
     // starting the caret at the end, before any click repositions it, is
     // still the sensible default).
@@ -522,12 +522,12 @@
   // `stageMediaFor`, D3) — this runtime only ever builds what it is told
   // to, injected the same way `colors` is (canvas.ts's
   // wrapSelectionDocument sets `window.__SLIDRA_SELECTION_MEDIA__` before
-  // this script runs). Keyed by untrusted SVG element ids (ADR-0010, a
+  // this script runs). Keyed by untrusted SVG element ids (ADR-0007, a
   // legal id can be "__proto__") — read with `for...in` +
   // hasOwnProperty, never assumed to be a plain enumerable object.
   var mediaTable = window.__SLIDRA_SELECTION_MEDIA__ || {};
   // [E2.T17]: ids of the slide's third-party embeds. The <iframe> lives in
-  // the PARENT document (ADR-0011 — this document may never be granted
+  // the PARENT document (ADR-0007 — this document may never be granted
   // allow-same-origin, and a nested iframe's sandbox flags are the
   // intersection with this one's, so the YouTube player cannot work from
   // in here); this runtime only measures where each placeholder sits and
@@ -766,7 +766,7 @@
    * Converts an SVG user-space point (as returned by
    * `getStartPositionOfChar`/`getEndPositionOfChar`) to viewport (client
    * px) coordinates via `textEl`'s own screen CTM — the transform used
-   * throughout ADR-0017 to place the fixed-position overlay divs.
+   * throughout to place the fixed-position overlay divs.
    */
   function toClientPoint(ctm, point) {
     return new DOMPoint(point.x, point.y).matrixTransform(ctm);
@@ -819,7 +819,7 @@
    * this repo's own non-geometry unit tests, implements neither this nor
    * `getNumberOfChars`) or returns nothing usable — the single guard point
    * that keeps every geometry helper below from ever throwing, per
-   * ADR-0017 §4.2's "format error / type error" row.
+   * the "format error / type error" row of the editing contract.
    */
   function getTextCTM(textEl) {
     return typeof textEl.getScreenCTM === "function" ? textEl.getScreenCTM() : null;
@@ -886,7 +886,7 @@
   /**
    * The line (from `textLineRanges`) whose vertical band contains
    * `clientY`, clamped to the first/last line when `clientY` falls above
-   * or below all of them (ADR-0017 §4.2's "point above/below the whole text" row).
+   * or below all of them (the "point above/below the whole text" row).
    */
   function lineAtClientY(lines, clientY) {
     var line = lines[0];
@@ -901,7 +901,7 @@
    * Hit-tests a viewport point against the `<text>` currently being edited
    * and returns a `textarea.value` character index (never
    * a DOM index), or `null` when there is nothing to test against
-   * (ADR-0017 §4.2's contract table: no editing session, missing
+   * (the contract table: no editing session, missing
    * element/`<text>`, or an unusable CTM all return `null` rather than a
    * guessed index). Horizontal placement uses the midpoint of each
    * character's box — `clientX` past the midpoint lands the index after
@@ -934,7 +934,7 @@
    * `null` when there is no text geometry to measure at all (every line
    * has zero real DOM characters — an empty box, or one made only of hard
    * breaks — handled by the caller's container-box fallback, same as the
-   * pre-ADR-0017 0×0 case).
+   * earlier 0×0 case).
    */
   function caretRectForIndex(textEl, ctm, lines, i) {
     var lastLine = lines[lines.length - 1];
@@ -963,7 +963,7 @@
 
   /**
    * One rect per line touched by `[start, end)` (both `textarea.value`
-   * indices — ADR-0017 §4.3) — a mid-line selection uses the selected
+   * indices) — a mid-line selection uses the selected
    * characters' own start/end x, not the tspan's full rect, so a partial
    * selection never paints a block over the unselected trailing wrap
    * space; a fully-selected line's block still stops at its last real
@@ -1036,10 +1036,10 @@
   // track the element(s) as they move.
   /**
    * Paints the editing frame plus either the caret or the selection
-   * blocks (never both — ADR-0017 §4.3) for whatever `editingId`/
+   * blocks (never both) for whatever `editingId`/
    * `textarea.selectionStart/End` currently are, or hides everything when
    * nothing is being edited. `textarea.selectionStart/End` is the single
-   * source of truth for where the caret/selection are (ADR-0017 §4.1);
+   * source of truth for where the caret/selection are;
    * this function only ever reads them, never writes them.
    */
   function updateEditDecoration() {
@@ -1073,7 +1073,7 @@
     var caretRect = textEl && ctm ? caretRectForIndex(textEl, ctm, textLineRanges(textEl), start) : null;
     // An empty string (or an unmeasurable <text>) has no character
     // geometry to place the caret against — fall back to the container's
-    // own box, same as the pre-ADR-0017 code's 0×0 fallback.
+    // own box, same as the earlier code's 0×0 fallback.
     editCaret.style.display = "block";
     editCaret.style.left = (caretRect ? caretRect.x : rect.left) + "px";
     editCaret.style.top = (caretRect ? caretRect.top : rect.top) + "px";
@@ -1085,7 +1085,7 @@
    * `el` up to (but not including) the `<svg>` root, outermost first —
    * feeds the `bounds` event payload, and the group-panel source will
    * read it for its "Group 2 › Group 1" drill-in label. Every container in the
-   * normal form carries an `id` (ADR-0012), so this never needs to guess at
+   * normal form carries an `id` (ADR-0008), so this never needs to guess at
    * a missing one the way `findSelectable`'s upward walk defensively does.
    */
   function ancestorChain(el) {
@@ -1103,7 +1103,7 @@
   /**
    * Reports each selected element's own precise `getBoundingClientRect()`
    * (client px, no conversion done here — `canvas.ts`'s `toParentClientPoint`
-   * owns that) plus its ancestor chain, and the union of every box — ADR-0011
+   * owns that) plus its ancestor chain, and the union of every box — ADR-0007
    * amend: this is what lets the parent draw name/group labels and snap
    * guides without re-deriving geometry itself. A selected id no longer
    * present in the DOM (a reload raced the selection) is simply skipped, not
@@ -1264,12 +1264,12 @@
       // The outermost slide <svg> (no `ownerSVGElement` of its own) stops
       // the walk — nothing above it is selectable. E2.T12 introduced this
       // codebase's first NESTED <svg> (a chart's embedded rendering,
-      // ADR-0012 amend): `ownerSVGElement` is non-null for it (it points
+      // ADR-0008 amend): `ownerSVGElement` is non-null for it (it points
       // at the enclosing root svg), so it is walked straight through like
       // any other container instead of wrongly stopping the search one
       // level short of the chart's own id-carrying `<g>`.
       if (tag === "svg" && !current.ownerSVGElement) break;
-      // T3 / ADR-0013: a locked element is not selectable at all in view
+      // T3 / ADR-0009: a locked element is not selectable at all in view
       // mode, and neither is anything inside it — checking only the
       // resolved `outermost` node let a locked child hide behind an
       // unlocked outer group and still be reachable. The lock check must
@@ -1287,7 +1287,7 @@
   /**
    * True when `el` wraps at least one further id-carrying descendant — the
    * normal form's own rule that only containers, never primitives, carry
-   * `id` (ADR-0012) makes this exactly "is `el` a group". A table's cells
+   * `id` (ADR-0008) makes this exactly "is `el` a group". A table's cells
    * (E2.T14) never carry `id` either, so this already returns `false` for
    * a table container with no further checks needed — the dblclick
    * handler below still special-cases `data-slidra-type="table"` FIRST so
@@ -1489,7 +1489,7 @@
   // container to a deeper descendant (e.g. entering a 3-level-nested
   // group's outer level and landing directly on the innermost leaf). That
   // produced a selection the drag/pointerdown hit-test (`resolveClickTarget`
-  // + `findSelectable`'s OUTERMOST-within-scope rule, per ADR-0012 "a group
+  // + `findSelectable`'s OUTERMOST-within-scope rule, per ADR-0008 "a group
   // is a container of containers") disagreed with: the highlighted box
   // showed the leaf, but a following drag actually moved its enclosing
   // group. Calling `resolveClickTarget` again here — the exact same
@@ -1575,7 +1575,7 @@
     return null;
   }
 
-  /** The ids of every id-carrying container above `el` up to the slide root, outermost first — the `groupPath` that makes `el` the resolved target. `null` when `el` or any ancestor is locked (ADR-0013: not reachable in view mode at all). */
+  /** The ids of every id-carrying container above `el` up to the slide root, outermost first — the `groupPath` that makes `el` the resolved target. `null` when `el` or any ancestor is locked (ADR-0009: not reachable in view mode at all). */
   function unlockedAncestorChain(el) {
     if (el.getAttribute("data-slidra-lock") === "true") return null;
     var chain = [];
@@ -1618,7 +1618,7 @@
   // events to whichever document the pointer is physically over, and this
   // opaque-origin document is a separate delivery target. This is the only
   // signal the parent needs to show its drop overlay, so it is the only
-  // thing sent: never dataTransfer's files/items (ADR-0010 — this document
+  // thing sent: never dataTransfer's files/items (ADR-0007 — this document
   // is untrusted, its "files" could be forged by slide script, and the
   // real bytes only ever leave through the browser's own native drop event
   // firing on the parent's overlay once it is shown).
@@ -1840,8 +1840,8 @@
         var insideEdited = editedEl && (editedEl === event.target || editedEl.contains(event.target));
         if (insideEdited) {
           // Still editing — no element gesture starts on the box being
-          // edited itself. Instead this begins a text-selection drag
-          // (ADR-0017 §4.5), unless an IME composition is in progress
+          // edited itself. Instead this begins a text-selection drag,
+          // unless an IME composition is in progress
           // (§4.4: pointer input must not disturb selectionStart/End while
           // composing).
           if (isComposing) return;
@@ -2043,7 +2043,7 @@
     // target in this document.
     if (editingId !== null) {
       // Mid-composition, Esc belongs to the IME (cancelling the candidate,
-      // not the edit) — ADR-0017 §4.4. `compositionend` will fire from
+      // not the edit). `compositionend` will fire from
       // that, and Esc resumes committing the edit on any subsequent press.
       if (isComposing) return;
       post({ event: "text-edit-commit", id: editingId });

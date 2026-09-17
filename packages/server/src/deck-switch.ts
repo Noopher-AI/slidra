@@ -11,7 +11,7 @@
  * that gets it there.
  */
 
-/** The public identity of a deck, as far as this state machine and its listeners are concerned. `sourcePath` is a real filesystem path (ADR-0004) — callers must never put it on the wire (`serve.ts` strips it down to `fileName`). */
+/** The public identity of a deck, as far as this state machine and its listeners are concerned. `sourcePath` is a real filesystem path (ADR-0003) — callers must never put it on the wire (`serve.ts` strips it down to `fileName`). */
 export interface DeckIdentity {
   id: string;
   name: string | null;

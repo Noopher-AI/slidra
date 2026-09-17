@@ -151,7 +151,7 @@ async function openFreshPresentationWithElement(): Promise<{ id: string; element
   expect(created.ok).toBe(true);
   const opened = await runCli<{ id: string }>(["open", slidraPath]);
   expect(opened.ok).toBe(true);
-  // `new` creates no slides (ADR-0018): mint one page with one text
+  // `new` creates no slides: mint one page with one text
   // box, and take the element id straight from `textbox add`'s own result.
   const id = opened.data!.id;
   expect((await runCli(["slide", "add", id])).ok).toBe(true);
@@ -298,7 +298,7 @@ interface CommandExecutionFixture {
 /**
  * `openFreshPresentationWithElement`'s lone `<text>`
  * title is a bare primitive outside any `<g>` — `element insert`/`requireContainer`
- * refuse to touch a slide in that shape at all (ADR-0012 compliance), and
+ * refuse to touch a slide in that shape at all (ADR-0008 compliance), and
  * move/scale/rotate only ever match a `<g>` besides. `convert` repairs the
  * slide into the compliant container form first (lifting the title's id
  * onto its new wrapping `<g>`, so `elementId` still resolves), then this adds

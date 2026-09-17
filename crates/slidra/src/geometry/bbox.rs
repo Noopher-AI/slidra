@@ -6,7 +6,7 @@
 //! element, and how big is it" — one implementation, so a CLI-side answer
 //! and a future front-end preview can never disagree.
 //!
-//! ADR-0012, as ruled for this campaign: conversion wraps, it never hoists a
+//! ADR-0008, as ruled for this campaign: conversion wraps, it never hoists a
 //! primitive's native coordinates into the container. So an element's
 //! absolute geometry is always `container-chain matrix ∘ the primitive's own
 //! native geometry`.
@@ -34,7 +34,7 @@ use crate::text::font::FontMetrics;
 use crate::text::metrics::measure_text_width;
 
 /// Nesting limit for a container chain — a guard against a maliciously deep
-/// slide blowing the call stack (ADR-0010: slide content is untrusted).
+/// slide blowing the call stack (ADR-0007: slide content is untrusted).
 /// Defined ONCE here (not duplicated in `slide/format.rs`) so the compliance
 /// check and this bbox walk can never disagree about the limit; `format.rs`
 /// re-exports this constant rather than redefining it, mirroring the TS

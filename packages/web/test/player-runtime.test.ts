@@ -666,7 +666,7 @@ describe("player-runtime.js", () => {
   });
 
   // Element ids come straight from
-  // untrusted slide content (ADR-0010) — nothing stops a legal id from
+  // untrusted slide content (ADR-0007) — nothing stops a legal id from
   // being "constructor". A plain `{}` for mediaElements already has an
   // inherited, truthy `constructor` property (Object.prototype's own)
   // *before this target was ever reached the first time* — so the

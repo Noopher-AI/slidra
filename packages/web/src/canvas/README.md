@@ -8,7 +8,7 @@ imports `canvas/gesture-geometry.js`). Two shapes of module live
 here: **stateless helpers** (pure functions and types, no dependency object) and **domain factories**
 (a `create*(deps)` function that returns the handlers `mountCanvas` wires up, reachable only through
 the fields its dependency interface declares). See `AGENTS.md` for how a move or a rename in this
-directory's history is verified, and `.dev_docs/adr/0024-extracted-modules-take-a-named-dependency-object.md`
+directory's history is verified, and the module descriptions below
 for why a dependency object and not a shared internals bag.
 
 ## Stateless helpers
@@ -46,7 +46,7 @@ for why a dependency object and not a shared internals bag.
   `isAnyElementFullscreen`. Its dependency interface reaches `frame`, `selection`, `overlay`,
   `tableRange`, the shared `activeGesture` slot, and eight narrower sub-interfaces (`gestures`,
   `session`, `editing`, `playback`, `commands`, `table`, `host`, `publish`) — it does not import
-  `gestures.ts` directly (ADR-0024): where it needs a gesture handler, the entry supplies it as a
+  `gestures.ts` directly: where it needs a gesture handler, the entry supplies it as a
   callback field on `gestures: RuntimeMessageGestureDeps`.
 - **`play-mode.ts`** (`PlayModeDeps`, 14 top-level fields) — `createPlayMode` owns play-mode
   rendering and transitions, navigation (`next`/`previous`), preview, player focus, and frame

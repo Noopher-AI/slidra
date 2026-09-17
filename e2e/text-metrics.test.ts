@@ -79,7 +79,7 @@ beforeAll(async () => {
   await registry.dispatch("new", { path: slidraPath, name: "font metrics smoke test" });
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   presentationId = opened.data!.id;
-  // `new` creates no slides (ADR-0018); this test addresses slides/001.svg.
+  // `new` creates no slides; this test addresses slides/001.svg.
   await registry.dispatch("slide add", { id: presentationId });
 }, 60_000);
 

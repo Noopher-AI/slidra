@@ -1462,7 +1462,7 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
    * a hand-typed message takes (architecture decision: no separate API, no
    * client-side outline parsing). The skill writes `plan/outline.md`,
    * which opens `<PlanGateModal>` below; building only starts from that
-   * gate's "Confirm and build". A presentation with no slides yet (ADR-0018: `new`
+   * gate's "Confirm and build". A presentation with no slides yet (`new`
    * creates none) is a real request too — not a no-op.
    */
   async function draftWithAgent(outline: string): Promise<void> {

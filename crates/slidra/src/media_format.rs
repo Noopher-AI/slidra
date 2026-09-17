@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 //! Media format byte-header detection — ported from
-//! `packages/core/src/media-format.ts` (NOOP-90/T4, ADR-0015): one
+//! `packages/core/src/media-format.ts` (NOOP-90/T4): one
 //! extension/MIME/kind entry per format, plus a byte-signature detector
 //! that decides a file's real format from its content — never from a
 //! caller-supplied extension.
@@ -172,7 +172,7 @@ fn detect_ogg_codec(bytes: &[u8]) -> Option<MediaFormatEntry> {
 }
 
 /// Detects a file's real media format from its opening bytes only — never
-/// from a filename or a declared Content-Type (ADR-0015). Returns `None`
+/// from a filename or a declared Content-Type. Returns `None`
 /// when the bytes match no known format, which callers must treat as a
 /// rejection, not a fallback to any default.
 pub fn detect_media_format(bytes: &[u8]) -> Option<MediaFormatEntry> {

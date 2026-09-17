@@ -3,7 +3,7 @@
 
 //! SVG transform maths, ported from `packages/core/src/geometry/transform.ts`.
 //! This is the single implementation of "where is this element, really"
-//! (ADR-0012: absolute coordinates come from multiplying the container
+//! (ADR-0008: absolute coordinates come from multiplying the container
 //! chain) — every function here mirrors one TS export, named verbatim next
 //! to it below.
 //!
@@ -494,7 +494,7 @@ fn format_number(value: f64) -> String {
 /// e.g. `"translate(640 330) rotate(-15)"`. Segments sitting at their
 /// default value are omitted, and an all-default parts object yields the
 /// empty string so the caller can decide to write no `transform` attribute
-/// at all (ADR-0004: every byte of SVG is a per-turn token cost).
+/// at all (ADR-0003: every byte of SVG is a per-turn token cost).
 pub fn format_transform(parts: &TransformParts) -> String {
     let mut segments: Vec<String> = Vec::new();
 
