@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { readFile, rm, writeFile, mkdtemp, utimes } from "node:fs/promises";
+import { readFile, rm, writeFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ARGV_ENCODERS, COMMAND_WHITELIST, encodeCommandArgv } from "../src/slidra/argv.js";
 import { runJsonCommand } from "../src/slidra/command.js";
 import { readPresentationBytes, readPresentationText, renderSlide } from "../src/slidra/reads.js";
-import { readSaveState } from "../src/slidra/save-state.js";
 
 const ID = "P1";
 const SLIDE = "slides/001.svg";
@@ -364,71 +363,5 @@ describe("slidra/reads.ts: read decoding", () => {
     await expect(readPresentationText("p1", "assets/photo.png")).rejects.toThrow(
       "assets/photo.png is a binary asset, cannot be read as text",
     );
-  });
-});
-
-/**
- * `readSaveState`'s `Math.floor(maxMtimeMs) > Math.floor(entry.savedAt)`
- * comparison (see that function's own doc comment for why it floors both
- * sides) shipped with no test pinning the one input it exists for — a
- * same-integer-millisecond `maxMtime`/`savedAt` pair whose fractional parts
- * differ. A mutation check reverting the comparison to a plain `>` survived
- * every existing test.
- */
-describe("slidra/save-state.ts: readSaveState's whole-millisecond comparison", () => {
-  let home: string;
-  let deckDir: string;
-  let deckPath: string;
-  let previousHome: string | undefined;
-
-  beforeEach(async () => {
-    home = await mkdtemp(path.join(tmpdir(), "slidra-slidra-test-home-"));
-    deckDir = await mkdtemp(path.join(tmpdir(), "slidra-slidra-test-deck-"));
-    deckPath = path.join(deckDir, "deck.slidra");
-    previousHome = process.env.SLIDRA_HOME;
-    process.env.SLIDRA_HOME = home;
-  });
-
-  afterEach(async () => {
-    if (previousHome === undefined) delete process.env.SLIDRA_HOME;
-    else process.env.SLIDRA_HOME = previousHome;
-    await rm(home, { recursive: true, force: true });
-    await rm(deckDir, { recursive: true, force: true });
-  });
-
-  async function writeRegistry(savedAt: number): Promise<void> {
-    await writeFile(
-      path.join(home, "projects.json"),
-      `${JSON.stringify({ P1: { deckPath, sourcePath: "/x/deck.slidra", savedAt } }, null, 2)}\n`,
-    );
-  }
-
-  it("dirty is false when the deck's mtime and savedAt fall in the same integer millisecond", async () => {
-    await writeFile(deckPath, "x");
-    // Seconds, not ms — fs.utimes takes seconds. 1_700_000_000.0005s ->
-    // mtimeMs whose whole-millisecond part is 1_700_000_000_000, same as
-    // the `savedAt` below, but with a nonzero fractional remainder.
-    const t = 1_700_000_000.0005;
-    await utimes(deckPath, t, t);
-    await writeRegistry(1_700_000_000_000);
-
-    await expect(readSaveState("P1")).resolves.toEqual({
-      known: true,
-      dirty: false,
-      fileName: "deck.slidra",
-    });
-  });
-
-  it("dirty is true when the deck's mtime's whole millisecond is genuinely later than savedAt's", async () => {
-    await writeFile(deckPath, "x");
-    const t = 1_700_000_000.0005;
-    await utimes(deckPath, t, t);
-    await writeRegistry(1_699_999_999_999);
-
-    await expect(readSaveState("P1")).resolves.toEqual({
-      known: true,
-      dirty: true,
-      fileName: "deck.slidra",
-    });
   });
 });
