@@ -103,4 +103,61 @@ describe("browser API routing", () => {
       failureKind: "failed",
     });
   });
+
+  it("rejects malformed command requests before dispatching them", async () => {
+    const nativeFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const clients = createServiceClients(
+      {
+        workbenchId: "wb-9",
+        deck: { url: "http://deck.test:4100", credential: "deck-token" },
+        agentRunner: { url: "http://runner.test:4200", sessionToken: "runner-token" },
+      },
+      nativeFetch,
+    );
+    const routedFetch = createRoutingFetch(clients, nativeFetch);
+    const requests = [
+      { label: "malformed JSON", body: "{ not json" },
+      { label: "non-object input", body: JSON.stringify({ name: "element move", input: 42 }) },
+      { label: "non-string name", body: JSON.stringify({ name: 123, input: {} }) },
+      { label: "missing name", body: JSON.stringify({ input: {} }) },
+    ];
+
+    for (const request of requests) {
+      const response = await routedFetch("/api/command", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: request.body,
+      });
+      expect(response.status, request.label).toBe(400);
+    }
+    expect(nativeFetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves a not-found command failure as 404", async () => {
+    const nativeFetch = vi.fn(async () => new Response(framedEnvelope({
+      ok: false,
+      message: "slide not found",
+      failureKind: "not-found",
+    }), { status: 200 }));
+    const clients = createServiceClients(
+      {
+        workbenchId: "wb-9",
+        deck: { url: "http://deck.test:4100", credential: "deck-token" },
+        agentRunner: { url: "http://runner.test:4200", sessionToken: "runner-token" },
+      },
+      nativeFetch,
+    );
+
+    const response = await createRoutingFetch(clients, nativeFetch)("/api/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "element move",
+        input: { slidePath: "slides/999.svg", elementIds: ["el-a"], dx: 1, dy: 1 },
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "slide not found", failureKind: "not-found" });
+  });
 });

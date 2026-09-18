@@ -53,7 +53,7 @@ function callResult(response: Response): Promise<Response> {
     if (exitCode !== 0 || envelope?.ok === false) {
       return new Response(
         JSON.stringify({ error: envelope?.message || errorOutput || "Command failed", failureKind: envelope?.failureKind ?? null }),
-        { status: envelope?.failureKind === "not-found" ? 404 : 400, headers: { "content-type": "application/json" } },
+        { status: envelope?.failureKind === "not-found" ? 404 : 500, headers: { "content-type": "application/json" } },
       );
     }
     return new Response(output, { status: 200, headers: { "content-type": "application/json" } });
