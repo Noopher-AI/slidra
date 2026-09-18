@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import { startServe, type RunningServer } from "../packages/server/src/serve.js"
 import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { requireBuilt, startServerFor, openApp } from "./helpers/launch.js";
+import { browserFetch } from "./helpers/browser-fetch.js";
 
 /**
  * Open/Save round-trips a `.slidra` byte-for-byte, and `POST /api/open`
@@ -52,6 +53,8 @@ async function startHarness(): Promise<Harness> {
   const slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-files-"));
   const deckFolder = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-deckfolder-"));
   const staticDir = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-static-"));
+  await mkdir(staticDir, { recursive: true });
+  await writeFile(path.join(staticDir, "index.html"), '<script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>');
   process.env.SLIDRA_HOME = slidraHome;
   // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
@@ -102,7 +105,7 @@ describe("continuous save (NOOP-422)", () => {
     harness = await startHarness();
     const { server, slidraPath } = harness;
 
-    const setResponse = await fetch(`${server.url}/api/command`, {
+    const setResponse = await browserFetch(server.url, "/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -148,7 +151,7 @@ describe("POST /api/open", () => {
     // presentation in place" behavior (and, with it, the discard-unsaved
     // gate that protected against exactly that): the upload below must
     // neither touch nor require discarding this edit.
-    const setResponse = await fetch(`${server.url}/api/command`, {
+    const setResponse = await browserFetch(server.url, "/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

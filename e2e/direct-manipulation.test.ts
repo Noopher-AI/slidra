@@ -12,6 +12,7 @@ import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { browserFetch } from "./helpers/browser-fetch.js";
 
 /**
  * Real Chromium acceptance tests, modelled on
@@ -1744,7 +1745,7 @@ it("POST /api/command whitelist: a blacklisted command returns 403 and the prese
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const before = await readSlide(registry, presentationId);
-    const response = await fetch(`${server.url}/api/command`, {
+    const response = await browserFetch(server.url, "/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: server.url },
       body: JSON.stringify({ name: "open", input: { path: "/etc/passwd" } }),
