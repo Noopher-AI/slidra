@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream } from "node:stream/web";
 import type { ServerResponse } from "node:http";
 import { resolveSlidraBin } from "./slidra/bin.js";
 import { SlidraError } from "./slidra/errors.js";
@@ -138,16 +140,10 @@ async function pipeUpstreamToResponse(upstream: Response, res: ServerResponse): 
     res.end();
     return;
   }
-  const reader = upstream.body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) res.write(value);
-    }
-  } finally {
-    res.end();
-  }
+  // Couple both ends: a browser disconnect cancels the upstream body, and
+  // an upstream failure destroys the response instead of ending truncated
+  // content as though it were complete. pipeline also applies backpressure.
+  await pipeline(Readable.fromWeb(upstream.body as ReadableStream<Uint8Array>), res);
 }
 
 /**

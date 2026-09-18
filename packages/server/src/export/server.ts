@@ -152,6 +152,10 @@ async function handleRequest(
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      res.destroy(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
     sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 }
