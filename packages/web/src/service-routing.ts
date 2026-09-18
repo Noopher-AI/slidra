@@ -16,6 +16,55 @@ function argvHeader(argv: string[]): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(argv))));
 }
 
+function callResult(response: Response): Promise<Response> {
+  if (!response.ok) return Promise.resolve(response);
+  return response.arrayBuffer().then((buffer) => {
+    const bytes = new Uint8Array(buffer);
+    const stdout: Uint8Array[] = [];
+    const stderr: Uint8Array[] = [];
+    let exitCode = 0;
+    for (let offset = 0; offset < bytes.length;) {
+      const kind = bytes[offset]!;
+      const view = new DataView(bytes.buffer, bytes.byteOffset + offset + 1, 4);
+      const value = view.getUint32(0, false);
+      offset += 5;
+      if (kind === 3) {
+        exitCode = value | 0;
+        break;
+      }
+      const payload = bytes.slice(offset, offset + value);
+      offset += value;
+      if (kind === 1) stdout.push(payload);
+      if (kind === 2) stderr.push(payload);
+    }
+    const output = new TextDecoder().decode(concatBytes(stdout));
+    const errorOutput = new TextDecoder().decode(concatBytes(stderr));
+    let envelope: { ok?: boolean; message?: string; failureKind?: string | null } | undefined;
+    try {
+      envelope = JSON.parse(output) as typeof envelope;
+    } catch {
+      return new Response(JSON.stringify({ error: errorOutput || "Command returned invalid JSON" }), { status: 500 });
+    }
+    if (exitCode !== 0 || envelope?.ok === false) {
+      return new Response(
+        JSON.stringify({ error: envelope?.message || errorOutput || "Command failed", failureKind: envelope?.failureKind ?? null }),
+        { status: envelope?.failureKind === "not-found" ? 404 : 500, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(output, { status: 200, headers: { "content-type": "application/json" } });
+  });
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
 async function routeDeckWrite(
   clients: ServiceClients,
   path: string,
@@ -25,7 +74,7 @@ async function routeDeckWrite(
   if (path === "/api/undo" || path === "/api/redo") {
     const headers = new Headers(init?.headers);
     headers.set("x-slidra-argv", argvHeader([path.slice("/api/".length), clients.workbenchId ?? "", "--json"]));
-    return clients.deck.fetch("/call", { ...init, headers, method: "POST" });
+    return clients.deck.fetch("/call", { ...init, headers, method: "POST" }).then(callResult);
   }
   if (path === "/api/command") {
     let command: { name?: unknown; input?: unknown };
@@ -46,7 +95,7 @@ async function routeDeckWrite(
       headers.delete("content-type");
       headers.set("x-slidra-argv", argvHeader([...encoded.argv, "--json"]));
       const body = encoded.body === undefined ? undefined : new Uint8Array(encoded.body).buffer;
-      return clients.deck.fetch("/call", { ...init, headers, body, method: "POST" });
+      return clients.deck.fetch("/call", { ...init, headers, body, method: "POST" }).then(callResult);
     } catch (error) {
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : "Failed to encode command" }),

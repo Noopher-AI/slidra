@@ -217,6 +217,7 @@ export async function startServe(
   // Resources started alongside the HTTP server. close() tears them down in
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
+  let listeningServer: http.Server | undefined;
 
   try {
     // NOOP-425 D4: this serve process's own scratch tree for the agent's
@@ -233,15 +234,6 @@ export async function startServe(
     // `bin/` directory.
     await deployShimWrapper(sandboxRoot.path);
     const shimToken = createShimToken();
-
-    // [E10.T5] transitional forwarding layer (NOOP-641 Plan §7 decision 4):
-    // GET /presentation, /assets, /files, /effects, /raw and /events now
-    // live in the crate (`crates/slidra/src/server/{reads,raw,events}.rs`);
-    // this process forwards those routes to it rather than dispatching them
-    // itself. Started early, alongside the other server-lifetime resources
-    // above, so it is ready before the HTTP server starts accepting requests.
-    const deckServer = await startDeckServer();
-    disposers.push(() => deckServer.close());
 
     // NOOP-425: this process's one active write-isolation launcher
     // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
@@ -264,15 +256,6 @@ export async function startServe(
       setActivePolicy(undefined);
       return Promise.resolve();
     });
-
-    if (options.presentationId !== undefined) {
-      initialDeck = await resolveDeckIdentity(deckServer, options.presentationId);
-      initialWorkdir = await deployAgentWorkdir(
-        sandboxRoot.path,
-        options.presentationId,
-        options.policy,
-      );
-    }
 
     // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
     // lifecycle (AgentManager -> AgentChatSession) and the human editing
@@ -314,6 +297,10 @@ export async function startServe(
     // resolved to a shim with no server to answer it — see
     // packages/server/test/agent/fixtures/multi-command-fake-acp-agent.mjs's
     // real `slidra` invocations, which is what caught it).
+    // Assigned immediately after this listener receives its real port. The
+    // request closure cannot run through a public URL before startServe
+    // returns, so every reachable request observes the initialized client.
+    let deckServer: DeckServerClient;
     const server = http.createServer((req, res) => {
       void handleRequest(
         deckSession,
@@ -336,8 +323,25 @@ export async function startServe(
     });
 
     await listen(server, port, host);
+    listeningServer = server;
     const actualPort = (server.address() as AddressInfo).port;
     serverAddress.port = actualPort;
+
+    // The browser calls the crate directly, so its CORS allow-list needs the
+    // runner's exact, now-known origin. Starting it before listen() produced
+    // an unusable origin and forced the bootstrap back through Node.
+    const combinedOrigin = `http://${host}:${actualPort}`;
+    deckServer = await startDeckServer({ editorOrigin: combinedOrigin });
+    disposers.push(() => deckServer.close());
+
+    if (options.presentationId !== undefined) {
+      initialDeck = await resolveDeckIdentity(deckServer, options.presentationId);
+      initialWorkdir = await deployAgentWorkdir(
+        sandboxRoot.path,
+        options.presentationId,
+        options.policy,
+      );
+    }
 
     setShimConfig({
       token: shimToken,
@@ -547,6 +551,9 @@ export async function startServe(
       } catch (cleanupError) {
         failures.push(cleanupError);
       }
+    }
+    if (listeningServer?.listening) {
+      await new Promise<void>((resolve) => listeningServer!.close(() => resolve()));
     }
     if (failures.length > 0) {
       throw new AggregateError(
@@ -1164,7 +1171,7 @@ async function handleRequest(
     await serveStatic(staticDir, url.pathname, res, {
       workbenchId: deckSession.currentId(),
       deck: {
-        url: `${combinedOrigin}/api`,
+        url: deckServer.baseUrl,
         credential: Buffer.from(
           JSON.stringify({ kind: "editor", workbenchId: deckSession.currentId() ?? "deck-space" }),
           "utf8",

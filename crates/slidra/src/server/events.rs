@@ -76,16 +76,16 @@ struct Timing {
 /// The poll/debounce/heartbeat loop, split out from `handle` so it can be
 /// exercised in tests with a fake `Write` sink instead of a real socket.
 fn run_notification_loop(sink: &mut impl Write, deck_path: &Path, timing: &Timing) {
-    let mut last_sent = deck_mtime(deck_path);
-    let mut last_seen = last_sent;
+    let mut last_sent = deck_stamp(deck_path);
+    let mut last_seen = last_sent.clone();
     let mut changed_at: Option<Instant> = None;
     let mut last_heartbeat = Instant::now();
 
     loop {
         std::thread::sleep(timing.poll_interval);
-        let now_mtime = deck_mtime(deck_path);
-        if now_mtime != last_seen {
-            last_seen = now_mtime;
+        let now_stamp = deck_stamp(deck_path);
+        if now_stamp != last_seen {
+            last_seen = now_stamp;
             changed_at = Some(Instant::now());
         }
 
@@ -94,7 +94,7 @@ fn run_notification_loop(sink: &mut impl Write, deck_path: &Path, timing: &Timin
                 if write_event(sink, "presentation-changed", "{}").is_err() {
                     return;
                 }
-                last_sent = last_seen;
+                last_sent = last_seen.clone();
                 changed_at = None;
                 last_heartbeat = Instant::now();
             }
@@ -107,8 +107,24 @@ fn run_notification_loop(sink: &mut impl Write, deck_path: &Path, timing: &Timin
     }
 }
 
-fn deck_mtime(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).ok()?.modified().ok()
+#[derive(Clone, PartialEq)]
+struct FileStamp {
+    modified: SystemTime,
+    len: u64,
+}
+
+fn file_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = std::fs::metadata(path).ok()?;
+    Some(FileStamp {
+        modified: metadata.modified().ok()?,
+        len: metadata.len(),
+    })
+}
+
+fn deck_stamp(path: &Path) -> (Option<FileStamp>, Option<FileStamp>) {
+    let mut wal = path.as_os_str().to_owned();
+    wal.push("-wal");
+    (file_stamp(path), file_stamp(Path::new(&wal)))
 }
 
 /// Builds the whole frame as one `String` first, then a single
@@ -219,6 +235,35 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(8));
                 std::fs::write(&path_for_writer, format!("changed-{i}")).unwrap();
             }
+        });
+
+        run_notification_loop(&mut sink_clone, &path, &fast_timing());
+        writer.join().unwrap();
+
+        assert_eq!(sink.text(), "event: presentation-changed\ndata: {}\n\n");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn a_sqlite_wal_write_produces_a_notification_before_checkpoint() {
+        let path = temp_deck_file("wal");
+        std::fs::remove_file(&path).unwrap();
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .unwrap();
+        connection
+            .execute("CREATE TABLE changes (value TEXT)", [])
+            .unwrap();
+
+        let sink = RecordingSink::new(1);
+        let mut sink_clone = sink.clone();
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(15));
+            connection
+                .execute("INSERT INTO changes (value) VALUES ('changed')", [])
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(80));
         });
 
         run_notification_loop(&mut sink_clone, &path, &fast_timing());

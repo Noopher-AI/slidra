@@ -11,7 +11,6 @@ describe("DeckAssetResolver", () => {
     const createObjectURL = vi
       .fn<(blob: Blob) => string>()
       .mockReturnValueOnce("blob:photo")
-      .mockReturnValueOnce("blob:clip")
       .mockReturnValueOnce("blob:poster")
       .mockReturnValueOnce("blob:texture");
     const revokeObjectURL = vi.fn();
@@ -34,7 +33,7 @@ describe("DeckAssetResolver", () => {
       "/api/raw/assets/texture.png",
     ]);
     expect(markup).toContain('href="blob:photo"');
-    expect(markup).toContain('src="blob:clip"');
+    expect(markup).toContain('src="data:video/webm;base64,');
     expect(markup).toContain('poster="blob:poster"');
     expect(markup).toContain("url(&quot;blob:texture&quot;)");
     expect(markup).toContain('href="#symbol"');
@@ -43,7 +42,6 @@ describe("DeckAssetResolver", () => {
     resolver.dispose();
     expect(revokeObjectURL.mock.calls.map(([url]) => url)).toEqual([
       "blob:photo",
-      "blob:clip",
       "blob:poster",
       "blob:texture",
     ]);
@@ -79,10 +77,10 @@ describe("DeckAssetResolver", () => {
     expect(markup).not.toContain("missing.png");
   });
 
-  it("preserves the media kind after replacing a deck-local media path with a Blob URL", async () => {
+  it("preserves the media kind and MIME inside a sandbox-safe data URL", async () => {
     const resolver = new DeckAssetResolver(
       { fetch: async () => new Response("clip") },
-      { createObjectURL: () => "blob:clip", revokeObjectURL: () => undefined },
+      { createObjectURL: () => "blob:unused", revokeObjectURL: () => undefined },
     );
 
     const markup = await resolver.resolveSvg(
@@ -90,6 +88,6 @@ describe("DeckAssetResolver", () => {
       "slides/001.svg",
     );
 
-    expect(stageMediaFor(markup)["el-video"]).toEqual({ src: "blob:clip", kind: "video" });
+    expect(stageMediaFor(markup)["el-video"]).toEqual({ src: "data:video/webm;base64,Y2xpcA==", kind: "video" });
   });
 });

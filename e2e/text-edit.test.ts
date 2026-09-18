@@ -398,7 +398,7 @@ it("double-clicking a text box to edit, typing, and pressing Esc: the SVG's tspa
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");
@@ -459,7 +459,7 @@ it("entering edit mode and pressing Esc immediately without typing sends no comm
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");
@@ -482,7 +482,7 @@ it("pressing down and dragging on the element being edited: transform stays unch
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");
@@ -791,7 +791,7 @@ it("selecting a range then pressing Backspace deletes the whole range; committin
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");
@@ -926,7 +926,7 @@ it("pressing Enter while editing inserts a hard break at the cursor without comm
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");
@@ -966,7 +966,7 @@ it("pressing ⌘Enter/Ctrl+Enter while editing inserts no line break, does not c
 
     let commandCount = 0;
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/api/command")) commandCount++;
+      if (request.method() === "POST" && request.url().endsWith("/call")) commandCount++;
     });
 
     await dblclickAtEnd(page, "el-text");

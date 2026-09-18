@@ -21,6 +21,24 @@ function mediaKind(reference: string): "video" | "audio" | null {
   return null;
 }
 
+function mediaType(reference: string): string | undefined {
+  const extension = reference.slice(reference.lastIndexOf(".")).toLowerCase();
+  const types: Record<string, string> = {
+    ".mp4": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".oga": "audio/ogg",
+    ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+  };
+  return types[extension];
+}
+
+function base64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
 function deckPath(reference: string, documentPath: string): string | null {
   const value = reference.trim();
   if (value === "" || value.startsWith("#") || value.startsWith("data:") || value.startsWith("blob:")) return null;
@@ -72,7 +90,9 @@ export class DeckAssetResolver {
   }
 
   reset(): void {
-    for (const url of this.#urls.values()) this.objectUrls.revokeObjectURL(url);
+    for (const url of this.#urls.values()) {
+      if (url.startsWith("blob:")) this.objectUrls.revokeObjectURL(url);
+    }
     this.#urls.clear();
   }
 
@@ -92,7 +112,14 @@ export class DeckAssetResolver {
       this.#urls.set(path, unavailable);
       return unavailable;
     }
-    const objectUrl = this.objectUrls.createObjectURL(await response.blob());
+    const type = mediaType(path);
+    if (type !== undefined) {
+      const dataUrl = `data:${type};base64,${base64(new Uint8Array(await response.arrayBuffer()))}`;
+      this.#urls.set(path, dataUrl);
+      return dataUrl;
+    }
+    const blob = await response.blob();
+    const objectUrl = this.objectUrls.createObjectURL(blob);
     this.#urls.set(path, objectUrl);
     return objectUrl;
   }

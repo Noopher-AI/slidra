@@ -173,7 +173,11 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
       // damaged presentation, not a silently-skipped effect.
       throw new Error(`Element "${target}"'s effect has family="media" but no data-slidra-media; the presentation is corrupted.`);
     }
-    media[target] = { src, kind: mediaKindFor(src, target) };
+    const declaredType = el.getAttribute("data-slidra-type");
+    const kind = declaredType === "video" || declaredType === "audio"
+      ? declaredType
+      : mediaKindFor(src, target);
+    media[target] = { src, kind };
   }
   return media;
 }

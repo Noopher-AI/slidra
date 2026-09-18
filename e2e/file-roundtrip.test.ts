@@ -9,8 +9,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
-import { listDeckFiles, readDeckFileBytes, readDeckFileText } from "./helpers/deck.js";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
@@ -114,43 +112,24 @@ describe("continuous save (NOOP-422)", () => {
     });
     expect(setResponse.status).toBe(200);
 
-    // No author action beyond the edit itself — the SaveController's own
-    // trailing debounce must write this back on its own within a few
-    // seconds, well inside this poll's timeout.
-    await expect
-      .poll(() => fetch(`${server.url}/api/save-state`).then((r) => r.json()), { timeout: 5000 })
-      .toEqual({ known: true, dirty: false, fileName: "a.slidra", phase: "saved" });
-
-    // The deck file this server is still running against.
-    const firstDeckPath = await deckPathFor(harness.presentationId);
-    const firstFiles = await listDeckFiles(firstDeckPath);
-
-    // Re-open the just-saved `a.slidra` into a completely separate
-    // SLIDRA_HOME and compare every file byte-for-byte.
+    // Re-open the edited file through the public CLI contract in a completely
+    // separate SLIDRA_HOME. Direct crate writes are durable when the command
+    // returns; there is no Node-owned dirty/save-state phase to observe.
     secondHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home2-"));
     const previousHome = process.env.SLIDRA_HOME;
     process.env.SLIDRA_HOME = secondHome;
     // slidra serve now spawns the Rust binary for every read/write.
     process.env.SLIDRA_BIN = slidraBin;
     try {
-      const secondOpened = await harness.registry.dispatch<{ id: string }>("open", { path: slidraPath });
+      const secondRegistry = createDefaultRegistry();
+      const secondOpened = await secondRegistry.dispatch<{ id: string }>("open", { path: slidraPath });
       const secondId = secondOpened.data!.id;
-      const secondDeckPath = await deckPathFor(secondId);
-      const secondFiles = await listDeckFiles(secondDeckPath);
-      expect(secondFiles).toEqual(firstFiles);
-
-      for (const relativePath of firstFiles) {
-        const firstBytes = await readDeckFileBytes(firstDeckPath, relativePath);
-        const secondBytes = await readDeckFileBytes(secondDeckPath, relativePath);
-        if (relativePath === "project.json") {
-          expect(JSON.parse(secondBytes.toString("utf-8"))).toEqual(JSON.parse(firstBytes.toString("utf-8")));
-        } else {
-          expect(secondBytes.equals(firstBytes)).toBe(true);
-        }
-      }
-
-      const editedSlide = await readDeckFileText(secondDeckPath, "slides/001.svg");
-      expect(editedSlide).toContain("roundtrip edited");
+      const editedSlide = await secondRegistry.dispatch<{ content: string }>("cat", {
+        id: secondId,
+        path: "slides/001.svg",
+      });
+      expect(editedSlide.ok).toBe(true);
+      expect(editedSlide.data!.content).toContain("roundtrip edited");
     } finally {
       process.env.SLIDRA_HOME = previousHome;
       // slidra serve now spawns the Rust binary for every read/write.
@@ -199,20 +178,27 @@ describe("POST /api/open", () => {
       expect(openBody.id).not.toBe(presentationId);
 
       // The currently served presentation is unchanged: still the harness's
-      // own deck, and the pre-upload unsaved edit is still there (dirty,
-      // never discarded — there is no discard-unsaved header any more).
+      // own deck, and the pre-upload edit is still there.
       const presentationResponse = await fetch(`${server.url}/api/presentation`);
       const presentation = (await presentationResponse.json()) as { name: string };
       expect(presentation.name).toBe("Export test deck");
-      const stateResponse = await fetch(`${server.url}/api/save-state`);
-      await expect(stateResponse.json()).resolves.toMatchObject({ known: true, dirty: true });
+      const currentSlide = await harness.registry.dispatch<{ content: string }>("cat", {
+        id: presentationId,
+        path: "slides/001.svg",
+      });
+      expect(currentSlide.data!.content).toContain("should survive open");
 
       // The uploaded deck exists as its own, independently openable deck
       // file inside the configured deck folder (AC1) — never touching
       // presentationId's own deck file.
-      const uploadedDeckPath = await deckPathFor(openBody.id);
-      expect(path.dirname(uploadedDeckPath)).toBe(deckFolder);
-      expect(uploadedDeckPath).not.toBe(await deckPathFor(presentationId));
+      const uploaded = await harness.registry.dispatch<{ content: string }>("cat", {
+        id: openBody.id,
+        path: "project.json",
+      });
+      expect(uploaded.ok).toBe(true);
+      expect(openBody.fileName).toBe("other.slidra");
+      const stored = await readFile(path.join(deckFolder, "other.slidra"));
+      expect(stored.subarray(0, 16).toString("utf8")).toBe("SQLite format 3\0");
     } finally {
       await rm(otherDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
@@ -250,9 +236,6 @@ describe("no manual Save entry point anywhere in the UI (AC1, via a real browser
         newText: "Cmd+S no-op test",
       });
       expect(setResult.ok).toBe(true);
-      await expect
-        .poll(() => fetch(`${started.server.url}/api/save-state`).then((r) => r.json()))
-        .toMatchObject({ known: true, dirty: true });
 
       // Focus is deliberately left on the parent document (no click into
       // the slide): a keydown listener bound there is the most directly

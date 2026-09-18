@@ -448,6 +448,18 @@ describe("computePlayerPlan: media", () => {
       expect(plan.media[id]).toEqual({ src: "assets/clip.mp4", kind: "video" });
     },
   );
+
+  it("preserves the declared media kind after the asset URL becomes a blob URL", async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata><slidra:effects ${NS}><slidra:effect target="el-media" family="media" effect="play" start="on-click"/></slidra:effects></metadata>
+  <g id="el-media" data-slidra-type="video" data-slidra-media="blob:http://editor.test/opaque-id"/>
+</svg>`;
+    mockEffectsRoute([{ target: "el-media", family: "media", effect: "play", start: "on-click" }]);
+
+    const plan = await computePlayerPlan(svg, SLIDE_PATH);
+
+    expect(plan.media["el-media"]).toEqual({ src: "blob:http://editor.test/opaque-id", kind: "video" });
+  });
 });
 
 describe("player allow-list must stay in sync with the server's MIME table", () => {

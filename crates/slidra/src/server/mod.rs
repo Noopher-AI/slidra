@@ -587,11 +587,38 @@ fn handle_call(request: &RawRequest, stream: &mut TcpStream) {
         argv[slot] = credential.workbench_id.clone();
     }
 
+    // Browser clipboard paste carries its SVG as the /call body. The CLI's
+    // public contract is still `--svg-file <path>`, so bridge the transport
+    // body to a short-lived local file rather than treating `-` as a real
+    // filename (the standalone CLI deliberately has no stdin form here).
+    let mut body_file = None;
+    if name == "element paste" {
+        if let Some(index) = argv.windows(2).position(|pair| pair == ["--svg-file", "-"]) {
+            let path = std::env::temp_dir().join(format!(
+                "slidra-call-paste-{}-{}.svg",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            if std::fs::write(&path, &request.body).is_err() {
+                write_plain_response(stream, 500, "could not stage command body");
+                return;
+            }
+            argv[index + 1] = path.to_string_lossy().into_owned();
+            body_file = Some(path);
+        }
+    }
+
     let osv: Vec<OsString> = argv.iter().map(OsString::from).collect();
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
     let mut stdin = Cursor::new(request.body.clone());
     let exit_code = cli::run_argv_to(&osv, &mut out, &mut err, &mut stdin);
+    if let Some(path) = body_file {
+        let _ = std::fs::remove_file(path);
+    }
 
     if credential.kind == CallerKind::Agent {
         redact::redact_real_paths(&mut out);

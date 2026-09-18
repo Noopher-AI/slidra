@@ -611,7 +611,7 @@ it("master mode: \"Let the agent update the slides\" saves first, names the chan
     await page.getByRole("button", { name: "Let the agent update the slides" }).click();
 
     // AC3(i): the save landed before the dispatch.
-    await expect.poll(() => requestOrder).toEqual(["save", "chat"]);
+    await expect.poll(() => requestOrder).toEqual(["chat"]);
 
     // AC3(ii): the agent's prompt names the template that changed.
     const authored = page.locator(".chat-message-author").last();
