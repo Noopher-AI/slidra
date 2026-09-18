@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { DeckAssetResolver } from "../src/deck-asset-resolver.js";
+import { stageMediaFor } from "../src/player-plan.js";
 
 describe("DeckAssetResolver", () => {
   it("fetches deck-local SVG resources through the deck client and replaces them with owned Blob URLs", async () => {
@@ -76,5 +77,19 @@ describe("DeckAssetResolver", () => {
     const markup = await resolver.resolveSvg('<svg xmlns="http://www.w3.org/2000/svg"><image href="../assets/missing.png"/></svg>', "slides/001.svg");
     expect(markup).toContain('href="data:,"');
     expect(markup).not.toContain("missing.png");
+  });
+
+  it("preserves the media kind after replacing a deck-local media path with a Blob URL", async () => {
+    const resolver = new DeckAssetResolver(
+      { fetch: async () => new Response("clip") },
+      { createObjectURL: () => "blob:clip", revokeObjectURL: () => undefined },
+    );
+
+    const markup = await resolver.resolveSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect id="el-video" data-slidra-media="../assets/clip.webm"/></svg>',
+      "slides/001.svg",
+    );
+
+    expect(stageMediaFor(markup)["el-video"]).toEqual({ src: "blob:clip", kind: "video" });
   });
 });
