@@ -166,10 +166,11 @@ describe("policy pipeline purity and injectability (AC1/AC2)", () => {
     expect(() => deriveSandboxConfig(policyWithUnknownRule, baseCtx)).toThrow();
   });
 
-  it("collectSandboxContext + deriveCliSandboxConfig compose the same way buildCliSandboxPolicy used to (no active-policy singleton needed)", async () => {
+  it("collectSandboxContext + deriveCliSandboxConfig do not expose a real deck path to the CLI sandbox", async () => {
     const ctx = await collectSandboxContext({ workbenchRoot: "", deckPath: "/decks/current.slidra" });
     const config = deriveCliSandboxConfig(openPolicy, ctx);
-    expect(config.allowWrite[0]).toBe("/decks");
+    expect(config.allowWrite).toEqual([ctx.slidraHome, ctx.tempDir]);
+    expect(config.allowWrite).not.toContain("/decks");
   });
 });
 
