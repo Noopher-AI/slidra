@@ -15,7 +15,7 @@ import { isSlidraCommand } from "./command-allowlist.js";
 import { hintForBlockedCommand } from "./command-hints.js";
 import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js";
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
-import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
+import { resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
 import { postDeckServerJson, type DeckServerClient } from "../deck-server-client.js";
 import path from "node:path";
@@ -329,13 +329,6 @@ export class AgentChatSession extends EventEmitter {
    * resolved form is what actually matches.
    */
   private readonly workdirReal: string;
-  /**
-   * The open presentation's `.slidra` file, read once from the registry
-   * when the session is established. Undefined when the registry has no
-   * `sourcePath` for this id (a presentation created but never saved out)
-   * — `<SLIDRA_HOME>` still covers its live files either way.
-   */
-  private sourcePath: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -938,12 +931,6 @@ export class AgentChatSession extends EventEmitter {
 
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
-    // The `.slidra` this presentation was opened from, for the permission
-    // policy's protected set. A registry that cannot be read is not worth
-    // failing the session over: `<SLIDRA_HOME>` still covers the live
-    // files, and the container is only reachable through a path the agent
-    // was never told.
-    this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
     // NOOP-425: wrapped through the active sandbox launcher, when one is
     // running (`serve.ts` is the only writer of `getActiveLauncher()`) —
     // every other caller in this codebase talks to `SandboxLauncher`, never
@@ -1310,7 +1297,6 @@ export class AgentChatSession extends EventEmitter {
     return {
       slidraHome: resolveSlidraHome(),
       agentWorkdir: this.workdirReal,
-      ...(this.sourcePath === undefined ? {} : { sourcePath: this.sourcePath }),
     };
   }
 
