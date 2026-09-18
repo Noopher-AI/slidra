@@ -63,6 +63,31 @@ describe("deriveSandboxConfig(openPolicy, ctx) — the agent sandbox", () => {
     expect(policy.allowWrite).toContain("/dev/null");
   });
 
+  // E10.T6/#400 AC2 ("the sandbox write rules ... produce the same effective
+  // rules as before this ticket"). The assertion above moved its source into
+  // `ADAPTER_SPECS[*].writeRules`, which makes it self-referential: editing a
+  // segment there changes the expectation along with the behaviour and the
+  // test stays green. These are the literal paths and the literal ordering
+  // the allow-list had before the write rules became data — the only thing
+  // that can still catch a silent change to them.
+  it("AC2: the bundled adapters' state paths are literally ~/.claude, ~/.claude.json, ~/.codex, in that order, in the position they held before E10.T6", async () => {
+    const ctx = await collectSandboxContext({ workbenchRoot: "/tmp/some-sandbox-root", home });
+    expect(ctx.adapterStateDirs).toEqual([
+      path.join(home, ".claude"),
+      path.join(home, ".claude.json"),
+      path.join(home, ".codex"),
+    ]);
+
+    const allowWrite = deriveSandboxConfig(openPolicy, ctx).allowWrite;
+    const at = (entry: string): number => allowWrite.indexOf(entry);
+    expect(at(path.join(home, ".claude"))).toBeGreaterThanOrEqual(0);
+    // Consecutive, and immediately ahead of the cache entry that followed
+    // them in `open.ts` before this ticket — position, not just presence.
+    expect(at(path.join(home, ".claude.json"))).toBe(at(path.join(home, ".claude")) + 1);
+    expect(at(path.join(home, ".codex"))).toBe(at(path.join(home, ".claude")) + 2);
+    expect(at(path.join(home, ".npm"))).toBe(at(path.join(home, ".claude")) + 3);
+  });
+
   it("open.ts's own source names no adapter (AC2) — the write rules it grants come entirely from agent/adapters.ts's data now", async () => {
     const source = await readFile(openPolicyTsPath, "utf8");
     expect(source).not.toMatch(/claude|codex|\bpi\b/i);
