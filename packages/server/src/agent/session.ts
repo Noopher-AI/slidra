@@ -17,6 +17,7 @@ import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js"
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
 import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
+import { postDeckServerJson, type DeckServerClient } from "../deck-server-client.js";
 import path from "node:path";
 import { getActiveLauncher } from "../sandbox/launcher.js";
 import { collectSandboxContext, deriveSandboxConfig } from "../sandbox/policy.js";
@@ -440,6 +441,19 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly editingLock: EditingLock;
   /**
+   * [E10.T5] Slice B's dual-write, agent side: the crate's own editing
+   * lock is asked FIRST (`POST /editing/agent-begin|agent-end`), and only
+   * once it agrees does `this.editingLock` (above) run — the same
+   * "crate decides first, Node applies" order Dev-Leader's ruling on
+   * NOOP-643 established for the human HTTP routes (`serve.ts`'s
+   * `handleEditingBeginPost`). Closing this gap is why the floor was moved
+   * into the crate at all (NOOP-641 Plan's 裁示1): `POST /call`'s own 409
+   * gate only means anything once an agent turn actually registers there.
+   * TODO([E10.T8]/F3): collapses to the crate alone once the browser calls
+   * its editing routes directly; `this.editingLock` can be deleted then.
+   */
+  private readonly deckServer: DeckServerClient;
+  /**
    * True once this turn has acquired `editingLock` and called
    * `beginHistoryGroup` — set on the turn's first command, cleared in
    * `runTurn`'s `finally`. This session is the turn-level group's
@@ -467,11 +481,13 @@ export class AgentChatSession extends EventEmitter {
     config: AgentAdapterConfig,
     presentationId: string,
     editingLock: EditingLock,
+    deckServer: DeckServerClient,
     workdirReal: string,
     policy: WorkbenchPolicy,
     preferredModelId: string | null = null,
   ) {
     super();
+    this.deckServer = deckServer;
     this.config = config;
     this.presentationId = presentationId;
     this.editingLock = editingLock;
@@ -806,6 +822,18 @@ export class AgentChatSession extends EventEmitter {
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
+      // [E10.T5] "crate decides first, Node applies": the crate's own
+      // mirror is asked before the local release, but a mirror-call
+      // failure (e.g. a network blip) is only logged, never allowed to
+      // block the local release — a stuck floor would freeze every human
+      // edit until the process restarts, far worse than the crate's own
+      // lock state lagging Node's by one call. `releaseAgent()` never
+      // throws, so this ordering costs nothing on the common path.
+      try {
+        await postDeckServerJson(this.deckServer, "/editing/agent-end", this.presentationId, "agent");
+      } catch (error) {
+        this.emitTyped("chat-error", { message: `deck server mirror for agent-end failed: ${describeError(error)}` });
+      }
       this.editingLock.releaseAgent();
     }
   }
@@ -1201,7 +1229,8 @@ export class AgentChatSession extends EventEmitter {
   /**
    * The freeze/undo-group boundary's entry point: the author's turn's
    * first `session/request_permission` call — never the editorial brief
-   * turn (`relayingCurrentTurn` is false for it) — waits for
+   * turn (`relayingCurrentTurn` is false for it) — mirrors to the crate's
+   * `agent-begin` first ([E10.T5]'s dual-write), then waits for
    * `editingLock.acquireAgent()` (which itself waits out any in-progress
    * human edit rather than throwing) and opens the history group. Every
    * later command in the same turn sees `turnHasEditLock` already true and
@@ -1212,6 +1241,19 @@ export class AgentChatSession extends EventEmitter {
    */
   private async openEditLockOnFirstCommand(): Promise<void> {
     if (!this.relayingCurrentTurn || this.turnHasEditLock) return;
+    // [E10.T5] "crate decides first, Node applies": the crate's own
+    // `agent-begin` never refuses (it waits out any human lease, exactly
+    // like `editingLock.acquireAgent()` below), so a non-200 here is an
+    // unexpected door-level failure (e.g. the workbench id has gone
+    // stale) — unlike the symmetric `agent-end` mirror in
+    // `closeEditLockIfOpen`, this one is NOT swallowed: proceeding to the
+    // local acquire without the crate's agreement would silently recreate
+    // the exact gap this dual-write closes (POST /call's own 409 gate
+    // would keep thinking no agent turn is active).
+    const mirrored = await postDeckServerJson(this.deckServer, "/editing/agent-begin", this.presentationId, "agent");
+    if (mirrored.status !== 200) {
+      throw new SlidraError(`deck server refused agent-begin: ${JSON.stringify(mirrored.body)}`);
+    }
     await this.editingLock.acquireAgent();
     this.turnHasEditLock = true;
     await beginHistoryGroup(this.presentationId);

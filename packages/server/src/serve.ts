@@ -410,6 +410,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const manager = new AgentManager({
     presentationId: initialDeck?.id ?? null,
     editingLock,
+    deckServer,
     policy: options.policy,
     workdir: initialWorkdir,
     initial: initialAgent,

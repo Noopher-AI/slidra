@@ -7,6 +7,7 @@ import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AdapterSpec, 
 import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
 import { ChatLog } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
+import type { DeckServerClient } from "../deck-server-client.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
 import { writeAgentModel, writeAgentSelection } from "./settings.js";
 import { getActiveLauncher } from "../sandbox/launcher.js";
@@ -75,6 +76,8 @@ export interface AgentManagerOptions {
   /** Null exactly while `serve` has no deck bound (NOOP-433) — `retarget()` is how this changes later. */
   presentationId: string | null;
   editingLock: EditingLock;
+  /** [E10.T5]: threaded straight through to every `AgentChatSession` this manager builds — see that class's own `deckServer` doc comment for why it needs one. */
+  deckServer: DeckServerClient;
   /** The workbench's policy (NOOP-617) — passed straight through to every `AgentChatSession` this manager builds, never inspected here. */
   policy: WorkbenchPolicy;
   /** The deployed agent working directory (NOOP-231) every session runs in. Null in lockstep with `presentationId`. */
@@ -138,6 +141,7 @@ export class AgentManager {
   private presentationId: string | null;
   private workdir: string | null;
   private readonly editingLock: EditingLock;
+  private readonly deckServer: DeckServerClient;
   private readonly policy: WorkbenchPolicy;
   private readonly runCommand: CommandRunner;
   private readonly resolveAdapter: (kind: AgentKind) => AgentAdapterConfig;
@@ -177,6 +181,7 @@ export class AgentManager {
   constructor(options: AgentManagerOptions) {
     this.presentationId = options.presentationId;
     this.editingLock = options.editingLock;
+    this.deckServer = options.deckServer;
     this.policy = options.policy;
     this.workdir = options.workdir;
     this.runCommand = options.runCommand ?? spawnCommandRunner;
@@ -224,6 +229,7 @@ export class AgentManager {
       { ...config, env },
       presentationId,
       this.editingLock,
+      this.deckServer,
       workdir,
       this.policy,
       this.preferredModels[kind] ?? null,
