@@ -222,7 +222,7 @@ mod tests {
     }
 
     fn register(home: &std::path::Path, id: &str, deck: &std::path::Path) {
-        crate::workspace::registry::register_for_test(home, id, deck);
+        crate::workbench::runtime::register_for_test(home, id, deck);
     }
 
     struct Fixture {
@@ -233,7 +233,7 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str) -> Self {
-            let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = std::env::temp_dir().join(format!(
                 "slidra-test-chat-history-{label}-{}",
                 crate::id::random_hex_suffix()

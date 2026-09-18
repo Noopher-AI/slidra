@@ -7,9 +7,9 @@
 //! `packages/server/src/storage/deck-folder.ts` ([S11.F9], #404 Scope
 //! "Deck lifecycle"). Reuses `commands::new::run`, `commands::open::run`,
 //! `commands::deck::dispatch` (`deck list`/`deck meta set`),
-//! `asset_import::resolve_conflict_free_filename`, and
-//! `workspace::registry::*` exactly as `reads.rs`/`assets.rs` reuse the
-//! rest of this crate rather than reimplementing any of it.
+//! `asset_import::resolve_conflict_free_filename`, and the process-local
+//! workbench runtime exactly as `reads.rs`/`assets.rs` reuse the rest of this
+//! crate rather than reimplementing any of it.
 //!
 //! The Node-side "cannot rename/delete the currently-bound deck" 409 guard
 //! (`storage/deck-store.ts`'s `DeckBoundError`, driven by `DeckSession`'s
@@ -27,9 +27,7 @@ use crate::asset_import::{
     is_illegal_filesystem_char, replace_illegal_filesystem_chars, resolve_conflict_free_filename,
 };
 use crate::errors::SlidraError;
-use crate::workspace::registry::RegistryEntry;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// The owner tag every deck gets until an identity claims it ([E6.T9]'s "no
@@ -265,21 +263,6 @@ fn register_deck_at_path(
 /// One registry read, one reverse index (`deck_path` -> lexicographically-
 /// smallest id) — mirrors `deck-store.ts`'s own `buildDeckPathIndex`: never
 /// a per-entry registry scan.
-fn build_deck_path_index(registry: &HashMap<String, RegistryEntry>) -> HashMap<PathBuf, String> {
-    let mut index: HashMap<PathBuf, String> = HashMap::new();
-    for (id, entry) in registry {
-        let resolved = resolve_path(&entry.deck_path);
-        let should_insert = match index.get(&resolved) {
-            None => true,
-            Some(existing) => id < existing,
-        };
-        if should_insert {
-            index.insert(resolved, id.clone());
-        }
-    }
-    index
-}
-
 pub fn list_decks(owner: Option<&str>) -> DeckStoreResult<Vec<DeckListEntry>> {
     let folder = ensure_deck_folder()?;
     let mut args = vec![folder.to_string_lossy().into_owned()];
@@ -302,10 +285,6 @@ pub fn list_decks(owner: Option<&str>) -> DeckStoreResult<Vec<DeckListEntry>> {
         .cloned()
         .unwrap_or_default();
 
-    let home = crate::workspace::resolve_home();
-    let registry = crate::workspace::registry::read_registry(&home)?;
-    let index = build_deck_path_index(&registry);
-
     let mut entries = Vec::with_capacity(raw.len());
     for entry in raw {
         let file_name = entry
@@ -314,8 +293,8 @@ pub fn list_decks(owner: Option<&str>) -> DeckStoreResult<Vec<DeckListEntry>> {
             .unwrap_or_default()
             .to_string();
         let deck_path = folder.join(&file_name);
-        let id = index.get(&resolve_path(&deck_path)).cloned();
-        let last_modified = crate::workspace::registry::deck_file_mtime_millis(&deck_path)?;
+        let id = crate::workbench::runtime::find_by_path(&deck_path);
+        let last_modified = deck_file_mtime_millis(&deck_path)?;
         entries.push(DeckListEntry {
             file_name,
             name: entry
@@ -345,12 +324,9 @@ pub fn resolve_id(file_name: &str) -> DeckStoreResult<CreatedDeck> {
             "no deck file found: {file_name}"
         )));
     }
-    let home = crate::workspace::resolve_home();
-    let registry = crate::workspace::registry::read_registry(&home)?;
-    let index = build_deck_path_index(&registry);
-    if let Some(existing_id) = index.get(&resolve_path(&deck_path)) {
+    if let Some(existing_id) = crate::workbench::runtime::find_by_path(&deck_path) {
         return Ok(CreatedDeck {
-            id: existing_id.clone(),
+            id: existing_id,
             file_name: file_name.to_string(),
         });
     }
@@ -546,31 +522,26 @@ pub fn open_upload(bytes: &[u8], display_name: Option<&str>) -> DeckStoreResult<
 /// that write so the deck does not open already "dirty". No
 /// currently-bound-deck guard — see this module's own doc comment.
 pub fn rename_deck(id: &str, name: &str) -> DeckStoreResult<String> {
-    let home = crate::workspace::resolve_home();
-    let registry = crate::workspace::registry::read_registry(&home)?;
-    let entry = registry
-        .get(id)
-        .ok_or_else(|| DeckStoreError::NotFound(format!("no presentation found for id: {id}")))?;
+    let deck_path = crate::workbench::runtime::resolve_deck_path(id)?;
 
     let base_name = sanitize_deck_base_name(Some(name));
     let new_file_name = format!("{base_name}.slidra");
-    let parent = entry
-        .deck_path
+    let parent = deck_path
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_default();
     let new_path = parent.join(&new_file_name);
 
-    if new_path != entry.deck_path {
+    if new_path != deck_path {
         if new_path.exists() {
             return Err(DeckStoreError::NameConflict(format!(
                 "a deck named {new_file_name} already exists"
             )));
         }
-        std::fs::rename(&entry.deck_path, &new_path).map_err(|_| {
+        std::fs::rename(&deck_path, &new_path).map_err(|_| {
             DeckStoreError::Invalid(format!(
                 "failed to rename deck file: {}",
-                entry.deck_path.display()
+                deck_path.display()
             ))
         })?;
     }
@@ -585,22 +556,7 @@ pub fn rename_deck(id: &str, name: &str) -> DeckStoreResult<String> {
         return Err(DeckStoreError::Invalid(meta_set.message));
     }
 
-    let saved_at = crate::workspace::registry::deck_file_mtime_millis(&new_path)?
-        + crate::workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
-    crate::workspace::registry::with_registry_lock(&home, || {
-        let mut latest = crate::workspace::registry::read_registry(&home)?;
-        if latest.contains_key(id) {
-            latest.insert(
-                id.to_string(),
-                RegistryEntry {
-                    deck_path: new_path.clone(),
-                    source_path: Some(new_path.clone()),
-                    saved_at: Some(saved_at),
-                },
-            );
-        }
-        crate::workspace::registry::write_registry(&home, &latest)
-    })?;
+    crate::workbench::runtime::rename(id, &new_path)?;
     Ok(new_file_name)
 }
 
@@ -610,29 +566,7 @@ pub fn rename_deck(id: &str, name: &str) -> DeckStoreResult<String> {
 /// deck never opened yet has no registry entry at all; that is not an
 /// error, there is simply nothing to re-snapshot.
 fn resnapshot_saved_at_if_registered(deck_path: &Path) -> DeckStoreResult<()> {
-    let home = crate::workspace::resolve_home();
-    let registry = crate::workspace::registry::read_registry(&home)?;
-    let Some(id) = registry
-        .iter()
-        .find(|(_, entry)| entry.deck_path == deck_path)
-        .map(|(id, _)| id.clone())
-    else {
-        return Ok(());
-    };
-    let saved_at = crate::workspace::registry::deck_file_mtime_millis(deck_path)?
-        + crate::workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
-    crate::workspace::registry::with_registry_lock(&home, || {
-        let mut latest = crate::workspace::registry::read_registry(&home)?;
-        if let Some(current) = latest.get(&id) {
-            let updated = RegistryEntry {
-                deck_path: current.deck_path.clone(),
-                source_path: current.source_path.clone(),
-                saved_at: Some(saved_at),
-            };
-            latest.insert(id.clone(), updated);
-        }
-        crate::workspace::registry::write_registry(&home, &latest)
-    })?;
+    let _ = deck_path;
     Ok(())
 }
 
@@ -672,30 +606,29 @@ pub fn claim_anonymous(owner_tag: &str) -> DeckStoreResult<u32> {
 /// unlink), then drops its registry entry, history, and clipboard. No
 /// currently-bound-deck guard — see this module's own doc comment.
 pub fn remove_deck(id: &str) -> DeckStoreResult<()> {
-    let home = crate::workspace::resolve_home();
-    let registry = crate::workspace::registry::read_registry(&home)?;
-    let entry = registry
-        .get(id)
-        .ok_or_else(|| DeckStoreError::NotFound(format!("no presentation found for id: {id}")))?
-        .clone();
-
-    super::trash::move_to_trash(&entry.deck_path)?;
-
-    crate::workspace::registry::with_registry_lock(&home, || {
-        let mut latest = crate::workspace::registry::read_registry(&home)?;
-        latest.remove(id);
-        crate::workspace::registry::write_registry(&home, &latest)
-    })?;
-
-    let _ = std::fs::remove_dir_all(home.join("history").join(id));
-    let _ = std::fs::remove_file(home.join("clipboard").join(format!("{id}.json")));
+    let deck_path = crate::workbench::runtime::resolve_deck_path(id)?;
+    super::trash::move_to_trash(&deck_path)?;
+    crate::workbench::runtime::close(id)?;
     Ok(())
+}
+
+pub(crate) fn deck_file_mtime_millis(path: &Path) -> DeckStoreResult<f64> {
+    let modified = std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .and_then(|time| {
+            time.duration_since(std::time::UNIX_EPOCH)
+                .map_err(std::io::Error::other)
+        })
+        .map_err(|_| {
+            DeckStoreError::Invalid(format!("failed to read deck metadata: {}", path.display()))
+        })?;
+    Ok(modified.as_secs_f64() * 1000.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry::ENV_LOCK;
+    use crate::workbench::runtime::ENV_LOCK;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -817,9 +750,10 @@ mod tests {
         let resolved = resolve_id("untouched.slidra").expect("resolve should succeed");
         assert_eq!(resolved.file_name, "untouched.slidra");
 
-        let home = crate::workspace::resolve_home();
-        let registry = crate::workspace::registry::read_registry(&home).unwrap();
-        assert_eq!(registry.get(&resolved.id).unwrap().deck_path, path);
+        assert_eq!(
+            crate::workbench::runtime::resolve_deck_path(&resolved.id).unwrap(),
+            path.canonicalize().unwrap()
+        );
     }
 
     #[test]
@@ -844,11 +778,13 @@ mod tests {
         assert!(!test_home.deck_folder.join("Old Name.slidra").exists());
         assert!(test_home.deck_folder.join("New Name.slidra").exists());
 
-        let home = crate::workspace::resolve_home();
-        let registry = crate::workspace::registry::read_registry(&home).unwrap();
         assert_eq!(
-            registry.get(&created.id).unwrap().deck_path,
-            test_home.deck_folder.join("New Name.slidra")
+            crate::workbench::runtime::resolve_deck_path(&created.id).unwrap(),
+            test_home
+                .deck_folder
+                .join("New Name.slidra")
+                .canonicalize()
+                .unwrap()
         );
     }
 
@@ -889,17 +825,13 @@ mod tests {
         remove_deck(&created.id).expect("remove should succeed");
 
         assert!(!test_home.deck_folder.join("Doomed.slidra").exists());
-        assert!(
-            trash_data_home
-                .join("Trash")
-                .join("files")
-                .join("Doomed.slidra")
-                .exists()
-        );
+        assert!(trash_data_home
+            .join("Trash")
+            .join("files")
+            .join("Doomed.slidra")
+            .exists());
 
-        let home = crate::workspace::resolve_home();
-        let registry = crate::workspace::registry::read_registry(&home).unwrap();
-        assert!(!registry.contains_key(&created.id));
+        assert!(crate::workbench::runtime::resolve_deck_path(&created.id).is_err());
 
         unsafe {
             std::env::remove_var("XDG_DATA_HOME");

@@ -38,13 +38,13 @@
 //! fixed dependency budget has no `libc`, and `/proc`-based liveness checks
 //! are not portable (plan §7.4).
 
-use super::{UploadId, WorkbenchId, WorkbenchStore, validate_upload_file_name};
+use super::{validate_upload_file_name, UploadId, WorkbenchId, WorkbenchStore};
 use crate::errors::{SlidraError, SlidraResult};
 use crate::workspace::virtual_fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 const WORKBENCH_DIR_PREFIX: &str = "slidra-workbench-";
@@ -122,6 +122,28 @@ impl LocalWorkbench {
     /// directory exists; call `prepare_scratch` first.
     pub fn scratch_dir_for_local_spawn(&self) -> &Path {
         &self.scratch_dir
+    }
+
+    /// Crate-internal bridge for the local runtime. This is deliberately
+    /// absent from `WorkbenchStore`, so storage-independent callers can
+    /// never obtain a path.
+    pub(crate) fn deck_path_for_runtime(&self) -> &Path {
+        &self.deck_path
+    }
+
+    pub(crate) fn retarget_deck_for_runtime(&mut self, deck_path: &Path) {
+        self.deck_path = deck_path
+            .canonicalize()
+            .unwrap_or_else(|_| deck_path.to_path_buf());
+        let _ = std::fs::write(
+            self.root.join("deck"),
+            self.deck_path.to_string_lossy().as_bytes(),
+        );
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_id_for_test(&mut self, id: &str) {
+        self.id = WorkbenchId(id.to_string());
     }
 }
 
@@ -469,8 +491,8 @@ mod tests {
     }
 
     #[test]
-    fn distinct_local_workbenches_get_distinct_ids_and_directory_suffixes_not_derived_from_each_other()
-     {
+    fn distinct_local_workbenches_get_distinct_ids_and_directory_suffixes_not_derived_from_each_other(
+    ) {
         let _guard = crate::workbench::lock_workbench_tests();
         let deck = temp_deck("guard-dirname");
         let a = LocalWorkbench::open(&deck, b"policy").unwrap();
@@ -484,11 +506,10 @@ mod tests {
                 .contains(a.id().as_str()),
             "the directory name must not embed the workbench id"
         );
-        assert!(
-            !b.root_for_test()
-                .to_string_lossy()
-                .contains(b.id().as_str())
-        );
+        assert!(!b
+            .root_for_test()
+            .to_string_lossy()
+            .contains(b.id().as_str()));
 
         drop(a);
         drop(b);

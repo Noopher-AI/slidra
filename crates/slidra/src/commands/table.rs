@@ -607,7 +607,7 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str, id: &'static str) -> Self {
-            let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let deck = crate::deck::build_test_deck(
                 label,
@@ -619,7 +619,7 @@ mod tests {
                     ("slides/001.svg", br#"<svg viewBox="0 0 1280 720"></svg>"#),
                 ],
             );
-            crate::workspace::registry::register_for_test(&home, id, &deck);
+            crate::workbench::runtime::register_for_test(&home, id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }

@@ -143,6 +143,24 @@ fn post_call_with_body(
     }
 }
 
+fn post_new(base_url: &str, credential_header: &str, name: &str) -> String {
+    let request = ureq::post(format!("{base_url}/new"))
+        .header(credential::CREDENTIAL_HEADER, credential_header)
+        .config()
+        .http_status_as_error(false)
+        .build();
+    let response = request
+        .send(serde_json::to_vec(&serde_json::json!({ "name": name })).unwrap())
+        .expect("request must be sent");
+    assert_eq!(response.status().as_u16(), 200);
+    let (_, body) = response.into_parts();
+    let body: serde_json::Value = serde_json::from_reader(body.into_reader()).unwrap();
+    body["id"]
+        .as_str()
+        .expect("new response must include id")
+        .to_string()
+}
+
 /// Decodes the same frame shape `server::write_frame_response` writes and
 /// `server::shim_client::relay_frames` reads: `[1 byte kind][4 bytes
 /// big-endian value][payload]`. Returns `(stdout, stderr, exit_code)`.
@@ -738,9 +756,6 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
 
     let _guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("shim-e2e");
-    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
-    let id = seed_deck(&home, "shim-e2e");
-    unsafe { std::env::remove_var("SLIDRA_HOME") };
 
     let bin = env!("CARGO_BIN_EXE_slidra");
     let mut server = Command::new(bin)
@@ -764,6 +779,19 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
     let port = port_json["port"]
         .as_u64()
         .expect("port field must be present");
+    let base_url = format!("http://127.0.0.1:{port}");
+    let lifecycle_credential = credential::encode(CallerKind::Editor, "lifecycle");
+    let id = post_new(&base_url, &lifecycle_credential, "shim-e2e");
+    let editor_credential = credential::encode(CallerKind::Editor, &id);
+    let add = post_call(
+        &base_url,
+        Some(&editor_credential),
+        &[],
+        &["slide", "add", &id],
+    );
+    assert_eq!(add.status, 200);
+    let (_, add_stderr, add_exit) = decode_frames(&add.body);
+    assert_eq!(add_exit, 0, "{}", String::from_utf8_lossy(&add_stderr));
 
     // `cat` isn't one of the editor's 68 hand-listed commands (the editor
     // reads file content over `/api/files/`, never this door).
@@ -774,7 +802,7 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
         .arg(&id)
         .arg("slides/001.svg")
         .env("SLIDRA_SHIM_CREDENTIAL", &credential)
-        .env("SLIDRA_SHIM_BASE_URL", format!("http://127.0.0.1:{port}"))
+        .env("SLIDRA_SHIM_BASE_URL", &base_url)
         .output()
         .expect("shim binary must run");
 

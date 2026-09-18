@@ -5,8 +5,7 @@
 
 use crate::errors::SlidraError;
 use crate::result::{CommandResult, FailureKind};
-use crate::workspace::registry::RegistryEntry;
-use crate::{argv, workspace};
+use crate::{argv, workbench};
 use std::path::{Path, PathBuf};
 
 pub fn run(args: &[String]) -> CommandResult {
@@ -26,21 +25,15 @@ pub fn run(args: &[String]) -> CommandResult {
 }
 
 fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
-    let home = workspace::resolve_home();
-    let registry = workspace::registry::read_registry(&home)?;
-    let Some(entry) = registry.get(id).cloned() else {
-        return Err(SlidraError::not_found(format!(
-            "no presentation found for id: {id}"
-        )));
-    };
+    let deck_path = workbench::runtime::resolve_deck_path(id)?;
 
     let output_resolved = resolve_lexically(Path::new(output_path));
-    let is_same_file = output_resolved == resolve_lexically(&entry.deck_path);
+    let is_same_file = output_resolved == resolve_lexically(&deck_path);
     if !is_same_file {
         // A plain file copy, staged then renamed: the deck IS the
         // container format now, so "pack to a different path" is just
         // "duplicate this file" — no directory walk, no re-compression.
-        copy_deck_staged(&entry.deck_path, Path::new(output_path))?;
+        copy_deck_staged(&deck_path, Path::new(output_path))?;
     }
     // "no copy, no VACUUM" (behavior table) only when the target IS the
     // deck's own file — a target that merely matches the *source* path
@@ -49,29 +42,6 @@ fn pack_presentation(id: &str, output_path: &str) -> Result<(), SlidraError> {
     // (`packages/server`'s `reopenPresentationInPlace` updates `source_path`
     // independently of `deck_path`).
 
-    let is_same_as_source = entry
-        .source_path
-        .as_ref()
-        .map(|source_path| output_resolved == resolve_lexically(source_path))
-        .unwrap_or(false);
-    if is_same_as_source {
-        let saved_at = workspace::registry::deck_file_mtime_millis(&entry.deck_path)?
-            + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
-        // Re-read inside the lock rather than reusing the map read above:
-        // packing runs between the two, and anything another process
-        // registered meanwhile must survive this write.
-        workspace::registry::with_registry_lock(&home, || {
-            let mut registry = workspace::registry::read_registry(&home)?;
-            registry.insert(
-                id.to_string(),
-                RegistryEntry {
-                    saved_at: Some(saved_at),
-                    ..entry
-                },
-            );
-            workspace::registry::write_registry(&home, &registry)
-        })?;
-    }
     Ok(())
 }
 
@@ -147,7 +117,6 @@ fn failure_kind_for(err: &SlidraError) -> FailureKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry;
     use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -168,21 +137,12 @@ mod tests {
 
     #[test]
     fn unknown_id_is_not_found() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
-        let home = temp_dir("unknown-id-home");
-        unsafe {
-            std::env::set_var("SLIDRA_HOME", &home);
-        }
         let result = run(&["nope".to_string(), "/tmp/out.slidra".to_string()]);
         assert!(!result.ok);
         assert_eq!(
             result.failure_kind,
             Some(crate::result::FailureKind::NotFound)
         );
-        unsafe {
-            std::env::remove_var("SLIDRA_HOME");
-        }
-        std::fs::remove_dir_all(&home).ok();
     }
 
     fn minimal_deck(label: &str) -> PathBuf {
@@ -196,34 +156,13 @@ mod tests {
     }
 
     #[test]
-    fn packing_to_the_deck_s_own_path_updates_saved_at_without_copying() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
-        let home = temp_dir("same-file-home");
+    fn packing_to_the_deck_s_own_path_is_a_no_op() {
         let deck = minimal_deck("same-file");
-        unsafe {
-            std::env::set_var("SLIDRA_HOME", &home);
-        }
-        let mut registry_map = std::collections::HashMap::new();
-        registry_map.insert(
-            "id1".to_string(),
-            RegistryEntry {
-                deck_path: deck.clone(),
-                source_path: Some(deck.clone()),
-                saved_at: Some(0.0),
-            },
-        );
-        workspace::registry::write_registry(&home, &registry_map).unwrap();
-
-        let result = run(&["id1".to_string(), deck.to_string_lossy().into_owned()]);
+        let id = crate::workbench::runtime::open(&deck).unwrap();
+        let before = std::fs::read(&deck).unwrap();
+        let result = run(&[id, deck.to_string_lossy().into_owned()]);
         assert!(result.ok, "expected success, got {}", result.message);
-
-        let updated_registry = workspace::registry::read_registry(&home).unwrap();
-        assert!(updated_registry["id1"].saved_at.unwrap() > 0.0);
-
-        unsafe {
-            std::env::remove_var("SLIDRA_HOME");
-        }
-        std::fs::remove_dir_all(&home).ok();
+        assert_eq!(std::fs::read(&deck).unwrap(), before);
         std::fs::remove_file(&deck).ok();
     }
 
@@ -234,26 +173,11 @@ mod tests {
     /// `source_path` independently of `deck_path`) — then updates
     /// `saved_at`, since the target now matches source.
     #[test]
-    fn packing_to_a_remembered_source_path_copies_and_updates_saved_at() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
-        let home = temp_dir("same-source-home");
+    fn packing_to_a_different_path_copies_exact_bytes() {
         let deck = minimal_deck("same-source");
-        unsafe {
-            std::env::set_var("SLIDRA_HOME", &home);
-        }
         let output = temp_dir("same-source-output").join("out.slidra");
-        let mut registry_map = std::collections::HashMap::new();
-        registry_map.insert(
-            "id1".to_string(),
-            RegistryEntry {
-                deck_path: deck.clone(),
-                source_path: Some(output.clone()),
-                saved_at: Some(0.0),
-            },
-        );
-        workspace::registry::write_registry(&home, &registry_map).unwrap();
-
-        let result = run(&["id1".to_string(), output.to_string_lossy().into_owned()]);
+        let id = crate::workbench::runtime::open(&deck).unwrap();
+        let result = run(&[id, output.to_string_lossy().into_owned()]);
         assert!(result.ok, "expected success, got {}", result.message);
         assert!(output.exists());
         assert_eq!(
@@ -261,48 +185,6 @@ mod tests {
             std::fs::read(&deck).unwrap()
         );
 
-        let updated_registry = workspace::registry::read_registry(&home).unwrap();
-        assert!(updated_registry["id1"].saved_at.unwrap() > 0.0);
-
-        unsafe {
-            std::env::remove_var("SLIDRA_HOME");
-        }
-        std::fs::remove_dir_all(&home).ok();
-        std::fs::remove_file(&deck).ok();
-        std::fs::remove_file(&output).ok();
-    }
-
-    #[test]
-    fn packing_to_a_different_path_leaves_saved_at_untouched() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
-        let home = temp_dir("diff-path-home");
-        let deck = minimal_deck("diff-path");
-        unsafe {
-            std::env::set_var("SLIDRA_HOME", &home);
-        }
-        let mut registry_map = std::collections::HashMap::new();
-        registry_map.insert(
-            "id1".to_string(),
-            RegistryEntry {
-                deck_path: deck.clone(),
-                source_path: Some(PathBuf::from("/some/other/path.slidra")),
-                saved_at: Some(0.0),
-            },
-        );
-        workspace::registry::write_registry(&home, &registry_map).unwrap();
-
-        let output = temp_dir("diff-path-output").join("out.slidra");
-        let result = run(&["id1".to_string(), output.to_string_lossy().into_owned()]);
-        assert!(result.ok);
-        assert!(output.exists());
-
-        let updated_registry = workspace::registry::read_registry(&home).unwrap();
-        assert_eq!(updated_registry["id1"].saved_at, Some(0.0));
-
-        unsafe {
-            std::env::remove_var("SLIDRA_HOME");
-        }
-        std::fs::remove_dir_all(&home).ok();
         std::fs::remove_file(&deck).ok();
         std::fs::remove_file(&output).ok();
     }

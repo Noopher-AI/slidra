@@ -5,8 +5,7 @@
 
 use crate::errors::SlidraError;
 use crate::result::{CommandResult, FailureKind};
-use crate::workspace::registry::RegistryEntry;
-use crate::{argv, deck, id, workspace};
+use crate::{argv, deck, workbench};
 use std::path::Path;
 
 pub fn run(args: &[String]) -> CommandResult {
@@ -32,7 +31,6 @@ pub fn run(args: &[String]) -> CommandResult {
 /// presentation's content from this point on, exactly as `pack`ing back to
 /// it will later find it.
 fn open_presentation(path: &str) -> Result<String, SlidraError> {
-    let home = workspace::resolve_home();
     let deck_path = Path::new(path).to_path_buf();
 
     deck::migrate_legacy_zip_in_place(&deck_path)?;
@@ -41,30 +39,14 @@ fn open_presentation(path: &str) -> Result<String, SlidraError> {
     // be registered.
     deck::open_connection(&deck_path)?;
 
-    let new_id = id::generate_opaque_id();
-    let saved_at = workspace::registry::deck_file_mtime_millis(&deck_path)?
-        + workspace::registry::SAVED_AT_SETTLE_WINDOW_MS;
-    // Read-modify-write under the lock: a concurrent `open` reading the
-    // same map and writing after us would drop this brand-new entry.
-    workspace::registry::with_registry_lock(&home, || {
-        let mut registry = workspace::registry::read_registry(&home)?;
-        registry.insert(
-            new_id.clone(),
-            RegistryEntry {
-                deck_path: deck_path.clone(),
-                source_path: Some(deck_path.clone()),
-                saved_at: Some(saved_at),
-            },
-        );
-        workspace::registry::write_registry(&home, &registry)
-    })?;
-    Ok(new_id)
+    workbench::runtime::open(&deck_path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry;
+    use crate::workbench::runtime;
+    use crate::{id, workspace};
     use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -85,7 +67,7 @@ mod tests {
 
     #[test]
     fn nonexistent_file_fails_not_not_found() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
+        let _guard = runtime::ENV_LOCK.lock().unwrap();
         let home = temp_dir("nonexistent-home");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);
@@ -108,7 +90,7 @@ mod tests {
     /// since that value itself is the whole point of migration.
     #[test]
     fn opens_a_legacy_zip_migrates_it_and_registers_it_at_formatversion_5() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
+        let _guard = runtime::ENV_LOCK.lock().unwrap();
         let home = temp_dir("open-success-home");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);
@@ -158,7 +140,7 @@ mod tests {
     /// besides gaining a second registry entry).
     #[test]
     fn opening_an_already_sqlite_deck_twice_is_idempotent() {
-        let _guard = registry::ENV_LOCK.lock().unwrap();
+        let _guard = runtime::ENV_LOCK.lock().unwrap();
         let home = temp_dir("open-idempotent-home");
         unsafe {
             std::env::set_var("SLIDRA_HOME", &home);

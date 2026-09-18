@@ -16,7 +16,7 @@
 
 use crate::errors::{SlidraError, SlidraResult};
 use crate::result::{CommandResult, FailureKind};
-use crate::{argv, deck, workspace};
+use crate::{argv, deck, workbench, workspace};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -51,8 +51,8 @@ fn failure_kind_for(err: &SlidraError) -> FailureKind {
 /// string would produce either way, so trying the id lookup first can
 /// never mask a genuine path.
 fn resolve_deck_path(id_or_path: &str) -> PathBuf {
-    match workspace::registry::lookup(id_or_path) {
-        Ok(entry) => entry.deck_path,
+    match workbench::runtime::resolve_deck_path(id_or_path) {
+        Ok(path) => path,
         Err(_) => PathBuf::from(id_or_path),
     }
 }
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn extract_reproduces_every_virtual_path_including_empty_directories() {
-        let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+        let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
         let home = temp_dir("sqlite-home");
         std::fs::create_dir_all(&home).unwrap();
         unsafe {
@@ -181,7 +181,7 @@ mod tests {
             ],
         );
         let id = "pid-extract-sqlite";
-        workspace::registry::register_for_test(&home, id, &deckfile);
+        crate::workbench::runtime::register_for_test(&home, id, &deckfile);
 
         let out_dir = temp_dir("sqlite-out");
         let result = run(&[id.to_string(), out_dir.to_string_lossy().into_owned()]);
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn refuses_a_non_empty_existing_target_directory() {
-        let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+        let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
         let home = temp_dir("nonempty-home");
         std::fs::create_dir_all(&home).unwrap();
         unsafe {
@@ -222,7 +222,7 @@ mod tests {
             )],
         );
         let id = "pid-extract-nonempty";
-        workspace::registry::register_for_test(&home, id, &deckfile);
+        crate::workbench::runtime::register_for_test(&home, id, &deckfile);
 
         let out_dir = temp_dir("nonempty-out");
         std::fs::create_dir_all(&out_dir).unwrap();

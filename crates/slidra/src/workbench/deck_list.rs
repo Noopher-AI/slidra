@@ -105,7 +105,7 @@ pub fn record_opened_deck(path: &Path) -> SlidraResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry::ENV_LOCK;
+    use crate::workbench::runtime::ENV_LOCK;
 
     struct Fixture {
         home: PathBuf,
