@@ -176,7 +176,10 @@ fn empty_effect_plan() -> serde_json::Value {
 /// dispatch — the deck id there is a real presentation id
 /// (`deck_store::resolve_id`'s own return value), the same shape
 /// `workbench_id` has here.
-pub(crate) fn render_slide(workbench_id: &str, virtual_path: &str) -> Result<String, (u16, String)> {
+pub(crate) fn render_slide(
+    workbench_id: &str,
+    virtual_path: &str,
+) -> Result<String, (u16, String)> {
     let argv = [
         "slide".to_string(),
         "render".to_string(),

@@ -290,14 +290,24 @@ fn query_param(path: &str, key: &str) -> Option<String> {
 
 /// `GET /decks?owner=` — every entry is scanned directly out of the deck
 /// folder, never out of the registry: a deck that has never been opened
-/// still shows up here.
+/// still shows up here. An explicit `?owner=` always wins (identity never
+/// overrides a caller-specified filter); omitted, this is
+/// `identity::visible_decks()`'s job — every anonymous-owned deck plus
+/// whichever identity is currently signed in, sorted by file name —
+/// mirroring `handleDecksGet`'s own `hasOwnerParam || !resolveVisibleDecks`
+/// branch (production always has a `resolveVisibleDecks`, so the "no
+/// identity session at all" case does not exist here).
 pub(crate) fn handle_list(request: &RawRequest, stream: &mut TcpStream) {
     let Some(_credential) = server::authorize(request, stream, READ_CALLERS) else {
         return;
     };
     let owner = query_param(&request.path, "owner");
+    let result = match &owner {
+        Some(owner) => deck_store::list_decks(Some(owner)),
+        None => crate::server::identity::visible_decks(),
+    };
 
-    match deck_store::list_decks(owner.as_deref()) {
+    match result {
         Ok(entries) => {
             let decks: Vec<Value> = entries
                 .into_iter()

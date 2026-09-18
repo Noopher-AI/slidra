@@ -40,6 +40,7 @@ pub mod deck_lifecycle;
 pub mod deck_store;
 pub mod editing_lock;
 pub mod events;
+pub mod identity;
 pub mod raw;
 pub mod reads;
 pub mod redact;
@@ -138,6 +139,9 @@ fn handle_connection(mut stream: TcpStream) {
         ("GET", "/decks") => deck_lifecycle::handle_list(&request, &mut stream),
         ("POST", "/deck/resolve") => deck_lifecycle::handle_resolve(&request, &mut stream),
         ("GET", "/decks/thumbnail") => deck_lifecycle::handle_thumbnail(&request, &mut stream),
+        ("GET", "/identity") => identity::handle_get(&request, &mut stream),
+        ("POST", "/identity/sign-in") => identity::handle_sign_in(&request, &mut stream),
+        ("POST", "/identity/sign-out") => identity::handle_sign_out(&request, &mut stream),
         _ => write_plain_response(&mut stream, 404, "not found"),
     }
 }

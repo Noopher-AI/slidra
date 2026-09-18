@@ -645,3 +645,151 @@ fn urlencode(value: &str) -> String {
         })
         .collect()
 }
+
+// ---- GET /identity / POST /identity/sign-in / POST /identity/sign-out ---
+
+#[test]
+fn identity_get_reports_no_identity_and_the_one_unavailable_provider() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-get");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = get(&base_url, "/identity", Some(&editor), &[]);
+    assert_eq!(
+        response.status,
+        200,
+        "body: {:?}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let value = json(&response);
+    assert_eq!(value["identity"], serde_json::Value::Null);
+    let providers = value["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 1);
+    assert_eq!(providers[0]["kind"], "anonymous");
+    assert_eq!(providers[0]["available"], false);
+}
+
+#[test]
+fn identity_sign_in_with_the_only_provider_is_always_unavailable() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-sign-in-unavailable");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = post(
+        &base_url,
+        "/identity/sign-in",
+        Some(&editor),
+        &[],
+        br#"{"provider":"anonymous"}"#,
+    );
+    assert_eq!(
+        response.status,
+        200,
+        "body: {:?}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let value = json(&response);
+    assert_eq!(value["status"], "unavailable");
+}
+
+#[test]
+fn identity_sign_in_with_an_unknown_provider_is_404() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-sign-in-unknown");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = post(
+        &base_url,
+        "/identity/sign-in",
+        Some(&editor),
+        &[],
+        br#"{"provider":"google"}"#,
+    );
+    assert_eq!(response.status, 404);
+}
+
+#[test]
+fn identity_sign_in_missing_provider_field_is_400() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-sign-in-missing-provider");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = post(&base_url, "/identity/sign-in", Some(&editor), &[], b"{}");
+    assert_eq!(response.status, 400);
+}
+
+#[test]
+fn identity_sign_out_is_always_ok() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-sign-out");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = post(&base_url, "/identity/sign-out", Some(&editor), &[], b"");
+    assert_eq!(response.status, 200);
+    assert_eq!(json(&response)["ok"], true);
+}
+
+#[test]
+fn identity_routes_are_refused_for_agent_credentials() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("identity-agent-refused");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let agent = credential::encode(CallerKind::Agent, "wb");
+
+    assert_eq!(get(&base_url, "/identity", Some(&agent), &[]).status, 403);
+    assert_eq!(
+        post(&base_url, "/identity/sign-out", Some(&agent), &[], b"").status,
+        403
+    );
+}
+
+// ---- GET /decks default visibility (no ?owner=) --------------------------
+
+#[test]
+fn list_decks_with_no_owner_param_shows_only_anonymous_owned_decks_sorted_by_file_name() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("list-visible-decks");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    post(&base_url, "/new", Some(&editor), &[], br#"{"name":"Zeta"}"#);
+    post(
+        &base_url,
+        "/new",
+        Some(&editor),
+        &[],
+        br#"{"name":"Alpha"}"#,
+    );
+    post(
+        &base_url,
+        "/new",
+        Some(&editor),
+        &[],
+        br#"{"name":"Claimed","owner":"someone-else"}"#,
+    );
+
+    let response = get(&base_url, "/decks", Some(&editor), &[]);
+    assert_eq!(response.status, 200);
+    let decks = json(&response)["decks"].as_array().unwrap().clone();
+    let names: Vec<&str> = decks
+        .iter()
+        .map(|d| d["fileName"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Alpha.slidra", "Zeta.slidra"],
+        "unclaimed decks only, sorted by file name"
+    );
+}
