@@ -36,6 +36,7 @@ beforeEach(() => {
       if (url.endsWith("/api/files/slides/001.svg")) {
         return new Response(slideMarkup, { status: 200 });
       }
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );

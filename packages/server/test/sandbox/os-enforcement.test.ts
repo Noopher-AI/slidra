@@ -20,9 +20,23 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLandlockLauncher } from "../../src/sandbox/landlock-launcher.js";
 import { createSandboxLauncher } from "../../src/sandbox/launcher.js";
-import { buildAgentSandboxPolicy } from "../../src/sandbox/policy.js";
+import { collectSandboxContext, deriveSandboxConfig } from "../../src/sandbox/policy.js";
+import { openPolicy } from "../../src/policy/open.js";
 import { touchesProtectedPath, type ProtectedPaths } from "../../src/agent/protected-paths.js";
-import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
+import type { SandboxConfig, SandboxLauncher } from "../../src/sandbox/launcher.js";
+
+/**
+ * NOOP-617: `buildAgentSandboxPolicy` itself is gone (policy is now an
+ * injected object, never a constant the agent sandbox builds on its own) —
+ * this local wrapper reproduces its exact old shape so every call site
+ * below stays untouched, and this file keeps testing what it always
+ * tested: real OS enforcement, not the policy-derivation plumbing
+ * (`test/sandbox/policy.test.ts`/`derive.test.ts` own that).
+ */
+async function buildAgentSandboxPolicy(options: { sandboxRoot: string; home?: string }): Promise<SandboxConfig> {
+  const ctx = await collectSandboxContext({ workbenchRoot: options.sandboxRoot, home: options.home });
+  return deriveSandboxConfig(openPolicy, ctx);
+}
 
 const isLinux = process.platform === "linux";
 const isDarwin = process.platform === "darwin";

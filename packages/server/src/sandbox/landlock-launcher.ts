@@ -22,7 +22,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveSlidraBin } from "../slidra/bin.js";
-import type { SandboxLauncher, SandboxPolicy, SandboxSpawn, WrappedSpawn } from "./launcher.js";
+import type { SandboxConfig, SandboxLauncher, SandboxSpawn, WrappedSpawn } from "./launcher.js";
 
 /**
  * The helper's own path: `SLIDRA_SANDBOX_BIN` when set (tests point this at
@@ -63,7 +63,11 @@ export async function createLandlockLauncher(): Promise<SandboxLauncher> {
   return {
     active: true,
     degradedReason: null,
-    wrap(spawn: SandboxSpawn, policy: SandboxPolicy): Promise<WrappedSpawn> {
+    // A write-only Landlock ruleset has no network-restriction concept
+    // (this module's own docstring) — `network` is always false here,
+    // regardless of what any policy asks for.
+    enforces: { write: true, network: false },
+    wrap(spawn: SandboxSpawn, policy: SandboxConfig): Promise<WrappedSpawn> {
       if (disposed) {
         throw new Error("sandbox launcher already disposed");
       }

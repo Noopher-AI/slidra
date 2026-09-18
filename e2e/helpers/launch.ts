@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { access, cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { expect } from "vitest";
 import { createDefaultRegistry, type CommandRegistry } from "./cli.js";
 import { packDirectory } from "./pack.js";
 import { startServe, type RunningServer } from "../../packages/server/src/serve.js";
+import { openPolicy } from "../../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../../packages/server/src/agent/session.js";
 import type { AgentKind } from "../../packages/server/src/agent/adapters.js";
 import type { AgentSource } from "../../packages/server/src/agent/manager.js";
@@ -90,6 +91,19 @@ export interface StartServerOptions {
    * to receive the real value in time.
    */
   resolveAdapter?: (kind: AgentKind, presentationId: string) => AgentAdapterConfig;
+  /**
+   * Written into a fresh `<SLIDRA_HOME>/settings.json`'s `adapters` key,
+   * once the real `presentationId` is known, before `startServe` is called
+   * (E10.T6/#400 AC1's own e2e case) — proving the real
+   * read-settings-declare-adapter-spawn-it-in-the-sandbox path end to end,
+   * not a `resolveAdapter` injection standing in for it. Given `presentationId`
+   * as a function argument for the same reason `resolveAdapter` above takes
+   * it (a fixture needing `E2E_PRESENTATION_ID` has no other way to receive
+   * it in time). Omitted (every other test) means no such file is written.
+   */
+  settingsAdapters?: (
+    presentationId: string,
+  ) => Record<string, { label?: string; command: string; args?: readonly string[]; env?: Record<string, string> }>;
 }
 
 export interface StartedServer {
@@ -110,6 +124,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     initialAgent,
     runCommand,
     resolveAdapter,
+    settingsAdapters,
   } = options;
   const slidraHome = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-home-`));
   const slidraDir = await mkdtemp(path.join(tmpdir(), `slidra-e2e-${prefix}-files-`));
@@ -135,6 +150,13 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
 
+  // Written only now, once the real `presentationId` is known — a declared
+  // adapter's `env` (E2E_PRESENTATION_ID in particular, for fixtures that
+  // need it) can reference it, same as the built-in `agent` config below.
+  if (settingsAdapters) {
+    await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ adapters: settingsAdapters(presentationId) }));
+  }
+
   const agent: AgentAdapterConfig = {
     kind: "claude",
     label: "Claude Code",
@@ -155,6 +177,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   };
 
   const server = await startServe({
+    policy: openPolicy,
     presentationId,
     port: 0,
     agent,

@@ -15,11 +15,14 @@ import { isSlidraCommand } from "./command-allowlist.js";
 import { hintForBlockedCommand } from "./command-hints.js";
 import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js";
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
-import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
+import { resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
+import { postDeckServerJson, type DeckServerClient } from "../deck-server-client.js";
 import path from "node:path";
 import { getActiveLauncher } from "../sandbox/launcher.js";
-import { buildAgentSandboxPolicy } from "../sandbox/policy.js";
+import { collectSandboxContext, deriveSandboxConfig } from "../sandbox/policy.js";
+import type { McpServerSpec, WorkbenchPolicy } from "../policy/types.js";
+import { withAcpHandshakeTimeout } from "./probe.js";
 
 /**
  * `fs/write_text_file` is always refused (ADR-0003, first layer). The
@@ -282,6 +285,21 @@ interface ChatEvents {
 export type ChatStreamSend = (event: keyof ChatEvents, data: unknown) => void;
 
 /**
+ * `WorkbenchPolicy.mcp.servers` in the shape `newSession`'s `mcpServers`
+ * param wants (NOOP-617): ACP's stdio variant carries no `type` discriminant
+ * of its own (only the http/sse variants do), and `env` is an array of
+ * `{name, value}` pairs, never a `Record`.
+ */
+function toAcpMcpServers(servers: readonly McpServerSpec[]): acp.McpServer[] {
+  return servers.map((server) => ({
+    name: server.name,
+    command: server.command,
+    args: [...server.args],
+    env: Object.entries(server.env ?? {}).map(([name, value]) => ({ name, value })),
+  }));
+}
+
+/**
  * Drives one ACP adapter subprocess for the lifetime of `slidra serve`.
  *
  * Spawning is lazy (first `sendMessage`), the session is persistent across
@@ -311,13 +329,6 @@ export class AgentChatSession extends EventEmitter {
    * resolved form is what actually matches.
    */
   private readonly workdirReal: string;
-  /**
-   * The open presentation's `.slidra` file, read once from the registry
-   * when the session is established. Undefined when the registry has no
-   * `sourcePath` for this id (a presentation created but never saved out)
-   * — `<SLIDRA_HOME>` still covers its live files either way.
-   */
-  private sourcePath: string | undefined;
   private readyPromise: Promise<void> | undefined;
   /** Serializes turns so two `sendMessage` calls never interleave on one session. */
   private turnQueue: Promise<void> = Promise.resolve();
@@ -423,6 +434,20 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly editingLock: EditingLock;
   /**
+   * [E10.T5] Slice B's dual-write, agent side: the crate's own editing
+   * lock is asked FIRST (`POST /editing/agent-begin|agent-end`), and only
+   * once it agrees does `this.editingLock` (above) run — the same
+   * "crate decides first, Node applies" order Dev-Leader's ruling on
+   * NOOP-643 established for the human HTTP routes (`serve.ts`'s
+   * `handleEditingBeginPost`). Closing this gap is why the floor was moved
+   * into the crate at all (NOOP-641 Plan's 裁示1): `POST /call`'s own 409
+   * gate only means anything once an agent turn actually registers there.
+   * The split editor now calls the crate directly. `this.editingLock` remains
+   * only for the transitional combined `startServe` harness and its legacy
+   * frozen/unfrozen event plumbing.
+   */
+  private readonly deckServer: DeckServerClient;
+  /**
    * True once this turn has acquired `editingLock` and called
    * `beginHistoryGroup` — set on the turn's first command, cleared in
    * `runTurn`'s `finally`. This session is the turn-level group's
@@ -443,18 +468,25 @@ export class AgentChatSession extends EventEmitter {
    */
   private readonly preferredModelId: string | null;
 
+  /** The workbench's policy (NOOP-617) — read at session-establish time for the sandbox config, and for `newSession`'s `mcpServers`. Never a constant: `agent/manager.ts`'s `buildSession` is the only caller, and it always passes what `serve.ts` started with. */
+  private readonly policy: WorkbenchPolicy;
+
   constructor(
     config: AgentAdapterConfig,
     presentationId: string,
     editingLock: EditingLock,
+    deckServer: DeckServerClient,
     workdirReal: string,
+    policy: WorkbenchPolicy,
     preferredModelId: string | null = null,
   ) {
     super();
+    this.deckServer = deckServer;
     this.config = config;
     this.presentationId = presentationId;
     this.editingLock = editingLock;
     this.workdirReal = workdirReal;
+    this.policy = policy;
     this.preferredModelId = preferredModelId;
   }
 
@@ -784,6 +816,18 @@ export class AgentChatSession extends EventEmitter {
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
+      // [E10.T5] "crate decides first, Node applies": the crate's own
+      // mirror is asked before the local release, but a mirror-call
+      // failure (e.g. a network blip) is only logged, never allowed to
+      // block the local release — a stuck floor would freeze every human
+      // edit until the process restarts, far worse than the crate's own
+      // lock state lagging Node's by one call. `releaseAgent()` never
+      // throws, so this ordering costs nothing on the common path.
+      try {
+        await postDeckServerJson(this.deckServer, "/editing/agent-end", this.presentationId, "agent");
+      } catch (error) {
+        this.emitTyped("chat-error", { message: `deck server mirror for agent-end failed: ${describeError(error)}` });
+      }
       this.editingLock.releaseAgent();
     }
   }
@@ -888,12 +932,6 @@ export class AgentChatSession extends EventEmitter {
 
   private async establishSession(): Promise<void> {
     const generation = ++this.generation;
-    // The `.slidra` this presentation was opened from, for the permission
-    // policy's protected set. A registry that cannot be read is not worth
-    // failing the session over: `<SLIDRA_HOME>` still covers the live
-    // files, and the container is only reachable through a path the agent
-    // was never told.
-    this.sourcePath = (await readProjectsRegistry().catch(() => undefined))?.get(this.presentationId)?.sourcePath;
     // NOOP-425: wrapped through the active sandbox launcher, when one is
     // running (`serve.ts` is the only writer of `getActiveLauncher()`) —
     // every other caller in this codebase talks to `SandboxLauncher`, never
@@ -908,7 +946,7 @@ export class AgentChatSession extends EventEmitter {
     const wrapped = launcher
       ? await launcher.wrap(
           { command: this.config.command, args: this.config.args ?? [], env: rawEnv, cwd: this.workdirReal },
-          await buildAgentSandboxPolicy({ sandboxRoot: path.dirname(this.workdirReal) }),
+          deriveSandboxConfig(this.policy, await collectSandboxContext({ workbenchRoot: path.dirname(this.workdirReal) })),
         )
       : { command: this.config.command, args: this.config.args ?? [], env: rawEnv, shell: false };
     const child = spawn(wrapped.command, wrapped.args, {
@@ -951,7 +989,7 @@ export class AgentChatSession extends EventEmitter {
 
   /** The actual initialize/newSession/editorial-brief-prompt sequence, wrapped by `establishSession` with `withInterrupt`. */
   private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
-    await connection.initialize({
+    await withAcpHandshakeTimeout(this.config.label, connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
       // Both file methods are declared available (ADR-0003). readTextFile
       // is the obvious one — it serves the virtual file tree. writeTextFile
@@ -964,7 +1002,7 @@ export class AgentChatSession extends EventEmitter {
       // execution is the agent's own business (ADR-0004), never routed
       // through this client.
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
-    });
+    }));
 
     let session: acp.NewSessionResponse;
     try {
@@ -974,7 +1012,7 @@ export class AgentChatSession extends EventEmitter {
       // `fs/read_text_file` also serves it (see `readTextFile` below).
       // Never re-deployed per session: the same directory is handed to
       // every attempt, including a reconnect after an adapter crash.
-      session = await connection.newSession({ cwd: this.workdirReal, mcpServers: [] });
+      session = await connection.newSession({ cwd: this.workdirReal, mcpServers: toAcpMcpServers(this.policy.mcp.servers) });
     } catch (error) {
       // Errors that cross the JSON-RPC wire arrive as a plain
       // `{ code, message, data }` object (see the SDK's own
@@ -1179,7 +1217,8 @@ export class AgentChatSession extends EventEmitter {
   /**
    * The freeze/undo-group boundary's entry point: the author's turn's
    * first `session/request_permission` call — never the editorial brief
-   * turn (`relayingCurrentTurn` is false for it) — waits for
+   * turn (`relayingCurrentTurn` is false for it) — mirrors to the crate's
+   * `agent-begin` first ([E10.T5]'s dual-write), then waits for
    * `editingLock.acquireAgent()` (which itself waits out any in-progress
    * human edit rather than throwing) and opens the history group. Every
    * later command in the same turn sees `turnHasEditLock` already true and
@@ -1190,6 +1229,19 @@ export class AgentChatSession extends EventEmitter {
    */
   private async openEditLockOnFirstCommand(): Promise<void> {
     if (!this.relayingCurrentTurn || this.turnHasEditLock) return;
+    // [E10.T5] "crate decides first, Node applies": the crate's own
+    // `agent-begin` never refuses (it waits out any human lease, exactly
+    // like `editingLock.acquireAgent()` below), so a non-200 here is an
+    // unexpected door-level failure (e.g. the workbench id has gone
+    // stale) — unlike the symmetric `agent-end` mirror in
+    // `closeEditLockIfOpen`, this one is NOT swallowed: proceeding to the
+    // local acquire without the crate's agreement would silently recreate
+    // the exact gap this dual-write closes (POST /call's own 409 gate
+    // would keep thinking no agent turn is active).
+    const mirrored = await postDeckServerJson(this.deckServer, "/editing/agent-begin", this.presentationId, "agent");
+    if (mirrored.status !== 200) {
+      throw new SlidraError(`deck server refused agent-begin: ${JSON.stringify(mirrored.body)}`);
+    }
     await this.editingLock.acquireAgent();
     this.turnHasEditLock = true;
     await beginHistoryGroup(this.presentationId);
@@ -1246,7 +1298,6 @@ export class AgentChatSession extends EventEmitter {
     return {
       slidraHome: resolveSlidraHome(),
       agentWorkdir: this.workdirReal,
-      ...(this.sourcePath === undefined ? {} : { sourcePath: this.sourcePath }),
     };
   }
 

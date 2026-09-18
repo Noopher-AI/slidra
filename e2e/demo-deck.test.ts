@@ -13,9 +13,8 @@ import { PNG } from "pngjs";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { loadPdf } from "./helpers/pdf.js";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
-import { writeDeckFileText } from "./helpers/deck.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
@@ -90,7 +89,7 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 });
 
 afterAll(async () => {
@@ -200,6 +199,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expect
     .poll(() => textOf(playFrame().locator("#el-effects-title")).catch(() => null), { timeout: 30_000 })
     .toBe("Page 3: effect list");
+  await waitForPlayerFocus(page);
 
   const stepOne = playFrame().locator("#el-step-one");
   const stepTwo = playFrame().locator("#el-step-two");
@@ -220,6 +220,7 @@ it("acceptance deck: one continuous run of forward arrow-key presses through all
   await expectVisible(stepThree);
 
   // Page 3 is done, so another press moves to page 4 (the media page).
+  await waitForPlayerFocus(page);
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => textOf(playFrame().locator("#el-media-title")).catch(() => null), { timeout: 30_000 })
@@ -568,15 +569,17 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
     // presentation the walkthrough tests below depend on) gives `convert`
     // something to act on: write `bare` as its `slides/001.svg`, run
     // `convert`, read the result back.
+    const sourceDir = path.join(dir, "source");
+    await mkdir(path.join(sourceDir, "slides"), { recursive: true });
+    await writeFile(
+      path.join(sourceDir, "project.json"),
+      JSON.stringify({ formatVersion: 1, name: "Before/after conversion pixel comparison", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }),
+    );
+    await writeFile(path.join(sourceDir, "slides/001.svg"), bare);
     const convertSlidraPath = path.join(dir, "convert-test.slidra");
-    const newResult = await registry.dispatch("new", { path: convertSlidraPath, name: "Before/after conversion pixel comparison" });
-    expect(newResult.ok).toBe(true);
+    await packDirectory(sourceDir, convertSlidraPath);
     const opened = await registry.dispatch<{ id: string }>("open", { path: convertSlidraPath });
     const convertTestId = opened.data!.id;
-    // `new` creates no slides; mint slides/001.svg so `convert` has a page to rewrite.
-    await registry.dispatch("slide add", { id: convertTestId });
-    const deckPath = await deckPathFor(convertTestId);
-    await writeDeckFileText(deckPath, "slides/001.svg", bare);
     const convertResult = await registry.dispatch("convert", { id: convertTestId });
     expect(convertResult.ok).toBe(true);
     const catResult = await registry.dispatch<{ content: string }>("cat", { id: convertTestId, path: "slides/001.svg" });

@@ -2,12 +2,8 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import type { SlashCommandOption } from "./slash-commands.js";
+import { createDeckAndRunnerEventSource } from "./service-event-source.js";
 
-/** `@slidra/server`'s `SaveStateWire` shape (`save-state.ts`), restated here rather than imported: the browser bundle no longer depends on the Node-only server package (NOOP-422 added `phase`/`reason` to the pre-existing `known`/`dirty`/`fileName`). */
-export type SavePhase = "saved" | "saving" | "failed";
-export type SaveState =
-  | { known: true; dirty: boolean; fileName: string; phase: SavePhase; reason?: string }
-  | { known: false };
 
 /**
  * Restated here rather than imported: `@slidra/server`'s
@@ -18,8 +14,15 @@ export type SaveState =
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** The adapters `AgentManager` can report — restated here because the browser bundle must never depend on the Node-only server package. */
-export type AgentKind = "claude" | "codex" | "pi";
+/**
+ * The adapters `AgentManager` can report — restated here because the
+ * browser bundle must never depend on the Node-only server package. No
+ * longer a closed union (E10.T6/#400 D4): a user-declared third-party
+ * adapter's own id is just as valid as `claude`/`codex`/`pi` — the set of
+ * valid kinds is the server's own registry, not something the browser can
+ * enumerate at compile time.
+ */
+export type AgentKind = string;
 
 /** The `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
 export interface AgentChangedEvent {
@@ -87,14 +90,6 @@ const WATCH_ERROR_EVENT = "presentation-watch-error";
 // packages/server/src/changes.ts's `broadcast`).
 const EDITING_FROZEN_EVENT = "editing-frozen";
 const EDITING_UNFROZEN_EVENT = "editing-unfrozen";
-// Fanned out over this same stream by `POST /api/save` and
-// `POST /api/open` — never by the generic disk watcher that feeds
-// `presentation-changed` (changes.ts stays untouched, see save-state.ts's
-// own comment). An ordinary edit (e.g. via /api/command) is instead picked
-// up by the caller reacting to `onChange` and re-fetching `/api/save-state`
-// itself, the same GET-refetch shape `onChange` already uses for
-// `/api/presentation`.
-const SAVE_STATE_EVENT = "save-state";
 // Every state transition of the (at most one) active export job, fanned
 // out over this same stream. No GET counterpart exists for this one —
 // a reload deliberately loses in-flight job UI state, so there is
@@ -102,7 +97,7 @@ const SAVE_STATE_EVENT = "save-state";
 const EXPORT_EVENT = "export";
 // Fanned out by serve.ts whenever the agent sends a
 // fresh `available_commands_update` — same "no replay, GET for the initial
-// value" contract as editing-frozen/save-state above (`GET
+// value" contract as editing-frozen above (`GET
 // /api/agent/commands` is the caller's own initial fetch, made once on
 // mount the same way `/api/editing` is).
 const AGENT_COMMANDS_EVENT = "agent-commands";
@@ -145,17 +140,9 @@ export function startLiveReload(options: {
    * called by the caller, not from this stream.
    */
   onFrozenChange?: (frozen: boolean) => void;
-  /**
-   * NOOP-93 §4.2: fired with the freshly-recomputed save state whenever the
-   * server broadcasts one (after `POST /api/save` or `POST /api/open`
-   * succeeds). Like `onFrozenChange`, the initial value on load/reconnect
-   * must come from a `GET /api/save-state` the caller makes itself — this
-   * stream carries no replay.
-   */
-  onSaveStateChange?: (state: SaveState) => void;
   /** NOOP-93 §4.4: fired for every `export` SSE event — queued/running/progress/done/error, in that legal order, for at most one active job at a time. */
   onExportEvent?: (event: ExportSseEvent) => void;
-  /** [E3.T3] #232/#236: fired with the freshly recomputed `/` command list whenever the agent reports a new one. A malformed payload is dropped, the previous list kept — same as `onSaveStateChange`. */
+  /** [E3.T3] #232/#236: fired with the freshly recomputed `/` command list whenever the agent reports a new one. A malformed payload is dropped, the previous list kept — same malformed-payload posture as the other event handlers. */
   onCommandsChange?: (commands: SlashCommandOption[]) => void;
   /** [E3.T5] NOOP-230 §4.4: fired whenever `AgentManager.select()` actually swaps to a different agent kind. A malformed payload is dropped, nothing fired — same as `onCommandsChange`. */
   onAgentChanged?: (event: AgentChangedEvent) => void;
@@ -163,7 +150,7 @@ export function startLiveReload(options: {
   onAgentModelChanged?: (event: AgentModelChangedEvent) => void;
   eventSourceFactory?: (url: string) => EventSource;
 }): LiveReload {
-  const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
+  const createEventSource = options.eventSourceFactory ?? (() => createDeckAndRunnerEventSource());
   const source = createEventSource(EVENTS_PATH);
 
   // Every successful (re)connection may have missed an edit — reload
@@ -185,10 +172,6 @@ export function startLiveReload(options: {
     options.onFrozenChange?.(false);
   });
 
-  source.addEventListener(SAVE_STATE_EVENT, (event) => {
-    const state = parseSaveStateEventData(event);
-    if (state) options.onSaveStateChange?.(state);
-  });
 
   source.addEventListener(EXPORT_EVENT, (event) => {
     const parsed = parseExportEventData(event);
@@ -249,39 +232,6 @@ function parseWatchErrorMessage(event: Event): string | undefined {
   }
 }
 
-/** Parses a `save-state` SSE payload — same shape `GET /api/save-state` returns. An unparseable/malformed payload is dropped rather than fabricating a state (errors over fallbacks). */
-function parseSaveStateEventData(event: Event): SaveState | undefined {
-  const data = (event as MessageEvent).data;
-  if (typeof data !== "string") return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== "object" || parsed === null || !("known" in parsed)) return undefined;
-  const known = (parsed as { known: unknown }).known;
-  if (known === false) return { known: false };
-  if (known !== true) return undefined;
-  const { dirty, fileName, phase, reason } = parsed as {
-    dirty?: unknown;
-    fileName?: unknown;
-    phase?: unknown;
-    reason?: unknown;
-  };
-  if (typeof dirty !== "boolean" || typeof fileName !== "string") return undefined;
-  // A payload from an older server build carries no `phase` at all — legal,
-  // never discarded wholesale: derived the same way a `dirty`-only reader
-  // always could (NOOP-422 §4(c)'s table).
-  const resolvedPhase: SavePhase = phase === "saved" || phase === "saving" || phase === "failed" ? phase : dirty ? "saving" : "saved";
-  return {
-    known: true,
-    dirty,
-    fileName,
-    phase: resolvedPhase,
-    ...(typeof reason === "string" ? { reason } : {}),
-  };
-}
 
 /** Parses an `agent-commands` SSE payload — same `{ commands: [{name,description,source}] }` shape `GET /api/agent/commands` returns. Malformed → dropped, previous list kept (errors over fallbacks); `source` is read by the server but not needed here, so it is not validated. */
 function parseAgentCommandsEventData(event: Event): SlashCommandOption[] | undefined {
@@ -318,7 +268,7 @@ function parseAgentChangedEventData(event: Event): AgentChangedEvent | undefined
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, label } = parsed as { kind?: unknown; label?: unknown };
-  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
+  if (typeof kind !== "string" || kind === "") return undefined;
   if (typeof label !== "string") return undefined;
   return { kind, label };
 }
@@ -334,7 +284,7 @@ function parseAgentModelChangedEventData(event: Event): AgentModelChangedEvent |
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, modelId, name } = parsed as { kind?: unknown; modelId?: unknown; name?: unknown };
-  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
+  if (typeof kind !== "string" || kind === "") return undefined;
   if (typeof modelId !== "string" || typeof name !== "string") return undefined;
   return { kind, modelId, name };
 }

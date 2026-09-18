@@ -84,27 +84,53 @@ impl CommandResult {
 /// F3 adds commands that do.
 pub type Renderer<'a> = &'a dyn Fn(&serde_json::Value) -> Vec<u8>;
 
-/// Renders `result` to stdout/stderr per the contract in plan section 4.3
-/// and returns the process exit code. `json_flag` is only meaningful for
-/// takeover-table commands (`--json`); `serve`/`export` never call this
-/// function with `json_flag: true` because `node_entry::exec_node` passes
-/// argv through untouched and never parses Rust-side flags at all.
+/// Renders `result` to the real process stdout/stderr per the contract in
+/// plan section 4.3 and returns the process exit code. `json_flag` is only
+/// meaningful for takeover-table commands (`--json`); `serve`/`export`
+/// never call this function with `json_flag: true` because `node_entry::
+/// exec_node` passes argv through untouched and never parses Rust-side
+/// flags at all.
+///
+/// A thin wrapper over `render_to` ([S11.F2]: the deck server needs the
+/// exact same rendering logic to produce bytes for an HTTP response
+/// instead of the real stdio streams it is writing to here — `cli.rs` is
+/// the only other caller of `render_to`, and it is always this function
+/// that the CLI binary itself calls).
 pub fn render(result: &CommandResult, renderer: Option<Renderer<'_>>, json_flag: bool) -> i32 {
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    let stderr = io::stderr();
+    let mut err = stderr.lock();
+    render_to(&mut out, &mut err, result, renderer, json_flag)
+}
+
+/// Same contract as `render`, writing to `out`/`err` instead of assuming
+/// the real process streams — `out` gets the EPIPE -> exit-0 treatment
+/// `write_bytes`/`exit_code_for_write_error` below implement; `err` does
+/// not (mirrors the pre-refactor code, which only ever special-cased a
+/// stdout write failure, never a bare `eprintln!`).
+pub fn render_to(
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    result: &CommandResult,
+    renderer: Option<Renderer<'_>>,
+    json_flag: bool,
+) -> i32 {
     if json_flag {
-        return render_json(result);
+        return render_json_to(out, result);
     }
 
     if !result.ok {
-        eprintln!("{}", result.message);
+        let _ = writeln!(err, "{}", result.message);
         return 1;
     }
 
     if let (Some(renderer), Some(data)) = (renderer, result.data.as_ref()) {
         let bytes = renderer(data);
-        return write_stdout(&bytes);
+        return write_bytes(out, &bytes);
     }
 
-    match write_stdout_line(&result.message) {
+    match write_line(out, &result.message) {
         ExitOrContinue::Exit(code) => return code,
         ExitOrContinue::Continue => {}
     }
@@ -114,7 +140,7 @@ pub fn render(result: &CommandResult, renderer: Option<Renderer<'_>>, json_flag:
         // matching `JSON.stringify(data, null, 2)` (confirmed against a
         // golden fixture in tests/unit_golden.rs — see plan 4.3).
         let pretty = serde_json::to_string_pretty(data).expect("Value serialization cannot fail");
-        return match write_stdout_line(&pretty) {
+        return match write_line(out, &pretty) {
             ExitOrContinue::Exit(code) => code,
             ExitOrContinue::Continue => 0,
         };
@@ -139,7 +165,7 @@ struct JsonEnvelope<'a> {
     failure_kind: Option<&'static str>,
 }
 
-fn render_json(result: &CommandResult) -> i32 {
+fn render_json_to(out: &mut dyn Write, result: &CommandResult) -> i32 {
     let envelope = JsonEnvelope {
         ok: result.ok,
         data: result.data.as_ref(),
@@ -147,7 +173,7 @@ fn render_json(result: &CommandResult) -> i32 {
         failure_kind: result.failure_kind.map(FailureKind::as_str),
     };
     let compact = serde_json::to_string(&envelope).expect("Value serialization cannot fail");
-    match write_stdout_line(&compact) {
+    match write_line(out, &compact) {
         ExitOrContinue::Exit(code) => code,
         ExitOrContinue::Continue => 0,
     }
@@ -158,25 +184,21 @@ enum ExitOrContinue {
     Continue,
 }
 
-/// Writes `line` followed by `\n` to stdout. On EPIPE this is treated as
+/// Writes `line` followed by `\n` to `out`. On EPIPE this is treated as
 /// success (exit 0), matching `bin/slidra.js`'s
 /// `process.stdout.on("error", ...)` handler, which is installed only on
 /// the one-shot (non-`serve`) branch — this module is never used to render
 /// `serve`/`export` output (those always exec Node, see node_entry.rs), so
 /// mirroring only the one-shot handler here is correct, not a partial port.
-fn write_stdout_line(line: &str) -> ExitOrContinue {
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-    if let Err(err) = writeln!(handle, "{line}") {
+fn write_line(out: &mut dyn Write, line: &str) -> ExitOrContinue {
+    if let Err(err) = writeln!(out, "{line}") {
         return ExitOrContinue::Exit(exit_code_for_write_error(&err));
     }
     ExitOrContinue::Continue
 }
 
-fn write_stdout(bytes: &[u8]) -> i32 {
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-    if let Err(err) = handle.write_all(bytes) {
+fn write_bytes(out: &mut dyn Write, bytes: &[u8]) -> i32 {
+    if let Err(err) = out.write_all(bytes) {
         return exit_code_for_write_error(&err);
     }
     0

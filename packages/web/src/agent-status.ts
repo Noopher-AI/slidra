@@ -25,7 +25,8 @@ export interface AgentResponseCard {
   kind: AgentKind;
   label: string;
   status: AgentAvailability;
-  loginCommand: string;
+  /** Absent for a user-declared adapter (E10.T6/#400 D4) — it has no login concept, so its card is always `status: "available"` and there is nothing to copy. */
+  loginCommand?: string;
   detail?: string;
 }
 
@@ -45,7 +46,8 @@ export interface AgentCardView {
   kind: AgentKind;
   label: string;
   status: AgentAvailability;
-  loginCommand: string;
+  /** Absent for a user-declared adapter (E10.T6/#400 D4) — see `AgentResponseCard.loginCommand`. */
+  loginCommand?: string;
   detail?: string;
   inUse: boolean;
 }
@@ -91,10 +93,15 @@ function toCardView(card: AgentResponseCard, current: AgentKind | null): AgentCa
 function isValidCard(value: unknown): value is AgentResponseCard {
   if (typeof value !== "object" || value === null) return false;
   const { kind, label, status, loginCommand, detail } = value as Record<string, unknown>;
-  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return false;
+  if (typeof kind !== "string" || kind === "") return false;
   if (typeof label !== "string") return false;
   if (status !== "available" && status !== "unauthenticated") return false;
-  if (typeof loginCommand !== "string") return false;
+  // Absent for a user-declared adapter (E10.T6/#400 D4) — it has no login
+  // concept, so its card is always "available" and there is nothing to
+  // copy. `status === "unauthenticated"` with no `loginCommand` never
+  // actually occurs (only a bundled adapter can report unauthenticated,
+  // and it always carries one), but nothing here needs to assume that.
+  if (loginCommand !== undefined && typeof loginCommand !== "string") return false;
   if (detail !== undefined && typeof detail !== "string") return false;
   return true;
 }
@@ -184,9 +191,13 @@ export function writeIsolationFrom(data: unknown): WriteIsolationView {
 export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const { current, source, agents } = data as Record<string, unknown>;
-  if (current !== null && current !== "claude" && current !== "codex" && current !== "pi") return null;
+  if (current !== null && (typeof current !== "string" || current === "")) return null;
   if (source !== "cli" && source !== "settings" && source !== "none") return null;
   if (!Array.isArray(agents) || !agents.every(isValidCard)) return null;
+  // E10.T6/#400 D4: `current` must name one of the cards this same payload
+  // just carried — no closed literal set of kinds to check against instead
+  // (a user-declared adapter's own id is as valid as a bundled one).
+  if (current !== null && !agents.some((card) => card.kind === current)) return null;
 
   const views = agents.map((card) => toCardView(card, current));
 
@@ -196,11 +207,15 @@ export function fromAgentResponse(data: unknown): AgentUiStatus | null {
   if (!currentCard) return null;
 
   if (currentCard.status === "unauthenticated") {
+    // Unreachable for a user-declared adapter (D4: it has no login
+    // concept, always "available") — but the type only knows that at
+    // runtime, so a missing `loginCommand` here still needs an honest
+    // fallback rather than a lie.
     return {
       kind: "unauthenticated",
       current,
       label: currentCard.label,
-      loginCommand: currentCard.loginCommand,
+      loginCommand: currentCard.loginCommand ?? "",
       source,
       agents: views,
     };

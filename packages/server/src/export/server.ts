@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRawRoute } from "../read-routes.js";
+import { startDeckServer, forwardDeckServerGet, type DeckServerClient } from "../deck-server-client.js";
 
 /**
  * The CLI's own minimal HTTP server for `slidra export` (NOOP-93 §3.6).
@@ -26,9 +26,10 @@ import { handleEffectsRoute, handleFilesRoute, handlePresentationRoute, handleRa
  * its chunks), `GET /api/presentation`, `GET /api/files/<path>`,
  * `GET /api/effects/<path>` ([E4.T7] — the step-by-step export entry point
  * needs the same plan the player does), and `GET /api/raw/<path>` — the
- * four read-only routes shared with `serve.ts` via `read-routes.ts` (never
- * duplicated — see that module's own comment for why drift there is
- * dangerous), reached through this file's own tiny routing/static-serving
+ * four read-only routes forwarded to the crate's own deck server
+ * ([E10.T5], `deck-server-client.ts`, shared with `serve.ts`'s identical
+ * forwarding for the same routes — never duplicated, so the two can never
+ * drift), reached through this file's own tiny routing/static-serving
  * plumbing, which is NOT shared with `serve.ts` (a deliberate choice, not
  * an oversight — this server carries none of `serve.ts`'s write routes,
  * chat session, or editing lock).
@@ -55,11 +56,23 @@ export async function startExportServer(options: ExportServerOptions): Promise<R
   const host = options.host ?? DEFAULT_HOST;
   const staticDir = options.staticDir ?? resolveWebDist();
 
+  // [E10.T5]: same transitional forwarding layer as serve.ts's own
+  // (`deck-server-client.ts`) — this standalone export server has no
+  // `deckSession` at all (`presentationId` is fixed for its whole
+  // lifetime), so there is exactly one workbench id to forward every
+  // request with.
+  const deckServer = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false } });
+
   const server = http.createServer((req, res) => {
-    void handleRequest(presentationId, staticDir, req, res);
+    void handleRequest(presentationId, staticDir, deckServer, req, res);
   });
 
-  await listen(server, options.port ?? 0, host);
+  try {
+    await listen(server, options.port ?? 0, host);
+  } catch (error) {
+    await deckServer.close();
+    throw error;
+  }
   const actualPort = (server.address() as AddressInfo).port;
 
   return {
@@ -72,7 +85,7 @@ export async function startExportServer(options: ExportServerOptions): Promise<R
         // open connection must not hang shutdown of a server nobody will
         // ever ask anything of again.
         server.closeAllConnections();
-      }),
+      }).then(() => deckServer.close()),
   };
 }
 
@@ -90,6 +103,7 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 async function handleRequest(
   presentationId: string,
   staticDir: string,
+  deckServer: DeckServerClient,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -110,28 +124,25 @@ async function handleRequest(
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (url.pathname === "/api/presentation") {
-      await handlePresentationRoute(presentationId, res);
+      await forwardDeckServerGet(deckServer, "/presentation", presentationId, res);
       return;
     }
     if (url.pathname.startsWith("/api/files/")) {
-      const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(presentationId, virtualPath, res);
+      const encodedPath = url.pathname.slice("/api/files/".length);
+      await forwardDeckServerGet(deckServer, `/files/${encodedPath}`, presentationId, res);
       return;
     }
     if (url.pathname.startsWith("/api/effects/")) {
-      const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
-      await handleEffectsRoute(presentationId, virtualPath, res);
+      const encodedPath = url.pathname.slice("/api/effects/".length);
+      await forwardDeckServerGet(deckServer, `/effects/${encodedPath}`, presentationId, res);
       return;
     }
     if (url.pathname.startsWith("/api/raw/")) {
-      let virtualPath: string;
-      try {
-        virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
-      } catch {
-        sendJson(res, 400, { error: "Invalid path encoding" });
-        return;
-      }
-      await handleRawRoute(presentationId, virtualPath, res, req.headers.range);
+      const encodedPath = url.pathname.slice("/api/raw/".length);
+      const extraHeaders: Record<string, string> = {};
+      if (req.headers.range !== undefined) extraHeaders.range = req.headers.range;
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      await forwardDeckServerGet(deckServer, `/raw/${encodedPath}`, presentationId, res, extraHeaders);
       return;
     }
     if (url.pathname.startsWith("/api/")) {
@@ -141,6 +152,10 @@ async function handleRequest(
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      res.destroy(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
     sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 }

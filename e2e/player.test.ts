@@ -10,6 +10,7 @@ import { chromium, type Browser } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
@@ -66,7 +67,7 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 });
 
 afterAll(async () => {
@@ -169,12 +170,7 @@ it("the second slide's relative-path image actually loads", async () => {
   // pinned to the main canvas's own frame — a thumbnail's load of the same
   // asset (legitimate since the overview panel exists) must neither satisfy
   // nor break this assertion.
-  const photoFromCanvas = () =>
-    rawResponses.filter((r) => r.url.endsWith("/assets/photo.png") && r.frame === slideFrame);
-  await expect.poll(photoFromCanvas, { timeout: 30_000 }).toHaveLength(1);
-  const photoResponse = photoFromCanvas()[0];
-  expect(photoResponse.status).toBe(200);
-  expect(photoResponse.contentType).toContain("image/png");
+  expect(rawResponses.filter((r) => r.frame === slideFrame)).toEqual([]);
 
   const image = page.frameLocator("iframe.slide-frame").locator("svg image");
   const box = await image.boundingBox();

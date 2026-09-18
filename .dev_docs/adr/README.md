@@ -47,6 +47,8 @@ Cite a record by number, never by filename.
 | 0011 | A deck is a database, not an archive |
 | 0012 | A deck has an owner |
 | 0013 | An extracted module takes a named dependency object |
+| 0014 | A workbench is one deck's session |
+| 0015 | The deck server is the crate, and there is no way round it |
 
 ## Map from the previous set
 

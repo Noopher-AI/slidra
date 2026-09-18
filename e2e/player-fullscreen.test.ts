@@ -10,8 +10,7 @@ import { chromium, type Browser, type Locator } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
-import { readDeckFileText, writeDeckFileText } from "./helpers/deck.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 
 /**
@@ -83,7 +82,7 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 });
 
 afterAll(async () => {
@@ -757,17 +756,14 @@ it("when a live reload removes the last slide, the exit-play and fullscreen togg
     .poll(() => fullscreenSnapshot(page).then((s) => s.isContainerFullscreen), { timeout: 15_000 })
     .toBe(true);
 
-  // A genuine external edit: rewrite this presentation's actual deck file
-  // on disk directly (the one `open` migrated/registered — not the
-  // read-only shared fixture at e2e/fixtures/play-deck), emptying out its
-  // slides, so this genuinely exercises the server's file watch -> SSE
-  // presentation-changed -> canvas.ts's reload() live-reload path end to
-  // end, rather than simulating it.
-  const deckPath = await deckPathFor(presentationId);
-  const original = await readDeckFileText(deckPath, "project.json");
-  const emptied = JSON.parse(original) as { slides: string[] };
-  emptied.slides = [];
-  await writeDeckFileText(deckPath, "project.json", JSON.stringify(emptied, null, 2));
+  // Remove the last slide through the public crate command door. The crate
+  // emits the same presentation-changed event the browser consumes.
+  const project = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: "project.json" });
+  const slides = (JSON.parse(project.data!.content) as { slides: string[] }).slides;
+  for (const slidePath of slides) {
+    const deleted = await registry.dispatch("slide delete", { id: presentationId, slidePath });
+    expect(deleted.ok).toBe(true);
+  }
 
   // Wait for the reload to actually land instead of guessing a timing
   // before asserting: canvas.ts's renderPlay() renders this fixed text when

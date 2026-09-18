@@ -7,11 +7,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManager, AgentSwitchLockedError } from "../../src/agent/manager.js";
 import { EditingLock } from "../../src/editing-lock.js";
+import type { DeckServerClient } from "../../src/deck-server-client.js";
 import { AgentChatSession } from "../../src/agent/session.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
 import type { CommandOutcome, CommandRunner } from "../../src/agent/probe.js";
 import { readAgentSettings } from "../../src/agent/settings.js";
+import { openPolicy } from "../../src/policy/open.js";
 
 // Unit level (§6.2): AgentManager's own decision logic, driven purely
 // through injected `runCommand`/`resolveAdapter` — no HTTP, no real
@@ -32,6 +34,17 @@ afterEach(async () => {
   delete process.env.SLIDRA_HOME;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
+
+// [E10.T5]: `AgentManagerOptions` now requires a `DeckServerClient` (threaded
+// through to every `AgentChatSession` for the agent-turn lock mirror), but
+// this suite never calls `sendMessage` (see the header comment above) —
+// `openEditLockOnFirstCommand`/`closeEditLockIfOpen`, the only two call
+// sites that ever dial it, are never reached, so this never needs to
+// resolve to anything real.
+const unreachableDeckServer: DeckServerClient = {
+  baseUrl: "http://127.0.0.1:1",
+  close: async () => {},
+};
 
 function dummyConfig(kind: AgentKind): AgentAdapterConfig {
   const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (Local Qwen)";
@@ -81,7 +94,9 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: null, source: "none" },
       runCommand,
       resolveAdapter,
@@ -99,8 +114,10 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -116,8 +133,10 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -136,8 +155,10 @@ describe("AgentManager", () => {
     const { runCommand, calls } = runCommandReturning(loggedInOutcome, delayMs);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -161,8 +182,10 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock,
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -176,7 +199,7 @@ describe("AgentManager", () => {
 
     expect(calls).toHaveLength(callsBefore); // no new session built
     expect(changedEvents).toBe(0);
-    expect(await readAgentSettings()).toEqual({ agent: null, models: {} }); // never written
+    expect(await readAgentSettings()).toEqual({ agent: null, models: {}, adapters: [] }); // never written
     expect((await manager.status()).current).toBe("claude"); // unchanged
   });
 
@@ -186,8 +209,10 @@ describe("AgentManager", () => {
     let changedEvents = 0;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -203,7 +228,7 @@ describe("AgentManager", () => {
     expect(status.source).toBe("settings");
     expect(calls).toHaveLength(callsBeforeSelect); // no new session built
     expect(changedEvents).toBe(0);
-    expect(await readAgentSettings()).toEqual({ agent: "claude", models: {} });
+    expect(await readAgentSettings()).toEqual({ agent: "claude", models: {}, adapters: [] });
   });
 
   it("select() with a different kind: builds a new session via resolveAdapter, updates source, fires onAgentChanged — even when the target is not logged in", async () => {
@@ -214,8 +239,10 @@ describe("AgentManager", () => {
     let changed: { kind: AgentKind; label: string } | undefined;
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -230,7 +257,7 @@ describe("AgentManager", () => {
     expect(status.source).toBe("settings");
     expect(calls).toEqual(["claude", "codex"]); // initial session, then the swap
     expect(changed).toEqual({ kind: "codex", label: "Codex" });
-    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
+    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {}, adapters: [] });
   });
 
   it("select() propagates a settings-write failure and leaves the session unswapped", async () => {
@@ -241,8 +268,10 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -260,7 +289,9 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: null, source: "none" },
       runCommand,
       resolveAdapter,
@@ -274,8 +305,10 @@ describe("AgentManager", () => {
     const { runCommand } = runCommandReturning(loggedInOutcome);
     const manager = new AgentManager({
       presentationId: "p1",
+      policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -296,8 +329,10 @@ describe("AgentManager", () => {
     try {
       const manager = new AgentManager({
         presentationId: "p1",
+        policy: openPolicy,
         workdir: "/tmp/deck-switch-test-wd1",
         editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
         initial: { kind: "claude", source: "cli" },
         runCommand,
         resolveAdapter,

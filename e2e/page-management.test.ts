@@ -10,7 +10,9 @@ import { chromium, type Browser, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { browserFetch } from "./helpers/browser-fetch.js";
 
 /**
  * Page management: the New/Templates panel and drag-to-reorder scenarios,
@@ -95,7 +97,7 @@ async function startServerFor(): Promise<{
     },
   };
 
-  const server = await startServe({ presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 
   return {
     server,
@@ -377,7 +379,7 @@ it("master mode: editing a template with an ordinary command changes only the te
     // Same command endpoint any ordinary tool (Style panel, in-place text
     // edit) already issues — see file-roundtrip.test.ts/
     // direct-manipulation.test.ts for the same direct-POST shape.
-    const response = await fetch(`${server.url}/api/command`, {
+    const response = await browserFetch(server.url, "/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -405,7 +407,7 @@ it("drag reordering: a red insertion line appears at the drop target's edge, rel
     const page = await openApp(server);
 
     let commandCalls = 0;
-    await page.route("**/api/command", (route) => {
+    await page.route("**/call", (route) => {
       commandCalls++;
       void route.continue();
     });

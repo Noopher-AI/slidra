@@ -28,7 +28,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { constants as osConstants } from "node:os";
 import path from "node:path";
 import { resolveSlidraBin } from "../slidra/bin.js";
-import { deckPathFor } from "../slidra/home.js";
 import { buildCliSandboxPolicy } from "./policy.js";
 import { getActiveLauncher } from "./launcher.js";
 
@@ -175,14 +174,8 @@ export function handleShimExec(req: IncomingMessage, res: ServerResponse, option
 }
 
 async function runShimCommand(req: IncomingMessage, res: ServerResponse, argv: string[], cwd: string, deckId: string): Promise<void> {
-  const deckPath = await deckPathFor(deckId).catch(() => undefined);
-  if (deckPath === undefined) {
-    sendJson(res, 409, { reason: "no-deck" });
-    return;
-  }
-
   const bin = resolveSlidraBin();
-  const policy = buildCliSandboxPolicy({ deckPath });
+  const policy = buildCliSandboxPolicy();
   const launcher = getActiveLauncher();
   const rawSpawn = { command: bin, args: argv, env: process.env, cwd };
   const wrapped = launcher

@@ -67,6 +67,149 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["element", "duplicate"],
 ];
 
+/// This family's slice of the crate-wide category table ([S11.F2]
+/// `commands::category`), in the same order as `TAKEOVER` above. Every
+/// entry is `DeckScoped { deck_id_arg: 0, mutates: true }`: all 19 element
+/// commands write to this workbench's own deck — `copy`/`cut` write the
+/// per-presentation clipboard file (`workspace::write::write_clipboard_file`)
+/// even though `copy` alone leaves slide content unchanged, so it is not a
+/// read for the door's purposes any more than for the viewer's.
+pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
+    (
+        "element insert",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 1,
+            mutates: true,
+        },
+    ),
+    (
+        "element delete",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element move",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element rotate",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element order",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element lock",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element unlock",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element name set",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element group",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element ungroup",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element scale",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element resize",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element style set",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element align",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element distribute",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element copy",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element cut",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element paste",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "element duplicate",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+];
+
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match &tokens[1..] {
         ["insert"] => insert::run(args),

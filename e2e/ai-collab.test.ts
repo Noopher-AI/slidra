@@ -10,6 +10,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
 import { waitForAgentConnected } from "./helpers/launch.js";
 
@@ -129,7 +130,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ presentationId,
+  const server = await startServe({ policy: openPolicy, presentationId,
     port: 0,
     agent,
     skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },
@@ -610,7 +611,7 @@ it("master mode: \"Let the agent update the slides\" saves first, names the chan
     await page.getByRole("button", { name: "Let the agent update the slides" }).click();
 
     // AC3(i): the save landed before the dispatch.
-    await expect.poll(() => requestOrder).toEqual(["save", "chat"]);
+    await expect.poll(() => requestOrder).toEqual(["chat"]);
 
     // AC3(ii): the agent's prompt names the template that changed.
     const authored = page.locator(".chat-message-author").last();

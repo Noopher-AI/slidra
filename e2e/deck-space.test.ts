@@ -12,6 +12,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { packDirectory } from "./helpers/pack.js";
 import { requireBuilt } from "./helpers/launch.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 
 /**
  * Deck Space's own browser-level coverage ([E6.T4] plan §6 — the one new
@@ -51,7 +52,7 @@ async function startDeckSpaceServer(prefix: string): Promise<DeckSpaceHarness> {
   process.env.SLIDRA_BIN = slidraBin;
   await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ deckFolder }));
 
-  const server = await startServe({ port: 0 });
+  const server = await startServe({ policy: openPolicy, port: 0 });
 
   return {
     server,

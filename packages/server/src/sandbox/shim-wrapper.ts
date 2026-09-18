@@ -2,27 +2,25 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
-
-/**
- * `../../shim/slidra-shim.mjs`, resolved relative to this module's own
- * location — the same trick `agent/workdir.ts`'s `resolveAgentWorkdirSource`
- * and `serve.ts`'s `resolveWebDist` use, and for the same reason: it works
- * unmodified whether this file is running from `src/` or `dist/`, since
- * both sit the same two levels under `packages/server/`.
- */
-export function resolveShimScriptPath(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(here, "../../shim/slidra-shim.mjs");
-}
+import { resolveSlidraBin } from "../slidra/bin.js";
 
 /**
  * Writes `<sandboxRoot>/bin/slidra` (NOOP-425 D5): a two-line POSIX shell
- * wrapper that `exec`s the real shim script under this exact Node binary.
- * `agent/session.ts` prepends `<sandboxRoot>/bin` to the spawned agent's
- * `PATH`, so every `slidra` the agent's shell resolves is this wrapper, not
- * whatever (if anything) is installed globally.
+ * wrapper that `exec`s the Rust `slidra` binary's own `__shim` entry point
+ * — [S11.F2] replaces `../../shim/slidra-shim.mjs` (deleted this ticket)
+ * with `crates/slidra/src/server/shim_client.rs`, so the client side of
+ * this hop has no Node process in it at all any more. `agent/session.ts`
+ * prepends `<sandboxRoot>/bin` to the spawned agent's `PATH`, so every
+ * `slidra` the agent's shell resolves is this wrapper, not whatever (if
+ * any) is installed globally.
+ *
+ * `shim_client.rs`'s own module doc explains why this is safe to change
+ * without retargeting anything else: it speaks the SAME
+ * `POST /api/agent/exec` wire protocol `slidra-shim.mjs` did whenever
+ * `SLIDRA_SHIM_TOKEN` is set (which `agent/manager.ts`, unchanged, always
+ * is, live) — the deck server's own new protocol
+ * (`SLIDRA_SHIM_CREDENTIAL`) is unused by anything in this repo yet.
  *
  * Written once per `serve` process, alongside the sandbox root itself —
  * every presentation's own subdirectory sits next to this one `bin/`, so
@@ -32,7 +30,7 @@ export async function deployShimWrapper(sandboxRoot: string): Promise<void> {
   const binDir = path.join(sandboxRoot, "bin");
   await mkdir(binDir, { recursive: true });
   const wrapperPath = path.join(binDir, "slidra");
-  const scriptPath = resolveShimScriptPath();
-  await writeFile(wrapperPath, `#!/bin/sh\nexec "${process.execPath}" "${scriptPath}" "$@"\n`);
+  const slidraBin = resolveSlidraBin();
+  await writeFile(wrapperPath, `#!/bin/sh\nexec "${slidraBin}" __shim "$@"\n`);
   await chmod(wrapperPath, 0o755);
 }

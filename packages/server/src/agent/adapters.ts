@@ -6,6 +6,7 @@ import { accessSync, chmodSync, constants, mkdirSync, realpathSync, writeFileSyn
 import path, { dirname } from "node:path";
 import { resolveSlidraHome } from "../slidra/home.js";
 import type { AgentAdapterConfig } from "./session.js";
+import type { FsRule } from "../policy/types.js";
 
 /**
  * The ACP adapters Slidra knows how to drive. Claude Code and Codex are not
@@ -20,33 +21,60 @@ import type { AgentAdapterConfig } from "./session.js";
  * separate, user-level decision (`settings.ts`).
  */
 export const AGENT_KINDS = ["claude", "codex", "pi"] as const;
-export type AgentKind = (typeof AGENT_KINDS)[number];
+/**
+ * One of the three bundled kinds, or a user-declared adapter's own id
+ * (settings.ts's `adapters` key, E10.T6/#400 D4) — no longer a closed union:
+ * the whole point of `buildAdapterRegistry` is that the set of valid kinds
+ * is a runtime registry, not a compile-time enum. `AGENT_KINDS` above is
+ * still the closed, three-value list for code that specifically means "one
+ * of the bundled adapters" (`settings.ts`'s `models` map, in particular).
+ */
+export type AgentKind = string;
 
-export function isAgentKind(value: unknown): value is AgentKind {
-  return typeof value === "string" && (AGENT_KINDS as readonly string[]).includes(value);
+/** True when `value` names a kind present in `registry` — a bundled one or a registered custom one. There is deliberately no default registry: a call site must say which set of kinds it means (E10.T6 D4). */
+export function isAgentKind(value: unknown, registry: readonly AdapterSpec[]): value is AgentKind {
+  return typeof value === "string" && registry.some((spec) => spec.kind === value);
 }
 
 export interface AdapterSpec {
   kind: AgentKind;
   /** Human-readable name used in status and error messages. */
   label: string;
-  /** npm package name — the exact version pin lives in `package.json`'s own `dependencies`. */
-  npmPackage: string;
+  /** npm package name — the exact version pin lives in `package.json`'s own `dependencies`. Present only for a bundled adapter; a user-declared one carries `custom` instead. */
+  npmPackage?: string;
   /**
    * Path, relative to the package root, to the bin entry point spawned via
    * `process.execPath` (§3.2 of the ticket — verified by actually
    * installing both packages and resolving/spawning them: `process.execPath`
    * + a resolved path, never the bin path directly and never PATH/`.bin`).
+   * Present only for a bundled adapter.
    */
-  modulePath: string;
+  modulePath?: string;
   /**
    * The command probed for login status (§3.3 — actually run against both
    * real CLIs). Centralized here so `probe.ts` never hardcodes either
-   * string itself.
+   * string itself. Absent for a user-declared adapter, which has no login
+   * concept Slidra can probe — its card is always reported "available"
+   * (`agent/manager.ts`'s `probeOne`), never spawning anything to check.
    */
-  probeCommand: { command: string; args: string[] };
-  /** Static text shown to the user for how to log in — always available, whether or not the adapter is currently logged in. */
-  loginCommand: string;
+  probeCommand?: { command: string; args: string[] };
+  /** Static text shown to the user for how to log in — always available for a bundled adapter, whether or not it is currently logged in. Absent for a user-declared adapter (no `probeCommand`, nothing to log into). */
+  loginCommand?: string;
+  /**
+   * The sandbox write rules this adapter's own session state needs
+   * (E10.T6/#400 D1) — resolved into `SandboxContext.adapterStateDirs` by
+   * `sandbox/policy.ts`'s `collectSandboxContext`. Always `[]` for a
+   * user-declared adapter (D2): a person picks *which* agent to use, never
+   * what it may write — that is a policy decision, not a per-adapter one.
+   */
+  writeRules: readonly FsRule[];
+  /**
+   * Present only for a user-declared adapter (settings.ts's `adapters`
+   * key) — `resolveAdapterConfig` spawns this directly instead of
+   * resolving an npm package, and skips every bundled-adapter-specific
+   * tweak below (CLAUDE_CODE_EXECUTABLE, CODEX_PATH, the Pi model catalog).
+   */
+  custom?: { command: string; args: readonly string[]; env: Readonly<Record<string, string>> };
 }
 
 export const ADAPTER_SPECS: readonly AdapterSpec[] = [
@@ -57,6 +85,7 @@ export const ADAPTER_SPECS: readonly AdapterSpec[] = [
     modulePath: "dist/index.js",
     probeCommand: { command: "claude", args: ["auth", "status", "--json"] },
     loginCommand: "claude auth login",
+    writeRules: [{ kind: "homeEntry", segments: [".claude"] }, { kind: "homeEntry", segments: [".claude.json"] }],
   },
   {
     kind: "codex",
@@ -65,6 +94,7 @@ export const ADAPTER_SPECS: readonly AdapterSpec[] = [
     modulePath: "dist/index.js",
     probeCommand: { command: "codex", args: ["login", "status"] },
     loginCommand: "codex login",
+    writeRules: [{ kind: "homeEntry", segments: [".codex"] }],
   },
   {
     kind: "pi",
@@ -88,14 +118,51 @@ fetch(base+"/models",{headers:{Authorization:"Bearer "+key},signal:AbortSignal.t
       ],
     },
     loginCommand: "ollama run qwen2.5-coder:7b",
+    writeRules: [],
   },
 ];
 
-export function adapterSpecFor(kind: AgentKind): AdapterSpec {
-  const spec = ADAPTER_SPECS.find((candidate) => candidate.kind === kind);
+/**
+ * A user-declared adapter, parsed from `<SLIDRA_HOME>/settings.json`'s
+ * `adapters` key (`agent/settings.ts`'s `readAgentSettings`). Only these
+ * four fields are ever read from what a person writes there — spec decision
+ * 7: a person picks *which* agent to use and nothing else, so nothing here
+ * can express a write rule, network exception, or MCP server.
+ */
+export interface DeclaredAdapterConfig {
+  readonly id: string;
+  readonly label: string;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/**
+ * The effective set of adapters for one running server: every bundled one,
+ * first (§7 decision 5 — a declared id can never shadow a built-in kind;
+ * `settings.ts` is what actually enforces the collision refusal, this
+ * function assumes `declared` already passed that check), then every
+ * user-declared one, each carrying `writeRules: []` (D2) and no
+ * `probeCommand`/`loginCommand` (a declared adapter is always reported
+ * "available" — see `agent/manager.ts`'s `probeOne`, never spawning
+ * anything to check a login status it has no concept of).
+ */
+export function buildAdapterRegistry(declared: readonly DeclaredAdapterConfig[]): readonly AdapterSpec[] {
+  const custom: AdapterSpec[] = declared.map((adapter) => ({
+    kind: adapter.id,
+    label: adapter.label,
+    writeRules: [],
+    custom: { command: adapter.command, args: adapter.args, env: adapter.env },
+  }));
+  return [...ADAPTER_SPECS, ...custom];
+}
+
+export function adapterSpecFor(kind: AgentKind, registry: readonly AdapterSpec[] = ADAPTER_SPECS): AdapterSpec {
+  const spec = registry.find((candidate) => candidate.kind === kind);
   if (!spec) {
-    // Unreachable given AgentKind's two literal values — a thrown error
-    // here would mean the type and this table have drifted apart.
+    // Unreachable given every caller first checks `isAgentKind(kind, registry)`
+    // against this same registry — a thrown error here would mean a caller
+    // skipped that check.
     throw new Error(`no adapter spec for kind: ${kind}`);
   }
   return spec;
@@ -116,16 +183,29 @@ const require = createRequire(import.meta.url);
  * from `packages/server` — verified in §3.2). Never the bin path spawned
  * directly (breaks on Windows, depends on the exec bit) and never PATH or
  * `node_modules/.bin` — decision §7.1, not up for reconsideration here.
+ *
+ * A user-declared adapter (`spec.custom` set — E10.T6/#400) skips all of
+ * this: it is spawned exactly as declared, with no package resolution and
+ * none of the bundled-adapter-specific tweaks below (CLAUDE_CODE_EXECUTABLE,
+ * CODEX_PATH, the Pi model catalog) — those are all about a *specific*
+ * bundled CLI's own quirks, meaningless (and potentially wrong) applied to
+ * an arbitrary third party's command.
  */
-export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
-  const spec = adapterSpecFor(kind);
-  // pi-acp exports its library entry but deliberately does not export its
-  // executable subpath. Resolve the public entry first, then address the
-  // sibling CLI file named by the package's `bin` field.
-  const resolved = kind === "pi"
-    ? path.join(dirname(require.resolve(spec.npmPackage)), "index.js")
-    : require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
-  const config: AgentAdapterConfig = { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
+export function resolveAdapterConfig(kind: AgentKind, registry: readonly AdapterSpec[] = ADAPTER_SPECS): AgentAdapterConfig {
+  const spec = adapterSpecFor(kind, registry);
+
+  let config: AgentAdapterConfig;
+  if (spec.custom) {
+    config = { kind: spec.kind, label: spec.label, command: spec.custom.command, args: [...spec.custom.args], env: { ...spec.custom.env } };
+  } else {
+    // pi-acp exports its library entry but deliberately does not export its
+    // executable subpath. Resolve the public entry first, then address the
+    // sibling CLI file named by the package's `bin` field.
+    const resolved = kind === "pi"
+      ? path.join(dirname(require.resolve(spec.npmPackage!)), "index.js")
+      : require.resolve(`${spec.npmPackage}/${spec.modulePath}`);
+    config = { kind: spec.kind, label: spec.label, command: process.execPath, args: [resolved] };
+  }
 
   // NOOP-278: when the slidra Rust binary execs this Node process as its
   // fallback (crates/slidra/src/fallback.rs), it sets SLIDRA_BIN to
@@ -136,14 +216,19 @@ export function resolveAdapterConfig(kind: AgentKind): AgentAdapterConfig {
   // that also falls back to this very Node process, so its directory needs
   // to be reachable again for that chain to close. When SLIDRA_BIN is
   // unset (today's only real invocation path — no Rust binary yet in the
-  // chain), `config.env` stays unset and this function's return value is
-  // byte-for-byte identical to before this change: the existing e2e
-  // fixtures that put `node_modules/.bin` on PATH themselves depend on
-  // that being untouched.
+  // chain), `config.env` stays unset for a bundled adapter and this
+  // function's return value is byte-for-byte identical to before this
+  // change: the existing e2e fixtures that put `node_modules/.bin` on PATH
+  // themselves depend on that being untouched. Applies to a user-declared
+  // adapter too (E10.T6/#400 — this is about *Slidra's* PATH, not any
+  // adapter's own quirk), merged over its declared `env` rather than
+  // replacing it outright.
   const slidraBin = process.env.SLIDRA_BIN;
   if (slidraBin) {
-    config.env = { PATH: `${dirname(slidraBin)}:${process.env.PATH ?? ""}` };
+    config.env = { ...config.env, PATH: `${dirname(slidraBin)}:${config.env?.PATH ?? process.env.PATH ?? ""}` };
   }
+
+  if (spec.custom) return config;
 
   // claude-code-acp drives Claude Code through the Agent SDK, which ships
   // its own (older) copy of the Claude Code CLI — and the model list the

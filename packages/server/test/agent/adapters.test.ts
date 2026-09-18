@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { resolveAdapterConfig } from "../../src/agent/adapters.js";
+import { ADAPTER_SPECS, adapterSpecFor, buildAdapterRegistry, isAgentKind, resolveAdapterConfig } from "../../src/agent/adapters.js";
 
 const packageJsonPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -137,5 +137,64 @@ describe("resolveAdapterConfig", () => {
     expect(pkg.dependencies["@agentclientprotocol/codex-acp"]).toBe("1.11.0");
     expect(pkg.dependencies["@automatalabs/pi-acp"]).toBe("0.8.0");
     expect(pkg.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
+  });
+
+  // E10.T6/#400 D4: a user-declared adapter, spawned exactly as declared —
+  // no package resolution, no bundled-adapter-specific tweak applied.
+  it("resolves a custom (user-declared) adapter to its own command/args/env verbatim, with no CLAUDE_CODE_EXECUTABLE/CODEX_PATH/Pi tweak applied", () => {
+    const registry = buildAdapterRegistry([
+      { id: "my-agent", label: "My Agent", command: "/usr/local/bin/my-agent", args: ["--flag"], env: { FOO: "bar" } },
+    ]);
+    const config = resolveAdapterConfig("my-agent", registry);
+    expect(config).toEqual({ kind: "my-agent", label: "My Agent", command: "/usr/local/bin/my-agent", args: ["--flag"], env: { FOO: "bar" } });
+  });
+
+  it("a custom adapter's own declared env still loses to Slidra's SLIDRA_BIN-derived PATH prefix when SLIDRA_BIN is set", () => {
+    const originalBin = process.env.SLIDRA_BIN;
+    try {
+      process.env.SLIDRA_BIN = "/opt/slidra/slidra";
+      const registry = buildAdapterRegistry([{ id: "my-agent", label: "My Agent", command: "x", args: [], env: { PATH: "/evil" } }]);
+      const config = resolveAdapterConfig("my-agent", registry);
+      expect(config.env?.PATH).toBe("/opt/slidra:/evil");
+    } finally {
+      if (originalBin === undefined) delete process.env.SLIDRA_BIN;
+      else process.env.SLIDRA_BIN = originalBin;
+    }
+  });
+});
+
+describe("buildAdapterRegistry", () => {
+  it("built-ins come first, in ADAPTER_SPECS's own order, followed by every declared adapter in declaration order", () => {
+    const registry = buildAdapterRegistry([
+      { id: "b-agent", label: "B", command: "b", args: [], env: {} },
+      { id: "a-agent", label: "A", command: "a", args: [], env: {} },
+    ]);
+    expect(registry.map((spec) => spec.kind)).toEqual([...ADAPTER_SPECS.map((spec) => spec.kind), "b-agent", "a-agent"]);
+  });
+
+  it("a declared adapter's spec carries writeRules: [] and no probeCommand/loginCommand", () => {
+    const registry = buildAdapterRegistry([{ id: "my-agent", label: "My Agent", command: "x", args: [], env: {} }]);
+    const spec = adapterSpecFor("my-agent", registry);
+    expect(spec.writeRules).toEqual([]);
+    expect(spec.probeCommand).toBeUndefined();
+    expect(spec.loginCommand).toBeUndefined();
+  });
+
+  it("empty declared list is identical to ADAPTER_SPECS itself", () => {
+    expect(buildAdapterRegistry([])).toEqual(ADAPTER_SPECS);
+  });
+});
+
+describe("isAgentKind(value, registry)", () => {
+  it("true for every built-in kind against the default registry, and for a declared adapter's own id against its registry", () => {
+    for (const spec of ADAPTER_SPECS) expect(isAgentKind(spec.kind, ADAPTER_SPECS)).toBe(true);
+    const registry = buildAdapterRegistry([{ id: "my-agent", label: "My Agent", command: "x", args: [], env: {} }]);
+    expect(isAgentKind("my-agent", registry)).toBe(true);
+  });
+
+  it("false for a declared adapter's id against a registry that never declared it, and for any non-string", () => {
+    expect(isAgentKind("my-agent", ADAPTER_SPECS)).toBe(false);
+    expect(isAgentKind(undefined, ADAPTER_SPECS)).toBe(false);
+    expect(isAgentKind(3, ADAPTER_SPECS)).toBe(false);
   });
 });

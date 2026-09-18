@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
-import { undoGroupCount } from "./helpers/deck.js";
 import { packDirectory } from "./helpers/pack.js";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
+import { openPolicy } from "../packages/server/src/policy/open.js";
 import type { AgentAdapterConfig } from "../packages/server/src/agent/session.js";
+import { browserFetch } from "./helpers/browser-fetch.js";
 
 /**
  * Real Chromium acceptance tests, modelled on
@@ -192,7 +192,7 @@ async function startServerFor(sourceDeckDir: string = deckDir): Promise<{
     },
   };
 
-  const server = await startServe({ presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
 
   return {
     server,
@@ -233,9 +233,19 @@ async function readSlide(registry: CommandRegistry, presentationId: string): Pro
   return result.data!.content;
 }
 
-/** The deck's undo stack depth (`e2e/helpers/deck.js`'s `undoGroupCount`) — a direct read of the invariant that dragging 100 times must not produce 100 history entries; each drag is exactly one entry. `startServerFor` sets `process.env.SLIDRA_HOME` for the whole test's lifetime. */
-async function undoCount(presentationId: string): Promise<number> {
-  return undoGroupCount(await deckPathFor(presentationId));
+/** Counts history through the public undo/redo contract, then restores it. */
+async function undoCount(registry: CommandRegistry, presentationId: string): Promise<number> {
+  let count = 0;
+  while (count < 100) {
+    const undone = await registry.dispatch("undo", { id: presentationId });
+    if (!undone.ok) break;
+    count += 1;
+  }
+  for (let i = 0; i < count; i++) {
+    const redone = await registry.dispatch("redo", { id: presentationId });
+    if (!redone.ok) throw new Error("could not restore history after counting it");
+  }
+  return count;
 }
 
 /**
@@ -561,9 +571,9 @@ it("dropping a single dragged element: the overview thumbnail (iframe.overview-f
 it("a single drag with 100 mouse-move steps in the middle produces exactly one history entry", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
-    const beforeUndoCount = await undoCount(presentationId);
+    const beforeUndoCount = await undoCount(registry, presentationId);
+    const page = await openApp(server);
 
     const box = await svgBox(page);
     const from = toPagePoint(box, 180, 150); // inside el-a
@@ -576,7 +586,7 @@ it("a single drag with 100 mouse-move steps in the middle produces exactly one h
     await page.waitForTimeout(150);
 
     expect(await readSlide(registry, presentationId)).not.toBe(before);
-    expect(await undoCount(presentationId)).toBe(beforeUndoCount + 1);
+    expect(await undoCount(registry, presentationId)).toBe(beforeUndoCount + 1);
   } finally {
     await cleanup();
   }
@@ -594,8 +604,8 @@ it("a single drag with 100 mouse-move steps in the middle produces exactly one h
 it("20 consecutive independent drags produce exactly 20 history entries (no more, no less, never merged)", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
+    const beforeUndoCount = await undoCount(registry, presentationId);
     const page = await openApp(server);
-    const beforeUndoCount = await undoCount(presentationId);
 
     // Alternates +10/-10 user units (safely above the runtime's 3px drag
     // threshold at this viewport's render scale) so el-a's own position
@@ -605,17 +615,17 @@ it("20 consecutive independent drags produce exactly 20 history entries (no more
     // (roundsToZero's own no-history-for-nothing guard), silently halving
     // the count this test means to prove is NOT silently deduplicated.
     const REPEATS = 20;
+    let previous = await readSlide(registry, presentationId);
     for (let i = 0; i < REPEATS; i++) {
       const dx = i % 2 === 0 ? 10 : -10;
-      await dragBy(page, { x: 180, y: 150 }, { x: dx, y: 0 }, { alt: true, settle: true });
-      // Confirms each individual drag's history write landed before the
-      // next drag starts — a fixed waitForTimeout(150) could let a drag
-      // land while the previous one's srcdoc reload was still in flight,
-      // which is what made this test observe only 19 of 20 entries.
-      await expect.poll(() => undoCount(presentationId)).toBe(beforeUndoCount + i + 1);
+      await dragBy(page, { x: 180, y: 150 }, { x: dx, y: 0 }, { alt: true, settle: false });
+      await expect.poll(() => readSlide(registry, presentationId)).not.toBe(previous);
+      previous = await readSlide(registry, presentationId);
+      await page.reload();
+      await expect.poll(async () => (await canvasFrame(page)).locator("#el-a").count()).toBe(1);
     }
 
-    expect(await undoCount(presentationId)).toBe(beforeUndoCount + REPEATS);
+    expect(await undoCount(registry, presentationId)).toBe(beforeUndoCount + REPEATS);
   } finally {
     await cleanup();
   }
@@ -1735,7 +1745,7 @@ it("POST /api/command whitelist: a blacklisted command returns 403 and the prese
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
     const before = await readSlide(registry, presentationId);
-    const response = await fetch(`${server.url}/api/command`, {
+    const response = await browserFetch(server.url, "/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: server.url },
       body: JSON.stringify({ name: "open", input: { path: "/etc/passwd" } }),
@@ -1746,4 +1756,3 @@ it("POST /api/command whitelist: a blacklisted command returns 403 and the prese
     await cleanup();
   }
 });
-

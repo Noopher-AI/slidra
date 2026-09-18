@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
+import { AUDIO_EXTENSIONS, VIDEO_EXTENSIONS } from "./media-formats.js";
+export { AUDIO_EXTENSIONS, VIDEO_EXTENSIONS } from "./media-formats.js";
+
 /**
  * Seam C's parent half (C3 in the design doc): slide markup in, a play
  * plan out. All derivation logic lives here in the parent, where it is
@@ -127,9 +130,6 @@ function enterTargets(effects: readonly Effect[]): string[] {
  * player accepts gets served as application/octet-stream, which some
  * browsers refuse to decode as media even though the bytes are fine.
  */
-export const VIDEO_EXTENSIONS = [".mp4", ".m4v", ".mov", ".webm", ".ogv"];
-export const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".wav", ".opus", ".oga", ".aac"];
-
 /**
  * Builds `plan.media`, keyed by each `family="media"` effect's target. This
  * parses `svgMarkup` itself with a fresh `DOMParser` — `effects` came from
@@ -173,7 +173,11 @@ function mediaCuesFor(svgMarkup: string, effects: Effect[]): Record<string, Medi
       // damaged presentation, not a silently-skipped effect.
       throw new Error(`Element "${target}"'s effect has family="media" but no data-slidra-media; the presentation is corrupted.`);
     }
-    media[target] = { src, kind: mediaKindFor(src, target) };
+    const declaredType = el.getAttribute("data-slidra-type");
+    const kind = declaredType === "video" || declaredType === "audio"
+      ? declaredType
+      : mediaKindFor(src, target);
+    media[target] = { src, kind };
   }
   return media;
 }

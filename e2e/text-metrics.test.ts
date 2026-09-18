@@ -8,8 +8,6 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
 import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
-import { readDeckFileText } from "./helpers/deck.js";
 import { requireBuilt } from "./helpers/launch.js";
 
 /**
@@ -94,8 +92,8 @@ afterAll(async () => {
 
 /** `<tspan>` line texts and `data-slidra-text-width`, read straight off the CLI-written file — this verifies the CLI's own output, not a second parser. */
 async function readTextboxLines(elementId: string): Promise<{ lines: string[]; width: number }> {
-  const deckPath = await deckPathFor(presentationId);
-  const svg = await readDeckFileText(deckPath, SLIDE_PATH);
+  const result = await registry.dispatch<{ content: string }>("cat", { id: presentationId, path: SLIDE_PATH });
+  const svg = result.data!.content;
   const openTagMatch = new RegExp(`<g id="${elementId}"[^>]*data-slidra-text-width="([^"]+)"[^>]*>`).exec(svg);
   if (!openTagMatch) throw new Error(`could not find text box container: ${elementId}`);
   const width = Number(openTagMatch[1]);

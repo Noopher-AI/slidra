@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { describe, expect, it } from "vitest";
-import { probeLogin, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { probeLogin, withAcpHandshakeTimeout, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
 
 // Pure decision logic driven entirely through an injected CommandRunner —
 // no real agent login command is ever spawned here: the "happy path,
@@ -92,27 +92,25 @@ describe("probeLogin", () => {
     expect(result.detail).toMatch(/truncated/);
   });
 
-  it("passes the centralized probeCommand from adapters.ts to the runner (claude)", async () => {
+  // Was three near-identical tests (one per bundled kind, claude/codex/pi),
+  // each asserting the same thing — probeLogin forwards adapters.ts's own
+  // `probeCommand` verbatim, never a hardcoded string of its own — with a
+  // different fixture. Merged into one table-driven test (E10.T6/#400 test
+  // budget §6): same coverage, one assertion path instead of three copies.
+  it.each([
+    ["claude", { stdout: '{"loggedIn":false}' }, { command: "claude", args: ["auth", "status", "--json"] }],
+    ["codex", { code: 0 }, { command: "codex", args: ["login", "status"] }],
+  ] as const)("forwards %s's own probeCommand verbatim to the runner, never a string of its own", async (kind, response, expected) => {
     let seen: { command: string; args: string[] } | undefined;
     const runner: CommandRunner = async (command, args) => {
       seen = { command, args };
-      return outcome({ stdout: '{"loggedIn":false}' });
+      return outcome(response);
     };
-    await probeLogin("claude", runner);
-    expect(seen).toEqual({ command: "claude", args: ["auth", "status", "--json"] });
+    await probeLogin(kind, runner);
+    expect(seen).toEqual(expected);
   });
 
-  it("passes the centralized probeCommand from adapters.ts to the runner (codex)", async () => {
-    let seen: { command: string; args: string[] } | undefined;
-    const runner: CommandRunner = async (command, args) => {
-      seen = { command, args };
-      return outcome({ code: 0 });
-    };
-    await probeLogin("codex", runner);
-    expect(seen).toEqual({ command: "codex", args: ["login", "status"] });
-  });
-
-  it("passes the local OpenAI-compatible endpoint probe to the runner (pi)", async () => {
+  it("pi's probeCommand is the local OpenAI-compatible endpoint probe, not a plain executable name", async () => {
     let seen: { command: string; args: string[] } | undefined;
     const runner: CommandRunner = async (command, args) => {
       seen = { command, args };
@@ -123,5 +121,32 @@ describe("probeLogin", () => {
     expect(seen?.args.join(" ")).toContain("SLIDRA_PI_BASE_URL");
     expect(seen?.args.join(" ")).toContain("/models");
     expect(seen?.args.join(" ")).not.toContain(process.env.SLIDRA_PI_API_KEY ?? "not-present");
+  });
+});
+
+// E10.T6/#400 D3/AC3: a declared adapter that starts but never speaks ACP
+// must fail with a named reason within a bounded time, never hang forever.
+describe("withAcpHandshakeTimeout", () => {
+  afterEach(() => {
+    delete process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS;
+  });
+
+  it("resolves with the underlying work's value when it settles before the timeout", async () => {
+    await expect(withAcpHandshakeTimeout("My Agent", Promise.resolve("ok"), 50)).resolves.toBe("ok");
+  });
+
+  it("rejects the underlying work's own error when it rejects before the timeout", async () => {
+    await expect(withAcpHandshakeTimeout("My Agent", Promise.reject(new Error("boom")), 50)).rejects.toThrow("boom");
+  });
+
+  it("a work that never settles rejects within the given bound, naming the label and the millisecond bound", async () => {
+    const neverSettles = new Promise<void>(() => {});
+    await expect(withAcpHandshakeTimeout("My Agent", neverSettles, 20)).rejects.toThrow(/My Agent.*20ms/);
+  });
+
+  it("reads SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS as its default bound when no explicit timeoutMs is given", async () => {
+    process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS = "20";
+    const neverSettles = new Promise<void>(() => {});
+    await expect(withAcpHandshakeTimeout("My Agent", neverSettles)).rejects.toThrow(/20ms/);
   });
 });

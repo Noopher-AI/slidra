@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../../src/serve.js";
 import type { RunningServer } from "../../src/serve.js";
+import { openPolicy } from "../../src/policy/open.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
 import type { AgentSource } from "../../src/agent/manager.js";
@@ -139,6 +140,7 @@ interface ServeInit {
 
 async function serve(init: ServeInit): Promise<RunningServer> {
   const server = await startServe({
+    policy: openPolicy,
     presentationId: init.presentationId,
     port: 0,
     initialAgent: init.initialAgent,
@@ -351,6 +353,7 @@ describe("POST /api/agent/model (chat-panel model picker)", () => {
     await server.close();
     servers = servers.filter((candidate) => candidate !== server);
     const restarted = await startServe({
+      policy: openPolicy,
       presentationId: id,
       port: 0,
       initialAgent: { kind: "claude", source: "cli" },

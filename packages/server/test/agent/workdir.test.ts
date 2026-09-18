@@ -12,6 +12,7 @@ import {
   readAgentWorkdirFile,
   resolveAgentWorkdirSource,
 } from "../../src/agent/workdir.js";
+import { serializeMcpAllowList, type McpServerSpec } from "../../src/policy/types.js";
 
 // The product work directory `slidra serve` deploys into this serve
 // process's own sandbox root (`packages/server/agent-workdir/` ->
@@ -92,29 +93,41 @@ describe("deployAgentWorkdir", () => {
     }
   });
 
-  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge", async () => {
-    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+  it("reverts a user's edit and removes a user's extra file on the next deploy — whole-directory overwrite, not a merge, and is idempotent", async () => {
+    const first = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    const firstFiles = await listFilesRecursively(first);
     const target = agentWorkdirTarget(sandboxRoot, PRESENTATION);
     await writeFile(path.join(target, "AGENTS.md"), "user-modified content");
     await mkdir(path.join(target, "extra-dir"), { recursive: true });
     await writeFile(path.join(target, "extra-dir", "extra-file.md"), "should-not-survive");
 
-    await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    const second = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
 
     const sourceAgentsMd = await readFile(path.join(resolveAgentWorkdirSource(), "AGENTS.md"), "utf8");
     const deployedAgentsMd = await readFile(path.join(target, "AGENTS.md"), "utf8");
     expect(deployedAgentsMd).toBe(sourceAgentsMd);
 
     await expect(readdir(path.join(target, "extra-dir"))).rejects.toThrow();
-  });
 
-  it("is idempotent: deploying twice in a row leaves the same files behind", async () => {
-    const first = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
-    const firstFiles = await listFilesRecursively(first);
-    const second = await deployAgentWorkdir(sandboxRoot, PRESENTATION);
+    // Deploying twice in a row (this is the second deploy) leaves the same
+    // set of files behind as the first — the edit/extra file above are
+    // gone, and nothing else changed.
     const secondFiles = await listFilesRecursively(second);
     expect(second).toBe(first);
     expect(secondFiles).toEqual(firstFiles);
+  });
+
+  it("writes <target>/.agents/mcp-servers.json from policy.mcp.servers, byte-identical to serializeMcpAllowList's own output (AC3)", async () => {
+    const target = await deployAgentWorkdir(sandboxRoot, PRESENTATION, { mcp: { servers: [] } });
+    const emptyBytes = await readFile(path.join(target, ".agents", "mcp-servers.json"), "utf8");
+    expect(emptyBytes).toBe(serializeMcpAllowList({ mcp: { servers: [] } }));
+    expect(emptyBytes).toBe("[]\n");
+
+    const servers: McpServerSpec[] = [{ name: "fixture", command: "node", args: ["server.js"] }];
+    const target2 = await deployAgentWorkdir(sandboxRoot, "pres-with-mcp", { mcp: { servers } });
+    const bytes = await readFile(path.join(target2, ".agents", "mcp-servers.json"), "utf8");
+    expect(bytes).toBe(serializeMcpAllowList({ mcp: { servers } }));
+    expect(JSON.parse(bytes)).toEqual(servers);
   });
 
   // The concurrency regression this used to guard against (two `slidra

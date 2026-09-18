@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Icon } from "../../icons/index.js";
 import { thumbnailUrl, type DeckSummary } from "./deck-api.js";
+import { getServiceClients } from "../../service-runtime.js";
 
 export interface DeckCardProps {
   deck: DeckSummary;
@@ -24,6 +25,26 @@ function formatLastModified(mtimeMs: number): string {
 }
 
 export function DeckCard({ deck, isCurrent, onOpen, onRename, onDelete }: DeckCardProps) {
+  const [thumbnailObjectUrl, setThumbnailObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setThumbnailObjectUrl(null);
+    setThumbnailFailed(false);
+    void getServiceClients().deck.fetch(thumbnailUrl(deck.fileName, deck.lastModified)).then(async (response) => {
+      if (!response.ok) throw new Error(`Thumbnail failed (${response.status})`);
+      objectUrl = URL.createObjectURL(await response.blob());
+      if (active) setThumbnailObjectUrl(objectUrl);
+      else URL.revokeObjectURL(objectUrl);
+    }).catch(() => {
+      if (active) setThumbnailFailed(true);
+    });
+    return () => {
+      active = false;
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+    };
+  }, [deck.fileName, deck.lastModified]);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -118,14 +139,14 @@ export function DeckCard({ deck, isCurrent, onOpen, onRename, onDelete }: DeckCa
       onKeyDown={handleCardKeyDown}
     >
       <div className="deck-card-thumb-wrap">
-        {thumbnailFailed ? (
+        {thumbnailFailed || thumbnailObjectUrl === null ? (
           <div className="deck-card-thumb-placeholder" aria-hidden="true" />
         ) : (
           <img
             className="deck-card-thumb"
             loading="lazy"
             alt=""
-            src={thumbnailUrl(deck.fileName, deck.lastModified)}
+            src={thumbnailObjectUrl}
             onError={() => setThumbnailFailed(true)}
           />
         )}

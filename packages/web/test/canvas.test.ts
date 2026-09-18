@@ -30,6 +30,7 @@ beforeEach(() => {
       if (url.endsWith("/api/files/slides/001.svg")) {
         return new Response(slideMarkup, { status: 200 });
       }
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -73,7 +74,9 @@ describe("mountCanvas", () => {
     await controller.reload();
 
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
-    expect(iframe.srcdoc).toContain(slideMarkup);
+    expect(iframe.srcdoc).toContain('data-testid="slide"');
+    expect(iframe.srcdoc).toContain('<circle r="1"/>');
+    expect(iframe.srcdoc).toContain('url("blob:');
   });
 
   // The view-mode document (wrapSelectionDocument) already
@@ -131,23 +134,15 @@ describe("mountCanvas", () => {
     expect(container.querySelector("iframe")).toBeNull();
   });
 
-  // Ticket #11: a `srcdoc` document resolves relative URLs against the
-  // *parent* document's URL, not the slide's own virtual location, which is
-  // why `href="../assets/photo.png"` inside `slides/001.svg` would
-  // otherwise resolve to the wrong place. Injecting a `<base>` pointing at
-  // the slide's own directory inside the byte-preserving `/api/raw/` path
-  // space makes the browser's own resolution do the right thing, without
-  // touching the (untrusted, ADR-0011) slide bytes themselves.
-  it("injects a <base> pointing at the slide's own directory inside /api/raw/", async () => {
+  // Deck-local resources are resolved before srcdoc is installed. The iframe
+  // must never receive a base URL that could trigger an unauthenticated request.
+  it("does not inject a credential-bypassing deck base URL", async () => {
     controller = mountCanvas(container);
     await controller.reload();
 
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
     const parsed = new DOMParser().parseFromString(iframe.srcdoc, "text/html");
-    const base = parsed.querySelector("base");
-
-    expect(base).not.toBeNull();
-    expect(base!.getAttribute("href")).toBe("/api/raw/slides/");
+    expect(parsed.querySelector("base")).toBeNull();
   });
 
   // Fix 2 (ticket #5, final round): mountCanvas fires a reload() on mount,
@@ -182,6 +177,7 @@ describe("mountCanvas", () => {
           // call, so it is always the first to reach this fetch.
           return slideFetchCount === 1 ? staleFetchPromise : new Response(freshMarkup, { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -206,8 +202,8 @@ describe("mountCanvas", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
-    expect(iframe.srcdoc).toContain(freshMarkup);
-    expect(iframe.srcdoc).not.toContain(staleMarkup);
+    expect(iframe.srcdoc).toContain('data-testid="fresh"');
+    expect(iframe.srcdoc).not.toContain('data-testid="stale"');
   });
 
   it("leaves the wrapper document unchanged (no <base>) when the presentation has zero slides", async () => {
@@ -218,6 +214,7 @@ describe("mountCanvas", () => {
         if (url.endsWith("/api/presentation")) {
           return new Response(JSON.stringify({ name: "Empty Deck", slides: [] }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -259,6 +256,7 @@ function stubDeck(project: { name: string; slides: string[] } = deck): void {
       if (match && deckMarkup[match[1]]) {
         return new Response(deckMarkup[match[1]], { status: 200 });
       }
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -323,14 +321,14 @@ describe("mountCanvas multi-slide navigation", () => {
     await expect(controller.showSlide(-1)).rejects.toThrow();
   });
 
-  it("injects a <base> pointing at its own directory for every slide", async () => {
+  it("keeps deck base URLs out of every navigated slide", async () => {
     stubDeck();
     controller = mountCanvas(container);
     await controller.reload();
     await controller.next();
 
     const parsed = new DOMParser().parseFromString(srcdoc(), "text/html");
-    expect(parsed.querySelector("base")!.getAttribute("href")).toBe("/api/raw/slides/");
+    expect(parsed.querySelector("base")).toBeNull();
   });
 
   it("reload() keeps the current slide selected, instead of jumping back to the first", async () => {
@@ -387,6 +385,7 @@ describe("mountCanvas multi-slide navigation", () => {
         if (url.endsWith("/api/presentation")) {
           return new Response(JSON.stringify({ name: "Empty Deck", slides: [] }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -426,6 +425,7 @@ describe("mountCanvas multi-slide navigation", () => {
         if (match && deckMarkup[match[1]]) {
           return new Response(deckMarkup[match[1]], { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -524,6 +524,7 @@ function stubPlayDeck(): void {
       if (effectsMatch && playDeckEffects[effectsMatch[1]]) {
         return effectsRouteResponse(playDeckEffects[effectsMatch[1]]);
       }
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -617,6 +618,7 @@ describe("mountCanvas play mode", () => {
             { status: 500 },
           );
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -808,6 +810,7 @@ describe("mountCanvas play mode", () => {
         if (effectsMatch && noEffectEffects[effectsMatch[1]]) {
           return effectsRouteResponse(noEffectEffects[effectsMatch[1]]);
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -862,6 +865,7 @@ describe("mountCanvas play mode", () => {
         if (match && raceMarkup[match[1]]) {
           return new Response(raceMarkup[match[1]], { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -991,6 +995,7 @@ describe("mountCanvas play mode", () => {
         if (effectsMatch && playDeckEffects[effectsMatch[1]]) {
           return effectsRouteResponse(playDeckEffects[effectsMatch[1]]);
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1051,6 +1056,7 @@ describe("mountCanvas play mode", () => {
         if (match && raceMarkup[match[1]]) {
           return new Response(raceMarkup[match[1]], { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1118,6 +1124,7 @@ describe("mountCanvas play mode", () => {
           );
         }
         if (url.endsWith("/api/effects/slides/002.svg")) return effectsRouteResponse([]);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1228,6 +1235,7 @@ describe("mountCanvas animation", () => {
         if (url.endsWith("/api/effects/slides/001.svg")) {
           return effectsRouteResponse([{ target: "el-a", family: "enter", effect: "fade", start: "on-click" }]);
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1335,6 +1343,7 @@ describe("mountCanvas slide enter/exit transitions", () => {
         // no effects, matching the route's own "never had one" plan (D3).
         const effectsMatch = /\/api\/effects\/(.+)$/.exec(url);
         if (effectsMatch) return effectsRouteResponse([], transitionFromMarkup(markup[effectsMatch[1]] ?? ""));
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1507,6 +1516,7 @@ describe("mountCanvas play mode: escaping when embedding the plan", () => {
         if (url.endsWith("/api/effects/slides/001.svg")) {
           return effectsRouteResponse([{ target: hostileId, family: "enter", effect: "fade", start: "on-click" }]);
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1768,6 +1778,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
           }
           throw new Error(`unexpected command: ${body.name}`);
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1818,6 +1829,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
         if (url.endsWith("/api/command")) {
           return new Response(JSON.stringify({ ok: false, error: "clipboard is empty" }), { status: 400 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1873,6 +1885,7 @@ describe("mountCanvas selection: feedback after element paste", () => {
             { status: 200 },
           );
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -1926,6 +1939,7 @@ describe("mountCanvas drag gesture: gesture-start arriving before viewport", () 
         // /api/editing/begin, /api/editing/end: fire-and-forget, swallowed
         // by beginEditingLease/endEditingLease's own .catch — any rejection
         // here is harmless.
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2015,6 +2029,7 @@ describe("mountCanvas drag gesture: still sends element move after the pointer l
           commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
           return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2074,6 +2089,7 @@ describe("mountCanvas drag gesture: still sends element move after the pointer l
           commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
           return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2120,6 +2136,7 @@ describe("mountCanvas scale/rotate/textbox-width gestures: gesture-start arrivin
           commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
           return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2290,7 +2307,9 @@ describe("mountCanvas marquee selection hit-testing: element-bounds is the only 
         const url = String(input);
         if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(project), { status: 200 });
         if (url.endsWith("/api/files/slides/001.svg")) return new Response(slideMarkup, { status: 200 });
-        throw new Error(`unexpected fetch: ${url}`);
+        if (url.endsWith("/api/raw/assets/bg.svg")) return new Response("background", { status: 200 });
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+        throw new Error(`unexpected fetch: `);
       }),
     );
   }
@@ -2415,6 +2434,7 @@ describe("mountCanvas clipboard: copySelection / cutSelection", () => {
             : { ok: false, error: commandResult.message ?? "failed" };
           return new Response(JSON.stringify(body), { status: commandResult.ok ? 200 : 500 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2495,6 +2515,7 @@ describe("mountCanvas textbox-width drag: no command sent while dragging", () =>
           commandCalls.push(JSON.parse(String(init?.body ?? "{}")));
           return new Response(JSON.stringify({ ok: true, message: "" }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -2828,6 +2849,7 @@ describe("mountCanvas table cell range keyboard decisions", () => {
           commandCalls.push(body);
           return new Response(JSON.stringify({ ok: true, message: "", data: {} }), { status: 200 });
         }
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );

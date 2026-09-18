@@ -3,7 +3,9 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import { Workspace } from "../Workspace.js";
+import { startServiceRuntime } from "../service-runtime.js";
 // Tokens first: the regional styles reference --s-well/--ink/etc., so the
 // root custom properties and bundled @font-face declarations must be parsed
 // before their consumers. These stay on the editor route so export.html has
@@ -29,5 +31,11 @@ import "../styles/chart-window.css";
 import "../styles/deck-space.css";
 
 export default function EditorPage() {
-  return <Workspace />;
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    startServiceRuntime();
+    setReady(true);
+  }, []);
+
+  return ready ? <Workspace /> : null;
 }

@@ -3,6 +3,7 @@
 
 import { createPassthroughLauncher } from "./passthrough-launcher.js";
 import { createLandlockLauncher } from "./landlock-launcher.js";
+import type { NetworkPolicy } from "../policy/types.js";
 
 /**
  * A write allow/deny-list plus a read deny-list, in the shape every
@@ -10,12 +11,23 @@ import { createLandlockLauncher } from "./landlock-launcher.js";
  * strings — never `SandboxManager`'s own config shape (`srt-launcher.ts` is
  * the only file allowed to import `@anthropic-ai/sandbox-runtime` at all;
  * see its own docstring) and never anything from `srt`'s Beta internals.
+ *
+ * `network` is optional: every caller that does not care (the CLI sandbox,
+ * every existing test's hand-built literal) simply omits it, and
+ * `srt-launcher.ts` treats an absent value the same as `"unrestricted"` —
+ * exactly today's hardcoded behaviour. Only `sandbox/policy.ts`'s
+ * `deriveSandboxConfig`/`deriveCliSandboxConfig` (the production path) ever
+ * fill it in from a real `WorkbenchPolicy`.
  */
-export interface SandboxPolicy {
+export interface SandboxConfig {
   readonly allowWrite: readonly string[];
   readonly denyWrite: readonly string[];
   readonly denyRead: readonly string[];
+  readonly network?: NetworkPolicy;
 }
+
+/** Back-compat alias — this interface was named `SandboxPolicy` before policy became an injectable object (NOOP-617). */
+export type SandboxPolicy = SandboxConfig;
 
 /** What one command invocation needs to become a spawnable process. */
 export interface SandboxSpawn {
@@ -45,7 +57,16 @@ export interface SandboxLauncher {
   readonly active: boolean;
   /** Human-readable reason, set whenever `active` is false; null exactly when `active` is true. */
   readonly degradedReason: string | null;
-  wrap(spawn: SandboxSpawn, policy: SandboxPolicy): Promise<WrappedSpawn>;
+  /**
+   * What this launcher mechanism is actually capable of enforcing — a
+   * static fact about which implementation this is, never about any one
+   * policy's content. `landlock-launcher.ts`'s own docstring is why
+   * `network` is always false there (a write-only Landlock ruleset has no
+   * network-restriction concept), and the passthrough launcher enforces
+   * neither. Both fields are false whenever `active` is false.
+   */
+  readonly enforces: { readonly write: boolean; readonly network: boolean };
+  wrap(spawn: SandboxSpawn, policy: SandboxConfig): Promise<WrappedSpawn>;
   dispose(): Promise<void>;
 }
 

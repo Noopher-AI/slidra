@@ -72,6 +72,10 @@ describe("createSandboxLauncher", () => {
       expect(launcher.degradedReason).toBeNull();
     } else {
       expect(launcher.degradedReason).not.toBeNull();
+      // A degraded launcher enforces nothing — `enforces` must never claim
+      // a capability `active: false` already disclaims.
+      expect(launcher.enforces.write).toBe(false);
+      expect(launcher.enforces.network).toBe(false);
     }
   });
 });

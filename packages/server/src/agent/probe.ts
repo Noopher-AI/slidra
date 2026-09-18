@@ -2,11 +2,65 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { spawn } from "node:child_process";
-import type { AgentKind } from "./adapters.js";
-import { adapterSpecFor } from "./adapters.js";
+import { ADAPTER_SPECS, adapterSpecFor, type AdapterSpec, type AgentKind } from "./adapters.js";
+import { SlidraError } from "../slidra/errors.js";
 
 /** Upper bound on how long a login-status probe may run before it counts as a failure (NOOP-230 §4.2). */
 export const PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Upper bound on the ACP `initialize` handshake (E10.T6/#400 D3, AC3): a
+ * declared command that starts but never speaks ACP must fail with a named
+ * reason within a bounded time, never hang forever. Overridable via
+ * `SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS` — read lazily by `withAcpHandshakeTimeout`
+ * below, not baked in at module load, so a test can set it right before
+ * triggering a handshake without needing to control import order.
+ */
+export const ACP_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+function resolveHandshakeTimeoutMs(): number {
+  const override = Number(process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS);
+  return Number.isFinite(override) && override > 0 ? override : ACP_HANDSHAKE_TIMEOUT_MS;
+}
+
+/**
+ * Races `work` against a timeout, rejecting with a `SlidraError` naming
+ * `label` and the bound if `work` never settles in time — the one thing
+ * that makes a declared adapter which starts but never speaks ACP a named
+ * failure instead of a permanent hang (AC3). `work` itself is never
+ * cancelled (there is no way to cancel a pending JSON-RPC call), only
+ * raced: a `work` that eventually does settle after the timeout has no
+ * further effect here.
+ */
+export function withAcpHandshakeTimeout<T>(label: string, work: Promise<T>, timeoutMs: number = resolveHandshakeTimeoutMs()): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(
+        new SlidraError(
+          `${label} did not complete its ACP handshake within ${timeoutMs}ms — it may not be an ACP-over-stdio server.`,
+        ),
+      );
+    }, timeoutMs);
+    timer.unref?.();
+    work.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 /** Longest `detail` string a probe result ever carries — see `truncateDetail` below. */
 const MAX_DETAIL_CHARS = 200;
@@ -100,8 +154,16 @@ export interface ProbeResult {
  * A plain "yes I ran, and you are logged out" carries no `detail` — that is
  * the everyday not-logged-in state, not a probe failure.
  */
-export async function probeLogin(kind: AgentKind, run: CommandRunner): Promise<ProbeResult> {
-  const { command, args } = adapterSpecFor(kind).probeCommand;
+export async function probeLogin(kind: AgentKind, run: CommandRunner, registry: readonly AdapterSpec[] = ADAPTER_SPECS): Promise<ProbeResult> {
+  const probeCommand = adapterSpecFor(kind, registry).probeCommand;
+  if (!probeCommand) {
+    // Unreachable given every caller (`agent/manager.ts`'s `probeOne`) only
+    // calls this once it has already checked the spec has a `probeCommand`
+    // — a user-declared adapter never does (E10.T6/#400 D4) and is reported
+    // "available" without ever reaching here.
+    throw new Error(`probeLogin called for a kind with no probeCommand: ${kind}`);
+  }
+  const { command, args } = probeCommand;
   const outcome = await run(command, args, PROBE_TIMEOUT_MS);
 
   if (outcome.code === null) {

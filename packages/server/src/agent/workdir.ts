@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { cp, readFile, readdir, realpath, rm } from "node:fs/promises";
+import { cp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
+import { serializeMcpAllowList, type WorkbenchPolicy } from "../policy/types.js";
 
 /**
  * Relative-path top-level segments that name a *presentation* virtual file
@@ -181,6 +182,14 @@ export function agentWorkdirTarget(sandboxRoot: string, presentationId: string):
 }
 
 /**
+ * `<workbench>/.agents/mcp-servers.json`'s own default when a caller omits
+ * `policy` — the unit tests in `workdir.test.ts` that predate policy being
+ * an injected object. Production (`serve.ts`) always passes the real
+ * `WorkbenchPolicy` it started with; this default is never reached there.
+ */
+const NO_MCP_SERVERS: Pick<WorkbenchPolicy, "mcp"> = { mcp: { servers: [] } };
+
+/**
  * Deploys the package's `agent-workdir/` source to `agentWorkdirTarget()`,
  * overwriting the target wholesale every time it is called — this is a
  * product decision (a user's local edit is not meant to persist across
@@ -190,12 +199,23 @@ export function agentWorkdirTarget(sandboxRoot: string, presentationId: string):
  * the only source of truth (so a skill is never written twice and cannot
  * drift between the two), and this is the one place that copy is made.
  *
+ * `<target>/.agents/mcp-servers.json` (NOOP-617) is written last, from
+ * `policy.mcp.servers` — the MCP allow-list's real source of truth. This
+ * file is written-only: `agent/session.ts`'s `newSession` always reads the
+ * policy object kept in memory, never this file, so an agent that rewrites
+ * it mid-session gains nothing (the next deploy overwrites it wholesale
+ * anyway, same as every other file here).
+ *
  * Returns the target's `realpath` — resolved because it is about to be
  * handed to an ACP agent as its session `cwd`, and (as with the old
  * `mkdtemp`-based cwd) an agent that resolves symlinks before echoing a
  * path back must be compared against the same resolved form.
  */
-export async function deployAgentWorkdir(sandboxRoot: string, presentationId: string): Promise<string> {
+export async function deployAgentWorkdir(
+  sandboxRoot: string,
+  presentationId: string,
+  policy: Pick<WorkbenchPolicy, "mcp"> = NO_MCP_SERVERS,
+): Promise<string> {
   const source = resolveAgentWorkdirSource();
   const target = agentWorkdirTarget(sandboxRoot, presentationId);
 
@@ -203,6 +223,9 @@ export async function deployAgentWorkdir(sandboxRoot: string, presentationId: st
     await rm(target, { recursive: true, force: true });
     await cp(source, target, { recursive: true });
     await cp(path.join(target, ".agents", "skills"), path.join(target, ".claude", "skills"), { recursive: true });
+    // `.agents/` already exists (the source ships `.agents/skills/`), so no
+    // `mkdir` is needed before writing this sibling file into it.
+    await writeFile(path.join(target, ".agents", "mcp-servers.json"), serializeMcpAllowList(policy));
   } catch {
     await rm(target, { recursive: true, force: true }).catch(() => {});
     // Never echo the underlying fs error's own message here — it embeds a

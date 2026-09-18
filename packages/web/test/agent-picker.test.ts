@@ -114,3 +114,20 @@ describe("AgentPicker: model menu", () => {
     expect(markup({ defaultOpen: "model" })).toContain("Loading models…");
   });
 });
+
+// NOOP-425 AC7 shipped this UI; E10.T6/#400 AC4 requires it to keep working
+// for the sandbox-write-isolation-unavailable case (a declared third-party
+// adapter runs inside the very same box) — this is its first render-level
+// regression pin, `writeIsolationFrom`'s parsing was already covered.
+describe("AgentPicker: write isolation warning (AC4/AC7)", () => {
+  it("active:false renders the warning with the given reason", () => {
+    const html = markup({ writeIsolation: { active: false, reason: "SLIDRA_SANDBOX=off" } });
+    expect(html).toContain('data-testid="write-isolation-warning"');
+    expect(html).toContain("SLIDRA_SANDBOX=off");
+  });
+
+  it("active:true (or omitted) renders no warning at all", () => {
+    expect(markup({ writeIsolation: { active: true, reason: null } })).not.toContain("write-isolation-warning");
+    expect(markup({})).not.toContain("write-isolation-warning");
+  });
+});

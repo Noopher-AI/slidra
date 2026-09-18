@@ -15,6 +15,33 @@ pub const TAKEOVER: &[CommandTokens] = &[
     &["textbox", "align"],
 ];
 
+/// This family's slice of the crate-wide category table ([S11.F2]
+/// `commands::category`), in `TAKEOVER`'s order. All three write to this
+/// workbench's own deck.
+pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
+    (
+        "textbox add",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "textbox width",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+    (
+        "textbox align",
+        crate::commands::category::Category::DeckScoped {
+            deck_id_arg: 0,
+            mutates: true,
+        },
+    ),
+];
+
 pub fn dispatch(tokens: CommandTokens, args: &[String]) -> CommandResult {
     match &tokens[1..] {
         ["add"] => add::run(args),

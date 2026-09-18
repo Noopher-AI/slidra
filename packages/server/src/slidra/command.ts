@@ -77,7 +77,15 @@ export async function runJsonCommandWithStdin<Data = unknown>(args: string[], st
   return toCommandResult(stdout, stderr);
 }
 
-function toCommandResult<Data>(stdout: string, stderr: string): CommandResult<Data> {
+/**
+ * Exported for `deck-server-client.ts`'s `postDeckServerCall` ([E10.T5]):
+ * the exit-code-blind envelope parsing above is exactly what a `POST
+ * /call` response needs too (same `JsonEnvelope` — `crates/slidra/src/
+ * result.rs`'s own contract — just arriving via the door's frame protocol
+ * instead of a subprocess's stdout/stderr), so it is reused rather than
+ * duplicated.
+ */
+export function toCommandResult<Data>(stdout: string, stderr: string): CommandResult<Data> {
   const envelope = parseEnvelope(stdout);
   if (envelope === null) {
     const message = stderr.trim();
