@@ -494,11 +494,22 @@ fn there_is_only_one_route() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// AC1 guard: nothing in the deck server's own production code, or in
-/// the shared argv executor, ever spawns a process — every deck call is
-/// executed in this very server process (mirrors `workbench/mod.rs`'s own
-/// `visit_rust_files`-based guard, see that module for the pattern this
-/// one copies).
+/// AC1 guard: nothing that executes a DECK CALL — the deck server's own
+/// production code, or the shared argv executor — ever spawns a process;
+/// every deck call is executed in this very server process (mirrors
+/// `workbench/mod.rs`'s own `visit_rust_files`-based guard, see that
+/// module for the pattern this one copies).
+///
+/// `server/trash.rs` is the one deliberate exception, so it is excluded
+/// from this scan rather than tripping it: [E10.T5]'s "no new dependency"
+/// constraint on the OS-trash move means macOS's half has no way to ask
+/// Finder to trash a file except `osascript` (there is no in-process API
+/// for "the same move Finder's own Trash does, restorable via Put Back").
+/// That call is OS integration triggered by `deck_store::remove_deck`, not
+/// a deck call dispatched through `/call`'s argv executor — AC1's actual
+/// scope, per this test's own name and this module's doc comment, is
+/// "the CLI takeover path never shells out to itself", which `trash.rs`
+/// does not touch.
 #[test]
 fn server_and_cli_never_spawn_a_process() {
     fn visit_rust_files(dir: &std::path::Path, visitor: &mut dyn FnMut(&std::path::Path, &str)) {
@@ -512,6 +523,9 @@ fn server_and_cli_never_spawn_a_process() {
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            if path.file_name().and_then(|n| n.to_str()) == Some("trash.rs") {
                 continue;
             }
             let Ok(contents) = std::fs::read_to_string(&path) else {

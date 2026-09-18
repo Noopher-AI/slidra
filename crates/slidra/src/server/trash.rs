@@ -10,6 +10,14 @@
 //! keeps working. Every other platform is an explicit, unsupported error —
 //! this crate's server targets macOS and Linux only, same as the TS
 //! original.
+//!
+//! This file is the one deliberate, named exception to `tests/server_door
+//! .rs`'s `server_and_cli_never_spawn_a_process` AC1 guard (see that
+//! test's own doc comment): `osascript` is OS integration triggered by
+//! `deck_store::remove_deck`, not a deck call dispatched through `/call`'s
+//! argv executor, and no in-process API exists for "the same move
+//! Finder's own Trash does" under this workspace's no-new-dependency
+//! constraint.
 
 use crate::errors::{SlidraError, SlidraResult};
 use std::path::{Path, PathBuf};

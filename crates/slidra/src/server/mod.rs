@@ -36,6 +36,7 @@ use crate::commands::category::{Category, resolve_full_command};
 pub mod allowlist;
 pub mod assets;
 pub mod credential;
+pub mod deck_lifecycle;
 pub mod deck_store;
 pub mod editing_lock;
 pub mod events;
@@ -128,6 +129,13 @@ fn handle_connection(mut stream: TcpStream) {
         ("GET", "/editing") => editing_lock::handle_status(&request, &mut stream),
         ("POST", "/editing/agent-begin") => editing_lock::handle_agent_begin(&request, &mut stream),
         ("POST", "/editing/agent-end") => editing_lock::handle_agent_end(&request, &mut stream),
+        ("POST", "/new") => deck_lifecycle::handle_new(&request, &mut stream),
+        ("POST", "/open") => deck_lifecycle::handle_open(&request, &mut stream),
+        ("POST", "/deck/import") => deck_lifecycle::handle_import(&request, &mut stream),
+        ("POST", "/deck/rename") => deck_lifecycle::handle_rename(&request, &mut stream),
+        ("POST", "/deck/delete") => deck_lifecycle::handle_delete(&request, &mut stream),
+        ("GET", "/decks") => deck_lifecycle::handle_list(&request, &mut stream),
+        ("POST", "/deck/resolve") => deck_lifecycle::handle_resolve(&request, &mut stream),
         _ => write_plain_response(&mut stream, 404, "not found"),
     }
 }
