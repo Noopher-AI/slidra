@@ -7,7 +7,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
-import { runJsonCommand } from "./slidra/command.js";
+import { runJsonCommand, toCommandResult } from "./slidra/command.js";
+import { COMMAND_WHITELIST, encodeCommandArgv } from "./slidra/argv.js";
 import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
@@ -26,7 +27,6 @@ import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
-import { handleCommandPost } from "./command-endpoint.js";
 import {
   handleDecksGet,
   handleDeletePost,
@@ -53,6 +53,7 @@ import {
   startDeckServer,
   forwardDeckServerGet,
   postDeckServerJson,
+  postDeckServerCall,
   type DeckServerClient,
 } from "./deck-server-client.js";
 
@@ -770,7 +771,7 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleCommandPost(deckId, req, res);
+        const wrote = await handleCommandForward(deckServer, deckId, req, res);
         if (wrote) saveController.markDirty();
         return;
       }
@@ -1700,6 +1701,112 @@ function readBodyBuffer(req: IncomingMessage, limitBytes: number): Promise<Buffe
 const ASSET_NAME_HEADER = "x-slidra-asset-name";
 const ASSET_URL_HEADER = "x-slidra-asset-url";
 const MAX_ASSET_BODY_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Hard cap on `POST /api/command`'s request body. A drag's command input
+ * is a few hundred bytes; 64 KiB is orders of magnitude of headroom and
+ * still small enough that a stream of oversized bodies cannot grow this
+ * process's memory. Relocated verbatim from the deleted
+ * `command-endpoint.ts` ([E10.T5] Slice B).
+ */
+const MAX_COMMAND_BODY_BYTES = 64 * 1024;
+
+/**
+ * `POST /api/command` ([E10.T5] Slice B) — the front end's only write
+ * path, now forwarded to the crate's `POST /call` instead of dispatched
+ * in Node. Everything ahead of the forward is exactly what
+ * `command-endpoint.ts`'s `handleCommandPost` used to do, unchanged: body
+ * size, then JSON syntax, then `name`'s type, then the whitelist, then
+ * `input`'s shape (check order is contractual — command-endpoint.test.ts
+ * asserts it) — and the client's own `id`, if any, is discarded and
+ * overwritten with `deckId` before encoding, never merged.
+ *
+ * `encodeCommandArgv`'s output already carries this ticket's OWN
+ * enforcement of "the id is the server's" baked into argv; `POST /call`'s
+ * door independently overwrites the same argv slot from the credential
+ * (AC8) — belt and suspenders, not a conflict, since both always agree
+ * once `resolvedInput.id` is set below.
+ *
+ * Failure mapping is unchanged: `toCommandResult` (`slidra/command.ts`)
+ * parses the frame-decoded stdout/stderr exactly like it used to parse a
+ * subprocess's — the door's own frame protocol is just a different
+ * transport for the identical `JsonEnvelope` contract
+ * (`crates/slidra/src/result.rs`).
+ */
+async function handleCommandForward(
+  deckServer: DeckServerClient,
+  deckId: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const rawBytes = await readBodyBuffer(req, MAX_COMMAND_BODY_BYTES);
+  if (rawBytes === "too-large") {
+    sendJson(res, 400, { error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)` });
+    return false;
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBytes.toString("utf8"));
+  } catch {
+    sendJson(res, 400, { error: "Request body is not valid JSON" });
+    return false;
+  }
+  if (typeof body !== "object" || body === null) {
+    sendJson(res, 400, { error: "Request body must be an object" });
+    return false;
+  }
+
+  const { name, input } = body as { name?: unknown; input?: unknown };
+  if (typeof name !== "string") {
+    sendJson(res, 400, { error: "name must be a string" });
+    return false;
+  }
+  if (!COMMAND_WHITELIST.includes(name)) {
+    sendJson(res, 403, { error: `This endpoint does not accept command: ${name}` });
+    return false;
+  }
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    sendJson(res, 400, { error: "input must be an object" });
+    return false;
+  }
+
+  const resolvedInput = { ...(input as Record<string, unknown>), id: deckId };
+
+  let argv: string[];
+  let cleanup: () => Promise<void>;
+  try {
+    ({ argv, cleanup } = await encodeCommandArgv(name, resolvedInput));
+  } catch (error) {
+    sendJson(res, 500, { error: error instanceof Error ? error.message : "Command execution failed" });
+    return false;
+  }
+
+  try {
+    const outcome = await postDeckServerCall(deckServer, [...argv, "--json"], deckId, "editor");
+    if (!outcome.ok) {
+      // A door-level refusal (401/403/400/409) — never mistaken for
+      // command output. This path should not be reachable in practice
+      // (the whitelist above mirrors the crate's own Editor allow-list,
+      // and the editing-lock gate is already checked before this handler
+      // is even called), but a stale allow-list drifting out of sync must
+      // still surface as an explicit error, not garbage decoded as if it
+      // were the frame protocol.
+      sendJson(res, 500, { error: `deck server refused the command: ${outcome.doorError}` });
+      return false;
+    }
+    const result = toCommandResult(outcome.stdout.toString("utf8"), outcome.stderr.toString("utf8"));
+    if (!result.ok) {
+      const status = result.failureKind === "not-found" ? 404 : 500;
+      sendJson(res, status, { error: result.message, failureKind: result.failureKind ?? null });
+      return false;
+    }
+    sendJson(res, 200, { ok: true, data: result.data ?? {}, message: result.message });
+    return true;
+  } finally {
+    await cleanup();
+  }
+}
 
 /**
  * `POST /api/asset` ([E10.T5] Slice B) — policy enforcement

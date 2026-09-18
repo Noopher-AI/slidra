@@ -5,11 +5,10 @@ import { readFile, rm, writeFile, mkdtemp, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ARGV_ENCODERS, encodeCommandArgv } from "../src/slidra/argv.js";
+import { ARGV_ENCODERS, COMMAND_WHITELIST, encodeCommandArgv } from "../src/slidra/argv.js";
 import { runJsonCommand } from "../src/slidra/command.js";
 import { readPresentationBytes, readPresentationText, renderSlide } from "../src/slidra/reads.js";
 import { readSaveState } from "../src/slidra/save-state.js";
-import { COMMAND_WHITELIST } from "../src/command-endpoint.js";
 
 const ID = "P1";
 const SLIDE = "slides/001.svg";

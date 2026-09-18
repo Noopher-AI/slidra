@@ -180,3 +180,72 @@ export async function postDeckServerJson(
   }
   return { status: upstream.status, body };
 }
+
+const FRAME_STDOUT = 1;
+const FRAME_STDERR = 2;
+const FRAME_EXIT = 3;
+
+/**
+ * `server/mod.rs`'s `write_frame_response` frame shape, decoded: `[1 byte
+ * kind][4 bytes big-endian length/value][payload]`, repeated until the
+ * body ends. `kind===FRAME_EXIT`'s "payload" is the 4-byte value itself
+ * (a big-endian signed exit code), not a length prefix for more bytes.
+ */
+function decodeCallFrames(bytes: Uint8Array): { stdout: Buffer; stderr: Buffer; exitCode: number } {
+  const stdoutChunks: Buffer[] = [];
+  const stderrChunks: Buffer[] = [];
+  let exitCode = 0;
+  let offset = 0;
+  while (offset < bytes.length) {
+    const kind = bytes[offset];
+    const value = new DataView(bytes.buffer, bytes.byteOffset + offset + 1, 4).getUint32(0, false);
+    offset += 5;
+    if (kind === FRAME_EXIT) {
+      exitCode = value | 0; // reinterpret the same 32 bits as signed
+      break;
+    }
+    const payload = Buffer.from(bytes.subarray(offset, offset + value));
+    offset += value;
+    if (kind === FRAME_STDOUT) stdoutChunks.push(payload);
+    else if (kind === FRAME_STDERR) stderrChunks.push(payload);
+  }
+  return { stdout: Buffer.concat(stdoutChunks), stderr: Buffer.concat(stderrChunks), exitCode };
+}
+
+export type CallOutcome =
+  | { ok: true; stdout: Buffer; stderr: Buffer; exitCode: number }
+  | { ok: false; doorStatus: number; doorError: string };
+
+/**
+ * `POST /call` — the argv-based command door, for `/api/command`'s
+ * forward ([E10.T5] Slice B). `argv` must already include `--json` (this
+ * function does not append it — callers that want text output, if any
+ * ever exist, must be able to omit it). A non-200 door status (401/403/
+ * 400/409 — credential, allow-list, argv-shape, or editing-lock refusals)
+ * is a DOOR-level refusal, never mistaken for command output: the body on
+ * that path is plain text, not the frame protocol, so it is surfaced as
+ * `doorError` instead of being fed to a frame decoder that would garbage
+ * it.
+ */
+export async function postDeckServerCall(
+  client: DeckServerClient,
+  argv: string[],
+  workbenchId: string,
+  kind: CredentialKind,
+): Promise<CallOutcome> {
+  const argvHeader = Buffer.from(JSON.stringify(argv), "utf8").toString("base64");
+  const upstream = await fetch(`${client.baseUrl}/call`, {
+    method: "POST",
+    headers: {
+      "x-slidra-credential": credentialHeader(kind, workbenchId),
+      "x-slidra-argv": argvHeader,
+    },
+  });
+  if (upstream.status !== 200) {
+    const doorError = await upstream.text();
+    return { ok: false, doorStatus: upstream.status, doorError };
+  }
+  const bytes = new Uint8Array(await upstream.arrayBuffer());
+  const { stdout, stderr, exitCode } = decodeCallFrames(bytes);
+  return { ok: true, stdout, stderr, exitCode };
+}
