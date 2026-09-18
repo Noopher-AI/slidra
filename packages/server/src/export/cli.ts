@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import path from "node:path";
-import { loadProject } from "../read-routes.js";
+import { loadProject } from "../slidra/reads.js";
 import { startExportServer } from "./server.js";
 import { renderExportPdf } from "./render.js";
 import { exportFileName } from "./output-name.js";

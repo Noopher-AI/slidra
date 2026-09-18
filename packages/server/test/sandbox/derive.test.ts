@@ -24,7 +24,6 @@ import { openPolicy } from "../../src/policy/open.js";
 import type { FsRule, SandboxContext, WorkbenchPolicy } from "../../src/policy/types.js";
 import { createPassthroughLauncher } from "../../src/sandbox/passthrough-launcher.js";
 import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
-import { handleAssetPost } from "../../src/asset-upload.js";
 import { readAgentSettings } from "../../src/agent/settings.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -165,10 +164,11 @@ describe("policy pipeline purity and injectability (AC1/AC2)", () => {
     expect(() => deriveSandboxConfig(policyWithUnknownRule, baseCtx)).toThrow();
   });
 
-  it("collectSandboxContext + deriveCliSandboxConfig compose the same way buildCliSandboxPolicy used to (no active-policy singleton needed)", async () => {
+  it("collectSandboxContext + deriveCliSandboxConfig do not expose a real deck path to the CLI sandbox", async () => {
     const ctx = await collectSandboxContext({ workbenchRoot: "", deckPath: "/decks/current.slidra" });
     const config = deriveCliSandboxConfig(openPolicy, ctx);
-    expect(config.allowWrite[0]).toBe("/decks");
+    expect(config.allowWrite).toEqual([ctx.slidraHome, ctx.tempDir]);
+    expect(config.allowWrite).not.toContain("/decks");
   });
 });
 
@@ -229,62 +229,7 @@ describe("srt-launcher.ts translates policy.network.outbound into srt's own shap
   );
 });
 
-describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
-  function fakeReq(headers: Record<string, string>): IncomingMessage {
-    return { headers } as unknown as IncomingMessage;
-  }
-  function fakeRes(): { res: ServerResponse; status: () => number | undefined; body: () => unknown } {
-    let status: number | undefined;
-    let body: unknown;
-    const res = {
-      writeHead(code: number) {
-        status = code;
-        return res;
-      },
-      end(payload?: string) {
-        if (payload !== undefined) body = JSON.parse(payload);
-      },
-    } as unknown as ServerResponse;
-    return { res, status: () => status, body: () => body };
-  }
 
-  it("uploadBytes: false refuses a byte upload with 403, no filesystem path in the message", async () => {
-    const { res, status, body } = fakeRes();
-    const wrote = await handleAssetPost(
-      "pres-1",
-      fakeReq({ "x-slidra-asset-name": "photo.png" }),
-      res,
-      { ...openPolicy.fileEntry, uploadBytes: false },
-    );
-    expect(wrote).toBe(false);
-    expect(status()).toBe(403);
-    expect(JSON.stringify(body())).not.toMatch(/\/tmp|\/home|C:\\/);
-  });
-
-  it("remoteUrl: false refuses a URL import with 403, before any download is attempted", async () => {
-    const { res, status } = fakeRes();
-    const wrote = await handleAssetPost(
-      "pres-1",
-      fakeReq({ "x-slidra-asset-url": encodeURIComponent("https://example.invalid/photo.png") }),
-      res,
-      { ...openPolicy.fileEntry, remoteUrl: false },
-    );
-    expect(wrote).toBe(false);
-    expect(status()).toBe(403);
-  });
-
-  it("localPath: false (the open edition's value) keeps refusing a non-http(s) URL exactly as before", async () => {
-    const { res, status } = fakeRes();
-    const wrote = await handleAssetPost(
-      "pres-1",
-      fakeReq({ "x-slidra-asset-url": encodeURIComponent("file:///etc/passwd") }),
-      res,
-      openPolicy.fileEntry,
-    );
-    expect(wrote).toBe(false);
-    expect(status()).toBe(400);
-  });
-});
 
 /**
  * Added in review (NOOP-634): the plan's AC5 row asks for a *behavioural*

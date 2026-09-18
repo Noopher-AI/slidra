@@ -36,6 +36,7 @@ beforeEach(() => {
       if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(deck), { status: 200 });
       const match = /\/api\/files\/(.+)$/.exec(url);
       if (match && markup[match[1]]) return new Response(markup[match[1]], { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -96,6 +97,7 @@ describe("mountCanvas only repaints when the picture actually changes", () => {
         if (url.endsWith("/api/presentation")) return new Response(JSON.stringify(project), { status: 200 });
         const match = /\/api\/files\/(.+)$/.exec(url);
         if (match && markup[match[1]]) return new Response(markup[match[1]], { status: 200 });
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -121,7 +123,9 @@ describe("in play mode, live reload only resets srcdoc when the picture actually
     );
   }
 
-  it("keeps the currently playing document when only <metadata> changes; resets only on a content change", async () => {
+  it("keeps the currently playing document and its Blob URLs when only <metadata> changes", async () => {
+    markup["slides/001.svg"] = '<svg data-testid="s1"><circle r="1"/><image href="../assets/photo.png"/></svg>';
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL) => {
@@ -130,6 +134,8 @@ describe("in play mode, live reload only resets srcdoc when the picture actually
         if (url.includes("/api/effects/")) return effectsRoute();
         const match = /\/api\/files\/(.+)$/.exec(url);
         if (match && markup[match[1]]) return new Response(markup[match[1]], { status: 200 });
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+        if (url.endsWith("/api/raw/assets/photo.png")) return new Response("photo", { status: 200 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
     );
@@ -137,17 +143,17 @@ describe("in play mode, live reload only resets srcdoc when the picture actually
     await controller.reload();
     await controller.play();
     const playing = srcdoc();
-    expect(playing).toContain('data-testid="s1"');
+    revokeObjectUrl.mockClear();
 
-    // An effect/notes change while playing: the running document stays.
-    markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="1"/></svg>`;
+    markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="1"/><image href="../assets/photo.png"/></svg>`;
     await controller.reload();
     expect(srcdoc()).toBe(playing);
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
 
-    // A real content change while playing repaints.
-    markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="2"/></svg>`;
+    markup["slides/001.svg"] = `<svg data-testid="s1">${NOTES}<circle r="2"/><image href="../assets/photo.png"/></svg>`;
     await controller.reload();
     expect(srcdoc()).not.toBe(playing);
     expect(srcdoc()).toContain('r="2"');
+    expect(revokeObjectUrl).toHaveBeenCalled();
   });
 });

@@ -113,6 +113,16 @@ fn post_call(
     extra_headers: &[(&str, &str)],
     argv: &[&str],
 ) -> CallResponse {
+    post_call_with_body(base_url, credential_header, extra_headers, argv, &[])
+}
+
+fn post_call_with_body(
+    base_url: &str,
+    credential_header: Option<&str>,
+    extra_headers: &[(&str, &str)],
+    argv: &[&str],
+    body: &[u8],
+) -> CallResponse {
     let mut req =
         ureq::post(format!("{base_url}/call")).header("x-slidra-argv", &argv_header(argv));
     if let Some(cred) = credential_header {
@@ -122,7 +132,7 @@ fn post_call(
         req = req.header(*name, *value);
     }
     let request = req.config().http_status_as_error(false).build();
-    let response = request.send_empty().expect("request must be sent");
+    let response = request.send(body).expect("request must be sent");
     let status = response.status().as_u16();
     let (_, body) = response.into_parts();
     let mut bytes = Vec::new();
@@ -255,6 +265,117 @@ fn viewer_can_read_but_not_mutate() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+#[test]
+fn editor_can_reach_undo_and_redo_through_the_only_command_door() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("editor-undo-redo");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "editor-undo-redo");
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor_cred = credential::encode(CallerKind::Editor, &id);
+
+    let undo = post_call(&base_url, Some(&editor_cred), &[], &["undo", &id, "--json"]);
+    assert_eq!(undo.status, 200, "the browser has no second command door");
+    assert_eq!(decode_frames(&undo.body).2, 0);
+
+    let redo = post_call(&base_url, Some(&editor_cred), &[], &["redo", &id, "--json"]);
+    assert_eq!(redo.status, 200, "the browser has no second command door");
+    assert_eq!(decode_frames(&redo.body).2, 0);
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn table_cell_paste_stages_the_request_body_for_tsv_file_dash() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("editor-table-paste");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "editor-table-paste");
+    let create = commands::table::run(
+        &[
+            "create",
+            &id,
+            "slides/001.svg",
+            "--rows",
+            "2",
+            "--cols",
+            "2",
+            "--x",
+            "0",
+            "--y",
+            "0",
+        ]
+        .map(str::to_string),
+    );
+    assert!(
+        create.ok,
+        "setup: `table create` failed: {}",
+        create.message
+    );
+    let table_id = create.data.unwrap()["elementId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor_cred = credential::encode(CallerKind::Editor, &id);
+    let response = post_call_with_body(
+        &base_url,
+        Some(&editor_cred),
+        &[],
+        &[
+            "table",
+            "cell",
+            "paste",
+            "browser-supplied-id",
+            "slides/001.svg",
+            &table_id,
+            "--at",
+            "0,0",
+            "--tsv-file",
+            "-",
+            "--json",
+        ],
+        b"alpha\tbeta",
+    );
+    assert_eq!(response.status, 200);
+    let (stdout, stderr, exit_code) = decode_frames(&response.body);
+    assert_eq!(
+        exit_code,
+        0,
+        "the browser body must be staged as TSV: {}",
+        String::from_utf8_lossy(&stderr)
+    );
+    let envelope: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(
+        envelope["ok"], true,
+        "the browser body must be staged as TSV: {}",
+        envelope["message"]
+    );
+
+    let copied = commands::table::run(
+        &[
+            "cell",
+            "copy",
+            &id,
+            "slides/001.svg",
+            &table_id,
+            "--range",
+            "0,0:0,1",
+        ]
+        .map(str::to_string),
+    );
+    assert!(copied.ok, "{}", copied.message);
+    assert_eq!(copied.data.unwrap()["tsv"], "alpha\tbeta");
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
 /// AC3: the caller can never assert its own kind — its mere presence in
 /// the request is refused before the (otherwise valid) credential is even
 /// consulted.
@@ -355,6 +476,54 @@ fn argv_deck_id_is_overwritten_by_the_credential() {
     assert!(
         !stdout.is_empty(),
         "cat must have returned the real deck's slide content"
+    );
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// `element insert` is the one family command whose deck id follows a
+/// command-specific positional (`kind`). The door must preserve that kind
+/// while replacing the untrusted id with the credential-bound deck.
+#[test]
+fn element_insert_preserves_kind_while_overwriting_deck_id() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("element-insert-id-override");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let real_id = seed_deck(&home, "element-insert-id-override");
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let agent_cred = credential::encode(CallerKind::Agent, &real_id);
+
+    let response = post_call(
+        &base_url,
+        Some(&agent_cred),
+        &[],
+        &[
+            "element",
+            "insert",
+            "rect",
+            "not-a-real-id",
+            "slides/001.svg",
+            "--x",
+            "1",
+            "--y",
+            "1",
+            "--width",
+            "1",
+            "--height",
+            "1",
+            "--json",
+        ],
+    );
+    assert_eq!(response.status, 200);
+    let (stdout, _, exit_code) = decode_frames(&response.body);
+    assert_eq!(exit_code, 0, "element insert must succeed through the door");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stdout).unwrap()["ok"],
+        serde_json::json!(true),
+        "the credential must replace the fake id without replacing `rect`"
     );
 
     unsafe { std::env::remove_var("SLIDRA_HOME") };
@@ -494,11 +663,22 @@ fn there_is_only_one_route() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// AC1 guard: nothing in the deck server's own production code, or in
-/// the shared argv executor, ever spawns a process — every deck call is
-/// executed in this very server process (mirrors `workbench/mod.rs`'s own
-/// `visit_rust_files`-based guard, see that module for the pattern this
-/// one copies).
+/// AC1 guard: nothing that executes a DECK CALL — the deck server's own
+/// production code, or the shared argv executor — ever spawns a process;
+/// every deck call is executed in this very server process (mirrors
+/// `workbench/mod.rs`'s own `visit_rust_files`-based guard, see that
+/// module for the pattern this one copies).
+///
+/// `server/trash.rs` is the one deliberate exception, so it is excluded
+/// from this scan rather than tripping it: [E10.T5]'s "no new dependency"
+/// constraint on the OS-trash move means macOS's half has no way to ask
+/// Finder to trash a file except `osascript` (there is no in-process API
+/// for "the same move Finder's own Trash does, restorable via Put Back").
+/// That call is OS integration triggered by `deck_store::remove_deck`, not
+/// a deck call dispatched through `/call`'s argv executor — AC1's actual
+/// scope, per this test's own name and this module's doc comment, is
+/// "the CLI takeover path never shells out to itself", which `trash.rs`
+/// does not touch.
 #[test]
 fn server_and_cli_never_spawn_a_process() {
     fn visit_rust_files(dir: &std::path::Path, visitor: &mut dyn FnMut(&std::path::Path, &str)) {
@@ -512,6 +692,9 @@ fn server_and_cli_never_spawn_a_process() {
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            if path.file_name().and_then(|n| n.to_str()) == Some("trash.rs") {
                 continue;
             }
             let Ok(contents) = std::fs::read_to_string(&path) else {
@@ -562,6 +745,7 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
     let bin = env!("CARGO_BIN_EXE_slidra");
     let mut server = Command::new(bin)
         .arg("__deck-server")
+        .args(["--asset-upload-bytes", "true", "--asset-remote-url", "true"])
         .arg("--addr")
         .arg("127.0.0.1:0")
         .env("SLIDRA_HOME", &home)

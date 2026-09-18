@@ -11,11 +11,11 @@
  * that gets it there.
  */
 
-/** The public identity of a deck, as far as this state machine and its listeners are concerned. `sourcePath` is a real filesystem path (ADR-0003) — callers must never put it on the wire (`serve.ts` strips it down to `fileName`). */
+/** Opaque deck metadata. Real filesystem paths never cross this boundary. */
 export interface DeckIdentity {
   id: string;
   name: string | null;
-  sourcePath: string | null;
+  fileName: string | null;
 }
 
 /** Fired once per switch, after the outgoing deck's resources have been unbound and before the incoming one is bound — never for entering from "no deck", never for a same-id switch. */
@@ -52,12 +52,12 @@ export interface DeckSession {
    * Re-resolves the currently-bound deck's own identity (`resolveDeck`,
    * unchanged) and updates `current()` to match — for a change that leaves
    * *which* deck is bound untouched but changes that deck's own `name`/
-   * `sourcePath`, such as the title bar's rename. Never touches any bound
+   * `fileName`, such as the title bar's rename. Never touches any bound
    * resource (the watcher, the agent session) — callers that need those
    * re-pointed too (the rename route retargets the watcher itself) do so
    * separately. Throws if no deck is currently bound.
    */
-  refreshCurrent(): Promise<DeckIdentity>;
+  refreshCurrent(metadata?: Partial<Pick<DeckIdentity, "name" | "fileName">>): Promise<DeckIdentity>;
 }
 
 export interface DeckSessionOptions {
@@ -147,11 +147,11 @@ export function createDeckSession(options: DeckSessionOptions): DeckSession {
       }
     },
 
-    async refreshCurrent() {
+    async refreshCurrent(metadata = {}) {
       if (current === null) {
         throw new Error("refreshCurrent() called with no deck bound");
       }
-      current = await options.resolveDeck(current.id);
+      current = { ...(await options.resolveDeck(current.id)), ...metadata };
       return current;
     },
   };

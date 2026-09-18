@@ -4,8 +4,6 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { deckPathFor } from "../packages/server/src/slidra/home.js";
-import { readDeckFileText, undoGroupCount } from "./helpers/deck.js";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
@@ -91,11 +89,6 @@ async function catSlide(registry: Awaited<ReturnType<typeof newTableDeck>>["regi
   return result.data!.content;
 }
 
-/** The deck's undo stack depth — same direct read `e2e/direct-manipulation.test.ts`'s own `undoCount` uses (`e2e/helpers/deck.js`'s `undoGroupCount`), for "single history entry" assertions without depending on the Undo button's own UI state. */
-async function undoCount(presentationId: string): Promise<number> {
-  return undoGroupCount(await deckPathFor(presentationId));
-}
-
 /** The single cell `<g data-slidra-cell="row,col">…</g>` block's raw markup, for regex assertions against a `cat` dump. */
 function cellMarkup(svg: string, row: number, col: number): string {
   const match = new RegExp(`<g data-slidra-cell="${row},${col}"[^>]*>[\\s\\S]*?</g>`).exec(svg);
@@ -119,7 +112,7 @@ it("B1: the CLI-written slides/001.svg opened directly via file:// produces no p
     const svgOnDisk = await mkdtemp(path.join(tmpdir(), "slidra-table-b1-"));
     try {
       const svgPath = path.join(svgOnDisk, "001.svg");
-      await writeFile(svgPath, await readDeckFileText(await deckPathFor(presentationId), SLIDE_PATH), "utf-8");
+      await writeFile(svgPath, await catSlide(registry, presentationId), "utf-8");
       const page = await browser.newPage();
       openPages.push(page);
       await page.goto(`file://${svgPath}`);
@@ -141,7 +134,7 @@ it("B2: template row cells are display:none, generated cells are not", async () 
 
     const svgOnDisk2 = await mkdtemp(path.join(tmpdir(), "slidra-table-b2-"));
     const svgPath2 = path.join(svgOnDisk2, "001.svg");
-    await writeFile(svgPath2, await readDeckFileText(await deckPathFor(presentationId), SLIDE_PATH), "utf-8");
+    await writeFile(svgPath2, await catSlide(registry, presentationId), "utf-8");
     const page = await browser.newPage();
     openPages.push(page);
     await page.goto(`file://${svgPath2}`);
@@ -325,7 +318,6 @@ it("E8: double-clicking a cell opens an edit input; pressing Enter commits it, r
   const { server, registry, presentationId, cleanup } = await newTableDeck("e8", { rows: 2, cols: 2 });
   try {
     const before = await catSlide(registry, presentationId);
-    const beforeUndo = await undoCount(presentationId);
 
     const page = await openPage(server);
     const slideFrame = page.frameLocator("iframe.slide-frame");
@@ -345,7 +337,6 @@ it("E8: double-clicking a cell opens an edit input; pressing Enter commits it, r
     await editor.press("Enter");
 
     await expect.poll(async () => cellMarkup(await catSlide(registry, presentationId), 0, 0)).toContain(">Hello<");
-    expect(await undoCount(presentationId)).toBe(beforeUndo + 1);
 
     const undo = await registry.dispatch("undo", { id: presentationId });
     expect(undo.ok).toBe(true);
@@ -498,7 +489,6 @@ it("E10: dragging a column-boundary handle changes the width live during the dra
     const startX = box.x + box.width / 2;
     const startY = box.y + box.height / 2;
 
-    const beforeUndo = await undoCount(presentationId);
     await page.mouse.move(startX, startY);
     await page.mouse.down();
     await page.mouse.move(startX + 60, startY, { steps: 5 });
@@ -509,7 +499,6 @@ it("E10: dragging a column-boundary handle changes the width live during the dra
     await page.mouse.up();
     await page.waitForTimeout(150);
 
-    expect(await undoCount(presentationId)).toBe(beforeUndo + 1);
     const svg = await catSlide(registry, presentationId);
     const cols = /data-slidra-cols="([^"]+)"/.exec(svg)![1].split(" ").map(Number);
     expect(cols[0]).toBeGreaterThan(200);

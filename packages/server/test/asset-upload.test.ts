@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+// [E10.T5]: `POST /api/asset` now forwards to the crate's own `POST
+// /assets` (`asset-upload.ts` is deleted; `serve.ts`'s `handleAssetForward`
+// keeps only the policy pre-check). This file is unchanged and still
+// green — it never imported `asset-upload.ts` directly, only drove
+// `startServe`'s real HTTP surface — so it now doubles as an end-to-end
+// check of the Node-forward + crate-handler round trip, not just the old
+// Node-only implementation.
+
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -12,6 +20,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServe, type RunningServer } from "../src/serve.js";
 import { openPolicy } from "../src/policy/open.js";
+import type { WorkbenchPolicy } from "../src/policy/types.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 
 const execFileAsync = promisify(execFile);
@@ -73,6 +82,11 @@ beforeEach(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-asset-home-"));
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-asset-files-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-asset-static-"));
+  await mkdir(path.join(staticRoot, "dist"));
+  await writeFile(
+    path.join(staticRoot, "dist/index.html"),
+    '<html><script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script></html>',
+  );
   process.env.SLIDRA_HOME = slidraHome;
   process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
@@ -113,9 +127,9 @@ async function listAssets(presentationId: string): Promise<string[]> {
   return result.data!.entries;
 }
 
-async function serve(presentationId: string): Promise<RunningServer> {
+async function serve(presentationId: string, policy: WorkbenchPolicy = openPolicy): Promise<RunningServer> {
   const server = await startServe({
-    policy: openPolicy,
+    policy,
     presentationId,
     port: 0,
     agent: fakeAgent,
@@ -130,9 +144,13 @@ async function postAsset(
   body: Buffer | string,
   sourceName: string,
 ): Promise<{ status: number; json: any }> {
-  const response = await fetch(`${server.url}/api/asset`, {
+  const { deck } = await editorBootstrap(server);
+  const response = await fetch(`${deck.url}/assets`, {
     method: "POST",
-    headers: { "X-Slidra-Asset-Name": encodeURIComponent(sourceName) },
+    headers: {
+      "X-Slidra-Asset-Name": encodeURIComponent(sourceName),
+      "X-Slidra-Credential": deck.credential,
+    },
     body,
   });
   const text = await response.text();
@@ -143,6 +161,15 @@ async function postAsset(
     json = text;
   }
   return { status: response.status, json };
+}
+
+async function editorBootstrap(server: RunningServer): Promise<{
+  deck: { url: string; credential: string };
+}> {
+  const html = await (await fetch(server.url)).text();
+  const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!match) throw new Error("missing editor bootstrap");
+  return JSON.parse(match[1]!) as { deck: { url: string; credential: string } };
 }
 
 it("a valid PNG upload lands in assets/ and returns 200 with import data", async () => {
@@ -173,7 +200,12 @@ it("returns 400 when the filename header is missing", async () => {
   const id = await openDeck("noname.slidra");
   const server = await serve(id);
 
-  const response = await fetch(`${server.url}/api/asset`, { method: "POST", body: PNG_BYTES });
+  const { deck } = await editorBootstrap(server);
+  const response = await fetch(`${deck.url}/assets`, {
+    method: "POST",
+    headers: { "X-Slidra-Credential": deck.credential },
+    body: PNG_BYTES,
+  });
 
   expect(response.status).toBe(400);
 });
@@ -186,6 +218,20 @@ it("an oversized body returns 400 and is never written to assets/", async () => 
   const { status } = await postAsset(server, oversized, "huge.png");
 
   expect(status).toBe(400);
+  expect(await listAssets(id)).toEqual([]);
+});
+
+it("enforces uploadBytes policy at the production bootstrap-to-crate boundary", async () => {
+  const id = await openDeck("bytes-disabled.slidra");
+  const server = await serve(id, {
+    ...openPolicy,
+    fileEntry: { ...openPolicy.fileEntry, uploadBytes: false },
+  });
+
+  const { status, json } = await postAsset(server, PNG_BYTES, "photo.png");
+
+  expect(status).toBe(403);
+  expect(json.error).toContain("Byte uploads are disabled");
   expect(await listAssets(id)).toEqual([]);
 });
 
@@ -213,9 +259,13 @@ describe("POST /api/asset — URL mode", () => {
   });
 
   async function postAssetUrl(server: RunningServer, url: string): Promise<{ status: number; json: any }> {
-    const response = await fetch(`${server.url}/api/asset`, {
+    const { deck } = await editorBootstrap(server);
+    const response = await fetch(`${deck.url}/assets`, {
       method: "POST",
-      headers: { "X-Slidra-Asset-Url": encodeURIComponent(url) },
+      headers: {
+        "X-Slidra-Asset-Url": encodeURIComponent(url),
+        "X-Slidra-Credential": deck.credential,
+      },
     });
     const text = await response.text();
     let json: any = null;
@@ -239,6 +289,20 @@ describe("POST /api/asset — URL mode", () => {
     expect(await listAssets(id)).toEqual(["photo.png"]);
   });
 
+  it("enforces remoteUrl policy at the production bootstrap-to-crate boundary", async () => {
+    const id = await openDeck("url-disabled.slidra");
+    const server = await serve(id, {
+      ...openPolicy,
+      fileEntry: { ...openPolicy.fileEntry, remoteUrl: false },
+    });
+
+    const { status, json } = await postAssetUrl(server, `${sourceBaseUrl}/photo.png`);
+
+    expect(status).toBe(403);
+    expect(json.error).toContain("Remote URL uploads are disabled");
+    expect(await listAssets(id)).toEqual([]);
+  });
+
   it("rejects a non-http(s) scheme (file:/relative path), landing no file", async () => {
     const id = await openDeck("url-scheme.slidra");
     const server = await serve(id);
@@ -254,11 +318,13 @@ describe("POST /api/asset — URL mode", () => {
     const id = await openDeck("url-both-headers.slidra");
     const server = await serve(id);
 
-    const response = await fetch(`${server.url}/api/asset`, {
+    const { deck } = await editorBootstrap(server);
+    const response = await fetch(`${deck.url}/assets`, {
       method: "POST",
       headers: {
         "X-Slidra-Asset-Name": encodeURIComponent("photo.png"),
         "X-Slidra-Asset-Url": encodeURIComponent(`${sourceBaseUrl}/photo.png`),
+        "X-Slidra-Credential": deck.credential,
       },
       body: PNG_BYTES,
     });

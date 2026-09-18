@@ -8,8 +8,11 @@
 // the ~200 `registry.dispatch(...)` call sites across the e2e suite stay
 // untouched: only the import changes, not the call sites (plan section
 // 3.4).
-import { encodeCommandArgv, type EncodedCommand } from "../../packages/server/src/slidra/argv.js";
+import { encodeCommandArgv, type EncodedCommand } from "../../packages/web/src/command-argv.js";
 import { runJsonCommand, type CommandResult } from "../../packages/server/src/slidra/command.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 export type { CommandResult };
 
@@ -78,11 +81,24 @@ export function createDefaultRegistry(): CommandRegistry {
     async dispatch<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<CommandResult<T>> {
       const e2eEncoder = E2E_ONLY_ENCODERS[name];
       const encoded = e2eEncoder ? e2eEncoder(input) : await encodeCommandArgv(name, input);
+      let bodyDir: string | undefined;
       try {
+        if (encoded.body !== undefined) {
+          const flag = name === "element paste" ? "--svg-file" : "--tsv-file";
+          const index = encoded.argv.indexOf(flag);
+          if (index === -1 || encoded.argv[index + 1] !== "-") {
+            throw new Error(`${name} body has no file placeholder`);
+          }
+          bodyDir = await mkdtemp(path.join(tmpdir(), "slidra-e2e-body-"));
+          const bodyPath = path.join(bodyDir, name === "element paste" ? "paste.svg" : "paste.tsv");
+          await writeFile(bodyPath, encoded.body);
+          encoded.argv[index + 1] = bodyPath;
+        }
         const result = await runJsonCommand<T>(encoded.argv);
         return name === "cat" ? (reshapeCatResult(result) as CommandResult<T>) : result;
       } finally {
         await encoded.cleanup();
+        if (bodyDir !== undefined) await rm(bodyDir, { recursive: true, force: true });
       }
     },
   };

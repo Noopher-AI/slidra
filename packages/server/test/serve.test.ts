@@ -12,7 +12,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
-import { deckPathFor } from "../src/slidra/home.js";
 import { openPolicy } from "../src/policy/open.js";
 
 const execFileAsync = promisify(execFile);
@@ -261,6 +260,22 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
 }
 
 describe("startServe", () => {
+  it("protects runner routes with the dedicated session header without gating deck routes", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id, { runnerSessionToken: "runner-secret" });
+
+    const rejected = await fetch(`${server.url}/api/agent`);
+    expect(rejected.status).toBe(401);
+
+    const accepted = await fetch(`${server.url}/api/agent`, {
+      headers: { "x-slidra-runner-session": "runner-secret" },
+    });
+    expect(accepted.status).not.toBe(401);
+
+    const deck = await fetch(`${server.url}/api/presentation`);
+    expect(deck.status).toBe(200);
+  });
+
   // The `/api/raw/` route reads the request's Range header and hands it to
   // handleRawRequest. raw.test.ts calls that function directly, which
   // deliberately proves the range logic without serve.ts — so nothing
@@ -290,6 +305,38 @@ describe("startServe", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("accept-ranges")).toBe("bytes");
     expect(body.equals(RAMP_BYTES)).toBe(true);
+  });
+
+  // [E10.T5]: `/api/editing/begin|end` now ask the crate's own editing-lock
+  // routes first ("crate decides first, Node applies" — Dev-Leader's
+  // ruling on NOOP-643), then apply the same decision to Node's local
+  // `EditingLock` exactly as before. This is the happy path over the real
+  // wire; the crate-refuses-so-Node-must-not-apply branch has no test at
+  // this level yet — nothing on the Node side puts the crate's own lock
+  // into the `agent` state (that only happens once agent turns mirror
+  // acquire/release to the crate too, not yet wired — see this ticket's
+  // delivery notes), so it cannot be observed through this black-box HTTP
+  // surface today. `crates/slidra/tests/deck_server_assets_and_editing_lock.rs`
+  // covers the crate's own refusal behavior directly.
+  it("POST /api/editing/begin then /end round-trips over the real wire, end is idempotent", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const begin = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
+    expect(begin.status).toBe(200);
+    expect(await begin.json()).toEqual({ ok: true });
+
+    const status = await fetch(`${server.url}/api/editing`);
+    expect(await status.json()).toEqual({ frozen: false });
+
+    const end = await fetch(`${server.url}/api/editing/end`, { method: "POST" });
+    expect(end.status).toBe(200);
+
+    // A second end is not an error — matches `EditingLock.endHumanEdit`'s
+    // own no-op-when-not-human contract, now exercised through the crate
+    // round trip too.
+    const end2 = await fetch(`${server.url}/api/editing/end`, { method: "POST" });
+    expect(end2.status).toBe(200);
   });
 
   it("binds port 0 and reports back the actual assigned port", async () => {
@@ -385,6 +432,13 @@ describe("startServe", () => {
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
   // injection point: it proves the server goes through `runSlidra`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
+  //
+  // [E10.T5]: `/api/presentation`/`/api/files` are now forwarded to a
+  // long-lived `slidra __deck-server` subprocess (`deck-server-client.ts`)
+  // rather than spawned per read, so the fake binary answers `__deck-server`
+  // with a real (fabricated) HTTP server of its own — the same "prove the
+  // subprocess boundary is real, not merely some pluggable interface"
+  // property, adapted to the new transport.
   it("serves fabricated content from a stub SLIDRA_BIN, never touching the real filesystem", async () => {
     const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-fakebin-"));
     const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
@@ -392,19 +446,43 @@ describe("startServe", () => {
       fakeBinPath,
       [
         "#!/usr/bin/env node",
-        'const args = process.argv.slice(2).filter((a) => a !== "--json");',
-        "const [cmd, ...rest] = args;",
-        "function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
-        "let result;",
-        'if (cmd === "cat" && rest[1] === "project.json") {',
-        "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
-        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
-        '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
-        '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "read: slides/fake.svg" };',
+        'import http from "node:http";',
+        "const args = process.argv.slice(2);",
+        'if (args[0] === "__deck-server") {',
+        "  const server = http.createServer((req, res) => {",
+        '    if (req.method === "GET" && req.url === "/presentation") {',
+        '      res.writeHead(200, { "content-type": "application/json" });',
+        '      res.end(JSON.stringify({ formatVersion: 4, name: "Stub", canvas: { width: 1, height: 1 }, slides: ["slides/fake.svg"] }));',
+        "      return;",
+        "    }",
+        '    if (req.method === "GET" && req.url === "/files/slides/fake.svg") {',
+        '      res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8" });',
+        '      res.end("<svg>STUB</svg>");',
+        "      return;",
+        "    }",
+        "    res.writeHead(404, {});",
+        "    res.end();",
+        "  });",
+        '  server.listen(0, "127.0.0.1", () => {',
+        "    process.stdout.write(JSON.stringify({ port: server.address().port }) + \"\\n\");",
+        "  });",
         "} else {",
-        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        // `resolveDeckIdentity` (serve.ts's own startup path, unrelated to
+        // this ticket) still calls `loadProject` — a per-call `slidra cat
+        // <id> project.json --json` subprocess spawn, `slidra/reads.ts`'s
+        // own mechanism — so the stub must still answer that shape too.
+        '  const cliArgs = args.filter((a) => a !== "--json");',
+        "  const [cmd, ...rest] = cliArgs;",
+        "  function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
+        "  let result;",
+        '  if (cmd === "cat" && rest[1] === "project.json") {',
+        "    const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
+        '    result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
+        "  } else {",
+        '    result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        "  }",
+        "  process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "}",
-        "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
       ].join("\n"),
       { mode: 0o755 },
@@ -502,7 +580,7 @@ describe("startServe", () => {
     // per-slide real path to break individually, so this breaks every
     // read from the deck at once (chmod the file itself) — never
     // asserted against the response.
-    const deckPath = await deckPathFor(id);
+    const deckPath = path.join(slidraDir, "deck.slidra");
     await chmod(deckPath, 0o000);
 
     try {
@@ -573,45 +651,21 @@ describe("startServe", () => {
     await writeFile(registryPath, JSON.stringify(registry));
     const server = await serve(id);
 
-    // `/api/save-state` is the read that resolves the registry inside this
-    // process (`slidra/save-state.ts` → `readProjectsRegistry`), rather
-    // than delegating to the Rust binary — it is the `serve` path the
-    // legacy entry actually reaches.
-    const response = await fetch(`${server.url}/api/save-state`);
+    const response = await fetch(`${server.url}/api/presentation`);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain("corrupted");
   });
 
-  // NOOP-422: continuous save replaced the manual Save button — `/api/save`
-  // is retired entirely (405, the same "no POST route matched" answer any
-  // unknown path gets), and `/api/save/flush` is the one remaining manual
-  // escape hatch (Retry, the unsaved-changes modal's "Save now",
-  // `applyTemplateToSlides`'s pre-dispatch save).
-  it("POST /api/save no longer exists; POST /api/save/flush writes back and reports dirty:false", async () => {
+  it("old Save and Node deck-write proxy endpoints are absent because the browser calls the crate directly", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
 
-    const retired = await fetch(`${server.url}/api/save`, { method: "POST" });
-    expect(retired.status).toBe(405);
-
-    // A real write through the one route that calls `saveController.
-    // markDirty()` synchronously (serve.ts's `/api/command` handler) —
-    // deterministic, unlike relying on the startup "resume a crash-dirty
-    // deck" check's own timing.
-    const setResponse = await fetch(`${server.url}/api/command`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "slide notes set", input: { slidePath: "slides/001.svg", text: "hello" } }),
-    });
-    expect(setResponse.status).toBe(200);
-
-    const flushed = await fetch(`${server.url}/api/save/flush`, { method: "POST" });
-    expect(flushed.status).toBe(200);
-    const body = (await flushed.json()) as { known: boolean; dirty: boolean };
-    expect(body.known).toBe(true);
-    expect(body.dirty).toBe(false);
+    for (const path of ["/api/save", "/api/save/flush", "/api/command", "/api/asset", "/api/undo", "/api/redo"]) {
+      const response = await fetch(`${server.url}${path}`, { method: "POST" });
+      expect(response.status, `${path} must not remain as a Node proxy`).toBe(405);
+    }
   });
 
   // `GET /api/effects/<path>` — the step-plan route the player and
@@ -688,7 +742,7 @@ describe("startServe", () => {
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
-      const deckPath = await deckPathFor(id);
+      const deckPath = path.join(slidraDir, "deck.slidra");
       const original = await readDeckFile(deckPath, "slides/001.svg");
       const damaged = original.replace(
         "</svg>",
@@ -776,7 +830,7 @@ describe("static frontend serving", () => {
 
   it("serves index.html for the root path", async () => {
     await mkdir(webDist, { recursive: true });
-    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    await writeFile(path.join(webDist, "index.html"), `<html><body><script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>root</body></html>`);
     const id = await openFreshPresentation();
     const server = await serve(id);
 
@@ -805,7 +859,7 @@ describe("static frontend serving", () => {
 
   it("responds 404 for a static asset that does not exist, without falling back to index.html", async () => {
     await mkdir(webDist, { recursive: true });
-    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    await writeFile(path.join(webDist, "index.html"), `<html><body><script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>root</body></html>`);
     const id = await openFreshPresentation();
     const server = await serve(id);
 
