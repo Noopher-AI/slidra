@@ -118,9 +118,9 @@ const SLIDE_VIEWPORT_STYLE = "<style>html,body{height:100%;overflow:hidden}svg{d
 const EMPTY_DECK_DOCUMENT =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:transparent"></body></html>';
 
-export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
+export function wrapSlideDocument(bodyMarkup: string, baseHref?: string, fontFaceStyle = presentationFontFaceStyle): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${fontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff">${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -173,6 +173,7 @@ export function wrapSelectionDocument(
   media: Record<string, { src: string; kind: "video" | "audio" }>,
   /** [E2.T17]: ids of the slide's third-party embeds — the runtime measures these and posts their boxes out, nothing more. Same caller-computes-it contract as `media`. */
   embedIds: string[],
+  fontFaceStyle = presentationFontFaceStyle,
 ): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   const safeColorsJson = JSON.stringify(colors).replace(/</g, "\\u003C");
@@ -201,7 +202,7 @@ export function wrapSelectionDocument(
   // selection, so no qa/cases script or e2e test can catch a regression here.
   // Applied to this wrapper only: play mode is a separate document where
   // letting a viewer select text is a different decision.
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__SLIDRA_SELECTION_COLORS__=${safeColorsJson};window.__SLIDRA_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__SLIDRA_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${fontFaceStyle}${SLIDE_VIEWPORT_STYLE}</head><body style="margin:0;background:#fff;user-select:none;-webkit-user-select:none"><script>window.__SLIDRA_SELECTION_COLORS__=${safeColorsJson};window.__SLIDRA_SELECTION_MEDIA__=JSON.parse(${safeMediaJson});window.__SLIDRA_SELECTION_EMBEDS__=JSON.parse(${safeEmbedIdsJson});<\/script><script>${selectionRuntimeSource}<\/script>${bodyMarkup}</body></html>`;
 }
 
 /**
@@ -220,8 +221,14 @@ export function wrapSelectionDocument(
  * whole point of #000 there (avoid a flash of white before content paints)
  * regresses into the opposite failure: a flash of black that never clears.
  */
-export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle: string, planScript: string): string {
-  const baseTag = `<base href="${escapeAttribute(baseHref)}">`;
+export function wrapPlayDocument(
+  bodyMarkup: string,
+  baseHref: string | undefined,
+  hideStyle: string,
+  planScript: string,
+  fontFaceStyle = presentationFontFaceStyle,
+): string {
+  const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
   // planScript is built from parsed slide attributes (target ids, effect
   // names) — untrusted content (ADR-0007), and it lands inside a raw
   // <script> element, not an HTML text node, so HTML-entity escaping
@@ -240,7 +247,7 @@ export function wrapPlayDocument(bodyMarkup: string, baseHref: string, hideStyle
   // for a tokenizer state change, not just the one this function used to
   // special-case.
   const safePlanScript = planScript.replace(/</g, "\\u003C");
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaceStyle}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${fontFaceStyle}${SLIDE_VIEWPORT_STYLE}${hideStyle}</head><body style="margin:0;background:#fff">${bodyMarkup}<script>${safePlanScript}<\/script><script>${playerRuntimeSource}<\/script></body></html>`;
 }
 
 /** The virtual directory a slide lives in, percent-encoded per segment. */

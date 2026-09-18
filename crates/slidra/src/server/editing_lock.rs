@@ -13,11 +13,9 @@
 //! resolved is now a blocking `Condvar` wait (thread-per-connection, so
 //! blocking the handler thread is the direct equivalent).
 //!
-//! `POST /api/editing/begin|end` staying Node-side HTTP endpoints that
-//! forward here (rather than the browser calling this crate directly) is
-//! explicitly [E10.T8]/F3's job, not this ticket's (Plan §裁示1's own
-//! note) — this module only has to be reachable, not yet be the
-//! browser's literal first hop.
+//! The split editor calls these routes directly with its workbench credential.
+//! Node still mirrors the decision only inside the transitional combined
+//! `startServe` harness, where legacy tests need the old event plumbing.
 
 use std::collections::HashMap;
 use std::net::TcpStream;
@@ -279,5 +277,16 @@ mod tests {
         handle.join().unwrap();
         assert!(is_frozen(&id));
         release_agent(&id);
+    }
+    #[test]
+    fn different_workbenches_do_not_exclude_each_other() {
+        let first = fresh_id();
+        let second = fresh_id();
+        acquire_agent(&first);
+        assert!(is_frozen(&first));
+        assert!(!is_frozen(&second));
+        assert!(begin_human_edit(&second).is_ok());
+        end_human_edit(&second);
+        release_agent(&first);
     }
 }

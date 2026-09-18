@@ -32,9 +32,13 @@ export interface DeckServerClient {
 /** How long to wait for the child's one-line `{"port":N}` startup message before giving up. */
 const STARTUP_TIMEOUT_MS = 10_000;
 
-export async function startDeckServer(): Promise<DeckServerClient> {
+export async function startDeckServer(
+  options: { editorOrigin?: string } = {},
+): Promise<DeckServerClient> {
   const bin = resolveSlidraBin();
-  const child = spawn(bin, ["__deck-server"], { stdio: ["ignore", "pipe", "inherit"] });
+  const args = ["__deck-server"];
+  if (options.editorOrigin !== undefined) args.push("--editor-origin", options.editorOrigin);
+  const child = spawn(bin, args, { stdio: ["ignore", "pipe", "inherit"] });
 
   const port = await new Promise<number>((resolve, reject) => {
     let buffer = "";

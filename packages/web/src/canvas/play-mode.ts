@@ -6,7 +6,7 @@ import type { Effect, SlideTransition } from "../effects.js";
 import type { ActiveGesture, Viewport } from "./gesture-geometry.js";
 import type { StageEmbedEntry } from "../player-plan.js";
 import type { CanvasMode } from "../canvas.js";
-import { EMPTY_DECK_DOCUMENT, fetchText, slideDirectory, wrapPlayDocument, wrapSlideDocument } from "./frame-documents.js";
+import { EMPTY_DECK_DOCUMENT, fetchText, presentationFontFaces, slideDirectory, wrapPlayDocument, wrapSlideDocument } from "./frame-documents.js";
 import { computePlayerPlan, renderHideStyle, renderPlanScript, stageEmbedsFor } from "../player-plan.js";
 import { slidePaintKey } from "../slide-paint-key.js";
 import { pageTransitionTransform } from "./project-io.js";
@@ -84,6 +84,8 @@ export interface PlayModeDeps {
   publish: PlayModePublishDeps;
   /** Commits the in-place text edit in progress, a no-op when none is open (decision T1) — the entry checks `editingState` itself before deciding whether there is anything to commit. */
   commitTextEditIfEditing(): void;
+  /** Rewrites deck-local subresources to credentialed, lifecycle-owned Blob URLs. */
+  resolveSlideAssets(markup: string, slidePath: string, generation: number): Promise<string>;
   /**
    * The view-mode paint path, called directly by `showSlide`/`exitPlay`/
    * `exitPreview` when a transition lands back in view mode. Deliberately
@@ -159,13 +161,13 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
     }
 
     const slidePath = playModeDeps.deck.slides()[playModeDeps.deck.currentIndex()];
-    const svgMarkup = await fetchText(`/api/files/${slidePath}`);
+    const sourceMarkup = await fetchText(`/api/files/${slidePath}`);
     if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
 
     // #303: only reload()'s background refresh (playEnter=false, no preview,
     // startAt "first") may keep the running document; every arrival —
     // page change, entering play, a Preview — paints anew.
-    const playKey = slidePaintKey(svgMarkup);
+    const playKey = `${slidePaintKey(sourceMarkup)}\0${presentationFontFaces()}`;
     const keepRunningDocument =
       !playEnter &&
       previewEffectIndices === undefined &&
@@ -174,15 +176,10 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
       playModeDeps.frame.paintedPlay.slidePath === slidePath &&
       playModeDeps.frame.paintedPlay.key === playKey;
 
-    let planScript: string;
-    let hideStyle: string;
+    let sourcePlan: Awaited<ReturnType<typeof computePlayerPlan>>;
     try {
-      const plan = await computePlayerPlan(svgMarkup, slidePath);
+      sourcePlan = await computePlayerPlan(sourceMarkup, slidePath);
       if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
-      const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
-      const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
-      planScript = renderPlanScript(planForWire, startStep);
-      hideStyle = renderHideStyle(plan.hidden);
       // A slide whose <slidra:transition> is present but malformed
       // (§4.2: an unknown effect value, an illegal duration, more than one
       // node) surfaces through the exact same `error` banner + static-
@@ -194,7 +191,7 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
       // rather than a second one, since even a cache-hit await is one more
       // microtask on a path PlayChrome.tsx's 2.5s auto-hide timer races
       // against).
-      playModeDeps.slideState.pageTransition.set(plan.transition);
+      playModeDeps.slideState.pageTransition.set(sourcePlan.transition);
       // Must notify here, not just assign: a prior slide's parse failure
       // may have left `error` set, and without this call React never
       // learns this render cleared it — the error banner from the
@@ -221,7 +218,9 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
       playModeDeps.slideState.pageTransition.set({ enter: { effect: "none", duration: 0.6 }, exit: { effect: "none", duration: 0.5 } });
       playModeDeps.frame.paintedView = null;
       playModeDeps.frame.paintedPlay = null;
-      playModeDeps.frame.element.srcdoc = wrapSlideDocument(svgMarkup, `/api/raw/${slideDirectory(slidePath)}`);
+      const svgMarkup = await playModeDeps.resolveSlideAssets(sourceMarkup, slidePath, captured);
+      if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+      playModeDeps.frame.element.srcdoc = wrapSlideDocument(svgMarkup, undefined, "");
       return;
     }
 
@@ -230,6 +229,15 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
     // fresh) but the document on screen is the same picture: leave the
     // runtime, and the author's step position, alone.
     if (keepRunningDocument) return;
+    const svgMarkup = await playModeDeps.resolveSlideAssets(sourceMarkup, slidePath, captured);
+    if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+    const plan = await computePlayerPlan(svgMarkup, slidePath);
+    if (playModeDeps.session.isDestroyed() || captured !== playModeDeps.frame.generation) return;
+    const startStep = startAt === "last" ? plan.steps.length - 1 : -1;
+    const planForWire = previewEffectIndices === undefined ? plan : { ...plan, preview: { effectIndices: previewEffectIndices } };
+    const planScript = renderPlanScript(planForWire, startStep);
+    const hideStyle = renderHideStyle(plan.hidden);
+
 
     // Same as render(): the ids travel to the runtime inside the plan
     // (`plan.embedIds`), the URLs stay here.
@@ -240,9 +248,10 @@ export function createPlayMode(playModeDeps: PlayModeDeps): PlayModeHandlers {
     playModeDeps.frame.paintedView = null;
     playModeDeps.frame.element.srcdoc = wrapPlayDocument(
       svgMarkup,
-      `/api/raw/${slideDirectory(slidePath)}`,
+      undefined,
       hideStyle,
       planScript,
+      "",
     );
     playModeDeps.frame.paintedPlay = { slidePath, key: playKey };
 

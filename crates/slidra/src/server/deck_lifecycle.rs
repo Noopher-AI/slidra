@@ -248,7 +248,10 @@ pub(crate) fn handle_rename(request: &RawRequest, stream: &mut TcpStream) {
     };
 
     match deck_store::rename_deck(&id, &name) {
-        Ok(file_name) => server::write_json_response(stream, &serde_json::json!({ "ok": true, "fileName": file_name })),
+        Ok(file_name) => server::write_json_response(
+            stream,
+            &serde_json::json!({ "ok": true, "fileName": file_name }),
+        ),
         Err(err) => write_store_error(stream, err),
     }
 }

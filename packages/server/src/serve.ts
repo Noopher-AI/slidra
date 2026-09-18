@@ -6,6 +6,8 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRunnerRoute, runnerSessionAuthorized } from "./agent-runner-auth.js";
+import { injectEditorBootstrap, type EditorBootstrap } from "./editor-bootstrap.js";
 import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
 import { runJsonCommand, toCommandResult } from "./slidra/command.js";
 import { COMMAND_WHITELIST, encodeCommandArgv } from "./slidra/argv.js";
@@ -109,6 +111,12 @@ export interface ServeOptions {
    */
   port?: number;
   host?: string;
+  /**
+   * Browser-facing credential for the agent-runner routes. The launcher
+   * supplies this for split-service deployments; omitted keeps the direct
+   * test harness and the transitional combined server backward compatible.
+   */
+  runnerSessionToken?: string;
   /**
    * An already-selected ACP adapter to spawn immediately, treated as
    * `source: "cli"` for whichever kind it names.
@@ -352,6 +360,7 @@ export async function startServe(
         shimToken,
         options.policy.fileEntry,
         deckServer,
+        options.runnerSessionToken,
         req,
         res,
       );
@@ -662,6 +671,7 @@ async function handleRequest(
   shimToken: string,
   fileEntryPolicy: FileEntryPolicy,
   deckServer: DeckServerClient,
+  runnerSessionToken: string | undefined,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -704,6 +714,15 @@ async function handleRequest(
     // Parsed before the method gate so POST /api/chat can be routed
     // explicitly — every other POST still gets the same 405 it always did.
     const url = new URL(req.url ?? "/", "http://localhost");
+
+    if (
+      runnerSessionToken !== undefined &&
+      isRunnerRoute(url.pathname) &&
+      !runnerSessionAuthorized(req.headers, runnerSessionToken)
+    ) {
+      sendJson(res, 401, { error: "Invalid runner session" });
+      return;
+    }
 
     if (req.method === "POST") {
       if (url.pathname === "/api/chat") {
@@ -1203,7 +1222,28 @@ async function handleRequest(
       return;
     }
 
-    await serveStatic(staticDir, url.pathname, res);
+    if (url.pathname === "/") {
+      const requestedWorkbench = url.searchParams.get("workbench");
+      if (requestedWorkbench !== null && requestedWorkbench !== deckSession.currentId()) {
+        await deckSession.switchTo(requestedWorkbench);
+      }
+    }
+
+    const combinedOrigin = `http://${serverAddress.host}:${serverAddress.port}`;
+    await serveStatic(staticDir, url.pathname, res, {
+      workbenchId: deckSession.currentId(),
+      deck: {
+        url: `${combinedOrigin}/api`,
+        credential: Buffer.from(
+          JSON.stringify({ kind: "editor", workbenchId: deckSession.currentId() ?? "deck-space" }),
+          "utf8",
+        ).toString("base64"),
+      },
+      agentRunner: {
+        url: combinedOrigin,
+        sessionToken: runnerSessionToken ?? "legacy-combined-server",
+      },
+    });
   } catch (error) {
     if (res.headersSent || res.destroyed) {
       res.destroy(error instanceof Error ? error : new Error(String(error)));
@@ -1827,9 +1867,9 @@ async function handleUndoRedoPost(
  * existing `beginHumanEdit()`, which is what actually fires the
  * `frozen`/`unfrozen`-adjacent event plumbing (`markDirty`,
  * `editing-frozen`/`unfrozen` broadcasts) — nothing about those events
- * changes. TODO([E10.T8]/F3): once the browser calls the crate's editing
- * routes directly, this dual-write collapses to the crate alone and
- * `editing-lock.ts`'s `EditingLock` class can be deleted outright.
+ * changes. The split editor now calls the crate directly; this dual-write remains
+ * only for the transitional combined `startServe` harness and its legacy tests,
+ * until the launcher switches the production entry point.
  */
 async function handleEditingBeginPost(
   deckServer: DeckServerClient,
@@ -2452,6 +2492,7 @@ async function serveStatic(
   staticDir: string,
   pathname: string,
   res: ServerResponse,
+  bootstrap?: EditorBootstrap,
 ): Promise<void> {
   // The frontend has no client-side router, so the root path is the only
   // request that maps to index.html; every other path names a concrete
@@ -2470,8 +2511,9 @@ async function serveStatic(
 
   try {
     const data = await readFile(filePath);
+    const body = isRoot && bootstrap !== undefined ? injectEditorBootstrap(data, bootstrap) : data;
     res.writeHead(200, { "Content-Type": staticContentTypeFor(filePath) });
-    res.end(data);
+    res.end(body);
     return;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;

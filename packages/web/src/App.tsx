@@ -15,14 +15,14 @@ import {
 import { mountCanvas, type CanvasController, type CanvasState, type ImportedAsset } from "./canvas.js";
 import { appendMessage, restoreChatMessages, type ChatMessage, type PersistedChatEntry, appendErrorMessage } from "./chat-messages.js";
 import { startChatStream, type ChatStream } from "./chat-stream.js";
-import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent, type SaveState } from "./live-reload.js";
+import { startLiveReload, type AgentKind, type ExportFormat, type ExportSseEvent } from "./live-reload.js";
 import type { SlashCommandOption } from "./slash-commands.js";
 import { mountOverview, type OverviewController } from "./overview.js";
 import { fetchDeckComments, sortComments, type NumberedComment } from "./comments.js";
 import { createPresentationInfoLoader, type PresentationInfo } from "./presentation.js";
 import { TitleBar } from "./shell/TitleBar.js";
-import { renameCurrentDeck } from "./shell/deck-space/deck-api.js";
-import { installUnsavedGuard } from "./unsaved-guard.js";
+import { renameDeck } from "./shell/deck-space/deck-api.js";
+import { getServiceClients } from "./service-runtime.js";
 import { Rail, type ThumbContextMenuRequest } from "./shell/Rail.js";
 import type { ExportUiState } from "./shell/ExportPanel.js";
 import { Stage } from "./shell/Stage.js";
@@ -183,12 +183,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   // effect below.
   const [editingFrozen, setEditingFrozen] = useState(false);
 
-  // NOOP-422: the titlebar's Saved/Saving…/Save failed story. `known:false`
-  // (the initial value) means "no opinion yet" — same as a pre-NOOP-93
-  // registry entry — so the titlebar falls back to `presentationInfo`'s
-  // name and shows no status text (§4(c)'s table) until the first
-  // `GET /api/save-state` in the mount effect below resolves.
-  const [saveState, setSaveState] = useState<SaveState>({ known: false });
   const [openError, setOpenError] = useState<string | null>(null);
 
   // [E3.T3] #232/#236: the `/` command list — agent report ∪ bundled
@@ -471,13 +465,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
         // too — re-fetch the same way overview.ts's own refresh() re-reads
         // the aspect ratio.
         presentationLoaderRef.current?.load();
-        // NOOP-93 §4.2: "save-state" is only ever pushed over the SSE
-        // stream by /api/save and /api/open (see save-state.ts's own
-        // comment — changes.ts's generic disk watcher stays untouched).
-        // An ordinary edit reaches here as a plain presentation-changed
-        // event with no paired save-state push, so this re-fetches it the
-        // same GET-refetch way presentationLoaderRef does above.
-        void refreshSaveState();
         // [E2.T8]: an agent's own `comment add`/`edit`/`delete` reaches
         // here the same way any other file write does — this is what
         // makes Pinned context update itself without a page refresh.
@@ -488,7 +475,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
       },
       onError: setLiveReloadError,
       onFrozenChange: setEditingFrozen,
-      onSaveStateChange: setSaveState,
       onExportEvent: (event) => setExportState(toExportUiState(event)),
       onCommandsChange: (next) => {
         setCommands(next);
@@ -548,7 +534,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
       .then((data: { commands: SlashCommandOption[] }) => setCommands(data.commands))
       .catch(() => {});
     presentationLoaderRef.current?.load();
-    void refreshSaveState();
     void refreshComments();
     void refreshPlan();
     return () => {
@@ -713,13 +698,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   const editingFrozenRef = useRef(editingFrozen);
   editingFrozenRef.current = editingFrozen;
 
-  // Read by `flushSave` (to return the last-known state on a frozen/failed
-  // request without waiting on a re-render) and by the `beforeunload` guard
-  // installed below, which must see the CURRENT dirty flag at the moment a
-  // close/reload happens, not the value from whenever the effect last ran.
-  const saveStateRef = useRef(saveState);
-  saveStateRef.current = saveState;
-  useEffect(() => installUnsavedGuard(() => saveStateRef.current.known && saveStateRef.current.dirty), []);
 
   function runUndoRedo(kind: "undo" | "redo"): void {
     if (editingFrozenRef.current) return;
@@ -1081,69 +1059,17 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
     setAgentSwitchingKind(null);
   }
 
-  /** `GET /api/save-state` (§4.2). A failed request leaves `saveState` exactly as it was — the table's row 4 ("keep the existing deckName behavior, show no status text" for a `known:false` starting point, or simply the last good value once one has ever loaded). */
-  async function refreshSaveState(): Promise<void> {
-    try {
-      const response = await fetch("/api/save-state");
-      if (!response.ok) return;
-      const data = (await response.json()) as SaveState;
-      setSaveState(data);
-    } catch {
-      // Network failure — same "say nothing, let the next signal correct
-      // it" rule /api/editing's own fetch above follows.
-    }
-  }
-
-  /**
-   * The title bar's own double-click rename (`TitleBar`'s `onRenameDeck`).
-   * `POST /api/deck/rename-current` already re-points the file watcher at
-   * the new path server-side; `refreshSaveState` picks up the new
-   * `fileName` for this tab the same way it does after any other save-state
-   * change, and the server's own broadcast (`save-state`) updates any other
-   * tab that has this deck open.
-   */
+  /** Renames the deck owned by this workbench; every write is already durable. */
   async function handleRenameDeck(name: string): Promise<string | null> {
-    const result = await renameCurrentDeck(name);
-    if (result.ok) {
-      await refreshSaveState();
-      return null;
-    }
+    const workbenchId = getServiceClients().workbenchId;
+    if (workbenchId === null) return "No deck is open";
+    const result = await renameDeck(workbenchId, name);
+    if (result.ok) return null;
     if (result.reason === "name-conflict") return "A deck with that name already exists";
     if (result.reason === "editing" || result.reason === "exporting") {
       return "Can't rename right now — try again in a moment";
     }
     return result.error;
-  }
-
-  /**
-   * `POST /api/save/flush` (NOOP-422) — continuous save's manual escape
-   * hatches: the Retry action on a failed save, and
-   * `applyTemplateToSlides`'s pre-dispatch save. Frozen
-   * guard matches runUndoRedo's: no request, no 409 to report, same as
-   * undo/redo. Returns the resulting save state (not just success/failure)
-   * — callers that need to know whether the write actually landed check
-   * `known && !dirty` on the result, same as they would on `saveState`
-   * itself; the server also broadcasts it, so this tab's own state updates
-   * either way.
-   */
-  async function flushSave(): Promise<SaveState> {
-    if (editingFrozenRef.current) return saveStateRef.current;
-    setOpenError(null);
-    let response: Response;
-    try {
-      response = await fetch("/api/save/flush", { method: "POST" });
-    } catch {
-      setOpenError("Failed to save: connection lost");
-      return saveStateRef.current;
-    }
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      setOpenError(body.error ?? "Failed to save");
-      return saveStateRef.current;
-    }
-    const data = (await response.json()) as SaveState;
-    setSaveState(data);
-    return data;
   }
 
   /**
@@ -1507,26 +1433,15 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
   }
 
   /**
-   * "Let the agent update the slides" (AC3): flushes the pending save
-   * first — the agent reads the change off disk, not off whatever this tab
-   * still has in memory — then dispatches `buildApplyMasterMessage` through
-   * the exact same `sendChatText` path `draftWithAgent` above uses. A
-   * failed flush does not dispatch (`flushSave`'s own `setOpenError`
-   * already reported why); `sendChatText`'s existing honest-refusal handles
-   * a `streamReady === false` race on its own — the save already happened
-   * either way, and is never rolled back.
-   */
+  /** Sends the selected template to the agent; every command is already durable. */
   async function applyTemplateToSlides(templateName: string | null): Promise<void> {
     if (editingFrozenRef.current) return;
     const controller = controllerRef.current;
     const state = canvasStateRef.current;
     if (!controller || state.pageSource !== "templates" || state.currentIndex === -1) return;
     const templatePath = state.slides[state.currentIndex];
-    const saved = await flushSave();
-    if (!(saved.known && !saved.dirty)) return;
     await sendChatText(buildApplyMasterMessage({ templatePath, templateName, slideCount: controller.deckSlideCount }));
   }
-
   /**
    * The chat panel's Stop button — `POST /api/chat/cancel`. The
    * turn's actual end still arrives over the stream (`chat-done` with
@@ -1778,9 +1693,9 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
         )}
       {shellVisible && (
         <TitleBar
-          deckName={saveState.known ? saveState.fileName : (presentationInfo?.name ?? null)}
+          deckName={presentationInfo?.name ?? null}
           onRenameDeck={handleRenameDeck}
-          savedStatusText={saveState.known ? (saveState.phase === "saving" ? "Saving…" : saveState.phase === "failed" ? "Save failed" : "Saved") : null}
+          savedStatusText={presentationInfo ? "Saved" : null}
           editingFrozen={editingFrozen}
           onUndo={() => runUndoRedo("undo")}
           onRedo={() => runUndoRedo("redo")}
@@ -1820,14 +1735,6 @@ export function App({ onOpenDeckSpace, deckSpaceOpen, userBlock }: AppProps) {
           )}
           {editingFrozen && (
             <div className="live-reload-banner editing-frozen-banner">Agent editing · undo/redo paused</div>
-          )}
-          {saveState.known && saveState.phase === "failed" && (
-            <div role="alert" className="live-reload-banner save-failed-banner">
-              {saveState.reason ?? "Save failed"}
-              <button type="button" className="save-retry-button" onClick={() => void flushSave()}>
-                Retry
-              </button>
-            </div>
           )}
           {openError && (
             <div role="alert" className="live-reload-banner">

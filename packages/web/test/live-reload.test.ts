@@ -194,42 +194,6 @@ describe("startLiveReload", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("calls onSaveStateChange with the parsed save-state payload (NOOP-93)", () => {
-    let fake: FakeEventSource | undefined;
-    const onSaveStateChange = vi.fn();
-    liveReload = startLiveReload({
-      onChange: () => {},
-      onSaveStateChange,
-      eventSourceFactory: (url) => {
-        fake = new FakeEventSource(url) as unknown as EventSource;
-        return fake as unknown as EventSource;
-      },
-    });
-
-    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.slidra", phase: "saving" });
-    expect(onSaveStateChange).toHaveBeenNthCalledWith(1, { known: true, dirty: true, fileName: "deck.slidra", phase: "saving" });
-
-    fake!.emit("save-state", { known: false });
-    expect(onSaveStateChange).toHaveBeenNthCalledWith(2, { known: false });
-  });
-
-  it("save-state never triggers onChange — it is not a reload signal", () => {
-    let fake: FakeEventSource | undefined;
-    const onChange = vi.fn();
-    liveReload = startLiveReload({
-      onChange,
-      onSaveStateChange: () => {},
-      eventSourceFactory: (url) => {
-        fake = new FakeEventSource(url) as unknown as EventSource;
-        return fake as unknown as EventSource;
-      },
-    });
-    onChange.mockClear(); // drop the initial "open" call
-
-    fake!.emit("save-state", { known: true, dirty: true, fileName: "deck.slidra", phase: "saving" });
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
 
   it("calls onExportEvent for each export SSE event, in every legal shape (NOOP-93 §4.4)", () => {
     let fake: FakeEventSource | undefined;

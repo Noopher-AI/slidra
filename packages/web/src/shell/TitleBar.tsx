@@ -7,24 +7,13 @@ import { ExportPanel, type ExportUiState } from "./ExportPanel.js";
 import type { ExportFormat } from "../live-reload.js";
 
 export interface TitleBarProps {
-  /**
-   * The name shown next to the brand mark. NOOP-93: once the save-state is
-   * `known`, this is `sourcePath`'s basename (the real `.slidra` filename) —
-   * otherwise it falls back to `project.json`'s `name` (§4.2's table).
-   * `null` = neither is available yet (`/api/presentation` hasn't returned
-   * or failed — see App.tsx's `presentationError`).
-   */
+  /** The presentation name; `null` until the credentialed request succeeds. */
   deckName: string | null;
-  /**
-   * Double-clicking the deck name calls this with the trimmed draft name.
-   * Resolves to an error message to show inline (the input stays open,
-   * same as `DeckCard`'s own rename), or `null` on success. Renaming is not
-   * offered at all (double-click does nothing) while `deckName` is `null`.
-   */
+  /** Resolves to an inline rename error, or `null` on success. */
   onRenameDeck(name: string): Promise<string | null>;
-  /** "Saved" / "Saving…" / "Save failed" (NOOP-422 §4(c)) — `null` when save-state is `known:false` or its request failed; no status text is shown then. There is no manual Save action any more (continuous save replaced it) — a `failed` phase is surfaced through App.tsx's own alert banner with a Retry action, not here. */
+  /** `"Saved"` once loaded: every command is durably written before returning. */
   savedStatusText: string | null;
-  /** While the agent holds the editing lock, undo/redo are always disabled (no request is sent). */
+  /** While the agent holds the editing lock, undo/redo are disabled. */
   editingFrozen: boolean;
   onUndo(): void;
   onRedo(): void;

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright contributors to the Slidra project
+
+import { describe, expect, it, vi } from "vitest";
+import { createServiceClients } from "../src/service-clients.js";
+import { createRoutingFetch } from "../src/service-routing.js";
+
+describe("browser API routing", () => {
+  it("routes deck and agent-runner APIs through their dedicated clients", async () => {
+    const nativeFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const clients = createServiceClients(
+      {
+        workbenchId: "wb-9",
+        deck: { url: "http://deck.test:4100", credential: "deck-token" },
+        agentRunner: { url: "http://runner.test:4200", sessionToken: "runner-token" },
+      },
+      nativeFetch,
+    );
+    const routedFetch = createRoutingFetch(clients, nativeFetch);
+
+    await routedFetch("/api/presentation");
+    await routedFetch("/api/command", { method: "POST" });
+    await routedFetch("/api/chat", { method: "POST" });
+    await routedFetch("/api/agent/model", { method: "POST" });
+    await routedFetch("/api/export", { method: "POST" });
+    await routedFetch("https://cdn.example/font.woff2");
+
+    expect(nativeFetch.mock.calls.map(([url]) => url)).toEqual([
+      "http://deck.test:4100/presentation",
+      "http://deck.test:4100/command",
+      "http://runner.test:4200/api/chat",
+      "http://runner.test:4200/api/agent/model",
+      "http://runner.test:4200/api/export",
+      "https://cdn.example/font.woff2",
+    ]);
+  });
+});

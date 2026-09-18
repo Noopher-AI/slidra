@@ -43,7 +43,10 @@ pub(crate) fn handle(request: &RawRequest, stream: &mut TcpStream) {
         return;
     };
 
-    let head = "HTTP/1.1 200 OK\r\nConnection: close\r\ncontent-type: text/event-stream; charset=utf-8\r\ncache-control: no-cache\r\nx-accel-buffering: no\r\n\r\n";
+    let cors = server::cors_response_headers();
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\n{cors}content-type: text/event-stream; charset=utf-8\r\ncache-control: no-cache\r\nx-accel-buffering: no\r\n\r\n"
+    );
     if stream.write_all(head.as_bytes()).is_err() {
         return;
     }
@@ -238,5 +241,26 @@ mod tests {
 
         assert_eq!(sink.text(), "");
         std::fs::remove_file(&path).ok();
+    }
+    #[test]
+    fn a_change_in_another_workbench_never_reaches_this_stream() {
+        let watched = temp_deck_file("watched");
+        let other = temp_deck_file("other");
+        let sink = RecordingSink::new(0);
+        let mut sink_clone = sink.clone();
+
+        let writer = std::thread::spawn({
+            let other = other.clone();
+            move || {
+                std::thread::sleep(Duration::from_millis(15));
+                std::fs::write(other, b"other changed").unwrap();
+            }
+        });
+        run_notification_loop(&mut sink_clone, &watched, &fast_timing());
+        writer.join().unwrap();
+
+        assert_eq!(sink.text(), "");
+        std::fs::remove_file(watched).ok();
+        std::fs::remove_file(other).ok();
     }
 }

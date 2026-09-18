@@ -442,8 +442,9 @@ export class AgentChatSession extends EventEmitter {
    * `handleEditingBeginPost`). Closing this gap is why the floor was moved
    * into the crate at all (NOOP-641 Plan's 裁示1): `POST /call`'s own 409
    * gate only means anything once an agent turn actually registers there.
-   * TODO([E10.T8]/F3): collapses to the crate alone once the browser calls
-   * its editing routes directly; `this.editingLock` can be deleted then.
+   * The split editor now calls the crate directly. `this.editingLock` remains
+   * only for the transitional combined `startServe` harness and its legacy
+   * frozen/unfrozen event plumbing.
    */
   private readonly deckServer: DeckServerClient;
   /**

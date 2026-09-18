@@ -26,9 +26,11 @@
 //! `agent/commands.ts:75`'s own YAML-parser refusal). Every response is
 //! `Connection: close`, so a connection serves exactly one request.
 
+use std::cell::RefCell;
 use std::ffi::OsString;
 use std::io::{Cursor, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 
 use crate::cli;
 use crate::commands::category::{Category, resolve_full_command};
@@ -56,6 +58,25 @@ const FRAME_STDOUT: u8 = 1;
 const FRAME_STDERR: u8 = 2;
 const FRAME_EXIT: u8 = 3;
 
+const CORS_ALLOW_METHODS: &str = "GET, POST, OPTIONS";
+const CORS_ALLOW_HEADERS: &str = "content-type, if-none-match, range, x-slidra-argv, x-slidra-asset-name, x-slidra-asset-url, x-slidra-credential";
+
+#[derive(Clone, Default)]
+struct ServerConfig {
+    editor_origin: Option<String>,
+}
+
+thread_local! {
+    static RESPONSE_ORIGIN: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn cors_response_headers() -> String {
+    RESPONSE_ORIGIN.with(|origin| match origin.borrow().as_deref() {
+        Some(origin) => format!("access-control-allow-origin: {origin}\r\nvary: Origin\r\n"),
+        None => "vary: Origin\r\n".to_string(),
+    })
+}
+
 /// `slidra __deck-server [--addr <host:port>]` — binds (default
 /// `127.0.0.1:0`, an ephemeral port), prints exactly one line to stdout,
 /// `{"port":<n>}`, then serves forever. The one line is how a test
@@ -64,6 +85,9 @@ const FRAME_EXIT: u8 = 3;
 /// prone port number.
 pub fn run(args: &[OsString]) -> i32 {
     let addr = parse_addr_flag(args).unwrap_or_else(|| "127.0.0.1:0".to_string());
+    let config = ServerConfig {
+        editor_origin: parse_editor_origin_flag(args),
+    };
     let listener = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
@@ -74,7 +98,7 @@ pub fn run(args: &[OsString]) -> i32 {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
     println!("{{\"port\":{port}}}");
     let _ = std::io::stdout().flush();
-    serve_forever(listener)
+    serve_forever(listener, config)
 }
 
 fn parse_addr_flag(args: &[OsString]) -> Option<String> {
@@ -87,11 +111,23 @@ fn parse_addr_flag(args: &[OsString]) -> Option<String> {
     None
 }
 
-fn serve_forever(listener: TcpListener) -> i32 {
+fn parse_editor_origin_flag(args: &[OsString]) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--editor-origin" {
+            return iter.next().and_then(|v| v.to_str()).map(str::to_string);
+        }
+    }
+    None
+}
+
+fn serve_forever(listener: TcpListener, config: ServerConfig) -> i32 {
+    let config = Arc::new(config);
     for incoming in listener.incoming() {
         let Ok(stream) = incoming else { continue };
+        let config = Arc::clone(&config);
         std::thread::spawn(move || {
-            handle_connection(stream);
+            handle_connection(stream, &config);
         });
     }
     0
@@ -104,11 +140,20 @@ fn serve_forever(listener: TcpListener) -> i32 {
 /// more notification frames before the client (or this end, on a fatal
 /// watch error) closes it — matching `changes.ts`'s one-way,
 /// browser-reconnects-itself stream (Plan §4/§7.2/spec decision 18).
-fn handle_connection(mut stream: TcpStream) {
+fn handle_connection(mut stream: TcpStream, config: &ServerConfig) {
     let request = match read_request(&mut stream) {
         Some(request) => request,
         None => return,
     };
+
+    if !allow_request_origin(&request, config) {
+        write_plain_response(&mut stream, 403, "origin not allowed");
+        return;
+    }
+    if request.method == "OPTIONS" {
+        write_preflight_response(&request, &mut stream);
+        return;
+    }
 
     let path = path_only(&request.path);
     match (request.method.as_str(), path) {
@@ -150,6 +195,49 @@ fn handle_connection(mut stream: TcpStream) {
 /// consult one (every parameter travels as a header or a path segment), so
 /// a caller-supplied `?...` is simply ignored rather than treated as part
 /// of the route.
+fn allow_request_origin(request: &RawRequest, config: &ServerConfig) -> bool {
+    let origin = request.header("origin");
+    let accepted = match origin {
+        None => true,
+        Some("null") => false,
+        Some(origin) => config.editor_origin.as_deref() == Some(origin),
+    };
+    RESPONSE_ORIGIN.with(|slot| {
+        *slot.borrow_mut() = if accepted {
+            origin.map(str::to_string)
+        } else {
+            None
+        };
+    });
+    accepted
+}
+
+fn write_preflight_response(request: &RawRequest, stream: &mut TcpStream) {
+    let method_ok = matches!(
+        request.header("access-control-request-method"),
+        Some("GET" | "POST")
+    );
+    let headers_ok = request
+        .header("access-control-request-headers")
+        .map(|value| {
+            value.split(",").all(|name| {
+                CORS_ALLOW_HEADERS
+                    .split(", ")
+                    .any(|allowed| allowed.eq_ignore_ascii_case(name.trim()))
+            })
+        })
+        .unwrap_or(true);
+    if !method_ok || !headers_ok {
+        write_plain_response(stream, 403, "preflight not allowed");
+        return;
+    }
+    let cors = cors_response_headers();
+    let head = format!(
+        "HTTP/1.1 204 No Content\r\nConnection: close\r\n{cors}access-control-allow-methods: {CORS_ALLOW_METHODS}\r\naccess-control-allow-headers: {CORS_ALLOW_HEADERS}\r\ncontent-length: 0\r\n\r\n"
+    );
+    let _ = stream.write_all(head.as_bytes());
+}
+
 fn path_only(path: &str) -> &str {
     path.split('?').next().unwrap_or(path)
 }
@@ -277,8 +365,9 @@ pub(crate) fn write_body_response(
     body: &[u8],
 ) {
     let reason = reason_phrase(status);
+    let cors = cors_response_headers();
     let mut head = format!(
-        "HTTP/1.1 {status} {reason}\r\nConnection: close\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n",
+        "HTTP/1.1 {status} {reason}\r\nConnection: close\r\n{cors}content-type: {content_type}\r\ncontent-length: {}\r\n",
         body.len()
     );
     for (name, value) in extra_headers {
@@ -574,8 +663,9 @@ fn write_plain_response(stream: &mut TcpStream, status: u16, message: &str) {
         _ => "Error",
     };
     let body = message.as_bytes();
+    let cors = cors_response_headers();
     let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nConnection: close\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\n\r\n",
+        "HTTP/1.1 {status} {reason}\r\nConnection: close\r\n{cors}content-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\n\r\n",
         body.len()
     );
     let _ = stream.write_all(head.as_bytes());
@@ -588,8 +678,10 @@ fn write_plain_response(stream: &mut TcpStream, status: u16, message: &str) {
 /// for binary payloads and payloads over one megabyte (AC4): frames carry
 /// raw bytes, never re-encoded.
 fn write_frame_response(stream: &mut TcpStream, out: &[u8], err: &[u8], exit_code: i32) {
-    let head =
-        "HTTP/1.1 200 OK\r\nConnection: close\r\ncontent-type: application/octet-stream\r\n\r\n";
+    let cors = cors_response_headers();
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\n{cors}content-type: application/octet-stream\r\n\r\n"
+    );
     if stream.write_all(head.as_bytes()).is_err() {
         return;
     }
@@ -645,10 +737,20 @@ pub mod test_support {
     /// (see that file), so this helper is not the only way the server is
     /// exercised.
     pub fn spawn_test_server() -> SocketAddr {
+        spawn_test_server_with_config(ServerConfig::default())
+    }
+
+    pub fn spawn_test_server_with_editor_origin(origin: &str) -> SocketAddr {
+        spawn_test_server_with_config(ServerConfig {
+            editor_origin: Some(origin.to_string()),
+        })
+    }
+
+    fn spawn_test_server_with_config(config: ServerConfig) -> SocketAddr {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("local_addr");
         std::thread::spawn(move || {
-            serve_forever(listener);
+            serve_forever(listener, config);
         });
         addr
     }

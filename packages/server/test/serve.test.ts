@@ -261,6 +261,22 @@ async function openMalformedPresentation(projectJsonRaw: string): Promise<string
 }
 
 describe("startServe", () => {
+  it("protects runner routes with the dedicated session header without gating deck routes", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id, { runnerSessionToken: "runner-secret" });
+
+    const rejected = await fetch(`${server.url}/api/agent`);
+    expect(rejected.status).toBe(401);
+
+    const accepted = await fetch(`${server.url}/api/agent`, {
+      headers: { "x-slidra-runner-session": "runner-secret" },
+    });
+    expect(accepted.status).not.toBe(401);
+
+    const deck = await fetch(`${server.url}/api/presentation`);
+    expect(deck.status).toBe(200);
+  });
+
   // The `/api/raw/` route reads the request's Range header and hands it to
   // handleRawRequest. raw.test.ts calls that function directly, which
   // deliberately proves the range logic without serve.ts — so nothing
@@ -839,7 +855,7 @@ describe("static frontend serving", () => {
 
   it("serves index.html for the root path", async () => {
     await mkdir(webDist, { recursive: true });
-    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    await writeFile(path.join(webDist, "index.html"), `<html><body><script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>root</body></html>`);
     const id = await openFreshPresentation();
     const server = await serve(id);
 
@@ -868,7 +884,7 @@ describe("static frontend serving", () => {
 
   it("responds 404 for a static asset that does not exist, without falling back to index.html", async () => {
     await mkdir(webDist, { recursive: true });
-    await writeFile(path.join(webDist, "index.html"), "<html><body>root</body></html>");
+    await writeFile(path.join(webDist, "index.html"), `<html><body><script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>root</body></html>`);
     const id = await openFreshPresentation();
     const server = await serve(id);
 
