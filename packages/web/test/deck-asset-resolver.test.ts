@@ -90,4 +90,26 @@ describe("DeckAssetResolver", () => {
 
     expect(stageMediaFor(markup)["el-video"]).toEqual({ src: "data:video/webm;base64,Y2xpcA==", kind: "video" });
   });
+
+  it("preserves the media kind for player-supported MOV and Opus files after resolving deck bytes", async () => {
+    const createObjectURL = vi.fn(() => "blob:must-not-hide-the-media-kind");
+    const resolver = new DeckAssetResolver(
+      { fetch: async (path) => new Response(path.endsWith(".mov") ? "movie" : "voice") },
+      { createObjectURL, revokeObjectURL: () => undefined },
+    );
+
+    const markup = await resolver.resolveSvg(
+      `<svg xmlns="http://www.w3.org/2000/svg">
+        <rect id="el-movie" data-slidra-media="../assets/clip.mov"/>
+        <rect id="el-voice" data-slidra-media="../assets/voice.opus"/>
+      </svg>`,
+      "slides/001.svg",
+    );
+
+    expect(stageMediaFor(markup)).toEqual({
+      "el-movie": { src: "data:video/quicktime;base64,bW92aWU=", kind: "video" },
+      "el-voice": { src: "data:audio/opus;base64,dm9pY2U=", kind: "audio" },
+    });
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
 });

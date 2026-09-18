@@ -113,6 +113,16 @@ fn post_call(
     extra_headers: &[(&str, &str)],
     argv: &[&str],
 ) -> CallResponse {
+    post_call_with_body(base_url, credential_header, extra_headers, argv, &[])
+}
+
+fn post_call_with_body(
+    base_url: &str,
+    credential_header: Option<&str>,
+    extra_headers: &[(&str, &str)],
+    argv: &[&str],
+    body: &[u8],
+) -> CallResponse {
     let mut req =
         ureq::post(format!("{base_url}/call")).header("x-slidra-argv", &argv_header(argv));
     if let Some(cred) = credential_header {
@@ -122,7 +132,7 @@ fn post_call(
         req = req.header(*name, *value);
     }
     let request = req.config().http_status_as_error(false).build();
-    let response = request.send_empty().expect("request must be sent");
+    let response = request.send(body).expect("request must be sent");
     let status = response.status().as_u16();
     let (_, body) = response.into_parts();
     let mut bytes = Vec::new();
@@ -273,6 +283,94 @@ fn editor_can_reach_undo_and_redo_through_the_only_command_door() {
     let redo = post_call(&base_url, Some(&editor_cred), &[], &["redo", &id, "--json"]);
     assert_eq!(redo.status, 200, "the browser has no second command door");
     assert_eq!(decode_frames(&redo.body).2, 0);
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn table_cell_paste_stages_the_request_body_for_tsv_file_dash() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("editor-table-paste");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "editor-table-paste");
+    let create = commands::table::run(
+        &[
+            "create",
+            &id,
+            "slides/001.svg",
+            "--rows",
+            "2",
+            "--cols",
+            "2",
+            "--x",
+            "0",
+            "--y",
+            "0",
+        ]
+        .map(str::to_string),
+    );
+    assert!(
+        create.ok,
+        "setup: `table create` failed: {}",
+        create.message
+    );
+    let table_id = create.data.unwrap()["elementId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor_cred = credential::encode(CallerKind::Editor, &id);
+    let response = post_call_with_body(
+        &base_url,
+        Some(&editor_cred),
+        &[],
+        &[
+            "table",
+            "cell",
+            "paste",
+            "browser-supplied-id",
+            "slides/001.svg",
+            &table_id,
+            "--at",
+            "0,0",
+            "--tsv-file",
+            "-",
+            "--json",
+        ],
+        b"alpha\tbeta",
+    );
+    assert_eq!(response.status, 200);
+    let (stdout, stderr, exit_code) = decode_frames(&response.body);
+    assert_eq!(
+        exit_code,
+        0,
+        "the browser body must be staged as TSV: {}",
+        String::from_utf8_lossy(&stderr)
+    );
+    let envelope: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(
+        envelope["ok"], true,
+        "the browser body must be staged as TSV: {}",
+        envelope["message"]
+    );
+
+    let copied = commands::table::run(
+        &[
+            "cell",
+            "copy",
+            &id,
+            "slides/001.svg",
+            &table_id,
+            "--range",
+            "0,0:0,1",
+        ]
+        .map(str::to_string),
+    );
+    assert!(copied.ok, "{}", copied.message);
+    assert_eq!(copied.data.unwrap()["tsv"], "alpha\tbeta");
 
     unsafe { std::env::remove_var("SLIDRA_HOME") };
     std::fs::remove_dir_all(&home).ok();
