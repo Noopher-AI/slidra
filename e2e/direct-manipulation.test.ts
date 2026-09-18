@@ -570,9 +570,9 @@ it("dropping a single dragged element: the overview thumbnail (iframe.overview-f
 it("a single drag with 100 mouse-move steps in the middle produces exactly one history entry", async () => {
   const { server, registry, presentationId, cleanup } = await startServerFor();
   try {
-    const page = await openApp(server);
     const before = await readSlide(registry, presentationId);
     const beforeUndoCount = await undoCount(registry, presentationId);
+    const page = await openApp(server);
 
     const box = await svgBox(page);
     const from = toPagePoint(box, 180, 150); // inside el-a
