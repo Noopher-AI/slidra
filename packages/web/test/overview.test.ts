@@ -145,6 +145,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (input: string | URL) => {
       const url = String(input);
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
       if (url === "/api/presentation") return presentationResponse();
       if (url.startsWith("/api/effects/")) return effectsResponse(0);
       throw new Error(`unexpected fetch in this test: ${url}`);
@@ -165,6 +166,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") {
           return new Response(
             JSON.stringify({ formatVersion: 1, name: "Test", canvas: { width: 1024, height: 768 }, slides: [] }),
@@ -193,6 +196,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") {
           return new Response(
             JSON.stringify({ formatVersion: 1, name: "Test", canvas: canvasSize, slides: [] }),
@@ -270,6 +275,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url === "/api/effects/slides/001.svg") return effectsResponse(0);
         if (url === "/api/effects/slides/003.svg") return effectsResponse(3);
@@ -300,6 +307,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url === "/api/effects/slides/001.svg") return effectsResponse(slide1EffectCount);
         throw new Error(`unexpected fetch: ${url}`);
@@ -337,6 +346,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url !== "/api/effects/slides/001.svg") throw new Error(`unexpected fetch: ${url}`);
         if (!holdRefreshFetches) return effectsResponse(0);
@@ -416,6 +427,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url.startsWith("/api/effects/")) return effectsResponse(0);
         fetchCalls.push(url);
@@ -484,6 +497,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url.startsWith("/api/effects/")) return effectsResponse(0);
         fetchCalls.push(url);
@@ -516,6 +531,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         fetchCalls.push(url);
         if (url === "/api/files/slides/001.svg") {
@@ -573,6 +590,8 @@ describe("mountOverview", () => {
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url !== "/api/files/slides/001.svg") throw new Error(`unexpected fetch: ${url}`);
         if (!holdRefreshFetches) {
@@ -797,6 +816,8 @@ describe("a thumbnail only repaints when the visible picture actually changed", 
       "fetch",
       vi.fn(async (input: string | URL) => {
         const url = String(input);
+        if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
+      if (url.endsWith("/api/raw/fonts/NotoSansTC-Presentation.ttf")) return new Response("font", { status: 200 });
         if (url === "/api/presentation") return presentationResponse();
         if (url.startsWith("/api/effects/")) return effectsResponse(0);
         if (url === "/api/files/slides/001.svg") return new Response(s1, { status: 200 });

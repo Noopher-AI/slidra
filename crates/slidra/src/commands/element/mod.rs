@@ -78,7 +78,7 @@ pub const CATEGORIES: &[(&str, crate::commands::category::Category)] = &[
     (
         "element insert",
         crate::commands::category::Category::DeckScoped {
-            deck_id_arg: 0,
+            deck_id_arg: 1,
             mutates: true,
         },
     ),

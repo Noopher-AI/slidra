@@ -42,7 +42,9 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
     while i < args.len() {
         match args[i].as_str() {
             "--allow-write" => {
-                let path = args.get(i + 1).ok_or("--allow-write requires a path argument")?;
+                let path = args
+                    .get(i + 1)
+                    .ok_or("--allow-write requires a path argument")?;
                 allow_write.push(path.clone());
                 i += 2;
             }
@@ -58,7 +60,11 @@ fn parse_args(args: &[String]) -> Result<Invocation, String> {
     }
     let command = args[i].clone();
     let command_args = args[i + 1..].to_vec();
-    Ok(Invocation::Exec(ParsedExec { allow_write, command, command_args }))
+    Ok(Invocation::Exec(ParsedExec {
+        allow_write,
+        command,
+        command_args,
+    }))
 }
 
 fn main() -> ExitCode {
@@ -80,7 +86,9 @@ fn main() -> ExitCode {
 #[cfg(target_os = "linux")]
 mod platform {
     use super::ParsedExec;
-    use landlock::{path_beneath_rules, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI};
+    use landlock::{
+        ABI, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, path_beneath_rules,
+    };
     use std::fs;
     use std::os::unix::process::CommandExt;
     use std::process::{Command, ExitCode};
@@ -113,7 +121,10 @@ mod platform {
             .map_err(|e| format!("restrict_self failed: {e}"))?;
 
         if status.ruleset != RulesetStatus::FullyEnforced {
-            return Err(format!("ruleset was not fully enforced (got {:?}) — refusing to run unrestricted", status.ruleset));
+            return Err(format!(
+                "ruleset was not fully enforced (got {:?}) — refusing to run unrestricted",
+                status.ruleset
+            ));
         }
         if !status.no_new_privs {
             return Err("no_new_privs was not set — refusing to run unrestricted".to_string());
@@ -131,8 +142,13 @@ mod platform {
         // and reports its own exit code directly to the parent, which is
         // what keeps AC5's "byte-for-byte identical" true: nothing here
         // ever reads or transforms the child's stdout/stderr/exit code.
-        let error = Command::new(&parsed.command).args(&parsed.command_args).exec();
-        eprintln!("slidra-sandbox-exec: failed to exec {}: {error}", parsed.command);
+        let error = Command::new(&parsed.command)
+            .args(&parsed.command_args)
+            .exec();
+        eprintln!(
+            "slidra-sandbox-exec: failed to exec {}: {error}",
+            parsed.command
+        );
         ExitCode::from(126)
     }
 
@@ -162,7 +178,9 @@ mod platform {
             return ExitCode::from(1);
         }
         if blocked_write.is_ok() {
-            eprintln!("self-check: write to the blocked path unexpectedly succeeded — Landlock is not actually restricting anything");
+            eprintln!(
+                "self-check: write to the blocked path unexpectedly succeeded — Landlock is not actually restricting anything"
+            );
             return ExitCode::from(1);
         }
         ExitCode::SUCCESS
@@ -191,15 +209,27 @@ mod tests {
 
     #[test]
     fn parses_repeated_allow_write_and_the_trailing_command() {
-        let args: Vec<String> = ["--allow-write", "/a", "--allow-write", "/b", "--", "sh", "-c", "echo hi"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        let args: Vec<String> = [
+            "--allow-write",
+            "/a",
+            "--allow-write",
+            "/b",
+            "--",
+            "sh",
+            "-c",
+            "echo hi",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         match parse_args(&args).expect("should parse") {
             Invocation::Exec(parsed) => {
                 assert_eq!(parsed.allow_write, vec!["/a".to_string(), "/b".to_string()]);
                 assert_eq!(parsed.command, "sh");
-                assert_eq!(parsed.command_args, vec!["-c".to_string(), "echo hi".to_string()]);
+                assert_eq!(
+                    parsed.command_args,
+                    vec!["-c".to_string(), "echo hi".to_string()]
+                );
             }
             Invocation::SelfCheck(_) => panic!("expected an Exec invocation"),
         }
@@ -207,13 +237,24 @@ mod tests {
 
     #[test]
     fn rejects_a_missing_separator_or_missing_command_instead_of_guessing() {
-        let no_separator: Vec<String> = ["--allow-write", "/a"].into_iter().map(String::from).collect();
+        let no_separator: Vec<String> = ["--allow-write", "/a"]
+            .into_iter()
+            .map(String::from)
+            .collect();
         assert!(parse_args(&no_separator).is_err());
 
-        let empty_command: Vec<String> = ["--allow-write", "/a", "--"].into_iter().map(String::from).collect();
+        let empty_command: Vec<String> = ["--allow-write", "/a", "--"]
+            .into_iter()
+            .map(String::from)
+            .collect();
         assert!(parse_args(&empty_command).is_err());
 
-        let self_check: Vec<String> = ["--self-check", "/tmp/scratch"].into_iter().map(String::from).collect();
-        assert!(matches!(parse_args(&self_check), Ok(Invocation::SelfCheck(dir)) if dir == "/tmp/scratch"));
+        let self_check: Vec<String> = ["--self-check", "/tmp/scratch"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert!(
+            matches!(parse_args(&self_check), Ok(Invocation::SelfCheck(dir)) if dir == "/tmp/scratch")
+        );
     }
 }

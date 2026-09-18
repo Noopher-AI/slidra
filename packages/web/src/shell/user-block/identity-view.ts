@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-/**
- * `@slidra/server`'s identity wire shapes, restated here rather than
- * imported ([E6.T9] — same convention as `live-reload.ts`'s own
- * `SaveStateWire`: the browser bundle never depends on the Node-only
- * server package).
+/** Browser-local identity wire shapes. Kept here so the web bundle never
+ * imports the Node-only agent-runner package.
  */
 export interface Identity {
   id: string;

@@ -30,7 +30,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="zh-Hant">
-      <body>{children}</body>
+      <body>
+        <script
+          id="slidra-bootstrap"
+          type="application/json"
+          dangerouslySetInnerHTML={{ __html: "__SLIDRA_BOOTSTRAP__" }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

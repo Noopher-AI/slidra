@@ -32,6 +32,7 @@ import {
   type ChatMessage,
   type CommandStatus,
  appendSystemMessage } from "./chat-messages.js";
+import { createAgentEventSource } from "./service-event-source.js";
 
 export interface ChatStream {
   stop(): void;
@@ -62,7 +63,7 @@ const CLOSED_NOTICE = "Connection dropped and could not recover; the rest of thi
 export const STOPPED_NOTICE = "Stopped";
 
 export function startChatStream(options: ChatStreamOptions): ChatStream {
-  const createEventSource = options.eventSourceFactory ?? ((url: string) => new EventSource(url));
+  const createEventSource = options.eventSourceFactory ?? ((url: string) => createAgentEventSource(url));
   const source = createEventSource(STREAM_PATH);
 
   // The id of the agent message the *current* turn's chunks belong to, or

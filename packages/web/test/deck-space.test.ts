@@ -66,11 +66,10 @@ function spaceMarkup(overrides: Partial<DeckSpaceProps> = {}): string {
 describe("DeckCard", () => {
   // ① AC2: the card's three required elements, plus lazy-loading the
   // thumbnail (a 50-deck folder must not eagerly fetch every image, AC6).
-  it("renders a lazy thumbnail, the deck's name, and its last-modified time", () => {
+  it("renders a thumbnail placeholder until credentialed bytes load, plus the deck metadata", () => {
     const rendered = cardMarkup();
-    expect(rendered).toContain('class="deck-card-thumb"');
-    expect(rendered).toContain('loading="lazy"');
-    expect(rendered).toContain(`src="/api/decks/thumbnail?fileName=${BASE_DECK.fileName}&amp;v=${BASE_DECK.lastModified}"`);
+    expect(rendered).toContain('class="deck-card-thumb-placeholder"');
+    expect(rendered).not.toContain('src="/api/decks/thumbnail');
     expect(rendered).toContain(">My Deck<");
     const expectedModified = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
       new Date(BASE_DECK.lastModified),

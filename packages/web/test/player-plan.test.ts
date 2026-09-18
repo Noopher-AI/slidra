@@ -14,12 +14,47 @@ import {
 } from "../src/player-plan.js";
 import { invalidateSlideEffectPlans } from "../src/effects.js";
 import type { Effect } from "../src/effects.js";
-// Cross-package: the server's own MIME table must agree with this player's
-// extension allow-list, or an extension the player accepts silently falls
-// back to application/octet-stream on the wire (see the describe block
-// below). Not aliased in vitest.config.ts, so imported by relative path —
-// same convention this project already uses for other .ts-as-.js imports.
-import { rawContentTypeFor } from "../../../packages/server/src/raw.js";
+// Cross-package, AND now cross-language ([E10.T5] moved raw asset serving
+// into `crates/slidra/src/server/raw.rs`, which TS cannot import): this
+// player's extension allow-list must agree with the server's own MIME
+// table, or an extension the player accepts silently falls back to
+// application/octet-stream on the wire (see the describe block below).
+// `rawContentTypeFor` below is a deliberate hand-copy of `raw.rs`'s own
+// `content_type_for` — the same "two lists are each other's cross-check,
+// not one canonical source feeding the other" posture
+// `server/allowlist.rs`'s own doc comment describes for its whitelist.
+function rawContentTypeFor(virtualPath: string): string {
+  const ext = virtualPath.slice(virtualPath.lastIndexOf(".") + 1).toLowerCase();
+  const table: Record<string, string> = {
+    svg: "image/svg+xml",
+    json: "application/json",
+    ttf: "font/ttf",
+    otf: "font/otf",
+    txt: "text/plain; charset=utf-8",
+    // The rest mirrors `crates/slidra/src/media_format.rs`'s own
+    // `MEDIA_FORMATS` table verbatim (that Rust module is itself the
+    // hand-copy of this project's one canonical media-format list,
+    // `packages/core/src/media-format.ts`) — every alias extension
+    // (`.jpeg` alongside `.jpg`) included.
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    m4v: "video/mp4",
+    mov: "video/quicktime",
+    ogv: "video/ogg",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    m4a: "audio/mp4",
+    opus: "audio/ogg",
+    oga: "audio/ogg",
+    aac: "audio/aac",
+  };
+  return table[ext] ?? "application/octet-stream";
+}
 
 // Seam C's parent half (C3): markup in, plan out. `computePlayerPlan` no
 // longer derives `steps`/`effects` from the markup itself: that
@@ -413,6 +448,18 @@ describe("computePlayerPlan: media", () => {
       expect(plan.media[id]).toEqual({ src: "assets/clip.mp4", kind: "video" });
     },
   );
+
+  it("preserves the declared media kind after the asset URL becomes a blob URL", async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+  <metadata><slidra:effects ${NS}><slidra:effect target="el-media" family="media" effect="play" start="on-click"/></slidra:effects></metadata>
+  <g id="el-media" data-slidra-type="video" data-slidra-media="blob:http://editor.test/opaque-id"/>
+</svg>`;
+    mockEffectsRoute([{ target: "el-media", family: "media", effect: "play", start: "on-click" }]);
+
+    const plan = await computePlayerPlan(svg, SLIDE_PATH);
+
+    expect(plan.media["el-media"]).toEqual({ src: "blob:http://editor.test/opaque-id", kind: "video" });
+  });
 });
 
 describe("player allow-list must stay in sync with the server's MIME table", () => {

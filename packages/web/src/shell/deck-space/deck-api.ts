@@ -19,11 +19,6 @@ export interface DeckSummary {
   lastModified: number;
 }
 
-export interface DeckIdentity {
-  id: string;
-  name: string | null;
-  fileName: string | null;
-}
 
 /** A failed mutation — `reason` is only present for a 409 (`"deck-bound"` / `"name-conflict"` / `"editing"` / `"exporting"`); every other failure is a plain `error` string. */
 export interface DeckApiError {
@@ -53,13 +48,6 @@ export async function fetchDecks(): Promise<DeckSummary[]> {
   return data.decks;
 }
 
-/** Non-2xx throws, same reasoning as `fetchDecks`. */
-export async function fetchCurrentDeck(): Promise<DeckIdentity | null> {
-  const response = await fetch("/api/deck");
-  if (!response.ok) throw new Error("Failed to load: /api/deck");
-  const data = (await response.json()) as { deck: DeckIdentity | null };
-  return data.deck;
-}
 
 export async function resolveDeckId(fileName: string): Promise<DeckApiResult<{ id: string; fileName: string }>> {
   const response = await fetch("/api/deck/resolve", {
@@ -71,15 +59,6 @@ export async function resolveDeckId(fileName: string): Promise<DeckApiResult<{ i
   return { ok: true, ...(await response.json()) };
 }
 
-export async function switchToDeck(id: string): Promise<DeckApiResult<{ switched: boolean; deck: DeckIdentity }>> {
-  const response = await fetch("/api/deck/switch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id }),
-  });
-  if (!response.ok) return parseError(response);
-  return { ok: true, ...(await response.json()) };
-}
 
 export async function createDeck(name?: string): Promise<DeckApiResult<{ id: string; fileName: string }>> {
   const response = await fetch("/api/new", {
@@ -111,23 +90,6 @@ export async function renameDeck(id: string, name: string): Promise<DeckApiResul
   });
   if (!response.ok) return parseError(response);
   return { ok: true };
-}
-
-/**
- * `POST /api/deck/rename-current` — the title bar's own rename, for the one
- * deck `renameDeck` above always refuses: whichever deck this server
- * currently has bound. `reason` on a 409 is `"no-deck"` / `"editing"` /
- * `"exporting"` / `"name-conflict"`, never `"deck-bound"` (that reason only
- * ever comes from `renameDeck`).
- */
-export async function renameCurrentDeck(name: string): Promise<DeckApiResult<{ fileName: string }>> {
-  const response = await fetch("/api/deck/rename-current", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  if (!response.ok) return parseError(response);
-  return { ok: true, ...(await response.json()) };
 }
 
 export async function deleteDeck(id: string): Promise<DeckApiResult<object>> {

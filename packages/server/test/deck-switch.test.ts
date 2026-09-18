@@ -14,7 +14,6 @@ import type { RunningServer } from "../src/serve.js";
 import { openPolicy } from "../src/policy/open.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity } from "../src/deck-switch.js";
-import { readProjectsRegistry } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
@@ -170,11 +169,8 @@ async function fingerprintFile(filePath: string): Promise<string> {
  * `SLIDRA_HOME` itself.
  */
 async function fingerprintDeck(id: string, slidraPath: string, sandboxRoot: string): Promise<Record<string, string>> {
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  if (!entry) throw new Error(`test fixture: registry has no entry for ${id}`);
   return {
-    deckDir: await fingerprintDir(path.dirname(entry.deckPath)),
+    deckDir: await fingerprintDir(path.dirname(slidraPath)),
     agentWorkdir: await fingerprintDir(path.join(sandboxRoot, id)),
     slidraFile: await fingerprintFile(slidraPath),
   };
@@ -228,10 +224,8 @@ describe("no deck open (AC1)", () => {
       { method: "GET", path: "/api/files/project.json" },
       { method: "GET", path: "/api/effects/slides/001.svg" },
       { method: "GET", path: "/api/raw/project.json" },
-      { method: "GET", path: "/api/save-state" },
       { method: "POST", path: "/api/command" },
       { method: "POST", path: "/api/asset" },
-      { method: "POST", path: "/api/save/flush" },
       { method: "POST", path: "/api/undo" },
       { method: "POST", path: "/api/redo" },
       { method: "POST", path: "/api/export" },
@@ -338,10 +332,6 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(presentation.status).toBe(200);
     expect((await presentation.json()).name).toBe("AfterRename");
 
-    // The rename re-snapshots savedAt, so the freshly opened deck must not
-    // present itself as having unsaved changes.
-    const saveState = await fetch(`${server.url}/api/save-state`);
-    expect(await saveState.json()).toMatchObject({ known: true, dirty: false, fileName: "AfterRename.slidra" });
   });
 
   it("POST /api/deck/rename-current renames the bound deck in place, keeps it bound, and refuses the same name via /api/deck/rename (AC5's other half)", async () => {
@@ -365,38 +355,19 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(presentation.status).toBe(200);
     expect((await presentation.json()).name).toBe("AfterRename");
 
-    const saveState = await fetch(`${server.url}/api/save-state`);
-    expect(await saveState.json()).toMatchObject({ known: true, dirty: false, fileName: "AfterRename.slidra" });
   });
 
-  it("POST /api/deck/rename-current re-points live reload at the renamed file", async () => {
+  it("POST /api/deck/rename-current keeps later writes bound to the renamed deck", async () => {
     const created = await createDeck("Watched");
     const server = await serve({ presentationId: created.id });
-    const events = await connectEvents(server);
 
     const renamed = await postJson(server, "/api/deck/rename-current", { name: "WatchedRenamed" });
     expect(renamed.status).toBe(200);
-    // The rename's own broadcastSaveState, on the stream already open
-    // before the rename.
-    expect(eventNameOf(await events.readFrame())).toBe("save-state");
-
-    // A subsequent edit must still be observed by that same stream — proof
-    // the watcher was re-pointed at the renamed file rather than left
-    // watching the old, now-nonexistent path (where it would never fire
-    // again).
     const command = await postJson(server, "/api/command", {
       name: "slide notes set",
       input: { slidePath: "slides/001.svg", text: "after-rename" },
     });
     expect(command.status).toBe(200);
-    // Continuous save's own debounced write-back can also broadcast a
-    // second "save-state" in here — only "presentation-changed" (the
-    // watcher's own signal) is this test's assertion.
-    let sawChange = false;
-    for (let i = 0; i < 5 && !sawChange; i++) {
-      if (eventNameOf(await events.readFrame()) === "presentation-changed") sawChange = true;
-    }
-    expect(sawChange).toBe(true);
     expect(await readSlide(created.id)).toContain("after-rename");
   });
 
@@ -469,28 +440,20 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(await fingerprintFile(a.slidraPath)).toBe(beforeSlidraFile);
   });
 
-  it("⑥ after switching, a command, a live event-stream update, and an undo all act on B — never on A", async () => {
+  it("⑥ after switching, a command and undo act on B — never on A", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");
     const server = await serve({ presentationId: a.id });
     const aBefore = await readSlide(a.id);
 
-    const frameReader = await connectEvents(server);
-
     const switchResponse = await switchTo(server, b.id);
     expect(switchResponse.status).toBe(200);
-    // Fixed broadcast order (NOOP-433 §3): deck-changed, presentation-changed,
-    // save-state, all on the one already-open /api/events connection.
-    expect(eventNameOf(await frameReader.readFrame())).toBe("deck-changed");
-    expect(eventNameOf(await frameReader.readFrame())).toBe("presentation-changed");
-    expect(eventNameOf(await frameReader.readFrame())).toBe("save-state");
 
     const command = await postJson(server, "/api/command", {
       name: "slide notes set",
       input: { slidePath: "slides/001.svg", text: "acts-on-b" },
     });
     expect(command.status).toBe(200);
-    expect(eventNameOf(await frameReader.readFrame())).toBe("presentation-changed");
     expect(await readSlide(b.id)).toContain("acts-on-b");
     expect(await readSlide(a.id)).toBe(aBefore);
 
@@ -570,7 +533,7 @@ async function waitForLogLine(
 
 describe("the deck-switch hook (AC6, pure unit — no HTTP, no CLI)", () => {
   function fakeIdentity(id: string): DeckIdentity {
-    return { id, name: id, sourcePath: null };
+    return { id, name: id, fileName: null };
   }
 
   it("⑧ fires exactly once per switch, with the outgoing deck's identity", async () => {
@@ -657,7 +620,7 @@ describe("the deck-switch hook (AC6, pure unit — no HTTP, no CLI)", () => {
 
 describe("switch conflicts (AC/§4's guard table, pure unit for determinism)", () => {
   function fakeIdentity(id: string): DeckIdentity {
-    return { id, name: id, sourcePath: null };
+    return { id, name: id, fileName: null };
   }
 
   it("⑩ a switch already in progress refuses a second one with reason \"switching\", deterministically (no real-clock race)", async () => {

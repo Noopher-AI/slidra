@@ -3,7 +3,7 @@
 
 //! Per-caller-kind allow-lists (#397 "An allow-list per caller kind,
 //! checked before dispatch"; Plan §7.4/§7.6). Editor's is a fixed list of
-//! the 68 commands the editor's panels actually use (mirrors
+//! the commands the editor's panels actually use (mirrors
 //! `packages/server/src/command-endpoint.ts`'s `COMMAND_WHITELIST` — this
 //! is a deliberate, hand-copied Rust constant, not an import: this crate
 //! has no dependency edge to `packages/server`, and the two lists are
@@ -99,6 +99,8 @@ const EDITOR_ALLOWLIST: &[&str] = &[
     "slide style set",
     "presentation canvas set",
     "slide background set",
+    "undo",
+    "redo",
 ];
 
 /// Checked before dispatch, for every caller kind including the agent
@@ -123,7 +125,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn editor_allowlist_has_exactly_68_entries_no_duplicates() {
+    fn editor_allowlist_has_exactly_70_entries_no_duplicates() {
         let mut seen = std::collections::HashSet::new();
         for name in EDITOR_ALLOWLIST {
             assert!(
@@ -131,7 +133,7 @@ mod tests {
                 "duplicate editor allowlist entry: {name:?}"
             );
         }
-        assert_eq!(EDITOR_ALLOWLIST.len(), 68);
+        assert_eq!(EDITOR_ALLOWLIST.len(), 70);
     }
 
     #[test]
@@ -201,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn editor_is_confined_to_the_hand_listed_68() {
+    fn editor_is_confined_to_the_hand_listed_commands() {
         assert!(is_allowed(
             CallerKind::Editor,
             "element move",
@@ -210,11 +212,7 @@ mod tests {
                 mutates: true
             })
         ));
-        // `undo` is DeckScoped and agent/viewer-relevant, but not one of
-        // the editor's 68 — the editor reaches undo through its own,
-        // pre-existing UI affordance outside this door's remit, not
-        // through `POST /call`.
-        assert!(!is_allowed(
+        assert!(is_allowed(
             CallerKind::Editor,
             "undo",
             Some(Category::DeckScoped {

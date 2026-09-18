@@ -406,7 +406,7 @@ it("drag reordering: a red insertion line appears at the drop target's edge, rel
     const page = await openApp(server);
 
     let commandCalls = 0;
-    await page.route("**/api/command", (route) => {
+    await page.route("**/call", (route) => {
       commandCalls++;
       void route.continue();
     });

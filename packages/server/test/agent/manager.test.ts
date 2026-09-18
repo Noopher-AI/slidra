@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManager, AgentSwitchLockedError } from "../../src/agent/manager.js";
 import { EditingLock } from "../../src/editing-lock.js";
+import type { DeckServerClient } from "../../src/deck-server-client.js";
 import { AgentChatSession } from "../../src/agent/session.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
@@ -33,6 +34,17 @@ afterEach(async () => {
   delete process.env.SLIDRA_HOME;
   await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
+
+// [E10.T5]: `AgentManagerOptions` now requires a `DeckServerClient` (threaded
+// through to every `AgentChatSession` for the agent-turn lock mirror), but
+// this suite never calls `sendMessage` (see the header comment above) —
+// `openEditLockOnFirstCommand`/`closeEditLockIfOpen`, the only two call
+// sites that ever dial it, are never reached, so this never needs to
+// resolve to anything real.
+const unreachableDeckServer: DeckServerClient = {
+  baseUrl: "http://127.0.0.1:1",
+  close: async () => {},
+};
 
 function dummyConfig(kind: AgentKind): AgentAdapterConfig {
   const label = kind === "claude" ? "Claude Code" : kind === "codex" ? "Codex" : "Pi (Local Qwen)";
@@ -84,6 +96,7 @@ describe("AgentManager", () => {
       presentationId: "p1",
       policy: openPolicy,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: null, source: "none" },
       runCommand,
       resolveAdapter,
@@ -104,6 +117,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -122,6 +136,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -143,6 +158,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -169,6 +185,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock,
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -195,6 +212,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -224,6 +242,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -252,6 +271,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -271,6 +291,7 @@ describe("AgentManager", () => {
       presentationId: "p1",
       policy: openPolicy,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: null, source: "none" },
       runCommand,
       resolveAdapter,
@@ -287,6 +308,7 @@ describe("AgentManager", () => {
       policy: openPolicy,
       workdir: FAKE_WORKDIR,
       editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
       initial: { kind: "claude", source: "cli" },
       runCommand,
       resolveAdapter,
@@ -310,6 +332,7 @@ describe("AgentManager", () => {
         policy: openPolicy,
         workdir: "/tmp/deck-switch-test-wd1",
         editingLock: new EditingLock(),
+      deckServer: unreachableDeckServer,
         initial: { kind: "claude", source: "cli" },
         runCommand,
         resolveAdapter,

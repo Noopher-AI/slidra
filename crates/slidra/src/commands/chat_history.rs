@@ -28,12 +28,17 @@ pub fn run(args: &[String], stdin_body: Option<String>) -> CommandResult {
     try_run(args, stdin_body).unwrap_or_else(|err| CommandResult::from_error(&err))
 }
 
-fn try_run(args: &[String], stdin_body: Option<String>) -> crate::errors::SlidraResult<CommandResult> {
+fn try_run(
+    args: &[String],
+    stdin_body: Option<String>,
+) -> crate::errors::SlidraResult<CommandResult> {
     let id = argv::require_id_positional(args, 0, "chat-history", "presentation-id")?.to_string();
 
     if let Some(marker) = argv::optional_flag(args, "--append")? {
         if marker != "-" {
-            return Err(SlidraError::invalid("--append only accepts - (read the batch from stdin)"));
+            return Err(SlidraError::invalid(
+                "--append only accepts - (read the batch from stdin)",
+            ));
         }
         return append(&id, stdin_body);
     }
@@ -76,7 +81,8 @@ fn parse_limit(raw: &str) -> crate::errors::SlidraResult<usize> {
 /// writes from a malformed batch would leave the deck's history
 /// inconsistent with whatever the caller thinks it sent.
 fn append(id: &str, stdin_body: Option<String>) -> crate::errors::SlidraResult<CommandResult> {
-    let body = stdin_body.ok_or_else(|| SlidraError::invalid("--append - requires a JSON array on stdin"))?;
+    let body = stdin_body
+        .ok_or_else(|| SlidraError::invalid("--append - requires a JSON array on stdin"))?;
     let raw: serde_json::Value = serde_json::from_str(&body)
         .map_err(|_| SlidraError::invalid("stdin must be a JSON array of chat entries"))?;
     let raw_entries = raw
@@ -110,7 +116,9 @@ fn parse_entry(raw: &serde_json::Value) -> crate::errors::SlidraResult<ChatEntry
         .ok_or_else(|| SlidraError::invalid("chat entry missing kind"))?
         .to_string();
     if !chat_history::VALID_KINDS.contains(&kind.as_str()) {
-        return Err(SlidraError::invalid(format!("invalid chat entry kind: {kind}")));
+        return Err(SlidraError::invalid(format!(
+            "invalid chat entry kind: {kind}"
+        )));
     }
     let at = obj
         .get("at")
@@ -148,7 +156,9 @@ fn entry_json(entry: &ChatEntry) -> serde_json::Value {
         "text": entry.text,
     });
     if let Some(meta_obj) = entry.meta.as_ref().and_then(|meta| meta.as_object()) {
-        let target = value.as_object_mut().expect("value is always built as an object above");
+        let target = value
+            .as_object_mut()
+            .expect("value is always built as an object above");
         for (key, val) in meta_obj {
             target.insert(key.clone(), val.clone());
         }
@@ -216,7 +226,10 @@ mod tests {
                 None,
             );
             assert!(!result.ok, "expected --limit {bad} to fail");
-            assert_eq!(result.message, "--limit must be an integer between 1 and 1000");
+            assert_eq!(
+                result.message,
+                "--limit must be an integer between 1 and 1000"
+            );
         }
     }
 
@@ -291,7 +304,10 @@ mod tests {
 
         let bad_kind = run(
             &[fixture.id.clone(), "--append".to_string(), "-".to_string()],
-            Some(r#"[{"entryId":"e1","kind":"notice","at":"2024-01-01T00:00:00.000Z","text":"hi"}]"#.to_string()),
+            Some(
+                r#"[{"entryId":"e1","kind":"notice","at":"2024-01-01T00:00:00.000Z","text":"hi"}]"#
+                    .to_string(),
+            ),
         );
         assert!(!bad_kind.ok);
         assert_eq!(bad_kind.message, "invalid chat entry kind: notice");
@@ -309,7 +325,11 @@ mod tests {
         assert!(!partially_bad.ok);
 
         let read = run(&[fixture.id.clone()], None);
-        assert_eq!(read.data.unwrap()["total"], 0, "no partial writes from a rejected batch");
+        assert_eq!(
+            read.data.unwrap()["total"],
+            0,
+            "no partial writes from a rejected batch"
+        );
     }
 
     #[test]

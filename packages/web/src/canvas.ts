@@ -76,6 +76,7 @@
  * interface is allowed to reach.
  */
 import { slidePaintKey } from "./slide-paint-key.js";
+import { DeckAssetResolver } from "./deck-asset-resolver.js";
 import type { EmbedProvider } from "./embed.js";
 import { stageEmbedsFor, stageMediaFor, type StageEmbedEntry } from "./player-plan.js";
 import { fetchSlideEffectPlan, invalidateSlideEffectPlans } from "./effects.js";
@@ -96,7 +97,7 @@ import { readChartModel, type ChartModel } from "./chart-model.js";
 import { isMeasuredItem, type TableRuntimeEvent } from "./canvas/runtime-messages.js";
 export type { TableRuntimeEvent } from "./canvas/runtime-messages.js";
 import { flattenElements, type Viewport, type ActiveGesture, type TextEditState } from "./canvas/gesture-geometry.js";
-import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, setPresentationFonts, slideDirectory, wrapSelectionDocument } from "./canvas/frame-documents.js";
+import { EMPTY_DECK_DOCUMENT, fetchJson, fetchText, presentationFontFaces, setPresentationFonts, slideDirectory, wrapSelectionDocument } from "./canvas/frame-documents.js";
 export { presentationFontFaces, setPresentationFonts, slideDirectory, wrapPlayDocument, wrapSelectionDocument, wrapSlideDocument } from "./canvas/frame-documents.js";
 import { normalizeTemplatePaths, type ProjectJson } from "./canvas/project-io.js";
 export { fetchAssetList } from "./canvas/project-io.js";
@@ -892,6 +893,25 @@ export function mountCanvas(container: HTMLElement): CanvasController {
   };
   container.appendChild(frame.element);
 
+  let activeAssetResolver: DeckAssetResolver | null = null;
+  async function resolveSlideAssets(markup: string, slidePath: string, generation: number): Promise<string> {
+    const candidate = new DeckAssetResolver({ fetch: (path, init) => fetch(path, init) });
+    try {
+      const withFonts = markup.replace(/(<svg\b[^>]*>)/i, `$1${presentationFontFaces()}`);
+      const resolved = await candidate.resolveSvg(withFonts, slidePath);
+      if (destroyed || generation !== frame.generation) {
+        candidate.dispose();
+        return resolved;
+      }
+      activeAssetResolver?.dispose();
+      activeAssetResolver = candidate;
+      return resolved;
+    } catch (error) {
+      candidate.dispose();
+      throw error;
+    }
+  }
+
   /**
    * [E8.T3] Everything the move/scale/rotate/textbox-width/marquee gesture
    * functions defined below read or write off the rest of this closure,
@@ -1036,6 +1056,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     commitTextEditIfEditing: () => {
       if (editingState) void commitTextEdit();
     },
+    resolveSlideAssets,
     render,
   };
   const playMode = createPlayMode(playModeDeps);
@@ -2072,6 +2093,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       overlay.badgeTargets = [];
       overlay.badges = [];
       frame.paintedView = null;
+      activeAssetResolver?.dispose();
+      activeAssetResolver = null;
       frame.element.srcdoc = EMPTY_DECK_DOCUMENT;
       notifyChartWindow();
       return;
@@ -2088,7 +2111,7 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     // A pending post-load selection still forces a repaint: it waits on
     // the frame.element's `load` event (`selectOnceLoaded`), which only a
     // navigation fires.
-    const paintKey = slidePaintKey(svgMarkup);
+    const paintKey = `${slidePaintKey(svgMarkup)}\0${presentationFontFaces()}`;
     const repaint =
       selectAfterLoad !== null ||
       frame.paintedView === null ||
@@ -2136,6 +2159,9 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       return;
     }
 
+    const renderedMarkup = await resolveSlideAssets(svgMarkup, slidePath, thisGeneration);
+    if (destroyed || thisGeneration !== frame.generation) return;
+
     // [E2.T17]: the embed table is the parent's, not the iframe's — the
     // runtime is only told which ids to measure. Boxes are cleared here
     // and refilled by the runtime's first `embed-boxes` report, so a
@@ -2145,11 +2171,12 @@ export function mountCanvas(container: HTMLElement): CanvasController {
     notifyEmbeds();
 
     frame.element.srcdoc = wrapSelectionDocument(
-      svgMarkup,
-      `/api/raw/${slideDirectory(slidePath)}`,
+      renderedMarkup,
+      undefined,
       selectionColors(),
-      stageMediaFor(svgMarkup),
+      stageMediaFor(renderedMarkup),
       Object.keys(embeds.entries),
+      "",
     );
     frame.paintedView = { slidePath, key: paintKey };
 
@@ -2533,6 +2560,8 @@ export function mountCanvas(container: HTMLElement): CanvasController {
       // (ADR-0001); this module has no business deciding what else lives
       // in it. `.remove()` is also a no-op if the iframe is already
       // detached, so double-destroy stays safe.
+      activeAssetResolver?.dispose();
+      activeAssetResolver = null;
       frame.element.remove();
     },
   };

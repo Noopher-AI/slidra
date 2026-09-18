@@ -18,6 +18,7 @@
 import { presentationFontFaces, setPresentationFonts, type CanvasController } from "./canvas.js";
 import { fetchSlideEffectPlan } from "./effects.js";
 import { slidePaintKey } from "./slide-paint-key.js";
+import { DeckAssetResolver } from "./deck-asset-resolver.js";
 
 /**
  * The two behaviours that need a React tree to render into
@@ -190,6 +191,7 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
   // those blanked the whole rail for nothing. Same key ⇒ same picture ⇒
   // the srcdoc is left alone. Reset together with `frames` in
   // rebuildList(): a new list means new iframes that have painted nothing.
+  const assetResolvers: (DeckAssetResolver | undefined)[] = [];
   const paintedKeys: (string | undefined)[] = [];
 
   // The "✦ n" animation-count badge. One badge per slide,
@@ -254,14 +256,25 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     // the iframe before the first call, and refresh() only revisits
     // indexes whose `requested` flag is set.
     const frame = frames[index]!;
+    let candidate: DeckAssetResolver | undefined;
     try {
       const markup = await fetchText(`/api/files/${slidePath}`);
       if (generations[index] !== thisGeneration) return;
-      const key = slidePaintKey(markup);
+      const key = `${slidePaintKey(markup)}\0${presentationFontFaces()}`;
       if (paintedKeys[index] === key) return; // #303: metadata-only change, same picture.
-      frame.srcdoc = wrapSlideDocument(markup, `/api/raw/${slideDirectory(slidePath)}`);
+      candidate = new DeckAssetResolver({ fetch: (path, init) => fetch(path, init) });
+      const withFonts = markup.replace(/(<svg\b[^>]*>)/i, `$1${presentationFontFaces()}`);
+      const resolved = await candidate.resolveSvg(withFonts, slidePath);
+      if (generations[index] !== thisGeneration) {
+        candidate.dispose();
+        return;
+      }
+      assetResolvers[index]?.dispose();
+      assetResolvers[index] = candidate;
+      frame.srcdoc = wrapSlideDocument(resolved, undefined, "");
       paintedKeys[index] = key;
     } catch {
+      candidate?.dispose();
       if (generations[index] !== thisGeneration) return;
       paintedKeys[index] = undefined;
       frame.srcdoc = wrapSlideDocument(`<p>Thumbnail failed to load</p>`);
@@ -342,6 +355,8 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     // was pointed at — the gesture is abandoned, not applied on top of a deck that
     // has already moved out from under it.
     clearDragState();
+    for (const resolver of assetResolvers) resolver?.dispose();
+    assetResolvers.length = 0;
     list.replaceChildren();
     items.length = 0;
     frames.length = 0;
@@ -488,6 +503,8 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
     destroy() {
       unsubscribe();
       observer.disconnect();
+      for (const resolver of assetResolvers) resolver?.dispose();
+      assetResolvers.length = 0;
       list.remove();
     },
   };
@@ -523,9 +540,9 @@ export function mountOverview(container: HTMLElement, canvas: CanvasController, 
  * three engines) that the injected `<base>` leaves same-document fragment
  * references intact in this wrapper too.
  */
-export function wrapSlideDocument(bodyMarkup: string, baseHref?: string): string {
+export function wrapSlideDocument(bodyMarkup: string, baseHref?: string, fontFaceStyle = presentationFontFaces()): string {
   const baseTag = baseHref ? `<base href="${escapeAttribute(baseHref)}">` : "";
-  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${presentationFontFaces()}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8">${baseTag}${fontFaceStyle}<style>html,body{margin:0;height:100%;background:#fff}svg{display:block;width:100%;height:100%}</style></head><body>${bodyMarkup}</body></html>`;
 }
 
 /** Mirrors canvas.ts's own slideDirectory (module-private there; see file header). */

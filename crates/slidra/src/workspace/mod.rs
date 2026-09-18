@@ -87,7 +87,12 @@ pub fn resolve_home() -> PathBuf {
 /// a fallback that only matters when both `SLIDRA_HOME` and `HOME` are
 /// unset. This is the one deliberate behavioral gap in this port — flagged
 /// here rather than silently guessed at.
-fn home_dir() -> PathBuf {
+/// `pub(crate)`: `server::deck_store`'s own default-deck-folder fallback
+/// (`~/Slidra`, mirroring `storage/deck-folder.ts`'s `defaultDeckFolder`)
+/// needs the real OS home directory too, distinct from `resolve_home`'s
+/// `SLIDRA_HOME` (which can point at a test's temp dir) — reusing this
+/// rather than a second `$HOME`-or-`/` fallback.
+pub(crate) fn home_dir() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
@@ -460,8 +465,14 @@ pub mod registry {
         fn registry_lock_excludes_a_second_holder_while_the_first_is_inside() {
             let home = temp_dir("lock-excludes");
             with_registry_lock(&home, || {
+                let started = std::time::Instant::now();
                 let blocked = with_registry_lock(&home, || Ok(()));
-                assert!(blocked.is_err(), "a second holder must not get in");
+                let err = blocked.expect_err("a live holder must time out");
+                assert_eq!(
+                    err.message(),
+                    "another slidra is writing presentation registry data, please try again later"
+                );
+                assert!(started.elapsed() >= LOCK_TIMEOUT);
                 Ok(())
             })
             .unwrap();

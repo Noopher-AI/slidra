@@ -85,13 +85,15 @@ mod list {
     /// `root` does not exist at all, mirroring `ls`'s own "unresolvable
     /// directory" contract.
     fn candidate_paths(root: &Path) -> SlidraResult<Vec<PathBuf>> {
-        let metadata = std::fs::metadata(root)
-            .map_err(|_| SlidraError::not_found(format!("directory not found: {}", root.display())))?;
+        let metadata = std::fs::metadata(root).map_err(|_| {
+            SlidraError::not_found(format!("directory not found: {}", root.display()))
+        })?;
         if metadata.is_file() {
             return Ok(vec![root.to_path_buf()]);
         }
-        let entries = std::fs::read_dir(root)
-            .map_err(|_| SlidraError::not_found(format!("directory not found: {}", root.display())))?;
+        let entries = std::fs::read_dir(root).map_err(|_| {
+            SlidraError::not_found(format!("directory not found: {}", root.display()))
+        })?;
         let mut paths = Vec::new();
         for entry in entries {
             let Ok(entry) = entry else { continue };
@@ -124,7 +126,10 @@ mod list {
     /// instead, per plan §4's behavior table ("資料夾內有壞檔／legacy ZIP →
     /// 該筆回 null，列表不得整體失敗").
     fn describe_deck(path: &Path) -> Value {
-        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         match project::read_project_json(path) {
             Ok(project) => serde_json::json!({
                 "fileName": file_name,
@@ -157,19 +162,31 @@ mod list {
         use std::collections::BTreeMap;
 
         fn temp_dir(label: &str) -> PathBuf {
-            let dir = std::env::temp_dir().join(format!("slidra-test-deck-list-{label}-{}", crate::id::random_hex_suffix()));
+            let dir = std::env::temp_dir().join(format!(
+                "slidra-test-deck-list-{label}-{}",
+                crate::id::random_hex_suffix()
+            ));
             std::fs::create_dir_all(&dir).unwrap();
             dir
         }
 
-        fn write_deck(dir: &Path, file_name: &str, name: &str, slides: usize, owner: Option<&str>) -> PathBuf {
+        fn write_deck(
+            dir: &Path,
+            file_name: &str,
+            name: &str,
+            slides: usize,
+            owner: Option<&str>,
+        ) -> PathBuf {
             let path = dir.join(file_name);
             let mut files: BTreeMap<String, Vec<u8>> =
-                crate::presentation::build_minimal_presentation(name).into_iter().collect();
+                crate::presentation::build_minimal_presentation(name)
+                    .into_iter()
+                    .collect();
             for i in 0..slides {
                 files.insert(
                     format!("slides/{i:03}.svg"),
-                    b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n".to_vec(),
+                    b"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n"
+                        .to_vec(),
                 );
             }
             crate::deck::create_new_with_files(&path, &files).unwrap();
@@ -177,13 +194,22 @@ mod list {
             raw.insert("name".to_string(), Value::String(name.to_string()));
             raw.insert(
                 "slides".to_string(),
-                Value::Array((0..slides).map(|i| Value::String(format!("slides/{i:03}.svg"))).collect()),
+                Value::Array(
+                    (0..slides)
+                        .map(|i| Value::String(format!("slides/{i:03}.svg")))
+                        .collect(),
+                ),
             );
             if let Some(owner) = owner {
                 raw.insert("owner".to_string(), Value::String(owner.to_string()));
             }
             let content = project::serialize_project_json(&raw);
-            crate::workspace::virtual_fs::force_write_file(&path, "project.json", content.as_bytes()).unwrap();
+            crate::workspace::virtual_fs::force_write_file(
+                &path,
+                "project.json",
+                content.as_bytes(),
+            )
+            .unwrap();
             path
         }
 
@@ -209,7 +235,13 @@ mod list {
             let dir = temp_dir("empty");
             let result = run(&[dir.to_string_lossy().into_owned()]);
             assert!(result.ok);
-            assert_eq!(result.data.as_ref().unwrap()["decks"].as_array().unwrap().len(), 0);
+            assert_eq!(
+                result.data.as_ref().unwrap()["decks"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                0
+            );
             std::fs::remove_dir_all(&dir).ok();
         }
 
@@ -231,11 +263,17 @@ mod list {
             assert!(result.ok, "expected success, got {}", result.message);
             let decks = result.data.as_ref().unwrap()["decks"].as_array().unwrap();
             assert_eq!(decks.len(), 2);
-            let bad = decks.iter().find(|d| d["fileName"] == "bad.slidra").unwrap();
+            let bad = decks
+                .iter()
+                .find(|d| d["fileName"] == "bad.slidra")
+                .unwrap();
             assert_eq!(bad["name"], Value::Null);
             assert_eq!(bad["slideCount"], Value::Null);
             assert_eq!(bad["owner"], Value::Null);
-            let good = decks.iter().find(|d| d["fileName"] == "good.slidra").unwrap();
+            let good = decks
+                .iter()
+                .find(|d| d["fileName"] == "good.slidra")
+                .unwrap();
             assert_eq!(good["name"], Value::String("Good Deck".to_string()));
 
             std::fs::remove_dir_all(&dir).ok();
@@ -248,7 +286,11 @@ mod list {
             write_deck(&dir, "theirs.slidra", "Theirs", 0, Some("bob"));
             write_deck(&dir, "unowned.slidra", "Unowned", 0, None);
 
-            let result = run(&[dir.to_string_lossy().into_owned(), "--owner".to_string(), "alice".to_string()]);
+            let result = run(&[
+                dir.to_string_lossy().into_owned(),
+                "--owner".to_string(),
+                "alice".to_string(),
+            ]);
             assert!(result.ok);
             let decks = result.data.as_ref().unwrap()["decks"].as_array().unwrap();
             assert_eq!(decks.len(), 1);
@@ -275,7 +317,10 @@ mod meta_set {
         }
 
         set_meta(Path::new(&path), name.as_deref(), owner.as_deref())?;
-        Ok(CommandResult::success("deck metadata updated".to_string(), Some(serde_json::json!({}))))
+        Ok(CommandResult::success(
+            "deck metadata updated".to_string(),
+            Some(serde_json::json!({})),
+        ))
     }
 
     pub fn run(args: &[String]) -> CommandResult {
@@ -306,9 +351,14 @@ mod meta_set {
         use super::*;
 
         fn temp_deck(label: &str) -> PathBuf {
-            let path = std::env::temp_dir().join(format!("slidra-test-deck-meta-{label}-{}.slidra", crate::id::random_hex_suffix()));
+            let path = std::env::temp_dir().join(format!(
+                "slidra-test-deck-meta-{label}-{}.slidra",
+                crate::id::random_hex_suffix()
+            ));
             let files: std::collections::BTreeMap<String, Vec<u8>> =
-                crate::presentation::build_minimal_presentation("Original Name").into_iter().collect();
+                crate::presentation::build_minimal_presentation("Original Name")
+                    .into_iter()
+                    .collect();
             crate::deck::create_new_with_files(&path, &files).unwrap();
             path
         }
@@ -318,7 +368,10 @@ mod meta_set {
             let path = temp_deck("missing-flags");
             let result = run(&[path.to_string_lossy().into_owned()]);
             assert!(!result.ok);
-            assert_eq!(result.message, "command deck meta set requires --name or --owner");
+            assert_eq!(
+                result.message,
+                "command deck meta set requires --name or --owner"
+            );
             std::fs::remove_file(&path).ok();
         }
 
@@ -327,11 +380,18 @@ mod meta_set {
             let path = temp_deck("owner-roundtrip");
             let before = project::read_project_json(&path).unwrap();
 
-            let result = run(&[path.to_string_lossy().into_owned(), "--owner".to_string(), "alice".to_string()]);
+            let result = run(&[
+                path.to_string_lossy().into_owned(),
+                "--owner".to_string(),
+                "alice".to_string(),
+            ]);
             assert!(result.ok, "expected success, got {}", result.message);
 
             let after = project::read_project_json(&path).unwrap();
-            assert_eq!(after.raw.get("owner").and_then(Value::as_str), Some("alice"));
+            assert_eq!(
+                after.raw.get("owner").and_then(Value::as_str),
+                Some("alice")
+            );
             assert_eq!(after.name, before.name);
             assert_eq!(after.slides, before.slides);
             assert_eq!(after.format_version, before.format_version);
