@@ -171,7 +171,12 @@ fn empty_effect_plan() -> serde_json::Value {
 /// in `commands/slide.rs`, which Plan's "minimal changes" list does not
 /// cover touching (this route reuses the same shared-executor pattern
 /// `handle_effects` above and `server::handle_call` already establish).
-fn render_slide(workbench_id: &str, virtual_path: &str) -> Result<String, (u16, String)> {
+/// `pub(crate)`: `server::thumbnail_cache` reuses this directly for the
+/// same "render a slide" step, rather than a second `slide render`
+/// dispatch — the deck id there is a real presentation id
+/// (`deck_store::resolve_id`'s own return value), the same shape
+/// `workbench_id` has here.
+pub(crate) fn render_slide(workbench_id: &str, virtual_path: &str) -> Result<String, (u16, String)> {
     let argv = [
         "slide".to_string(),
         "render".to_string(),

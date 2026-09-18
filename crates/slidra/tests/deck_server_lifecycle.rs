@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-//! Door-boundary tests for [E10.T5] Slice C's first HTTP-wired piece: the
-//! deck lifecycle routes (`POST /new|/open|/deck/import|/deck/rename|
-//! /deck/delete|/deck/resolve`, `GET /decks`). Same in-process-server-
-//! over-real-TCP pattern as `tests/deck_server_assets_and_editing_lock.rs`.
-//! `GET /decks/thumbnail` is not covered here — it is not wired yet.
+//! Door-boundary tests for [E10.T5] Slice C's HTTP-wired deck lifecycle
+//! routes (`POST /new|/open|/deck/import|/deck/rename|/deck/delete|
+//! /deck/resolve`, `GET /decks`, `GET /decks/thumbnail`). Same
+//! in-process-server-over-real-TCP pattern as
+//! `tests/deck_server_assets_and_editing_lock.rs`.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -56,7 +56,17 @@ impl Drop for TestHome {
 
 struct HttpResponse {
     status: u16,
+    headers: Vec<(String, String)>,
     body: Vec<u8>,
+}
+
+impl HttpResponse {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 fn post(
@@ -76,30 +86,55 @@ fn post(
     let request = req.config().http_status_as_error(false).build();
     let response = request.send(body).expect("request must be sent");
     let status = response.status().as_u16();
+    let headers = collect_headers(&response);
     let (_, resp_body) = response.into_parts();
     let mut bytes = Vec::new();
     resp_body.into_reader().read_to_end(&mut bytes).unwrap();
     HttpResponse {
         status,
+        headers,
         body: bytes,
     }
 }
 
-fn get(base_url: &str, path: &str, credential_header: Option<&str>) -> HttpResponse {
+fn get(
+    base_url: &str,
+    path: &str,
+    credential_header: Option<&str>,
+    extra_headers: &[(&str, &str)],
+) -> HttpResponse {
     let mut req = ureq::get(format!("{base_url}{path}"));
     if let Some(cred) = credential_header {
         req = req.header(credential::CREDENTIAL_HEADER, cred);
     }
+    for (name, value) in extra_headers {
+        req = req.header(*name, *value);
+    }
     let request = req.config().http_status_as_error(false).build();
     let response = request.call().expect("request must be sent");
     let status = response.status().as_u16();
+    let headers = collect_headers(&response);
     let (_, resp_body) = response.into_parts();
     let mut bytes = Vec::new();
     resp_body.into_reader().read_to_end(&mut bytes).unwrap();
     HttpResponse {
         status,
+        headers,
         body: bytes,
     }
+}
+
+fn collect_headers(response: &ureq::http::Response<ureq::Body>) -> Vec<(String, String)> {
+    response
+        .headers()
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.to_string(),
+                value.to_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect()
 }
 
 fn json(resp: &HttpResponse) -> serde_json::Value {
@@ -140,7 +175,7 @@ fn create_deck_registers_it_and_lists_it_back() {
     assert_eq!(value["fileName"], "My Deck.slidra");
     assert!(value["id"].as_str().is_some());
 
-    let list = get(&base_url, "/decks", Some(&editor));
+    let list = get(&base_url, "/decks", Some(&editor), &[]);
     assert_eq!(list.status, 200);
     let decks = json(&list)["decks"].as_array().unwrap().clone();
     assert_eq!(decks.len(), 1);
@@ -213,7 +248,7 @@ fn list_decks_filters_by_owner_query_param() {
         200
     );
 
-    let filtered = get(&base_url, "/decks?owner=alice", Some(&editor));
+    let filtered = get(&base_url, "/decks?owner=alice", Some(&editor), &[]);
     let decks = json(&filtered)["decks"].as_array().unwrap().clone();
     assert_eq!(decks.len(), 1);
     assert_eq!(decks[0]["fileName"], "A.slidra");
@@ -498,4 +533,115 @@ fn resolve_rejects_a_filename_with_a_path_separator() {
         body.as_bytes(),
     );
     assert_eq!(response.status, 400);
+}
+
+// ---- GET /decks/thumbnail ------------------------------------------------
+
+#[test]
+fn thumbnail_renders_the_first_slide_caches_it_and_answers_304_on_a_matching_etag() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("thumbnail");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let created = post(
+        &base_url,
+        "/new",
+        Some(&editor),
+        &[],
+        br#"{"name":"Thumb"}"#,
+    );
+    let created_value = json(&created);
+    let id = created_value["id"].as_str().unwrap().to_string();
+    let file_name = created_value["fileName"].as_str().unwrap().to_string();
+    let add = slidra::commands::slide::run(&["add".to_string(), id], false);
+    assert!(add.ok, "setup: slide add failed: {}", add.message);
+
+    let query = format!("/decks/thumbnail?fileName={}", urlencode(&file_name));
+    let first = get(&base_url, &query, Some(&editor), &[]);
+    assert_eq!(
+        first.status,
+        200,
+        "body: {:?}",
+        String::from_utf8_lossy(&first.body)
+    );
+    assert_eq!(
+        first.header("content-type"),
+        Some("image/svg+xml; charset=utf-8")
+    );
+    let etag = first
+        .header("etag")
+        .expect("thumbnail response must carry an ETag")
+        .to_string();
+    assert!(!first.body.is_empty());
+
+    let cached = get(&base_url, &query, Some(&editor), &[]);
+    assert_eq!(cached.status, 200);
+    assert_eq!(
+        cached.body, first.body,
+        "a cache hit must return byte-identical content"
+    );
+
+    let not_modified = get(
+        &base_url,
+        &query,
+        Some(&editor),
+        &[("if-none-match", &etag)],
+    );
+    assert_eq!(not_modified.status, 304);
+    assert!(not_modified.body.is_empty());
+    assert_eq!(not_modified.header("etag"), Some(etag.as_str()));
+}
+
+#[test]
+fn thumbnail_of_a_deck_with_no_slides_is_204() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("thumbnail-no-slides");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let created = post(
+        &base_url,
+        "/new",
+        Some(&editor),
+        &[],
+        br#"{"name":"Empty"}"#,
+    );
+    let file_name = json(&created)["fileName"].as_str().unwrap().to_string();
+
+    let query = format!("/decks/thumbnail?fileName={}", urlencode(&file_name));
+    let response = get(&base_url, &query, Some(&editor), &[]);
+    assert_eq!(response.status, 204);
+}
+
+#[test]
+fn thumbnail_of_a_missing_file_is_404() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let _home = TestHome::set_up("thumbnail-missing");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor = editor_cred();
+
+    let response = get(
+        &base_url,
+        "/decks/thumbnail?fileName=nope.slidra",
+        Some(&editor),
+        &[],
+    );
+    assert_eq!(response.status, 404);
+}
+
+fn urlencode(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }

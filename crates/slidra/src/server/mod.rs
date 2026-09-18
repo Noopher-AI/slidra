@@ -44,6 +44,7 @@ pub mod raw;
 pub mod reads;
 pub mod redact;
 pub mod shim_client;
+pub mod thumbnail_cache;
 pub mod trash;
 
 use credential::{CallerKind, Credential, CredentialError};
@@ -136,6 +137,7 @@ fn handle_connection(mut stream: TcpStream) {
         ("POST", "/deck/delete") => deck_lifecycle::handle_delete(&request, &mut stream),
         ("GET", "/decks") => deck_lifecycle::handle_list(&request, &mut stream),
         ("POST", "/deck/resolve") => deck_lifecycle::handle_resolve(&request, &mut stream),
+        ("GET", "/decks/thumbnail") => deck_lifecycle::handle_thumbnail(&request, &mut stream),
         _ => write_plain_response(&mut stream, 404, "not found"),
     }
 }

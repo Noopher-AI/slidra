@@ -21,8 +21,9 @@
 //! caller-supplied id, never "this credential's own workbench"), so they
 //! use `server::authorize` directly rather than `authorize_deck_scoped`.
 //!
-//! `GET /decks/thumbnail` is NOT implemented here yet — that is the next
-//! piece of this slice (a thumbnail-cache port), not part of this file.
+//! `GET /decks/thumbnail`'s handler lives here (the HTTP layer, ETag/304
+//! handling included) but its cache/render logic is `thumbnail_cache.rs`,
+//! same split as every other route here vs. `deck_store.rs`.
 
 use std::net::TcpStream;
 
@@ -270,18 +271,17 @@ pub(crate) fn handle_delete(request: &RawRequest, stream: &mut TcpStream) {
     }
 }
 
-/// Extracts `?owner=` from a raw request path (with its query string
+/// Extracts `?<key>=` from a raw request path (with its query string
 /// still attached — `server::path_only` is for routing only). Returns
-/// `None` when the key is absent at all (list unfiltered), `Some("")`
-/// when present but empty (mirrors `URLSearchParams.has("owner")` being
-/// true for `?owner=`), matching `handleDecksGet`'s own `hasOwnerParam`
-/// distinction.
-fn owner_query_param(path: &str) -> Option<String> {
+/// `None` when the key is absent at all, `Some("")` when present but
+/// empty (mirrors `URLSearchParams.has(key)` being true for `?key=`),
+/// matching `handleDecksGet`'s own `hasOwnerParam` distinction.
+fn query_param(path: &str, key: &str) -> Option<String> {
     let query = path.split_once('?')?.1;
     for pair in query.split('&') {
         match pair.split_once('=') {
-            Some(("owner", v)) => return Some(server::percent_decode(v).unwrap_or_default()),
-            None if pair == "owner" => return Some(String::new()),
+            Some((k, v)) if k == key => return Some(server::percent_decode(v).unwrap_or_default()),
+            None if pair == key => return Some(String::new()),
             _ => {}
         }
     }
@@ -295,7 +295,7 @@ pub(crate) fn handle_list(request: &RawRequest, stream: &mut TcpStream) {
     let Some(_credential) = server::authorize(request, stream, READ_CALLERS) else {
         return;
     };
-    let owner = owner_query_param(&request.path);
+    let owner = query_param(&request.path, "owner");
 
     match deck_store::list_decks(owner.as_deref()) {
         Ok(entries) => {
@@ -356,5 +356,58 @@ pub(crate) fn handle_resolve(request: &RawRequest, stream: &mut TcpStream) {
             &serde_json::json!({ "id": resolved.id, "fileName": resolved.file_name }),
         ),
         Err(err) => write_store_error(stream, err),
+    }
+}
+
+/// `GET /decks/thumbnail?fileName=&v=` — a lazily-registered, cache-first
+/// first-slide render. `v` (the card's `lastModified`) is a browser
+/// cache-buster only and is never read server-side — this route derives
+/// its own truth from the deck file's real mtime.
+pub(crate) fn handle_thumbnail(request: &RawRequest, stream: &mut TcpStream) {
+    let Some(_credential) = server::authorize(request, stream, READ_CALLERS) else {
+        return;
+    };
+    let file_name = match query_param(&request.path, "fileName") {
+        Some(value) if is_valid_deck_file_name(&value) => value,
+        _ => {
+            server::write_json_error(
+                stream,
+                400,
+                "fileName must be a non-empty file name with no path separators",
+            );
+            return;
+        }
+    };
+
+    match crate::server::thumbnail_cache::get_or_create_thumbnail(&file_name) {
+        Ok(result) => {
+            if request.header("if-none-match") == Some(result.etag.as_str()) {
+                server::write_body_response(
+                    stream,
+                    304,
+                    "image/svg+xml; charset=utf-8",
+                    &[("ETag", result.etag)],
+                    b"",
+                );
+                return;
+            }
+            let etag = result.etag.clone();
+            server::write_body_response(
+                stream,
+                200,
+                "image/svg+xml; charset=utf-8",
+                &[("ETag", etag)],
+                &result.bytes,
+            );
+        }
+        Err(crate::server::thumbnail_cache::ThumbnailError::NotFound(message)) => {
+            server::write_json_error(stream, 404, &message);
+        }
+        Err(crate::server::thumbnail_cache::ThumbnailError::NoSlides(_)) => {
+            server::write_body_response(stream, 204, "application/json; charset=utf-8", &[], b"");
+        }
+        Err(crate::server::thumbnail_cache::ThumbnailError::Invalid(message)) => {
+            server::write_json_error(stream, 500, &message);
+        }
     }
 }
