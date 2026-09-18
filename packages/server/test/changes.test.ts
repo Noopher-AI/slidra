@@ -15,6 +15,7 @@ import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import { openPolicy } from "../src/policy/open.js";
 import { createChangeBroadcaster } from "../src/changes.js";
+import { startDeckServer, type DeckServerClient } from "../src/deck-server-client.js";
 import { deckPathFor } from "../src/slidra/home.js";
 
 const execFileAsync = promisify(execFile);
@@ -67,6 +68,13 @@ let slidraHome: string;
 let slidraDir: string;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
+// [E10.T5]: `createChangeBroadcaster` now needs a live `DeckServerClient` to
+// source `presentation-changed` from (`watch.ts` subscribes to the crate's
+// own `GET /events`) — every test in this file that constructs a
+// broadcaster directly (not through `startServe`, which already starts its
+// own) shares this one, started fresh per test right after `SLIDRA_HOME` is
+// set, same as `startServe`'s own ordering.
+let deckServer: DeckServerClient;
 
 beforeEach(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-changes-home-"));
@@ -75,6 +83,7 @@ beforeEach(async () => {
   process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
   streams = [];
+  deckServer = await startDeckServer();
 });
 
 afterEach(async () => {
@@ -83,6 +92,7 @@ afterEach(async () => {
   // socket.
   await Promise.all(streams.map((stream) => stream.cancel()));
   await Promise.all(servers.map((server) => server.close()));
+  await deckServer.close();
   delete process.env.SLIDRA_HOME;
   delete process.env.SLIDRA_BIN;
   await rm(slidraHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -266,7 +276,7 @@ describe("GET /api/events", () => {
     // attached first, so this reproduces "resumes after shutdown already
     // began" deterministically rather than by chance timing.
     const { id } = await openFreshPresentation();
-    const broadcaster = createChangeBroadcaster(id);
+    const broadcaster = createChangeBroadcaster(id, deckServer);
     const res = new FakeResponse() as unknown as ServerResponse;
 
     const connectionPromise = broadcaster.handleConnection(res);
@@ -279,30 +289,42 @@ describe("GET /api/events", () => {
   });
 
   it("responds with an explicit error, not an open stream, when the watcher fails to start for an unknown id", async () => {
-    // A fake SLIDRA_BIN that answers `cat <id> project.json`
-    // for ANY id, real or not (the equivalent stub-registry test in
-    // serve.test.ts uses the same technique) — loadProject succeeds
-    // through it, but `watchPresentation`'s `deckPathFor` reads the REAL
-    // `SLIDRA_HOME/projects.json` directly (slidra/home.ts, not the
-    // CLI), which has no entry for this id at all. The failure must
-    // surface as an explicit HTTP error, not a silently-opened stream.
+    // A fake SLIDRA_BIN whose `__deck-server` answers every `/events`
+    // request 404 (`unregistered-stub-id` names nothing) and whose
+    // per-call `cat <id> project.json` succeeds for ANY id (the equivalent
+    // stub-registry test in serve.test.ts uses the same technique) — the
+    // startup path's own `loadProject` call succeeds, but the watcher's
+    // connection to the crate's `/events` gets the real 404. The failure
+    // must surface as an explicit HTTP error, not a silently-opened stream.
     const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-changes-fakebin-"));
     const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
     await writeFile(
       fakeBinPath,
       [
         "#!/usr/bin/env node",
-        'const args = process.argv.slice(2).filter((a) => a !== "--json");',
-        "const [cmd, ...rest] = args;",
-        "function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
-        "let result;",
-        'if (cmd === "cat" && rest[1] === "project.json") {',
-        "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
-        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
+        'import http from "node:http";',
+        "const args = process.argv.slice(2);",
+        'if (args[0] === "__deck-server") {',
+        "  const server = http.createServer((req, res) => {",
+        '    res.writeHead(404, { "content-type": "application/json" });',
+        '    res.end(JSON.stringify({ error: "no presentation found for id: unregistered-stub-id" }));',
+        "  });",
+        '  server.listen(0, "127.0.0.1", () => {',
+        "    process.stdout.write(JSON.stringify({ port: server.address().port }) + \"\\n\");",
+        "  });",
         "} else {",
-        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        '  const cliArgs = args.filter((a) => a !== "--json");',
+        "  const [cmd, ...rest] = cliArgs;",
+        "  function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
+        "  let result;",
+        '  if (cmd === "cat" && rest[1] === "project.json") {',
+        "    const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
+        '    result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
+        "  } else {",
+        '    result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        "  }",
+        "  process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "}",
-        "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
       ].join("\n"),
       { mode: 0o755 },
@@ -332,7 +354,7 @@ describe("GET /api/events", () => {
     // attached alongside `streams.add(stream)`, not left to the lazy sweep
     // inside the change handler.
     const { id } = await openFreshPresentation();
-    const broadcaster = createChangeBroadcaster(id);
+    const broadcaster = createChangeBroadcaster(id, deckServer);
     const res = new FakeResponse() as unknown as ServerResponse;
 
     await broadcaster.handleConnection(res);
@@ -352,23 +374,16 @@ describe("GET /api/events", () => {
     await broadcaster.dispose();
   });
 
-  it("responds without the real deck path when fs.watch fails synchronously at startup", async () => {
-    // ADR-0003's third layer failing exactly where it matters: `fs.watch`
-    // throws synchronously (not only via its async `error` event) when the
-    // deck file has vanished between server startup and the first
-    // /api/events request — removing it here reproduces exactly that gap.
-    const { id } = await openFreshPresentation();
-    const server = await serve(id);
-    const deckPath = await deckPathFor(id);
-    await rm(deckPath, { force: true, maxRetries: 5, retryDelay: 100 });
-
-    const response = await fetch(`${server.url}/api/events`);
-    const body = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(body.error).not.toContain(deckPath);
-    expect(body.error).not.toContain(slidraHome);
-  });
+  // [E10.T5] removed: "responds without the real deck path when fs.watch
+  // fails synchronously at startup" tested a Node-`fs.watch`-specific
+  // failure mode (a synchronous throw when the watch target has vanished
+  // between id resolution and `fs.watch()` itself) that no longer exists —
+  // `watch.ts` no longer calls `fs.watch` at all. The property it actually
+  // guarded, ADR-0003's "no real path ever leaks in an error message", is
+  // now a structural guarantee of the crate's own JSON error responses
+  // (`crates/slidra/src/server/mod.rs`'s `write_json_error` never embeds a
+  // path — see `server::redact`'s tests) rather than something this
+  // specific race needs to keep proving on the Node side.
 
   it("retarget(): an already-open connection starts reacting to the new id's changes and stops reacting to the old one's, with no reconnect", async () => {
     // Driven directly against `createChangeBroadcaster` (NOOP-433's own
@@ -379,7 +394,7 @@ describe("GET /api/events", () => {
     // from everything else that happens during one.
     const a = await openFreshPresentation("Deck A");
     const b = await openFreshPresentation("Deck B");
-    const broadcaster = createChangeBroadcaster(a.id);
+    const broadcaster = createChangeBroadcaster(a.id, deckServer);
     const httpServer = http.createServer((_req, res) => {
       void broadcaster.handleConnection(res).catch((error) => {
         res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: String(error) }));

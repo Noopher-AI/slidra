@@ -172,26 +172,33 @@ fn resolve_byte_range(range_header: Option<&str>, total_size: usize) -> RangeOut
 }
 
 /// `raw.ts:30-53`'s `rawContentTypeFor` — extension-only lookup, no
-/// sniffing; unknown extension -> `application/octet-stream`.
+/// sniffing; unknown extension -> `application/octet-stream`. The
+/// video/audio/image half of this table is not hand-copied a second time
+/// here: it delegates to `media_format::MEDIA_FORMATS` (extension AND
+/// every `alias_extensions` entry, e.g. `.jpeg` alongside `.jpg`) — the
+/// same table `asset import`'s byte-signature detector uses, so this
+/// route and that command can never disagree about what a given
+/// extension serves as. `packages/web/test/player-plan.test.ts` hand-
+/// copies this same table on the TS side (no dependency edge from web
+/// into this crate) to cross-check the player's own extension allow-list
+/// against it.
 fn content_type_for(virtual_path: &str) -> &'static str {
     let ext = virtual_path
         .rfind('.')
         .map(|i| virtual_path[i + 1..].to_ascii_lowercase())
         .unwrap_or_default();
+    let dotted = std::format!(".{ext}");
+    for entry in crate::media_format::MEDIA_FORMATS {
+        if entry.extension == dotted || entry.alias_extensions.contains(&dotted.as_str()) {
+            return entry.mime_type;
+        }
+    }
     match ext.as_str() {
         "svg" => "image/svg+xml",
         "json" => "application/json",
         "ttf" => "font/ttf",
         "otf" => "font/otf",
         "txt" => "text/plain; charset=utf-8",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "mp3" => "audio/mpeg",
-        "wav" => "audio/wav",
         "pdf" => "application/pdf",
         "csv" => "text/csv; charset=utf-8",
         "woff" => "font/woff",

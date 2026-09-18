@@ -385,6 +385,13 @@ describe("startServe", () => {
   // instead of the old stub `CommandRegistry`. This is a strictly stronger
   // injection point: it proves the server goes through `runSlidra`'s own
   // subprocess boundary, not merely through *some* pluggable interface.
+  //
+  // [E10.T5]: `/api/presentation`/`/api/files` are now forwarded to a
+  // long-lived `slidra __deck-server` subprocess (`deck-server-client.ts`)
+  // rather than spawned per read, so the fake binary answers `__deck-server`
+  // with a real (fabricated) HTTP server of its own — the same "prove the
+  // subprocess boundary is real, not merely some pluggable interface"
+  // property, adapted to the new transport.
   it("serves fabricated content from a stub SLIDRA_BIN, never touching the real filesystem", async () => {
     const fakeBinDir = await mkdtemp(path.join(tmpdir(), "slidra-serve-fakebin-"));
     const fakeBinPath = path.join(fakeBinDir, "slidra-fake.mjs");
@@ -392,19 +399,43 @@ describe("startServe", () => {
       fakeBinPath,
       [
         "#!/usr/bin/env node",
-        'const args = process.argv.slice(2).filter((a) => a !== "--json");',
-        "const [cmd, ...rest] = args;",
-        "function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
-        "let result;",
-        'if (cmd === "cat" && rest[1] === "project.json") {',
-        "  const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
-        '  result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
-        '} else if (cmd === "slide" && rest[0] === "render" && rest[2] === "slides/fake.svg") {',
-        '  result = { ok: true, data: { content: b64("<svg>STUB</svg>") }, message: "read: slides/fake.svg" };',
+        'import http from "node:http";',
+        "const args = process.argv.slice(2);",
+        'if (args[0] === "__deck-server") {',
+        "  const server = http.createServer((req, res) => {",
+        '    if (req.method === "GET" && req.url === "/presentation") {',
+        '      res.writeHead(200, { "content-type": "application/json" });',
+        '      res.end(JSON.stringify({ formatVersion: 4, name: "Stub", canvas: { width: 1, height: 1 }, slides: ["slides/fake.svg"] }));',
+        "      return;",
+        "    }",
+        '    if (req.method === "GET" && req.url === "/files/slides/fake.svg") {',
+        '      res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8" });',
+        '      res.end("<svg>STUB</svg>");',
+        "      return;",
+        "    }",
+        "    res.writeHead(404, {});",
+        "    res.end();",
+        "  });",
+        '  server.listen(0, "127.0.0.1", () => {',
+        "    process.stdout.write(JSON.stringify({ port: server.address().port }) + \"\\n\");",
+        "  });",
         "} else {",
-        '  result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        // `resolveDeckIdentity` (serve.ts's own startup path, unrelated to
+        // this ticket) still calls `loadProject` — a per-call `slidra cat
+        // <id> project.json --json` subprocess spawn, `slidra/reads.ts`'s
+        // own mechanism — so the stub must still answer that shape too.
+        '  const cliArgs = args.filter((a) => a !== "--json");',
+        "  const [cmd, ...rest] = cliArgs;",
+        "  function b64(s) { return Buffer.from(s, \"utf-8\").toString(\"base64\"); }",
+        "  let result;",
+        '  if (cmd === "cat" && rest[1] === "project.json") {',
+        "    const content = JSON.stringify({ formatVersion: 4, name: \"Stub\", canvas: { width: 1, height: 1 }, slides: [\"slides/fake.svg\"] });",
+        '    result = { ok: true, data: [{ path: "project.json", content: b64(content) }], message: "read: project.json" };',
+        "  } else {",
+        '    result = { ok: false, message: "file not found: " + rest.join(" "), failureKind: "not-found" };',
+        "  }",
+        "  process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "}",
-        "process.stdout.write(JSON.stringify(result) + \"\\n\");",
         "",
       ].join("\n"),
       { mode: 0o755 },

@@ -45,18 +45,12 @@ import { createIdentitySession, type IdentitySession } from "./identity/session.
 import type { IdentityProvider } from "./identity/types.js";
 import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
-import {
-  handleAssetsRoute,
-  handleEffectsRoute,
-  handleFilesRoute,
-  handlePresentationRoute,
-  handleRawRoute,
-  loadProject,
-} from "./read-routes.js";
+import { loadProject } from "./slidra/reads.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity, type DeckSession } from "./deck-switch.js";
+import { startDeckServer, forwardDeckServerGet, type DeckServerClient } from "./deck-server-client.js";
 
 /**
  * `slidra serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -225,6 +219,15 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   await deployShimWrapper(sandboxRoot.path);
   const shimToken = createShimToken();
 
+  // [E10.T5] transitional forwarding layer (NOOP-641 Plan §7 decision 4):
+  // GET /presentation, /assets, /files, /effects, /raw and /events now
+  // live in the crate (`crates/slidra/src/server/{reads,raw,events}.rs`);
+  // this process forwards those routes to it rather than dispatching them
+  // itself. Started early, alongside the other server-lifetime resources
+  // above, so it is ready before the HTTP server starts accepting requests.
+  const deckServer = await startDeckServer();
+  disposers.push(() => deckServer.close());
+
   // NOOP-425: this process's one active write-isolation launcher
   // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
   // `agent/manager.ts`'s `writeIsolation` status) — never fails startup
@@ -263,7 +266,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // changes.ts) — creating the handle itself touches no filesystem, so no
   // rollback is needed if listen() below fails. Built before the manager
   // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
-  const changeBroadcaster = createChangeBroadcaster(initialDeck?.id ?? null);
+  const changeBroadcaster = createChangeBroadcaster(initialDeck?.id ?? null, deckServer);
   disposers.push(() => changeBroadcaster.dispose());
 
   // NOOP-422 (Continuous save): owns the debounced write-back that replaced
@@ -344,6 +347,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
       sandboxRoot.path,
       shimToken,
       options.policy.fileEntry,
+      deckServer,
       req,
       res,
     );
@@ -596,6 +600,7 @@ async function handleRequest(
   sandboxRootPath: string,
   shimToken: string,
   fileEntryPolicy: FileEntryPolicy,
+  deckServer: DeckServerClient,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -939,30 +944,34 @@ async function handleRequest(
     if (url.pathname === "/api/presentation") {
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      await handlePresentationRoute(deckId, res);
+      await forwardDeckServerGet(deckServer, "/presentation", deckId, res);
       return;
     }
 
     if (url.pathname === "/api/assets") {
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      await handleAssetsRoute(deckId, res);
+      await forwardDeckServerGet(deckServer, "/assets", deckId, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/files/")) {
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      const virtualPath = decodeURIComponent(url.pathname.slice("/api/files/".length));
-      await handleFilesRoute(deckId, virtualPath, res);
+      // The still-percent-encoded segment is forwarded as-is — the crate's
+      // own `reads::handle_files` decodes it and answers 400 on a malformed
+      // escape, so this layer never needs its own `decodeURIComponent`/
+      // try-catch pair.
+      const encodedPath = url.pathname.slice("/api/files/".length);
+      await forwardDeckServerGet(deckServer, `/files/${encodedPath}`, deckId, res);
       return;
     }
 
     if (url.pathname.startsWith("/api/effects/")) {
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      const virtualPath = decodeURIComponent(url.pathname.slice("/api/effects/".length));
-      await handleEffectsRoute(deckId, virtualPath, res);
+      const encodedPath = url.pathname.slice("/api/effects/".length);
+      await forwardDeckServerGet(deckServer, `/effects/${encodedPath}`, deckId, res);
       return;
     }
 
@@ -986,6 +995,17 @@ async function handleRequest(
       // Live reload push (ticket #5): opens a long-lived SSE stream. Never
       // returns/closes `res` itself — handleConnection hands it to
       // openEventStream, which owns the response from here on.
+      //
+      // This stays Node's own multiplexing broadcaster ([E10.T5] does NOT
+      // forward this route wholesale to the crate, unlike the five GET
+      // routes above): one browser tab's single `/api/events` connection
+      // carries several unrelated event kinds (`presentation-changed`,
+      // `agent-changed`, `editing-frozen`/`unfrozen`, `save-state`,
+      // `deck-changed`), and only the first of those is this ticket's
+      // concern. What DID move into the crate is the underlying watch
+      // itself: `watch.ts` now sources `presentation-changed` from the
+      // crate's own `GET /events` instead of a local `fs.watch` — see that
+      // module's own doc comment.
       await changeBroadcaster.handleConnection(res);
       return;
     }
@@ -997,22 +1017,19 @@ async function handleRequest(
       // byte-preserving read registered as a command would hand the agent
       // the exact capability ticket #2 closed off — dozens of MB of raw
       // video/image bytes dumped into its context. Browsers, not agents,
-      // need this route, so it calls `cat` directly (`readPresentationBytes`)
-      // rather than through any agent-reachable command.
+      // need this route.
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      let virtualPath: string;
-      try {
-        virtualPath = decodeURIComponent(url.pathname.slice("/api/raw/".length));
-      } catch {
-        sendJson(res, 400, { error: "Invalid path encoding" });
-        return;
-      }
-      // The Range header is read here, at the one place that has `req`, and
-      // handed on as a plain value: handleRawRoute stays a function of
-      // (path, response, range) rather than growing a dependency on the
-      // whole request object it has no other use for (ticket #13).
-      await handleRawRoute(deckId, virtualPath, res, req.headers.range);
+      const encodedPath = url.pathname.slice("/api/raw/".length);
+      const extraHeaders: Record<string, string> = {};
+      if (req.headers.range !== undefined) extraHeaders.range = req.headers.range;
+      // ADR-0006: the sandboxed srcdoc iframe's own slide markup fetches
+      // `@font-face` sources cross-origin from an opaque origin — this
+      // route is the one exemption from the Origin: null gate above, and
+      // it must say so on every response, not just success, or the font
+      // fetch itself is what the browser blocks.
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      await forwardDeckServerGet(deckServer, `/raw/${encodedPath}`, deckId, res, extraHeaders);
       return;
     }
 

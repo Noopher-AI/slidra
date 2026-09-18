@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { watch as fsWatch } from "node:fs";
-import { SlidraError } from "./slidra/errors.js";
-import { deckPathFor } from "./slidra/home.js";
+import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
+import type { DeckServerClient } from "./deck-server-client.js";
 
 /**
- * Watches one presentation's deck file for filesystem changes and
- * calls `onChange` (debounced, coalesced) whenever something changes.
- * Ported originally from `packages/core`'s `watch.ts`, and updated for
- * `spec/rfcs/0001-sqlite-container-format.md`: the deck is a single file
- * now, not a directory, so this watches `deckPathFor(id)` itself
- * (non-recursive) rather than `fs.watch(workDir, { recursive: true })`.
+ * Watches one presentation for changes and calls `onChange` whenever the
+ * crate's own `GET /events` ([E10.T5], `crates/slidra/src/server/
+ * events.rs`) reports one. [E10.T5] moves the actual watch — deck-file
+ * mtime polling with a trailing debounce — into the crate (NOOP-641 Plan
+ * §3/§7's decision to avoid a new filesystem-watch dependency); this
+ * module used to run `fs.watch` itself, and now instead holds one
+ * long-lived HTTP connection to the crate's stream and re-emits what it
+ * says. `changes.ts`'s own multiplexing broadcaster (`ChangeBroadcaster`,
+ * still fanning out `presentation-changed` alongside `agent-changed`/
+ * `editing-frozen`/`save-state`/`deck-changed` to connected browser tabs —
+ * every one of those OTHER event kinds is unrelated to this ticket's scope
+ * and stays exactly as it was) is unchanged by this — `PresentationWatcher`
+ * keeps the exact same public shape, so nothing above this module needed
+ * to change at all.
  *
  * `onChange` deliberately carries no payload — not which file, not what
  * changed. `openEventStream` (packages/server/src/sse.ts) implements no
@@ -24,106 +31,95 @@ export interface PresentationWatcher {
   close(): Promise<void>;
 }
 
-/**
- * SQLite's `journal_mode=DELETE` (`crates/slidra/src/deck.rs`) creates a
- * `<deckname>-journal` sibling for the duration of one write transaction
- * and unlinks it the moment that transaction commits. It is coordination,
- * never content, so a change to it must not reach `onChange`: `serve`
- * answers a live-reload notification by re-reading the presentation
- * *through the CLI*, which opens (and briefly journals) the same deck
- * again, which would notify again — a loop that never settles. Its visible
- * symptom is the editor reloading constantly, which drops the author's
- * selection the instant they click an element. The CLI's own
- * per-deck advisory lock (`workspace::lock`) no longer lives beside the
- * deck at all (`<SLIDRA_HOME>/locks/`), so it is never in this watcher's
- * path to begin with.
- */
-function isCoordinationFile(filename: string | Buffer | null): boolean {
-  if (filename === null) return false;
-  const name = typeof filename === "string" ? filename : filename.toString("utf-8");
-  return name.endsWith("-journal");
+/** `x-slidra-credential`'s wire shape — same hand-copy `deck-server-client.ts` uses, for the same "no dependency edge into the crate" reason. */
+function credentialHeader(workbenchId: string): string {
+  return Buffer.from(JSON.stringify({ kind: "editor", workbenchId }), "utf8").toString("base64");
 }
-
-// Trailing debounce window: a single logical edit (e.g. `text set`) can
-// produce more than one raw filesystem event, and this coalesces them into
-// one `onChange` call without swallowing distinct, separately-timed edits.
-const DEBOUNCE_MS = 100;
 
 /**
  * Starts watching the presentation identified by `id`. Resolves only after
- * the id has been confirmed to exist, so a caller awaiting this gets the
- * same explicit unknown-id failure every other read would.
+ * the crate has confirmed the id is a real, known workbench (its `GET
+ * /events` answers with a 200 stream, not a 404) — the same "an unknown id
+ * fails loudly before a stream is ever opened" contract the old `fs.watch`-
+ * based version gave via `deckPathFor`.
  *
- * `onError` is called at most once if the underlying `fs.watch` handle
- * itself fails after startup — a condition live reload can never recover
- * from on its own. The watcher closes itself first, so it stops looking
- * like a live watcher before the caller is even told; no further
- * `onChange` call can follow.
+ * `onError` is called at most once if the underlying connection to the
+ * crate itself fails after startup (the crate process died, or the TCP
+ * connection drops) — a condition live reload can never recover from on
+ * its own. The connection is torn down first, so it stops looking live
+ * before the caller is even told; no further `onChange` call can follow.
  */
 export async function watchPresentation(
   id: string,
+  deckServer: DeckServerClient,
   onChange: () => void,
   onError: (error: Error) => void,
 ): Promise<PresentationWatcher> {
-  const deckPath = await deckPathFor(id);
-
-  let closed = false;
-  let debounceTimer: NodeJS.Timeout | null = null;
-
-  const scheduleNotify = (): void => {
-    if (closed) return;
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
-      onChange();
-    }, DEBOUNCE_MS);
-    // Must be unref'd: a live setTimeout keeps the Node event loop alive,
-    // which would hang the test suite and stop `slidra serve` from ever
-    // exiting on Ctrl-C.
-    debounceTimer.unref();
-  };
-
-  let watcher: ReturnType<typeof fsWatch>;
+  const controller = new AbortController();
+  let response: Response;
   try {
-    watcher = fsWatch(deckPath, (_event, filename) => {
-      if (isCoordinationFile(filename)) return;
-      scheduleNotify();
+    response = await fetch(`${deckServer.baseUrl}/events`, {
+      headers: { "x-slidra-credential": credentialHeader(id) },
+      signal: controller.signal,
     });
-  } catch {
-    // `fs.watch` throws synchronously (not just via its `error` event) when
-    // the target has vanished or become unreadable between id resolution
-    // above and this call. That raw error's message very likely embeds the
-    // real deck path (ADR-0003), exactly like the asynchronous
-    // `error` event handled below, so it gets the same sanitised treatment.
+  } catch (error) {
+    throw new SlidraError(`Error watching presentation files: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (response.status === 404) {
+    // The crate's own 404 body is `{error: "no presentation found for id:
+    // <id>"}` (`workspace::registry::lookup`) — relayed verbatim rather
+    // than re-worded, so this failure reads identically to every other
+    // route's unknown-id error.
+    const body = await response.json().catch(() => null);
+    const message = typeof body?.error === "string" ? body.error : "no presentation found for the given id";
+    throw new SlidraNotFoundError(message);
+  }
+  if (response.status !== 200 || !response.body) {
     throw new SlidraError("Error watching presentation files");
   }
 
-  watcher.on("error", () => {
-    if (closed) return;
-    // Stop first: no further `onChange` must ever fire from a watcher that
-    // has already failed.
-    closed = true;
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
+  let closed = false;
+
+  // Reads the SSE stream in the background, calling `onChange` on every
+  // `event: presentation-changed` frame and `onError` (once) if the stream
+  // ends or errors before this side ever closed it. A heartbeat frame
+  // (`: \n\n`, no `event:` line) is simply not one of the two markers this
+  // parser looks for, so it is silently ignored — exactly its purpose.
+  void (async () => {
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary: number;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          if (frame.startsWith("event: presentation-changed")) {
+            onChange();
+          }
+        }
+      }
+      if (!closed) {
+        closed = true;
+        onError(new SlidraError("Error watching presentation files"));
+      }
+    } catch (error) {
+      if (closed) return;
+      closed = true;
+      if (error instanceof Error && error.name === "AbortError") return;
+      onError(new SlidraError("Error watching presentation files"));
     }
-    watcher.close();
-    // The underlying error object very likely embeds the real work
-    // directory path (ADR-0003) — it is never logged or rethrown verbatim.
-    onError(new SlidraError("Error watching presentation files"));
-  });
+  })();
 
   return {
     close: async () => {
       if (closed) return;
       closed = true;
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      watcher.close();
+      controller.abort();
     },
   };
 }

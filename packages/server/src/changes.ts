@@ -7,6 +7,7 @@ import { watchPresentation } from "./watch.js";
 import type { PresentationWatcher } from "./watch.js";
 import { openEventStream } from "./sse.js";
 import type { EventStream } from "./sse.js";
+import type { DeckServerClient } from "./deck-server-client.js";
 
 /**
  * Live-reload push: fans out one `presentation-changed` SSE event to every
@@ -76,7 +77,7 @@ export interface ChangeBroadcaster {
  * (NOOP-433): `handleConnection` then opens a stream with nothing watching
  * it yet, and `retarget` is how it later gets pointed at a real id.
  */
-export function createChangeBroadcaster(presentationId: string | null): ChangeBroadcaster {
+export function createChangeBroadcaster(presentationId: string | null, deckServer: DeckServerClient): ChangeBroadcaster {
   const streams = new Set<EventStream>();
   let watcherPromise: Promise<PresentationWatcher> | null = null;
   // Set once dispose() has been called, and once more if the watcher dies
@@ -94,6 +95,7 @@ export function createChangeBroadcaster(presentationId: string | null): ChangeBr
     if (!watcherPromise) {
       watcherPromise = watchPresentation(
         presentationId!,
+        deckServer,
         () => {
           for (const stream of streams) {
             if (stream.closed) {
