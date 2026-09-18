@@ -35,10 +35,13 @@ use crate::commands::category::{Category, resolve_full_command};
 
 pub mod allowlist;
 pub mod credential;
+pub mod events;
+pub mod raw;
+pub mod reads;
 pub mod redact;
 pub mod shim_client;
 
-use credential::{CallerKind, CredentialError};
+use credential::{CallerKind, Credential, CredentialError};
 
 const ARGV_HEADER: &str = "x-slidra-argv";
 
@@ -89,37 +92,217 @@ fn serve_forever(listener: TcpListener) -> i32 {
 
 /// Reads exactly one HTTP/1.1 request off `stream`, dispatches it, and
 /// writes exactly one response — never more than one request per
-/// connection (`Connection: close` on every path).
+/// connection (`Connection: close` on every path), EXCEPT `GET /events`
+/// (`events::handle`), which holds the connection open and writes zero or
+/// more notification frames before the client (or this end, on a fatal
+/// watch error) closes it — matching `changes.ts`'s one-way,
+/// browser-reconnects-itself stream (Plan §4/§7.2/spec decision 18).
 fn handle_connection(mut stream: TcpStream) {
     let request = match read_request(&mut stream) {
         Some(request) => request,
         None => return,
     };
 
-    if request.method != "POST" || request.path != "/call" {
-        write_plain_response(&mut stream, 404, "not found");
-        return;
+    let path = path_only(&request.path);
+    match (request.method.as_str(), path) {
+        ("POST", "/call") => handle_call(&request, &mut stream),
+        ("GET", "/presentation") => reads::handle_presentation(&request, &mut stream),
+        ("GET", "/assets") => reads::handle_assets(&request, &mut stream),
+        ("GET", "/events") => events::handle(&request, &mut stream),
+        ("GET", p) if p.starts_with("/files/") => {
+            reads::handle_files(&request, &mut stream, &p["/files/".len()..])
+        }
+        ("GET", p) if p.starts_with("/effects/") => {
+            reads::handle_effects(&request, &mut stream, &p["/effects/".len()..])
+        }
+        ("GET", p) if p.starts_with("/raw/") => {
+            raw::handle(&request, &mut stream, &p["/raw/".len()..])
+        }
+        _ => write_plain_response(&mut stream, 404, "not found"),
     }
-
-    handle_call(&request, &mut stream);
 }
 
-struct RawRequest {
-    method: String,
-    path: String,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
+/// Strips a query string off `path` — none of this door's routes ever
+/// consult one (every parameter travels as a header or a path segment), so
+/// a caller-supplied `?...` is simply ignored rather than treated as part
+/// of the route.
+fn path_only(path: &str) -> &str {
+    path.split('?').next().unwrap_or(path)
+}
+
+/// Percent-decodes a URL path segment (RFC 3986 `%XX`), then validates the
+/// result as UTF-8. `None` on a malformed escape or invalid UTF-8 — callers
+/// turn that into a 400, mirroring `serve.ts`'s own
+/// `decodeURIComponent`-throws-\>-400 handling for `/api/files`/`/api/raw`.
+pub(crate) fn percent_decode(input: &str) -> Option<String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' => {
+                let hex = bytes.get(i + 1..i + 3)?;
+                let value = u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+                out.push(value);
+                i += 3;
+            }
+            other => {
+                out.push(other);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// Every GET route's front door (Plan §4 row 1: "every new route" gets the
+/// same credential handling `/call` has): rejects a self-asserted caller
+/// kind (400), then parses the credential (401), then checks it is one of
+/// `allowed` (403). On success, returns the credential AND the resolved
+/// deck path for its workbench id (404 if the workbench/deck id is
+/// unknown to the registry, 500 for any other registry failure) — every
+/// route built on this door is deck-scoped, so resolving the path once
+/// here saves every caller repeating it.
+pub(crate) fn authorize_deck_scoped(
+    request: &RawRequest,
+    stream: &mut TcpStream,
+    allowed: &[CallerKind],
+) -> Option<(Credential, std::path::PathBuf)> {
+    let credential = authorize(request, stream, allowed)?;
+    match crate::workspace::resolve_work_dir(&credential.workbench_id) {
+        Ok(work_dir) => Some((credential, work_dir)),
+        Err(crate::errors::SlidraError::NotFound(message)) => {
+            write_json_error(stream, 404, &message);
+            None
+        }
+        Err(crate::errors::SlidraError::InvalidRequest(message)) => {
+            write_json_error(stream, 500, &message);
+            None
+        }
+    }
+}
+
+/// Same credential handling as `authorize_deck_scoped`, without resolving a
+/// deck path — `events::handle` needs this split because a resolution
+/// failure there must still be reported as 404 like every other route, but
+/// the caller (not this function) owns turning the resolved path into a
+/// long-lived watch.
+pub(crate) fn authorize(
+    request: &RawRequest,
+    stream: &mut TcpStream,
+    allowed: &[CallerKind],
+) -> Option<Credential> {
+    if request.has_header(credential::CALLER_KIND_HEADER) {
+        write_plain_response(
+            stream,
+            400,
+            "caller kind must not be asserted by the request",
+        );
+        return None;
+    }
+    let credential = match credential::parse(&request.headers) {
+        Ok(credential) => credential,
+        Err(CredentialError::Unauthorized) => {
+            write_plain_response(stream, 401, "unauthorized");
+            return None;
+        }
+    };
+    if !allowed.contains(&credential.kind) {
+        write_plain_response(stream, 403, "credential kind may not reach this route");
+        return None;
+    }
+    Some(credential)
+}
+
+/// Writes a `{"error": message}` body — the shape every read/raw/events
+/// error response in Plan §4's contract table uses.
+pub(crate) fn write_json_error(stream: &mut TcpStream, status: u16, message: &str) {
+    let body = serde_json::json!({ "error": message }).to_string();
+    write_body_response(
+        stream,
+        status,
+        "application/json; charset=utf-8",
+        &[],
+        body.as_bytes(),
+    );
+}
+
+/// Writes a 200 JSON body (compact, no pretty-printing — this is a wire
+/// response, not `--json`'s stdout contract).
+pub(crate) fn write_json_response(stream: &mut TcpStream, value: &serde_json::Value) {
+    let body = value.to_string();
+    write_body_response(
+        stream,
+        200,
+        "application/json; charset=utf-8",
+        &[],
+        body.as_bytes(),
+    );
+}
+
+/// The one low-level writer every GET route's response (success or error)
+/// goes through: status line, `Connection: close`, `content-type`,
+/// `content-length`, any `extra_headers`, then `body` verbatim. Byte-exact
+/// for binary payloads (AC/Plan §4's raw-serving contract) — never
+/// re-encoded.
+pub(crate) fn write_body_response(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    extra_headers: &[(&str, String)],
+    body: &[u8],
+) {
+    let reason = reason_phrase(status);
+    let mut head = format!(
+        "HTTP/1.1 {status} {reason}\r\nConnection: close\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\n",
+        body.len()
+    );
+    for (name, value) in extra_headers {
+        head.push_str(name);
+        head.push_str(": ");
+        head.push_str(value);
+        head.push_str("\r\n");
+    }
+    head.push_str("\r\n");
+    if stream.write_all(head.as_bytes()).is_err() {
+        return;
+    }
+    let _ = stream.write_all(body);
+}
+
+fn reason_phrase(status: u16) -> &'static str {
+    match status {
+        200 => "OK",
+        204 => "No Content",
+        206 => "Partial Content",
+        304 => "Not Modified",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        409 => "Conflict",
+        416 => "Range Not Satisfiable",
+        500 => "Internal Server Error",
+        _ => "Error",
+    }
+}
+
+pub(crate) struct RawRequest {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Vec<u8>,
 }
 
 impl RawRequest {
-    fn header(&self, name: &str) -> Option<&str> {
+    pub(crate) fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
     }
 
-    fn has_header(&self, name: &str) -> bool {
+    pub(crate) fn has_header(&self, name: &str) -> bool {
         self.headers
             .iter()
             .any(|(k, _)| k.eq_ignore_ascii_case(name))
