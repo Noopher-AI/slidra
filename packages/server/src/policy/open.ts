@@ -49,6 +49,6 @@ export const openPolicy: WorkbenchPolicy = {
     ],
     denyWrite: [],
     denyRead: [{ kind: "slidraHome" }, { kind: "openDeckPaths" }, { kind: "deckFolderIfPresent" }],
-    cliAllowWrite: [{ kind: "deckDirectory" }, { kind: "slidraHome" }, { kind: "tempDir" }],
+    cliAllowWrite: [{ kind: "slidraHome" }, { kind: "tempDir" }],
   },
 };

@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeProjectsRegistry } from "../../src/slidra/home.js";
 import {
   buildCliSandboxPolicy,
   collectSandboxContext,
@@ -101,19 +100,10 @@ describe("deriveSandboxConfig(openPolicy, ctx) — the agent sandbox", () => {
     expect(policy.allowWrite).not.toContain(slidraHome);
   });
 
-  it("denies reading SLIDRA_HOME and every registry entry's deckPath/sourcePath (AC2)", async () => {
-    await writeProjectsRegistry(
-      new Map([
-        ["pres-a", { deckPath: "/decks/a.slidra", sourcePath: "/original/a.slidra" }],
-        ["pres-b", { deckPath: "/decks/b.slidra" }],
-      ]),
-    );
+  it("denies SLIDRA_HOME without consulting a Node deck registry (AC2)", async () => {
     const ctx = await collectSandboxContext({ workbenchRoot: "/tmp/root", home });
     const policy = deriveSandboxConfig(openPolicy, ctx);
     expect(policy.denyRead).toContain(slidraHome);
-    expect(policy.denyRead).toContain("/decks/a.slidra");
-    expect(policy.denyRead).toContain("/original/a.slidra");
-    expect(policy.denyRead).toContain("/decks/b.slidra");
   });
 });
 
@@ -156,9 +146,9 @@ describe("deriveCliSandboxConfig(openPolicy, ctx) — the CLI sandbox", () => {
     };
   }
 
-  it("allows the deck's parent directory (not just the deck by name), SLIDRA_HOME, and tmpdir (AC8, L5)", () => {
+  it("allows only SLIDRA_HOME and tmpdir when no real deck path is available (AC8, L5)", () => {
     const policy = deriveCliSandboxConfig(openPolicy, cliCtx("/decks/current.slidra"));
-    expect(policy.allowWrite).toEqual(["/decks", slidraHome, tmpdir()]);
+    expect(policy.allowWrite).toEqual([slidraHome, tmpdir()]);
   });
 
   it("never allows an arbitrary path outside the deck's directory and SLIDRA_HOME — the guard `slidra extract <deck> ~/.ssh/` depends on", () => {
@@ -182,14 +172,14 @@ describe("buildCliSandboxPolicy — the wrapper shim-endpoint.ts calls", () => {
     setActivePolicy(undefined);
   });
 
-  it("resolves the deck's own parent directory against the active policy, never a wider root", () => {
+  it("derives its allow-list without a real deck path", () => {
     setActivePolicy(openPolicy);
-    const config = buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" });
-    expect(config.allowWrite).toEqual(["/decks", slidraHome, tmpdir()]);
+    const config = buildCliSandboxPolicy();
+    expect(config.allowWrite).toEqual([slidraHome, tmpdir()]);
     expect(config.allowWrite).not.toContain("/");
   });
 
   it("refuses to build anything when no policy has been selected — never falls back to a built-in default", () => {
-    expect(() => buildCliSandboxPolicy({ deckPath: "/decks/current.slidra" })).toThrow(/active policy/);
+    expect(() => buildCliSandboxPolicy()).toThrow(/active policy/);
   });
 });

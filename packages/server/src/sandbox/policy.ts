@@ -4,7 +4,7 @@
 import { stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
+import { resolveSlidraHome } from "../slidra/home.js";
 import type { FsRule, SandboxContext, WorkbenchPolicy } from "../policy/types.js";
 import type { SandboxConfig } from "./launcher.js";
 import { ADAPTER_SPECS } from "../agent/adapters.js";
@@ -40,13 +40,6 @@ export async function collectSandboxContext(options: {
   const slidraHome = resolveSlidraHome();
   const platform = process.platform;
 
-  const openDeckPaths: string[] = [];
-  const registry = await readProjectsRegistry();
-  for (const entry of registry.values()) {
-    openDeckPaths.push(entry.deckPath);
-    if (entry.sourcePath !== undefined) openDeckPaths.push(entry.sourcePath);
-  }
-
   const candidateDeckFolder = path.join(home, "Slidra");
   const deckFolder = (await isExistingDirectory(candidateDeckFolder)) ? candidateDeckFolder : null;
 
@@ -59,7 +52,7 @@ export async function collectSandboxContext(options: {
     tempDir: tmpdir(),
     platform,
     slidraHome,
-    openDeckPaths,
+    openDeckPaths: [],
     deckFolder,
     deckDirectory: options.deckPath !== undefined ? path.dirname(options.deckPath) : null,
     adapterStateDirs: [],
@@ -71,7 +64,7 @@ export async function collectSandboxContext(options: {
     tempDir: tmpdir(),
     platform,
     slidraHome,
-    openDeckPaths,
+    openDeckPaths: [],
     deckFolder,
     deckDirectory: options.deckPath !== undefined ? path.dirname(options.deckPath) : null,
     adapterStateDirs,
@@ -187,7 +180,7 @@ export function getActivePolicy(): WorkbenchPolicy | undefined {
  * — `deckDirectory` is a plain `path.dirname`, `slidraHome`/`tempDir` need
  * no filesystem access — so this can stay synchronous exactly as before.
  */
-export function buildCliSandboxPolicy(options: { deckPath: string }): SandboxConfig {
+export function buildCliSandboxPolicy(): SandboxConfig {
   const policy = getActivePolicy();
   if (policy === undefined) {
     throw new Error("buildCliSandboxPolicy: no active policy — setActivePolicy must be called before serve starts routing requests");
@@ -200,7 +193,7 @@ export function buildCliSandboxPolicy(options: { deckPath: string }): SandboxCon
     slidraHome: resolveSlidraHome(),
     openDeckPaths: [],
     deckFolder: null,
-    deckDirectory: path.dirname(options.deckPath),
+    deckDirectory: null,
     adapterStateDirs: [],
   };
   return deriveCliSandboxConfig(policy, ctx);
