@@ -160,4 +160,25 @@ describe("browser API routing", () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "slide not found", failureKind: "not-found" });
   });
+
+  it("preserves an empty undo stack as a 400 client error", async () => {
+    const nativeFetch = vi.fn(async () => new Response(framedEnvelope({
+      ok: false,
+      message: "no operation to undo",
+      failureKind: "failed",
+    }), { status: 200 }));
+    const clients = createServiceClients(
+      {
+        workbenchId: "wb-9",
+        deck: { url: "http://deck.test:4100", credential: "deck-token" },
+        agentRunner: { url: "http://runner.test:4200", sessionToken: "runner-token" },
+      },
+      nativeFetch,
+    );
+
+    const response = await createRoutingFetch(clients, nativeFetch)("/api/undo", { method: "POST" });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "no operation to undo", failureKind: "failed" });
+  });
 });

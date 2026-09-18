@@ -16,7 +16,7 @@ function argvHeader(argv: string[]): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(argv))));
 }
 
-function callResult(response: Response): Promise<Response> {
+function callResult(response: Response, fallbackFailureStatus: 400 | 500): Promise<Response> {
   if (!response.ok) {
     return response.text().then((error) => new Response(
       JSON.stringify({ error: error || "Deck server refused the command" }),
@@ -53,7 +53,10 @@ function callResult(response: Response): Promise<Response> {
     if (exitCode !== 0 || envelope?.ok === false) {
       return new Response(
         JSON.stringify({ error: envelope?.message || errorOutput || "Command failed", failureKind: envelope?.failureKind ?? null }),
-        { status: envelope?.failureKind === "not-found" ? 404 : 500, headers: { "content-type": "application/json" } },
+        {
+          status: envelope?.failureKind === "not-found" ? 404 : fallbackFailureStatus,
+          headers: { "content-type": "application/json" },
+        },
       );
     }
     return new Response(output, { status: 200, headers: { "content-type": "application/json" } });
@@ -79,7 +82,7 @@ async function routeDeckWrite(
   if (path === "/api/undo" || path === "/api/redo") {
     const headers = new Headers(init?.headers);
     headers.set("x-slidra-argv", argvHeader([path.slice("/api/".length), clients.workbenchId ?? "", "--json"]));
-    return clients.deck.fetch("/call", { ...init, headers, method: "POST" }).then(callResult);
+    return clients.deck.fetch("/call", { ...init, headers, method: "POST" }).then((response) => callResult(response, 400));
   }
   if (path === "/api/command") {
     let command: { name?: unknown; input?: unknown };
@@ -106,7 +109,7 @@ async function routeDeckWrite(
       headers.delete("content-type");
       headers.set("x-slidra-argv", argvHeader([...encoded.argv, "--json"]));
       const body = encoded.body === undefined ? undefined : new Uint8Array(encoded.body).buffer;
-      return clients.deck.fetch("/call", { ...init, headers, body, method: "POST" }).then(callResult);
+      return clients.deck.fetch("/call", { ...init, headers, body, method: "POST" }).then((response) => callResult(response, 500));
     } catch (error) {
       return new Response(
         JSON.stringify({ error: error instanceof Error ? error.message : "Failed to encode command" }),
