@@ -27,21 +27,6 @@ import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
-import {
-  handleDecksGet,
-  handleDeletePost,
-  handleImportPost,
-  handleNewPost,
-  handleOpenPost,
-  handleRenamePost,
-  handleResolvePost,
-  handleThumbnailGet,
-} from "./open-endpoint.js";
-import { createLocalDeckStore, DeckNameConflictError, type DeckStore } from "./storage/deck-store.js";
-import { createAnonymousProvider } from "./identity/anonymous-provider.js";
-import { handleIdentityGet, handleIdentitySignIn, handleIdentitySignOut } from "./identity/routes.js";
-import { createIdentitySession, type IdentitySession } from "./identity/session.js";
-import type { IdentityProvider } from "./identity/types.js";
 import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import { loadProject } from "./slidra/reads.js";
@@ -163,15 +148,6 @@ export interface ServeOptions {
    * to exist on the machine running the test into assertions.
    */
   skillDirs?: Partial<SkillDirs>;
-  /**
-   * [E6.T9]: the identity providers this server registers, and the one
-   * seam production and tests differ on. Omitted (`cli.ts`, the e2e
-   * harness) means exactly `[anonymous]` — the only provider a real
-   * deployment offers until a real one (Email Magic Link) ships. Tests
-   * pass `{ providers: [createFakeProvider()] }` (or a locally-built
-   * two-phase provider, AC7) to sign in without a real identity backend.
-   */
-  identity?: { providers: IdentityProvider[] };
 }
 
 export interface RunningServer {
@@ -304,21 +280,6 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const exportJobManager = new ExportJobManager();
   const serverAddress = { host, port: 0 };
 
-  // [E6.T2]: built once per server, injected into every deck lifecycle
-  // route in `open-endpoint.ts` — no route constructs its own.
-  // `getCurrentDeckId` closes over `deckSession` (declared below) so
-  // rename/delete refuse the deck this server currently has bound — safe
-  // for the same reason the request handler closure below is: neither runs
-  // before `deckSession` actually exists.
-  const deckStore = createLocalDeckStore({ getCurrentDeckId: () => deckSession.currentId() });
-
-  // [E6.T9]: built once per server, alongside deckStore — the identity
-  // routes below and GET /api/decks' visibility resolver both close over
-  // this one session, so "who is signed in" and "which decks are visible"
-  // can never disagree within a single serve process.
-  const identityProviders = options.identity?.providers ?? [createAnonymousProvider()];
-  const identitySession = createIdentitySession(identityProviders, deckStore);
-
   // The HTTP server is created and `listen()`ed *before* `AgentManager`
   // below, and the closure here references `manager`/`chatStreams`/
   // `deckSession`/`computeSlashCommands` before any of them are
@@ -338,8 +299,6 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const server = http.createServer((req, res) => {
     void handleRequest(
       deckSession,
-      deckStore,
-      identitySession,
       staticDir,
       manager,
       chatStreams,
@@ -592,8 +551,6 @@ function listen(server: http.Server, port: number, host: string): Promise<void> 
 
 async function handleRequest(
   deckSession: DeckSession,
-  deckStore: DeckStore,
-  identitySession: IdentitySession,
   staticDir: string,
   manager: AgentManager,
   chatStreams: ChatStreamRegistry,
@@ -709,20 +666,20 @@ async function handleRequest(
         // editing-lock below) — creates a new deck in the deck folder, does
         // not switch to it and does not touch whichever deck this server
         // currently has open, if any.
-        await handleNewPost(deckStore, req, res);
+        await handleNewForward(deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/open") {
         // [E6.T2]: same "deck-independent" contract as /api/new above.
-        await handleOpenPost(deckStore, req, res);
+        await handleOpenForward(deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/deck/import") {
-        await handleImportPost(deckStore, req, res);
+        await handleDeckImportForward(deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/deck/rename") {
-        await handleRenamePost(deckStore, req, res);
+        await handleDeckRenameForward(deckSession, deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/deck/rename-current") {
@@ -730,18 +687,18 @@ async function handleRequest(
         // refuses (the deck this server currently has bound). Never gated
         // on `requireDeck`/the editing-lock check below: it has its own
         // no-deck/editing/exporting guards, matching `/api/deck/switch`.
-        await handleRenameCurrentPost(deckSession, deckStore, changeBroadcaster, saveController, editingLock, exportJobManager, req, res);
+        await handleRenameCurrentPost(deckSession, deckServer, changeBroadcaster, saveController, editingLock, exportJobManager, req, res);
         return;
       }
       if (url.pathname === "/api/deck/delete") {
-        await handleDeletePost(deckStore, req, res);
+        await handleDeckDeleteForward(deckSession, deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/deck/resolve") {
         // [E6.T4]: deck-independent, like /api/new and /api/open above —
         // lazily registers a deck folder entry Deck Space's list never
         // minted an id for.
-        await handleResolvePost(deckStore, req, res);
+        await handleDeckResolveForward(deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/agent/exec") {
@@ -798,8 +755,8 @@ async function handleRequest(
         // pre-dispatch save. Same "agent holds the floor" 409 gate every
         // other human write route above uses.
         //
-        // [E6.T2] moved `/api/open`/`/api/new` above to deck-independent,
-        // deckStore-backed routes that never touch this server's
+        // [E6.T2] moved `/api/open`/`/api/new` above to deck-independent
+        // routes (now forwarded to the crate) that never touch this server's
         // currently-bound presentation — so, unlike before NOOP-422, neither
         // route retargets or flushes saveController; switching TO a newly
         // created/opened deck (and retargeting saveController) is
@@ -859,11 +816,11 @@ async function handleRequest(
         return;
       }
       if (url.pathname === "/api/identity/sign-in") {
-        await handleIdentitySignIn(identitySession, req, res);
+        await handleIdentitySignInForward(deckServer, req, res);
         return;
       }
       if (url.pathname === "/api/identity/sign-out") {
-        await handleIdentitySignOut(identitySession, res);
+        await handleIdentitySignOutForward(deckServer, res);
         return;
       }
       sendJson(res, 405, { error: "Only GET is supported" });
@@ -909,22 +866,28 @@ async function handleRequest(
       // [E6.T2]: deck-independent, like /api/new and /api/open above —
       // scans the deck folder directly, regardless of whether this server
       // currently has a deck open. [E6.T9]: with no ?owner= given, the
-      // visible set is identity's union of "Anonymous" plus the current
-      // identity's own decks, not the whole folder.
-      await handleDecksGet(deckStore, url, res, () => identitySession.visibleDecks());
+      // crate's own route applies identity's visibility filter itself
+      // (`identity::visible_decks()`) — Node forwards the query string
+      // as-is and never resolves this locally any more.
+      await forwardDeckServerGet(deckServer, `/decks${url.search}`, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res);
       return;
     }
 
     if (url.pathname === "/api/identity") {
       // [E6.T9] AC1: the user block's initial render — current identity
       // (null when anonymous) plus every registered provider.
-      handleIdentityGet(identitySession, res);
+      await forwardDeckServerGet(deckServer, "/identity", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res);
       return;
     }
 
     if (url.pathname === "/api/decks/thumbnail") {
       // [E6.T4]: deck-independent, same contract as /api/decks above.
-      await handleThumbnailGet(deckStore, url, req, res);
+      // `If-None-Match` is forwarded as-is; the crate's own ETag/304
+      // handling does the rest, same as every other forwarded GET route.
+      const extraHeaders: Record<string, string> = {};
+      const ifNoneMatch = req.headers["if-none-match"];
+      if (typeof ifNoneMatch === "string") extraHeaders["if-none-match"] = ifNoneMatch;
+      await forwardDeckServerGet(deckServer, `/decks/thumbnail${url.search}`, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res, extraHeaders);
       return;
     }
 
@@ -1157,14 +1120,16 @@ async function handleDeckSwitchPost(
  * with the same `{reason:"editing"}`/`{reason:"exporting"}` conflicts a
  * switch would (`guard`), and with `{reason:"no-deck"}` when nothing is
  * open. On success, flushes any pending debounced save against the OLD path
- * first, renames the file (`DeckStore.renameBound`), then re-points the
- * file watcher at the new path (`changeBroadcaster.retarget`) — `retarget`
- * always tears down and rebuilds the watcher, even for the same id, so this
- * is enough to make live reload see the renamed file.
+ * first, renames the file (forwarded to the crate's `POST /deck/rename` —
+ * unguarded there, exactly like the old, now-deleted `DeckStore.renameBound`
+ * this replaces), then re-points the file watcher at the new path
+ * (`changeBroadcaster.retarget`) — `retarget` always tears down and rebuilds
+ * the watcher, even for the same id, so this is enough to make live reload
+ * see the renamed file.
  */
 async function handleRenameCurrentPost(
   deckSession: DeckSession,
-  deckStore: DeckStore,
+  deckServer: DeckServerClient,
   changeBroadcaster: ChangeBroadcaster,
   saveController: SaveController,
   editingLock: EditingLock,
@@ -1194,40 +1159,43 @@ async function handleRenameCurrentPost(
     return;
   }
 
-  try {
-    // Settles any edit still sitting in the debounce window against the
-    // OLD path before that path stops existing.
-    await saveController.flush();
-    const { fileName } = await deckStore.renameBound(id, name);
-    // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
-    // reporting the pre-rename name/sourcePath until the next switch.
-    await deckSession.refreshCurrent();
-    await changeBroadcaster.retarget(id);
-    // `renameBound`'s own savedAt snapshot (a Node-side `stat()` read, same
-    // idiom `deck-store.ts` already uses for `create`/`rename`) is not
-    // reliable here: `refreshCurrent`'s `slidra cat` runs a real subprocess
-    // between that snapshot and this line, and under CI's timing that was
-    // observed to nudge the file's mtime past it, permanently reading the
-    // freshly-renamed deck as dirty. Forcing one real write-back instead
-    // re-establishes `savedAt` through the SAME Rust-`pack`-authored
-    // mechanism every other save already relies on (`slidra/save-state.ts`'s
-    // own docstring) — proven immune to a read run after it, unlike a
-    // Node-side stat guess. `flush` also broadcasts "save-state" itself, so
-    // no separate `broadcastSaveState` call is needed.
-    saveController.markDirty();
-    await saveController.flush();
-    sendJson(res, 200, { ok: true, fileName });
-  } catch (error) {
-    if (error instanceof DeckNameConflictError) {
-      sendJson(res, 409, { error: error.message, reason: "name-conflict" });
-      return;
-    }
-    if (error instanceof SlidraNotFoundError) {
-      sendJson(res, 404, { error: error.message });
-      return;
-    }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Rename failed" });
+  // Settles any edit still sitting in the debounce window against the OLD
+  // path before that path stops existing.
+  await saveController.flush();
+  const forwardBody = Buffer.from(JSON.stringify({ id, name }), "utf8");
+  const upstream = await postDeckServerJson(deckServer, "/deck/rename", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", {
+    body: forwardBody,
+  });
+  if (upstream.status !== 200) {
+    // The crate's own error shapes already match what this route used to
+    // throw directly: 409 `{error, reason:"name-conflict"}`, 404 `{error}`.
+    sendJson(res, upstream.status, upstream.body);
+    return;
   }
+  const fileName = (upstream.body as { fileName?: unknown } | null)?.fileName;
+  if (typeof fileName !== "string") {
+    sendJson(res, 500, { error: "deck server returned no fileName" });
+    return;
+  }
+
+  // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
+  // reporting the pre-rename name/sourcePath until the next switch.
+  await deckSession.refreshCurrent();
+  await changeBroadcaster.retarget(id);
+  // The crate's own savedAt snapshot (a `stat()` read, same idiom
+  // `deck_store.rs` uses for `create`/`rename`) is not reliable here:
+  // `refreshCurrent`'s `slidra cat` runs a real subprocess between that
+  // snapshot and this line, and under CI's timing that was observed to
+  // nudge the file's mtime past it, permanently reading the freshly-renamed
+  // deck as dirty. Forcing one real write-back instead re-establishes
+  // `savedAt` through the SAME Rust-`pack`-authored mechanism every other
+  // save already relies on (`slidra/save-state.ts`'s own docstring) —
+  // proven immune to a read run after it, unlike a Node-side stat guess.
+  // `flush` also broadcasts "save-state" itself, so no separate
+  // `broadcastSaveState` call is needed.
+  saveController.markDirty();
+  await saveController.flush();
+  sendJson(res, 200, { ok: true, fileName });
 }
 
 /**
@@ -1884,6 +1852,136 @@ export async function handleAssetForward(
   const upstream = await postDeckServerJson(deckServer, "/assets", deckId, "editor", { body, extraHeaders });
   sendJson(res, upstream.status, upstream.body);
   return upstream.status === 200;
+}
+
+/**
+ * [E10.T5] Slice C: the deck lifecycle/identity routes below are all
+ * deck-INDEPENDENT (`open-endpoint.ts`/`identity/routes.ts`'s own doc
+ * comments, now deleted) — none of them read or write "this workbench's
+ * own deck", so there is no real `deckId` to put in the credential's
+ * `workbenchId` field. The crate's own handlers for these routes never
+ * consult it either (`deck_lifecycle.rs`/`identity.rs` call
+ * `server::authorize`, never `authorize_deck_scoped`). This fixed literal
+ * is what every one of them sends instead, standing in for "no deck" the
+ * same way `credential::encode`'s own tests do.
+ */
+const DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID = "deck-lifecycle";
+
+/** Same order-of-magnitude cap `MAX_ASSET_BODY_BYTES` uses for its own upload — every deck-lifecycle JSON body here is a handful of fields, never large. */
+const MAX_DECK_LIFECYCLE_JSON_BODY_BYTES = 64 * 1024;
+/** `open-endpoint.ts`'s own `MAX_OPEN_BODY_BYTES` — half of `MAX_ASSET_BODY_BYTES`'s headroom: a `.slidra` with no large embedded media is far smaller than this. */
+const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
+
+/** Reads and buffers a request body up to `limitBytes`, sending the standard 400 and returning `null` on overflow — the one place every deck-lifecycle forward below shares this check. */
+async function readDeckLifecycleBody(req: IncomingMessage, res: ServerResponse, limitBytes: number): Promise<Buffer | null> {
+  const body = await readBodyBuffer(req, limitBytes);
+  if (body === "too-large") {
+    sendJson(res, 400, { error: `Request body too large (limit ${limitBytes} bytes)` });
+    return null;
+  }
+  return body;
+}
+
+/** A thin, uniform "forward this JSON body, relay the response verbatim" — every deck-lifecycle POST route below except `/deck/rename`/`/deck/delete` (which need the bound-deck guard first) and `/open` (raw bytes, its own header) is exactly this. */
+async function forwardDeckLifecycleJsonPost(
+  deckServer: DeckServerClient,
+  path: string,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+  if (body === null) return;
+  const upstream = await postDeckServerJson(deckServer, path, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  sendJson(res, upstream.status, upstream.body);
+}
+
+/** `POST /api/new` — forwards to the crate's `POST /new`. */
+async function handleNewForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await forwardDeckLifecycleJsonPost(deckServer, "/new", req, res);
+}
+
+/**
+ * `POST /api/open` — a browser's `<input type="file">` only ever hands
+ * over bytes, never a real filesystem path, so this keeps the raw-body +
+ * `x-slidra-file-name` header shape `POST /api/asset`'s own byte-upload
+ * mode uses, forwarded to the crate's `POST /open`.
+ */
+async function handleOpenForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readDeckLifecycleBody(req, res, MAX_OPEN_BODY_BYTES);
+  if (body === null) return;
+  const fileNameHeader = req.headers["x-slidra-file-name"];
+  const extraHeaders: Record<string, string> = {};
+  if (typeof fileNameHeader === "string") extraHeaders["x-slidra-file-name"] = fileNameHeader;
+  const upstream = await postDeckServerJson(deckServer, "/open", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body, extraHeaders });
+  sendJson(res, upstream.status, upstream.body);
+}
+
+/** `POST /api/deck/import` — forwards to the crate's `POST /deck/import`. */
+async function handleDeckImportForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await forwardDeckLifecycleJsonPost(deckServer, "/deck/import", req, res);
+}
+
+/** `POST /api/deck/resolve` — forwards to the crate's `POST /deck/resolve`. */
+async function handleDeckResolveForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await forwardDeckLifecycleJsonPost(deckServer, "/deck/resolve", req, res);
+}
+
+/** A JSON body's `id` field, if it parses and is a non-empty string — `null` on anything else (malformed JSON, missing/wrongly-typed `id`), which the bound-deck guard below treats as "cannot tell, not bound" and simply forwards, letting the crate's own body validation produce the canonical 400. */
+function extractDeckIdField(rawBody: Buffer): string | null {
+  try {
+    const parsed: unknown = JSON.parse(rawBody.toString("utf8"));
+    const id = (parsed as { id?: unknown } | null)?.id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `POST /api/deck/rename` — the crate's own `deck_store::rename_deck` has
+ * NO "is this the currently-bound deck" guard (`deck_lifecycle.rs`'s own
+ * doc comment: that state lives in `deck-switch.ts`, a Node-side concern
+ * this ticket deliberately did not move). So this is the one deck-lifecycle
+ * route that is not a pure thin forward: Node reads the body once, checks
+ * the bound deck itself, and only then forwards the SAME already-read
+ * bytes — mirrors `deck-store.ts`'s old `DeckBoundError` wording/shape
+ * exactly (`{error, reason: "deck-bound"}`), since `deck-switch.test.ts`'s
+ * own contract test for this ("AC5's other half") depends on it.
+ */
+async function handleDeckRenameForward(deckSession: DeckSession, deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+  if (body === null) return;
+  const id = extractDeckIdField(body);
+  if (id !== null && id === deckSession.currentId()) {
+    sendJson(res, 409, { error: `cannot rename the deck that is currently open: ${id}`, reason: "deck-bound" });
+    return;
+  }
+  const upstream = await postDeckServerJson(deckServer, "/deck/rename", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  sendJson(res, upstream.status, upstream.body);
+}
+
+/** `POST /api/deck/delete` — same bound-deck guard as `/api/deck/rename` above, and for the same reason. */
+async function handleDeckDeleteForward(deckSession: DeckSession, deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+  if (body === null) return;
+  const id = extractDeckIdField(body);
+  if (id !== null && id === deckSession.currentId()) {
+    sendJson(res, 409, { error: `cannot delete the deck that is currently open: ${id}`, reason: "deck-bound" });
+    return;
+  }
+  const upstream = await postDeckServerJson(deckServer, "/deck/delete", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  sendJson(res, upstream.status, upstream.body);
+}
+
+/** `POST /api/identity/sign-in` — forwards to the crate's `POST /identity/sign-in`. */
+async function handleIdentitySignInForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  await forwardDeckLifecycleJsonPost(deckServer, "/identity/sign-in", req, res);
+}
+
+/** `POST /api/identity/sign-out` — forwards to the crate's `POST /identity/sign-out`; no body to read, matching the old handler's own contract. */
+async function handleIdentitySignOutForward(deckServer: DeckServerClient, res: ServerResponse): Promise<void> {
+  const upstream = await postDeckServerJson(deckServer, "/identity/sign-out", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor");
+  sendJson(res, upstream.status, upstream.body);
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

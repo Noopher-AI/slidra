@@ -402,6 +402,7 @@ fn rename_then_delete_round_trips_and_moves_the_file_to_trash() {
         "body: {:?}",
         String::from_utf8_lossy(&renamed.body)
     );
+    assert_eq!(json(&renamed)["fileName"], "New Name.slidra");
     assert!(home.deck_folder.join("New Name.slidra").exists());
     assert!(!home.deck_folder.join("Old Name.slidra").exists());
 

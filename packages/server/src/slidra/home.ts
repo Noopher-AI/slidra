@@ -6,9 +6,18 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { SlidraError, SlidraNotFoundError } from "./errors.js";
-import { deckFileMtime } from "../storage/deck-folder.js";
 
-export { deckFileMtime };
+/**
+ * The deck file's own `mtimeMs` — a single `stat`, not a directory walk:
+ * the deck IS the file. Moved here from `storage/deck-folder.ts` ([E10.T5]:
+ * that module is deleted along with the rest of `storage/`, now that deck
+ * lifecycle lives in the crate) — `slidra/save-state.ts` and `sandbox/
+ * shim-endpoint.ts`-adjacent callers still need this one function, unrelated
+ * to anything `storage/` owned.
+ */
+export async function deckFileMtime(deckPath: string): Promise<number> {
+  return (await stat(deckPath)).mtimeMs;
+}
 
 /**
  * `packages/server`'s own reader for `<SLIDRA_HOME>/projects.json` —

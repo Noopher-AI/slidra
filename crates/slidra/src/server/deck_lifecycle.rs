@@ -216,7 +216,13 @@ pub(crate) fn handle_import(request: &RawRequest, stream: &mut TcpStream) {
     }
 }
 
-/// `POST /deck/rename`. Body: `{ id: string, name: string }`.
+/// `POST /deck/rename`. Body: `{ id: string, name: string }`. The success
+/// response's `fileName` field is what lets Node's `/api/deck/rename-current`
+/// forward here too (the title bar's own rename, of whichever deck is
+/// currently bound — Node's guard for "not the bound deck" simply never
+/// runs for that caller) and still answer its own `{ok:true, fileName}`
+/// contract, matching the old, now-collapsed `DeckStore.renameBound`'s
+/// return shape.
 pub(crate) fn handle_rename(request: &RawRequest, stream: &mut TcpStream) {
     let Some(_credential) = server::authorize(request, stream, EDITOR_ONLY) else {
         return;
@@ -242,7 +248,7 @@ pub(crate) fn handle_rename(request: &RawRequest, stream: &mut TcpStream) {
     };
 
     match deck_store::rename_deck(&id, &name) {
-        Ok(_file_name) => server::write_json_response(stream, &serde_json::json!({ "ok": true })),
+        Ok(file_name) => server::write_json_response(stream, &serde_json::json!({ "ok": true, "fileName": file_name })),
         Err(err) => write_store_error(stream, err),
     }
 }
