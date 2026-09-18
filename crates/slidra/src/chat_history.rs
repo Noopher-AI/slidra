@@ -62,8 +62,7 @@ fn io_err(_: rusqlite::Error) -> SlidraError {
 
 fn open(id: &str) -> SlidraResult<Connection> {
     let deck_path = workspace::resolve_work_dir(id)?;
-    deck::open_connection(&deck_path)
-        .map_err(|_| SlidraError::invalid("error reading chat history"))
+    deck::open_connection(&deck_path).map_err(|_| SlidraError::invalid("error reading chat history"))
 }
 
 fn table_exists(conn: &Connection) -> SlidraResult<bool> {
@@ -146,11 +145,7 @@ pub fn append_entries(id: &str, entries: &[ChatEntry]) -> SlidraResult<usize> {
 /// `append_entries` called on it (the table itself does not exist) answers
 /// `(vec![], 0, false)` rather than creating the table or erroring — a read
 /// must never be the thing that first mutates the deck.
-pub fn query(
-    id: &str,
-    limit: usize,
-    q: Option<&str>,
-) -> SlidraResult<(Vec<ChatEntry>, usize, bool)> {
+pub fn query(id: &str, limit: usize, q: Option<&str>) -> SlidraResult<(Vec<ChatEntry>, usize, bool)> {
     let conn = open(id)?;
     if !table_exists(&conn)? {
         return Ok((Vec::new(), 0, false));
@@ -179,9 +174,7 @@ pub fn query(
                      ORDER BY seq DESC LIMIT ?1",
                 )
                 .map_err(io_err)?;
-            let mapped = stmt
-                .query_map(params![limit_i64], row_to_entry)
-                .map_err(io_err)?;
+            let mapped = stmt.query_map(params![limit_i64], row_to_entry).map_err(io_err)?;
             for row in mapped {
                 rows_desc.push(row.map_err(io_err)?);
             }
@@ -282,11 +275,7 @@ mod tests {
         let fixture = Fixture::new("upsert");
         append_entries(&fixture.id, &[entry("e1", "command", "slidra text set")]).unwrap();
         append_entries(&fixture.id, &[entry("e2", "agent", "done")]).unwrap();
-        append_entries(
-            &fixture.id,
-            &[entry("e1", "command", "slidra text set (updated)")],
-        )
-        .unwrap();
+        append_entries(&fixture.id, &[entry("e1", "command", "slidra text set (updated)")]).unwrap();
 
         let (entries, total, _) = query(&fixture.id, 20, None).unwrap();
         assert_eq!(total, 2, "the second write to e1 must not add a new row");
@@ -298,9 +287,7 @@ mod tests {
     #[test]
     fn limit_truncates_to_the_most_recent_entries_and_reports_the_real_total() {
         let fixture = Fixture::new("limit");
-        let entries: Vec<ChatEntry> = (0..5)
-            .map(|n| entry(&format!("e{n}"), "author", &format!("msg {n}")))
-            .collect();
+        let entries: Vec<ChatEntry> = (0..5).map(|n| entry(&format!("e{n}"), "author", &format!("msg {n}"))).collect();
         append_entries(&fixture.id, &entries).unwrap();
 
         let (page, total, truncated) = query(&fixture.id, 2, None).unwrap();
@@ -344,11 +331,7 @@ mod tests {
     #[test]
     fn copying_the_deck_file_carries_the_history_with_it() {
         let fixture = Fixture::new("copy");
-        append_entries(
-            &fixture.id,
-            &[entry("e1", "author", "hello from the original")],
-        )
-        .unwrap();
+        append_entries(&fixture.id, &[entry("e1", "author", "hello from the original")]).unwrap();
 
         let original_path = crate::workspace::resolve_work_dir(&fixture.id).unwrap();
         let copied_path = std::env::temp_dir().join(format!(
