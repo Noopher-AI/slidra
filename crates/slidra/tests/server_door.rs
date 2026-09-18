@@ -361,6 +361,54 @@ fn argv_deck_id_is_overwritten_by_the_credential() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+/// `element insert` is the one family command whose deck id follows a
+/// command-specific positional (`kind`). The door must preserve that kind
+/// while replacing the untrusted id with the credential-bound deck.
+#[test]
+fn element_insert_preserves_kind_while_overwriting_deck_id() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("element-insert-id-override");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let real_id = seed_deck(&home, "element-insert-id-override");
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let agent_cred = credential::encode(CallerKind::Agent, &real_id);
+
+    let response = post_call(
+        &base_url,
+        Some(&agent_cred),
+        &[],
+        &[
+            "element",
+            "insert",
+            "rect",
+            "not-a-real-id",
+            "slides/001.svg",
+            "--x",
+            "1",
+            "--y",
+            "1",
+            "--width",
+            "1",
+            "--height",
+            "1",
+            "--json",
+        ],
+    );
+    assert_eq!(response.status, 200);
+    let (stdout, _, exit_code) = decode_frames(&response.body);
+    assert_eq!(exit_code, 0, "element insert must succeed through the door");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stdout).unwrap()["ok"],
+        serde_json::json!(true),
+        "the credential must replace the fake id without replacing `rect`"
+    );
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
 /// AC9: no response to an agent credential contains a real filesystem
 /// path — end to end, not just the `redact` unit tests' fabricated case:
 /// a slide's own text content is made to literally contain `SLIDRA_HOME`'s
