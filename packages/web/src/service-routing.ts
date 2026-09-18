@@ -17,7 +17,12 @@ function argvHeader(argv: string[]): string {
 }
 
 function callResult(response: Response): Promise<Response> {
-  if (!response.ok) return Promise.resolve(response);
+  if (!response.ok) {
+    return response.text().then((error) => new Response(
+      JSON.stringify({ error: error || "Deck server refused the command" }),
+      { status: response.status, headers: { "content-type": "application/json" } },
+    ));
+  }
   return response.arrayBuffer().then((buffer) => {
     const bytes = new Uint8Array(buffer);
     const stdout: Uint8Array[] = [];
@@ -48,7 +53,7 @@ function callResult(response: Response): Promise<Response> {
     if (exitCode !== 0 || envelope?.ok === false) {
       return new Response(
         JSON.stringify({ error: envelope?.message || errorOutput || "Command failed", failureKind: envelope?.failureKind ?? null }),
-        { status: envelope?.failureKind === "not-found" ? 404 : 500, headers: { "content-type": "application/json" } },
+        { status: envelope?.failureKind === "not-found" ? 404 : 400, headers: { "content-type": "application/json" } },
       );
     }
     return new Response(output, { status: 200, headers: { "content-type": "application/json" } });

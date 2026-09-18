@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -14,6 +14,8 @@ import type { RunningServer } from "../src/serve.js";
 import { openPolicy } from "../src/policy/open.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity } from "../src/deck-switch.js";
+import { createServiceClients, type ServiceBootstrap } from "../../web/src/service-clients.js";
+import { createRoutingFetch } from "../../web/src/service-routing.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../target/release/slidra");
@@ -55,6 +57,8 @@ beforeEach(async () => {
   slidraDir = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-files-"));
   deckFolder = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-deckfolder-"));
   staticRoot = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-static-"));
+  await mkdir(path.join(staticRoot, "dist"));
+  await writeFile(path.join(staticRoot, "dist/index.html"), '<script id="slidra-bootstrap" type="application/json">__SLIDRA_BOOTSTRAP__</script>');
   process.env.SLIDRA_HOME = slidraHome;
   process.env.SLIDRA_BIN = slidraBinPath;
   // [E6.T2]: /api/new, /api/open, and GET /api/decks now resolve a real
@@ -101,11 +105,26 @@ async function readSlide(id: string): Promise<string> {
 }
 
 function postJson(server: RunningServer, urlPath: string, body: unknown): Promise<Response> {
-  return fetch(`${server.url}${urlPath}`, {
+  const request = ["/api/command", "/api/asset", "/api/undo", "/api/redo"].includes(urlPath)
+    ? browserFetch(server, urlPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    : fetch(`${server.url}${urlPath}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  return request;
+}
+
+async function browserFetch(server: RunningServer, input: string, init?: RequestInit): Promise<Response> {
+  const html = await (await fetch(server.url)).text();
+  const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!match) throw new Error("missing editor bootstrap");
+  const clients = createServiceClients(JSON.parse(match[1]!) as ServiceBootstrap);
+  return createRoutingFetch(clients)(input, init);
 }
 
 async function switchTo(server: RunningServer, id: string): Promise<Response> {
@@ -224,10 +243,6 @@ describe("no deck open (AC1)", () => {
       { method: "GET", path: "/api/files/project.json" },
       { method: "GET", path: "/api/effects/slides/001.svg" },
       { method: "GET", path: "/api/raw/project.json" },
-      { method: "POST", path: "/api/command" },
-      { method: "POST", path: "/api/asset" },
-      { method: "POST", path: "/api/undo" },
-      { method: "POST", path: "/api/redo" },
       { method: "POST", path: "/api/export" },
       { method: "POST", path: "/api/chat" },
     ];
@@ -457,7 +472,7 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(await readSlide(b.id)).toContain("acts-on-b");
     expect(await readSlide(a.id)).toBe(aBefore);
 
-    const undo = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const undo = await browserFetch(server, "/api/undo", { method: "POST" });
     expect(undo.status).toBe(200);
     expect(await readSlide(b.id)).not.toContain("acts-on-b");
     expect(await readSlide(a.id)).toBe(aBefore);

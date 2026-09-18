@@ -14,6 +14,8 @@ import type { RunningServer } from "../../src/serve.js";
 import { openPolicy } from "../../src/policy/open.js";
 import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { requireCliBuilt } from "./require-cli-built.js";
+import { createServiceClients, type ServiceBootstrap } from "../../../web/src/service-clients.js";
+import { createRoutingFetch } from "../../../web/src/service-routing.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
@@ -63,6 +65,14 @@ beforeEach(async () => {
   process.env.SLIDRA_BIN = slidraBinPath;
   servers = [];
 });
+
+async function browserFetch(server: RunningServer, input: string, init?: RequestInit): Promise<Response> {
+  const html = await (await fetch(server.url)).text();
+  const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!match) throw new Error("missing editor bootstrap");
+  const clients = createServiceClients(JSON.parse(match[1]!) as ServiceBootstrap);
+  return createRoutingFetch(clients)(input, init);
+}
 
 afterEach(async () => {
   await Promise.all(servers.map((server) => server.close()));
@@ -372,12 +382,12 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     expect(editedContent).toContain("third");
     expect(editedContent).not.toBe(originalContent);
 
-    const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const undoResponse = await browserFetch(server, "/api/undo", { method: "POST" });
     expect(undoResponse.status).toBe(200);
     const restoredContent = await readSlide(id);
     expect(restoredContent).toBe(originalContent);
 
-    const secondUndoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const secondUndoResponse = await browserFetch(server, "/api/undo", { method: "POST" });
     expect(secondUndoResponse.status).toBe(400);
     const body = (await secondUndoResponse.json()) as { error: string };
     expect(body.error).toBe("no operation to undo");
@@ -427,7 +437,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     // (chat-done has not necessarily fired the instant the log line lands)
     // — frozen must be false throughout, never having flipped true at all.
     expect((await getEditingState(server)).frozen).toBe(false);
-    const undoResponse = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const undoResponse = await browserFetch(server, "/api/undo", { method: "POST" });
     // 400 (empty stack), not 409 (would mean the request was refused for
     // being frozen) — proves this route was never blocked by the lock.
     expect(undoResponse.status).toBe(400);
@@ -442,13 +452,13 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.permissionOutcome !== undefined);
 
     expect((await getEditingState(server)).frozen).toBe(true);
-    const duringTurn = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const duringTurn = await browserFetch(server, "/api/undo", { method: "POST" });
     expect(duringTurn.status).toBe(409);
     const duringBody = (await duringTurn.json()) as { error: string };
     expect(duringBody.error).toBe("The agent is currently editing, please wait.");
 
     await waitForFrozen(server, false);
-    const afterTurn = await fetch(`${server.url}/api/undo`, { method: "POST" });
+    const afterTurn = await browserFetch(server, "/api/undo", { method: "POST" });
     expect(afterTurn.status).toBe(200);
   });
 
@@ -532,7 +542,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     // false negative regardless of whether the 409 gate itself is correct.
     const rejectionResponses = await Promise.all(
       payloads.map(({ name, input }) =>
-        fetch(`${server.url}/api/command`, {
+        browserFetch(server, "/api/command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, input }),
@@ -560,7 +570,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     // just avoid 409 — it must actually run, the way it does in
     // command-endpoint.test.ts, and leave the effect in the SVG.
     for (const { name, input } of payloads) {
-      const response = await fetch(`${server.url}/api/command`, {
+      const response = await browserFetch(server, "/api/command", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, input }),
@@ -587,7 +597,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     await waitForLog((line) => line.permissionOutcome !== undefined);
     expect((await getEditingState(server)).frozen).toBe(true);
 
-    const frozenResponse = await fetch(`${server.url}/api/asset`, {
+    const frozenResponse = await browserFetch(server, "/api/asset", {
       method: "POST",
       headers: { "X-Slidra-Asset-Name": "photo.png" },
       body: pngBytes,
@@ -599,7 +609,7 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
 
     await waitForFrozen(server, false);
 
-    const unfrozenResponse = await fetch(`${server.url}/api/asset`, {
+    const unfrozenResponse = await browserFetch(server, "/api/asset", {
       method: "POST",
       headers: { "X-Slidra-Asset-Name": "photo.png" },
       body: pngBytes,
