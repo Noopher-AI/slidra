@@ -67,7 +67,12 @@ export async function startExportServer(options: ExportServerOptions): Promise<R
     void handleRequest(presentationId, staticDir, deckServer, req, res);
   });
 
-  await listen(server, options.port ?? 0, host);
+  try {
+    await listen(server, options.port ?? 0, host);
+  } catch (error) {
+    await deckServer.close();
+    throw error;
+  }
   const actualPort = (server.address() as AddressInfo).port;
 
   return {

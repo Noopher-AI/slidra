@@ -11,29 +11,57 @@ import { runJsonCommand, toCommandResult } from "./slidra/command.js";
 import { COMMAND_WHITELIST, encodeCommandArgv } from "./slidra/argv.js";
 import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
-import { collectSlashCommands, resolveSkillDirs, type SkillDirs, type SlashCommand } from "./agent/commands.js";
+import {
+  collectSlashCommands,
+  resolveSkillDirs,
+  type SkillDirs,
+  type SlashCommand,
+} from "./agent/commands.js";
 import { deployAgentWorkdir } from "./agent/workdir.js";
 import { createSandboxRoot } from "./sandbox/sandbox-root.js";
-import { createSandboxLauncher, setActiveLauncher } from "./sandbox/launcher.js";
+import {
+  createSandboxLauncher,
+  setActiveLauncher,
+} from "./sandbox/launcher.js";
 import { setActivePolicy } from "./sandbox/policy.js";
 import { deployShimWrapper } from "./sandbox/shim-wrapper.js";
 import { createShimToken, setShimConfig } from "./sandbox/shim-config.js";
 import { handleShimExec } from "./sandbox/shim-endpoint.js";
 import type { FileEntryPolicy, WorkbenchPolicy } from "./policy/types.js";
-import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
-import { ADAPTER_SPECS, buildAdapterRegistry, isAgentKind, resolveAdapterConfig, type AdapterSpec, type AgentKind } from "./agent/adapters.js";
+import {
+  AgentManager,
+  AgentSwitchLockedError,
+  type AgentSource,
+} from "./agent/manager.js";
+import {
+  ADAPTER_SPECS,
+  buildAdapterRegistry,
+  isAgentKind,
+  resolveAdapterConfig,
+  type AdapterSpec,
+  type AgentKind,
+} from "./agent/adapters.js";
 import { readAgentSettings } from "./agent/settings.js";
 import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
-import { broadcastSaveState, createSaveController, type SaveController } from "./save-state.js";
+import {
+  broadcastSaveState,
+  createSaveController,
+  type SaveController,
+} from "./save-state.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import { loadProject } from "./slidra/reads.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
-import { createDeckSession, DeckSwitchConflictError, type DeckIdentity, type DeckSession } from "./deck-switch.js";
+import {
+  createDeckSession,
+  DeckSwitchConflictError,
+  type DeckIdentity,
+  type DeckSession,
+} from "./deck-switch.js";
 import {
   startDeckServer,
   forwardDeckServerGet,
@@ -168,7 +196,9 @@ const DEFAULT_HOST = "127.0.0.1";
  * with no slides is valid (`new` creates none) — the editor
  * shows "No slides now" and the first page is made from there.
  */
-export async function startServe(options: ServeOptions): Promise<RunningServer> {
+export async function startServe(
+  options: ServeOptions,
+): Promise<RunningServer> {
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
@@ -185,323 +215,379 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   // registration order, before the socket itself is closed.
   const disposers: Array<() => Promise<void>> = [];
 
-  // NOOP-425 D4: this serve process's own scratch tree for the agent's
-  // deployed work directory — created unconditionally (even with no deck
-  // bound yet) since a later deck switch's `bind` needs it too. Disposed
-  // wholesale on shutdown, and one presentation at a time on `unbind`
-  // below (AC9).
-  const sandboxRoot = await createSandboxRoot();
-  disposers.push(() => sandboxRoot.disposeAll());
+  try {
+    // NOOP-425 D4: this serve process's own scratch tree for the agent's
+    // deployed work directory — created unconditionally (even with no deck
+    // bound yet) since a later deck switch's `bind` needs it too. Disposed
+    // wholesale on shutdown, and one presentation at a time on `unbind`
+    // below (AC9).
+    const sandboxRoot = await createSandboxRoot();
+    disposers.push(() => sandboxRoot.disposeAll());
 
-  // NOOP-425 D5: the CLI-sandbox shim wrapper every spawned agent's PATH is
-  // pointed at (`agent/manager.ts`'s `buildSession()`) — deployed once per
-  // sandbox root, alongside it, since every presentation shares this one
-  // `bin/` directory.
-  await deployShimWrapper(sandboxRoot.path);
-  const shimToken = createShimToken();
+    // NOOP-425 D5: the CLI-sandbox shim wrapper every spawned agent's PATH is
+    // pointed at (`agent/manager.ts`'s `buildSession()`) — deployed once per
+    // sandbox root, alongside it, since every presentation shares this one
+    // `bin/` directory.
+    await deployShimWrapper(sandboxRoot.path);
+    const shimToken = createShimToken();
 
-  // [E10.T5] transitional forwarding layer (NOOP-641 Plan §7 decision 4):
-  // GET /presentation, /assets, /files, /effects, /raw and /events now
-  // live in the crate (`crates/slidra/src/server/{reads,raw,events}.rs`);
-  // this process forwards those routes to it rather than dispatching them
-  // itself. Started early, alongside the other server-lifetime resources
-  // above, so it is ready before the HTTP server starts accepting requests.
-  const deckServer = await startDeckServer();
-  disposers.push(() => deckServer.close());
+    // [E10.T5] transitional forwarding layer (NOOP-641 Plan §7 decision 4):
+    // GET /presentation, /assets, /files, /effects, /raw and /events now
+    // live in the crate (`crates/slidra/src/server/{reads,raw,events}.rs`);
+    // this process forwards those routes to it rather than dispatching them
+    // itself. Started early, alongside the other server-lifetime resources
+    // above, so it is ready before the HTTP server starts accepting requests.
+    const deckServer = await startDeckServer();
+    disposers.push(() => deckServer.close());
 
-  // NOOP-425: this process's one active write-isolation launcher
-  // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
-  // `agent/manager.ts`'s `writeIsolation` status) — never fails startup
-  // itself (D8): platform/dependency/self-check failures all come back as
-  // an inert, `active: false` launcher instead of throwing.
-  const sandboxLauncher = await createSandboxLauncher();
-  setActiveLauncher(sandboxLauncher);
-  disposers.push(async () => {
-    setActiveLauncher(undefined);
-    await sandboxLauncher.dispose();
-  });
-
-  // NOOP-617: this process's one active policy — `buildCliSandboxPolicy`
-  // (`sandbox/policy.ts`, called from `shim-endpoint.ts`) reads it back,
-  // the same module-singleton shape `setActiveLauncher` above uses and for
-  // the same reason (that call site may only be touched minimally).
-  setActivePolicy(options.policy);
-  disposers.push(() => {
-    setActivePolicy(undefined);
-    return Promise.resolve();
-  });
-
-  if (options.presentationId !== undefined) {
-    initialDeck = await resolveDeckIdentity(options.presentationId);
-    initialWorkdir = await deployAgentWorkdir(sandboxRoot.path, options.presentationId, options.policy);
-  }
-
-  // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
-  // lifecycle (AgentManager -> AgentChatSession) and the human editing
-  // routes below. Its frozen/unfrozen events are forwarded onto the same
-  // /api/events fan-out `presentation-changed` already uses — no second SSE
-  // stream.
-  const editingLock = new EditingLock();
-
-  // Starts watching only lazily, on the first /api/events connection (see
-  // changes.ts) — creating the handle itself touches no filesystem, so no
-  // rollback is needed if listen() below fails. Built before the manager
-  // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
-  const changeBroadcaster = createChangeBroadcaster(initialDeck?.id ?? null, deckServer);
-  disposers.push(() => changeBroadcaster.dispose());
-
-  // NOOP-422 (Continuous save): owns the debounced write-back that replaced
-  // the manual Save button. Built right after the broadcaster/editingLock
-  // it depends on, before anything that might already mark the deck dirty.
-  const saveController = createSaveController({
-    presentationId: initialDeck?.id ?? null,
-    broadcaster: changeBroadcaster,
-    editingLock,
-  });
-  // Registered FIRST (unshift, not push) — server shutdown must write back
-  // any pending debounced edit before anything else tears down, including
-  // the broadcaster itself (AC3/AC5: closing must never abandon an edit
-  // still sitting in the debounce window).
-  disposers.unshift(async () => {
-    const before = await saveController.state();
-    if (before.known && before.dirty) {
-      process.stderr.write(`Writing unsaved changes to ${before.fileName}…\n`);
-    }
-    await saveController.dispose();
-  });
-
-  // NOOP-93 §4.4: one export job at a time, for this server's whole
-  // lifetime — a fresh manager per `startServe` call, never persisted.
-  // `serverAddress` starts with a placeholder port because the real one
-  // (`actualPort`, below) is not known until `listen()` resolves, but the
-  // object identity is fixed now so the request handler closure below can
-  // read whatever it holds *at request time* — by then `listen()` has long
-  // since resolved and the real value has been written into it.
-  const exportJobManager = new ExportJobManager();
-  const serverAddress = { host, port: 0 };
-
-  // The HTTP server is created and `listen()`ed *before* `AgentManager`
-  // below, and the closure here references `manager`/`chatStreams`/
-  // `deckSession`/`computeSlashCommands` before any of them are
-  // constructed — safe, because none of it runs until an actual request
-  // arrives, which cannot happen before `startServe()` itself returns.
-  // NOOP-425 D5/D6: this ordering is deliberate, not incidental —
-  // `setShimConfig()` right after `listen()` needs the real port, and it
-  // must be in place *before* `AgentManager`'s constructor builds its
-  // first session (including a pre-selected `initialAgent`, the common
-  // case on every normal startup) — otherwise that first session's spawn
-  // env would permanently miss the shim token, silently disabling the CLI
-  // sandbox for as long as that session lives (reproduced while writing
-  // this: it manifested as every agent-issued `slidra` command hanging,
-  // resolved to a shim with no server to answer it — see
-  // packages/server/test/agent/fixtures/multi-command-fake-acp-agent.mjs's
-  // real `slidra` invocations, which is what caught it).
-  const server = http.createServer((req, res) => {
-    void handleRequest(
-      deckSession,
-      staticDir,
-      manager,
-      chatStreams,
-      changeBroadcaster,
-      editingLock,
-      saveController,
-      exportJobManager,
-      serverAddress,
-      computeSlashCommands,
-      sandboxRoot.path,
-      shimToken,
-      options.policy.fileEntry,
-      deckServer,
-      req,
-      res,
-    );
-  });
-
-  await listen(server, port, host);
-  const actualPort = (server.address() as AddressInfo).port;
-  serverAddress.port = actualPort;
-
-  setShimConfig({ token: shimToken, baseUrl: `http://${host}:${actualPort}` });
-  disposers.push(() => {
-    setShimConfig(undefined);
-    return Promise.resolve();
-  });
-
-  // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
-  // login status, the one live AgentChatSession, and swapping that session
-  // out on POST /api/agent/select) — serve.ts no longer constructs
-  // AgentChatSession directly. `initialAgent` (cli.ts's resolved
-  // kind/source) wins when given; falling back to `agent` (see its own
-  // docstring) keeps every existing direct-`agent` caller unchanged.
-  const initialAgent: { kind: AgentKind | null; source: AgentSource } =
-    options.initialAgent ?? (options.agent ? { kind: options.agent.kind, source: "cli" } : { kind: null, source: "none" });
-  const fallbackAgent = options.agent;
-  // E10.T6/#400 D4: the effective adapter registry. `cli.ts` always passes
-  // one (built from the same `readAgentSettings()` call it already makes
-  // for `agent`/`models`); every other caller — every existing test, and
-  // any caller (e.g. `e2e/helpers/launch.ts`) that starts a server directly
-  // — gets it read here instead, the same resilient way (a broken
-  // settings.json never prevents serve from starting, it just falls back
-  // to built-ins only).
-  let adapters = options.agentManager?.adapters;
-  if (!adapters) {
-    try {
-      adapters = buildAdapterRegistry((await readAgentSettings()).adapters);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      adapters = ADAPTER_SPECS;
-    }
-  }
-  // Back-compat (see `agent`'s own docstring): a directly-given `agent`
-  // (every pre-NOOP-230 test suite, `e2e/helpers/launch.ts`) names a kind
-  // that may not appear in any registry built above — `AgentManager` must
-  // still be able to report a card for it (`status()`/`probe()` iterate the
-  // registry, and `POST /api/chat`'s pre-gate looks its `current` kind up
-  // in exactly that list), or the very first request throws reaching into
-  // a card that was never there.
-  if (fallbackAgent && !adapters.some((spec) => spec.kind === fallbackAgent.kind)) {
-    adapters = [...adapters, { kind: fallbackAgent.kind, label: fallbackAgent.label, writeRules: [] }];
-  }
-  const resolveAdapter =
-    options.agentManager?.resolveAdapter ??
-    ((kind: AgentKind): AgentAdapterConfig =>
-      fallbackAgent && kind === fallbackAgent.kind ? fallbackAgent : resolveAdapterConfig(kind, adapters));
-  const manager = new AgentManager({
-    presentationId: initialDeck?.id ?? null,
-    editingLock,
-    deckServer,
-    policy: options.policy,
-    workdir: initialWorkdir,
-    initial: initialAgent,
-    runCommand: options.agentManager?.runCommand,
-    resolveAdapter,
-    adapters,
-    onAgentChanged: (payload) => changeBroadcaster.broadcast("agent-changed", payload),
-    onModelChanged: (payload) => changeBroadcaster.broadcast("agent-model-changed", payload),
-    initialModels: options.initialModels,
-    // Back-compat (see `agent`'s own docstring above and AgentManagerOptions.
-    // assumeLoggedIn's docstring): a directly-given `agent` has no real
-    // "logged in" concept to probe, so its kind is exempted from the real
-    // probe rather than gated on whatever a real `claude`/`codex` CLI
-    // happens to report on the host running the tests.
-    assumeLoggedIn: fallbackAgent && !options.agentManager?.runCommand ? new Set([fallbackAgent.kind]) : undefined,
-  });
-  // Every SSE stream `/api/chat/stream` has ever opened, still connected.
-  // `server.close()` waits for established connections rather than
-  // closing them, and an SSE stream never ends on its own — so these must
-  // be closed explicitly, before the socket itself is closed, or shutdown
-  // hangs forever with a browser tab open.
-  const chatStreams = createChatStreamRegistry();
-  disposers.push(async () => {
-    chatStreams.closeAll();
-    await manager.dispose();
-  });
-
-  const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
-  // The agent writes to the deck through the CLI directly, never through an
-  // HTTP route — its turn ending (releasing the floor) is the only
-  // observation point continuous-save has for "the agent may have just
-  // written something" (plan §4(a)'s table).
-  const onUnfrozen = () => {
-    changeBroadcaster.broadcast("editing-unfrozen", {});
-    saveController.markDirty();
-  };
-  editingLock.on("frozen", onFrozen);
-  editingLock.on("unfrozen", onUnfrozen);
-  disposers.push(async () => {
-    editingLock.off("frozen", onFrozen);
-    editingLock.off("unfrozen", onUnfrozen);
-  });
-
-  // The `/` slash-command list: agent report ∪ bundled skills ∪ user
-  // skills, recomputed on demand rather than cached —
-  // the underlying skill directories can change between calls and this is
-  // never hot-path code. `GET /api/agent/commands` below calls this
-  // directly for the initial value; the SSE push below recomputes and
-  // re-broadcasts the same shape whenever the agent sends a fresh report.
-  // Resolved lazily, on first actual use, rather than eagerly here: several
-  // existing tests (e.g. raw.test.ts) build a `ServeOptions` with no
-  // `agent` at all, because they never touch chat — startServe must not
-  // crash on `options.agent.kind` for those callers just because this
-  // unrelated feature also lives here.
-  // Keyed by kind, not a single slot: the user skill directory differs per
-  // agent (~/.claude/skills vs ~/.agents/skills), and POST /api/agent/select
-  // can switch kinds while the server runs — a one-shot cache would keep
-  // serving the directory of whichever agent happened to ask first.
-  const skillDirsByKind = new Map<AgentKind, SkillDirs>();
-  const computeSlashCommands = (): Promise<SlashCommand[]> => {
-    const kind = manager.currentKind();
-    // No agent selected yet: no agent report and no user skill directory to
-    // point at, so the list is legitimately empty rather than an error.
-    if (kind === null) return Promise.resolve([]);
-    let dirs = skillDirsByKind.get(kind);
-    if (!dirs) {
-      dirs = resolveSkillDirs(kind, options.skillDirs);
-      skillDirsByKind.set(kind, dirs);
-    }
-    return collectSlashCommands(manager.getReportedCommands(), dirs);
-  };
-  const detachCommands = manager.onAvailableCommands(() => {
-    void computeSlashCommands().then((commands) => {
-      changeBroadcaster.broadcast("agent-commands", { commands });
+    // NOOP-425: this process's one active write-isolation launcher
+    // (`getActiveLauncher()`, read by `agent/session.ts`'s spawn wrapping and
+    // `agent/manager.ts`'s `writeIsolation` status) — never fails startup
+    // itself (D8): platform/dependency/self-check failures all come back as
+    // an inert, `active: false` launcher instead of throwing.
+    const sandboxLauncher = await createSandboxLauncher();
+    setActiveLauncher(sandboxLauncher);
+    disposers.push(async () => {
+      setActiveLauncher(undefined);
+      await sandboxLauncher.dispose();
     });
-  });
-  disposers.push(async () => {
-    detachCommands();
-  });
 
-  // NOOP-433: owns the currently-bound deck's identity and the switch
-  // sequence (`deck-switch.ts`'s own docstring has the fixed order). `bind`/
-  // `unbind` are exactly `startServe`'s own startup wiring above, replayed
-  // per switch — `deployAgentWorkdir` → `manager.retarget` → the
-  // broadcaster's `retarget` for `bind`; the broadcaster first, then the
-  // manager, for `unbind` (NOOP-433 §3).
-  const deckSession = createDeckSession({
-    initial: initialDeck,
-    resolveDeck: resolveDeckIdentity,
-    guard: () => deckMutationGuard(editingLock, exportJobManager),
-    unbind: async (outgoing) => {
-      await changeBroadcaster.retarget(null);
-      await manager.retarget(null);
-      // AC9, "switching decks": the outgoing deck's agent working files
-      // never persist inside the sandbox past the switch.
-      await sandboxRoot.disposePresentation(outgoing.id);
-    },
-    bind: async (incoming) => {
-      const workdir = await deployAgentWorkdir(sandboxRoot.path, incoming.id, options.policy);
-      await manager.retarget({ id: incoming.id, workdir });
-      await changeBroadcaster.retarget(incoming.id);
-      // Flushes whatever is still pending on the OUTGOING deck (this
-      // controller's own `presentationId` is still the outgoing id at this
-      // point — `retarget` hasn't run yet) before pointing itself at the
-      // incoming one (NOOP-422 §4's retarget contract).
-      await saveController.retarget(incoming.id);
-    },
-  });
+    // NOOP-617: this process's one active policy — `buildCliSandboxPolicy`
+    // (`sandbox/policy.ts`, called from `shim-endpoint.ts`) reads it back,
+    // the same module-singleton shape `setActiveLauncher` above uses and for
+    // the same reason (that call site may only be touched minimally).
+    setActivePolicy(options.policy);
+    disposers.push(() => {
+      setActivePolicy(undefined);
+      return Promise.resolve();
+    });
 
-  return {
-    port: actualPort,
-    url: `http://${host}:${actualPort}`,
-    agentSandboxRoot: sandboxRoot.path,
-    close: async () => {
-      for (const dispose of disposers) {
-        await dispose();
+    if (options.presentationId !== undefined) {
+      initialDeck = await resolveDeckIdentity(options.presentationId);
+      initialWorkdir = await deployAgentWorkdir(
+        sandboxRoot.path,
+        options.presentationId,
+        options.policy,
+      );
+    }
+
+    // T5 (NOOP-93/#110): single-editor lock, shared by the agent turn
+    // lifecycle (AgentManager -> AgentChatSession) and the human editing
+    // routes below. Its frozen/unfrozen events are forwarded onto the same
+    // /api/events fan-out `presentation-changed` already uses — no second SSE
+    // stream.
+    const editingLock = new EditingLock();
+
+    // Starts watching only lazily, on the first /api/events connection (see
+    // changes.ts) — creating the handle itself touches no filesystem, so no
+    // rollback is needed if listen() below fails. Built before the manager
+    // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
+    const changeBroadcaster = createChangeBroadcaster(
+      initialDeck?.id ?? null,
+      deckServer,
+    );
+    disposers.push(() => changeBroadcaster.dispose());
+
+    // NOOP-422 (Continuous save): owns the debounced write-back that replaced
+    // the manual Save button. Built right after the broadcaster/editingLock
+    // it depends on, before anything that might already mark the deck dirty.
+    const saveController = createSaveController({
+      presentationId: initialDeck?.id ?? null,
+      broadcaster: changeBroadcaster,
+      editingLock,
+    });
+    // Registered FIRST (unshift, not push) — server shutdown must write back
+    // any pending debounced edit before anything else tears down, including
+    // the broadcaster itself (AC3/AC5: closing must never abandon an edit
+    // still sitting in the debounce window).
+    disposers.unshift(async () => {
+      const before = await saveController.state();
+      if (before.known && before.dirty) {
+        process.stderr.write(
+          `Writing unsaved changes to ${before.fileName}…\n`,
+        );
       }
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-        // server.close() stops accepting new connections and closes idle
-        // ones on its own (Node >=18.19), but still waits indefinitely for
-        // any connection that is genuinely active — a request still
-        // arriving, or a response that has been opened and never ended.
-        // `disposers` above only closes the SSE streams this server itself
-        // tracks; anything else still active at this moment (e.g. a request
-        // that never finished arriving) would otherwise block shutdown
-        // forever. This forcibly severs whatever is left, right after
-        // close() has already stopped accepting new connections.
-        server.closeAllConnections();
+      await saveController.dispose();
+    });
+
+    // NOOP-93 §4.4: one export job at a time, for this server's whole
+    // lifetime — a fresh manager per `startServe` call, never persisted.
+    // `serverAddress` starts with a placeholder port because the real one
+    // (`actualPort`, below) is not known until `listen()` resolves, but the
+    // object identity is fixed now so the request handler closure below can
+    // read whatever it holds *at request time* — by then `listen()` has long
+    // since resolved and the real value has been written into it.
+    const exportJobManager = new ExportJobManager();
+    const serverAddress = { host, port: 0 };
+
+    // The HTTP server is created and `listen()`ed *before* `AgentManager`
+    // below, and the closure here references `manager`/`chatStreams`/
+    // `deckSession`/`computeSlashCommands` before any of them are
+    // constructed — safe, because none of it runs until an actual request
+    // arrives, which cannot happen before `startServe()` itself returns.
+    // NOOP-425 D5/D6: this ordering is deliberate, not incidental —
+    // `setShimConfig()` right after `listen()` needs the real port, and it
+    // must be in place *before* `AgentManager`'s constructor builds its
+    // first session (including a pre-selected `initialAgent`, the common
+    // case on every normal startup) — otherwise that first session's spawn
+    // env would permanently miss the shim token, silently disabling the CLI
+    // sandbox for as long as that session lives (reproduced while writing
+    // this: it manifested as every agent-issued `slidra` command hanging,
+    // resolved to a shim with no server to answer it — see
+    // packages/server/test/agent/fixtures/multi-command-fake-acp-agent.mjs's
+    // real `slidra` invocations, which is what caught it).
+    const server = http.createServer((req, res) => {
+      void handleRequest(
+        deckSession,
+        staticDir,
+        manager,
+        chatStreams,
+        changeBroadcaster,
+        editingLock,
+        saveController,
+        exportJobManager,
+        serverAddress,
+        computeSlashCommands,
+        sandboxRoot.path,
+        shimToken,
+        options.policy.fileEntry,
+        deckServer,
+        req,
+        res,
+      );
+    });
+
+    await listen(server, port, host);
+    const actualPort = (server.address() as AddressInfo).port;
+    serverAddress.port = actualPort;
+
+    setShimConfig({
+      token: shimToken,
+      baseUrl: `http://${host}:${actualPort}`,
+    });
+    disposers.push(() => {
+      setShimConfig(undefined);
+      return Promise.resolve();
+    });
+
+    // NOOP-230: owns the agent's whole lifecycle (which kind is current, its
+    // login status, the one live AgentChatSession, and swapping that session
+    // out on POST /api/agent/select) — serve.ts no longer constructs
+    // AgentChatSession directly. `initialAgent` (cli.ts's resolved
+    // kind/source) wins when given; falling back to `agent` (see its own
+    // docstring) keeps every existing direct-`agent` caller unchanged.
+    const initialAgent: { kind: AgentKind | null; source: AgentSource } =
+      options.initialAgent ??
+      (options.agent
+        ? { kind: options.agent.kind, source: "cli" }
+        : { kind: null, source: "none" });
+    const fallbackAgent = options.agent;
+    // E10.T6/#400 D4: the effective adapter registry. `cli.ts` always passes
+    // one (built from the same `readAgentSettings()` call it already makes
+    // for `agent`/`models`); every other caller — every existing test, and
+    // any caller (e.g. `e2e/helpers/launch.ts`) that starts a server directly
+    // — gets it read here instead, the same resilient way (a broken
+    // settings.json never prevents serve from starting, it just falls back
+    // to built-ins only).
+    let adapters = options.agentManager?.adapters;
+    if (!adapters) {
+      try {
+        adapters = buildAdapterRegistry((await readAgentSettings()).adapters);
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        adapters = ADAPTER_SPECS;
+      }
+    }
+    // Back-compat (see `agent`'s own docstring): a directly-given `agent`
+    // (every pre-NOOP-230 test suite, `e2e/helpers/launch.ts`) names a kind
+    // that may not appear in any registry built above — `AgentManager` must
+    // still be able to report a card for it (`status()`/`probe()` iterate the
+    // registry, and `POST /api/chat`'s pre-gate looks its `current` kind up
+    // in exactly that list), or the very first request throws reaching into
+    // a card that was never there.
+    if (
+      fallbackAgent &&
+      !adapters.some((spec) => spec.kind === fallbackAgent.kind)
+    ) {
+      adapters = [
+        ...adapters,
+        {
+          kind: fallbackAgent.kind,
+          label: fallbackAgent.label,
+          writeRules: [],
+        },
+      ];
+    }
+    const resolveAdapter =
+      options.agentManager?.resolveAdapter ??
+      ((kind: AgentKind): AgentAdapterConfig =>
+        fallbackAgent && kind === fallbackAgent.kind
+          ? fallbackAgent
+          : resolveAdapterConfig(kind, adapters));
+    const manager = new AgentManager({
+      presentationId: initialDeck?.id ?? null,
+      editingLock,
+      deckServer,
+      policy: options.policy,
+      workdir: initialWorkdir,
+      initial: initialAgent,
+      runCommand: options.agentManager?.runCommand,
+      resolveAdapter,
+      adapters,
+      onAgentChanged: (payload) =>
+        changeBroadcaster.broadcast("agent-changed", payload),
+      onModelChanged: (payload) =>
+        changeBroadcaster.broadcast("agent-model-changed", payload),
+      initialModels: options.initialModels,
+      // Back-compat (see `agent`'s own docstring above and AgentManagerOptions.
+      // assumeLoggedIn's docstring): a directly-given `agent` has no real
+      // "logged in" concept to probe, so its kind is exempted from the real
+      // probe rather than gated on whatever a real `claude`/`codex` CLI
+      // happens to report on the host running the tests.
+      assumeLoggedIn:
+        fallbackAgent && !options.agentManager?.runCommand
+          ? new Set([fallbackAgent.kind])
+          : undefined,
+    });
+    // Every SSE stream `/api/chat/stream` has ever opened, still connected.
+    // `server.close()` waits for established connections rather than
+    // closing them, and an SSE stream never ends on its own — so these must
+    // be closed explicitly, before the socket itself is closed, or shutdown
+    // hangs forever with a browser tab open.
+    const chatStreams = createChatStreamRegistry();
+    disposers.push(async () => {
+      chatStreams.closeAll();
+      await manager.dispose();
+    });
+
+    const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
+    // The agent writes to the deck through the CLI directly, never through an
+    // HTTP route — its turn ending (releasing the floor) is the only
+    // observation point continuous-save has for "the agent may have just
+    // written something" (plan §4(a)'s table).
+    const onUnfrozen = () => {
+      changeBroadcaster.broadcast("editing-unfrozen", {});
+      saveController.markDirty();
+    };
+    editingLock.on("frozen", onFrozen);
+    editingLock.on("unfrozen", onUnfrozen);
+    disposers.push(async () => {
+      editingLock.off("frozen", onFrozen);
+      editingLock.off("unfrozen", onUnfrozen);
+    });
+
+    // The `/` slash-command list: agent report ∪ bundled skills ∪ user
+    // skills, recomputed on demand rather than cached —
+    // the underlying skill directories can change between calls and this is
+    // never hot-path code. `GET /api/agent/commands` below calls this
+    // directly for the initial value; the SSE push below recomputes and
+    // re-broadcasts the same shape whenever the agent sends a fresh report.
+    // Resolved lazily, on first actual use, rather than eagerly here: several
+    // existing tests (e.g. raw.test.ts) build a `ServeOptions` with no
+    // `agent` at all, because they never touch chat — startServe must not
+    // crash on `options.agent.kind` for those callers just because this
+    // unrelated feature also lives here.
+    // Keyed by kind, not a single slot: the user skill directory differs per
+    // agent (~/.claude/skills vs ~/.agents/skills), and POST /api/agent/select
+    // can switch kinds while the server runs — a one-shot cache would keep
+    // serving the directory of whichever agent happened to ask first.
+    const skillDirsByKind = new Map<AgentKind, SkillDirs>();
+    const computeSlashCommands = (): Promise<SlashCommand[]> => {
+      const kind = manager.currentKind();
+      // No agent selected yet: no agent report and no user skill directory to
+      // point at, so the list is legitimately empty rather than an error.
+      if (kind === null) return Promise.resolve([]);
+      let dirs = skillDirsByKind.get(kind);
+      if (!dirs) {
+        dirs = resolveSkillDirs(kind, options.skillDirs);
+        skillDirsByKind.set(kind, dirs);
+      }
+      return collectSlashCommands(manager.getReportedCommands(), dirs);
+    };
+    const detachCommands = manager.onAvailableCommands(() => {
+      void computeSlashCommands().then((commands) => {
+        changeBroadcaster.broadcast("agent-commands", { commands });
       });
-    },
-  };
+    });
+    disposers.push(async () => {
+      detachCommands();
+    });
+
+    // NOOP-433: owns the currently-bound deck's identity and the switch
+    // sequence (`deck-switch.ts`'s own docstring has the fixed order). `bind`/
+    // `unbind` are exactly `startServe`'s own startup wiring above, replayed
+    // per switch — `deployAgentWorkdir` → `manager.retarget` → the
+    // broadcaster's `retarget` for `bind`; the broadcaster first, then the
+    // manager, for `unbind` (NOOP-433 §3).
+    const deckSession = createDeckSession({
+      initial: initialDeck,
+      resolveDeck: resolveDeckIdentity,
+      guard: () => deckMutationGuard(editingLock, exportJobManager),
+      unbind: async (outgoing) => {
+        await changeBroadcaster.retarget(null);
+        await manager.retarget(null);
+        // AC9, "switching decks": the outgoing deck's agent working files
+        // never persist inside the sandbox past the switch.
+        await sandboxRoot.disposePresentation(outgoing.id);
+      },
+      bind: async (incoming) => {
+        const workdir = await deployAgentWorkdir(
+          sandboxRoot.path,
+          incoming.id,
+          options.policy,
+        );
+        await manager.retarget({ id: incoming.id, workdir });
+        await changeBroadcaster.retarget(incoming.id);
+        // Flushes whatever is still pending on the OUTGOING deck (this
+        // controller's own `presentationId` is still the outgoing id at this
+        // point — `retarget` hasn't run yet) before pointing itself at the
+        // incoming one (NOOP-422 §4's retarget contract).
+        await saveController.retarget(incoming.id);
+      },
+    });
+
+    return {
+      port: actualPort,
+      url: `http://${host}:${actualPort}`,
+      agentSandboxRoot: sandboxRoot.path,
+      close: async () => {
+        for (const dispose of disposers) {
+          await dispose();
+        }
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+          // server.close() stops accepting new connections and closes idle
+          // ones on its own (Node >=18.19), but still waits indefinitely for
+          // any connection that is genuinely active — a request still
+          // arriving, or a response that has been opened and never ended.
+          // `disposers` above only closes the SSE streams this server itself
+          // tracks; anything else still active at this moment (e.g. a request
+          // that never finished arriving) would otherwise block shutdown
+          // forever. This forcibly severs whatever is left, right after
+          // close() has already stopped accepting new connections.
+          server.closeAllConnections();
+        });
+      },
+    };
+  } catch (error) {
+    // Startup can fail after the crate server is running (for example an
+    // unknown deck or a busy port). Release every resource before rejecting.
+    const failures: unknown[] = [];
+    for (const dispose of disposers) {
+      try {
+        await dispose();
+      } catch (cleanupError) {
+        failures.push(cleanupError);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        [error, ...failures],
+        `Server startup failed: ${String(error)}`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -523,11 +609,23 @@ async function resolveDeckIdentity(id: string): Promise<DeckIdentity> {
 }
 
 /** `DeckIdentity` -> the shape sent over the wire — never `sourcePath` itself (ADR-0003, NOOP-433 §7 decision 2), only its basename. */
-function toPublicDeck(deck: DeckIdentity): { id: string; name: string | null; fileName: string | null } {
-  return { id: deck.id, name: deck.name, fileName: deck.sourcePath !== null ? path.basename(deck.sourcePath) : null };
+function toPublicDeck(deck: DeckIdentity): {
+  id: string;
+  name: string | null;
+  fileName: string | null;
+} {
+  return {
+    id: deck.id,
+    name: deck.name,
+    fileName: deck.sourcePath !== null ? path.basename(deck.sourcePath) : null,
+  };
 }
 
-function listen(server: http.Server, port: number, host: string): Promise<void> {
+function listen(
+  server: http.Server,
+  port: number,
+  host: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const onError = (error: NodeJS.ErrnoException) => {
       server.removeListener("listening", onListening);
@@ -593,8 +691,13 @@ async function handleRequest(
     // carries none of the "opaque origin can still mutate blind" risk this
     // gate exists for — exempting it here is what makes that header not
     // dead code.
-    if (req.headers.origin === "null" && !(req.url ?? "").startsWith("/api/raw/")) {
-      sendJson(res, 403, { error: "Does not accept requests from an opaque origin (Origin: null)" });
+    if (
+      req.headers.origin === "null" &&
+      !(req.url ?? "").startsWith("/api/raw/")
+    ) {
+      sendJson(res, 403, {
+        error: "Does not accept requests from an opaque origin (Origin: null)",
+      });
       return;
     }
 
@@ -650,7 +753,12 @@ async function handleRequest(
             sendJson(res, 409, { error: error.message });
             return;
           }
-          sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to create conversation" });
+          sendJson(res, 500, {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to create conversation",
+          });
         }
         return;
       }
@@ -658,7 +766,13 @@ async function handleRequest(
         // NOOP-433: never gated on `requireDeck` below — switching is the
         // one write route that must work with no deck open (entering a
         // deck for the first time) as well as with one already open.
-        await handleDeckSwitchPost(deckSession, changeBroadcaster, saveController, req, res);
+        await handleDeckSwitchPost(
+          deckSession,
+          changeBroadcaster,
+          saveController,
+          req,
+          res,
+        );
         return;
       }
       if (url.pathname === "/api/new") {
@@ -687,7 +801,16 @@ async function handleRequest(
         // refuses (the deck this server currently has bound). Never gated
         // on `requireDeck`/the editing-lock check below: it has its own
         // no-deck/editing/exporting guards, matching `/api/deck/switch`.
-        await handleRenameCurrentPost(deckSession, deckServer, changeBroadcaster, saveController, editingLock, exportJobManager, req, res);
+        await handleRenameCurrentPost(
+          deckSession,
+          deckServer,
+          changeBroadcaster,
+          saveController,
+          editingLock,
+          exportJobManager,
+          req,
+          res,
+        );
         return;
       }
       if (url.pathname === "/api/deck/delete") {
@@ -744,7 +867,13 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleAssetForward(deckServer, deckId, fileEntryPolicy, req, res);
+        const wrote = await handleAssetForward(
+          deckServer,
+          deckId,
+          fileEntryPolicy,
+          req,
+          res,
+        );
         if (wrote) saveController.markDirty();
         return;
       }
@@ -779,20 +908,37 @@ async function handleRequest(
         // above). Do not "helpfully" add this gate later.
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        await handleExportPost(exportJobManager, deckId, serverAddress, changeBroadcaster, req, res);
+        await handleExportPost(
+          exportJobManager,
+          deckId,
+          serverAddress,
+          changeBroadcaster,
+          req,
+          res,
+        );
         return;
       }
       if (url.pathname === "/api/undo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        const wrote = await handleUndoRedoPost(editingLock, deckId, runUndo, res);
+        const wrote = await handleUndoRedoPost(
+          editingLock,
+          deckId,
+          runUndo,
+          res,
+        );
         if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/redo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        const wrote = await handleUndoRedoPost(editingLock, deckId, runRedo, res);
+        const wrote = await handleUndoRedoPost(
+          editingLock,
+          deckId,
+          runRedo,
+          res,
+        );
         if (wrote) saveController.markDirty();
         return;
       }
@@ -869,14 +1015,24 @@ async function handleRequest(
       // crate's own route applies identity's visibility filter itself
       // (`identity::visible_decks()`) — Node forwards the query string
       // as-is and never resolves this locally any more.
-      await forwardDeckServerGet(deckServer, `/decks${url.search}`, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res);
+      await forwardDeckServerGet(
+        deckServer,
+        `/decks${url.search}`,
+        DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+        res,
+      );
       return;
     }
 
     if (url.pathname === "/api/identity") {
       // [E6.T9] AC1: the user block's initial render — current identity
       // (null when anonymous) plus every registered provider.
-      await forwardDeckServerGet(deckServer, "/identity", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res);
+      await forwardDeckServerGet(
+        deckServer,
+        "/identity",
+        DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+        res,
+      );
       return;
     }
 
@@ -886,8 +1042,15 @@ async function handleRequest(
       // handling does the rest, same as every other forwarded GET route.
       const extraHeaders: Record<string, string> = {};
       const ifNoneMatch = req.headers["if-none-match"];
-      if (typeof ifNoneMatch === "string") extraHeaders["if-none-match"] = ifNoneMatch;
-      await forwardDeckServerGet(deckServer, `/decks/thumbnail${url.search}`, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, res, extraHeaders);
+      if (typeof ifNoneMatch === "string")
+        extraHeaders["if-none-match"] = ifNoneMatch;
+      await forwardDeckServerGet(
+        deckServer,
+        `/decks/thumbnail${url.search}`,
+        DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+        res,
+        extraHeaders,
+      );
       return;
     }
 
@@ -903,7 +1066,10 @@ async function handleRequest(
       return;
     }
 
-    if (url.pathname.startsWith("/api/export/") && url.pathname.endsWith("/file")) {
+    if (
+      url.pathname.startsWith("/api/export/") &&
+      url.pathname.endsWith("/file")
+    ) {
       const jobId = url.pathname.slice("/api/export/".length, -"/file".length);
       await handleExportFileGet(exportJobManager, jobId, res);
       return;
@@ -915,7 +1081,10 @@ async function handleRequest(
       // no font-family of its own — a legal SVG the presentation's own
       // `fonts` list says nothing about, so /api/raw/ cannot serve it.
       const bytes = await readFile(resolveDefaultFontPath());
-      res.writeHead(200, { "content-type": "font/ttf", "content-length": String(bytes.byteLength) });
+      res.writeHead(200, {
+        "content-type": "font/ttf",
+        "content-length": String(bytes.byteLength),
+      });
       res.end(bytes);
       return;
     }
@@ -942,7 +1111,12 @@ async function handleRequest(
       // escape, so this layer never needs its own `decodeURIComponent`/
       // try-catch pair.
       const encodedPath = url.pathname.slice("/api/files/".length);
-      await forwardDeckServerGet(deckServer, `/files/${encodedPath}`, deckId, res);
+      await forwardDeckServerGet(
+        deckServer,
+        `/files/${encodedPath}`,
+        deckId,
+        res,
+      );
       return;
     }
 
@@ -950,7 +1124,12 @@ async function handleRequest(
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
       const encodedPath = url.pathname.slice("/api/effects/".length);
-      await forwardDeckServerGet(deckServer, `/effects/${encodedPath}`, deckId, res);
+      await forwardDeckServerGet(
+        deckServer,
+        `/effects/${encodedPath}`,
+        deckId,
+        res,
+      );
       return;
     }
 
@@ -1001,14 +1180,21 @@ async function handleRequest(
       if (deckId === null) return;
       const encodedPath = url.pathname.slice("/api/raw/".length);
       const extraHeaders: Record<string, string> = {};
-      if (req.headers.range !== undefined) extraHeaders.range = req.headers.range;
+      if (req.headers.range !== undefined)
+        extraHeaders.range = req.headers.range;
       // ADR-0006: the sandboxed srcdoc iframe's own slide markup fetches
       // `@font-face` sources cross-origin from an opaque origin — this
       // route is the one exemption from the Origin: null gate above, and
       // it must say so on every response, not just success, or the font
       // fetch itself is what the browser blocks.
       res.setHeader("Access-Control-Allow-Origin", "*");
-      await forwardDeckServerGet(deckServer, `/raw/${encodedPath}`, deckId, res, extraHeaders);
+      await forwardDeckServerGet(
+        deckServer,
+        `/raw/${encodedPath}`,
+        deckId,
+        res,
+        extraHeaders,
+      );
       return;
     }
 
@@ -1019,7 +1205,9 @@ async function handleRequest(
 
     await serveStatic(staticDir, url.pathname, res);
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Unknown error" });
+    sendJson(res, 500, {
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 }
 
@@ -1043,12 +1231,18 @@ function deckMutationGuard(
     return { reason: "editing", message: new AgentSwitchLockedError().message };
   }
   if (exportJobManager.hasActiveJob()) {
-    return { reason: "exporting", message: "An export job is already in progress" };
+    return {
+      reason: "exporting",
+      message: "An export job is already in progress",
+    };
   }
   return null;
 }
 
-function requireDeck(deckSession: DeckSession, res: ServerResponse): string | null {
+function requireDeck(
+  deckSession: DeckSession,
+  res: ServerResponse,
+): string | null {
   const id = deckSession.currentId();
   if (id === null) {
     sendJson(res, 409, { error: "No deck is open", reason: "no-deck" });
@@ -1098,19 +1292,27 @@ async function handleDeckSwitchPost(
       sendJson(res, 404, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to switch deck" });
+    sendJson(res, 500, {
+      error: error instanceof Error ? error.message : "Failed to switch deck",
+    });
     return;
   }
 
   if (result.switched) {
-    changeBroadcaster.broadcast("deck-changed", { deck: toPublicDeck(result.deck) });
+    changeBroadcaster.broadcast("deck-changed", {
+      deck: toPublicDeck(result.deck),
+    });
     changeBroadcaster.broadcast("presentation-changed", {});
     // `deckSession`'s own `bind` (serve.ts's `createDeckSession` call) has
     // already run `saveController.retarget(result.deck.id)` by the time
     // `switchTo` resolves — this broadcasts that already-updated state.
     await broadcastSaveState(changeBroadcaster, saveController);
   }
-  sendJson(res, 200, { ok: true, switched: result.switched, deck: toPublicDeck(result.deck) });
+  sendJson(res, 200, {
+    ok: true,
+    switched: result.switched,
+    deck: toPublicDeck(result.deck),
+  });
 }
 
 /**
@@ -1163,9 +1365,15 @@ async function handleRenameCurrentPost(
   // path before that path stops existing.
   await saveController.flush();
   const forwardBody = Buffer.from(JSON.stringify({ id, name }), "utf8");
-  const upstream = await postDeckServerJson(deckServer, "/deck/rename", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", {
-    body: forwardBody,
-  });
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/deck/rename",
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+    {
+      body: forwardBody,
+    },
+  );
   if (upstream.status !== 200) {
     // The crate's own error shapes already match what this route used to
     // throw directly: 409 `{error, reason:"name-conflict"}`, 404 `{error}`.
@@ -1208,10 +1416,18 @@ async function handleRenameCurrentPost(
  * 409 naming why (`reason: "unset" | "unauthenticated"`) before the body is
  * even parsed.
  */
-async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleChatPost(
+  manager: AgentManager,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   const status = await manager.status();
   if (status.current === null) {
-    sendJson(res, 409, { error: "No agent selected, choose one in settings first", reason: "unset", kind: null });
+    sendJson(res, 409, {
+      error: "No agent selected, choose one in settings first",
+      reason: "unset",
+      kind: null,
+    });
     return;
   }
   const card = status.agents.find((agent) => agent.kind === status.current)!;
@@ -1245,11 +1461,15 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
   // restored conversation, when it differs from what was actually sent to
   // the agent (e.g. the "(No message entered...)" placeholder for a
   // pins-only send) — §7 decision 8.
-  const rawDisplayText = (body as { displayText?: unknown } | null)?.displayText;
-  const displayText = typeof rawDisplayText === "string" ? rawDisplayText : undefined;
+  const rawDisplayText = (body as { displayText?: unknown } | null)
+    ?.displayText;
+  const displayText =
+    typeof rawDisplayText === "string" ? rawDisplayText : undefined;
   // #303: one line per author message so a turn that starts unexpectedly
   // (e.g. right after a cancel) can be traced to the request that caused it.
-  console.log(`[chat] ${new Date().toISOString()} message ${JSON.stringify(text.slice(0, 60))}${text.length > 60 ? "…" : ""}`);
+  console.log(
+    `[chat] ${new Date().toISOString()} message ${JSON.stringify(text.slice(0, 60))}${text.length > 60 ? "…" : ""}`,
+  );
   manager.sendMessage(text, displayText);
   sendJson(res, 202, { ok: true });
 }
@@ -1263,16 +1483,26 @@ async function handleChatPost(manager: AgentManager, req: IncomingMessage, res: 
  * on is a 500). Both are optional; omitted, the CLI's own default
  * (20, unfiltered) applies.
  */
-async function handleChatHistoryGet(deckId: string, searchParams: URLSearchParams, res: ServerResponse): Promise<void> {
+async function handleChatHistoryGet(
+  deckId: string,
+  searchParams: URLSearchParams,
+  res: ServerResponse,
+): Promise<void> {
   const args = ["chat-history", deckId];
   const limit = searchParams.get("limit");
   if (limit !== null) args.push("--limit", limit);
   const query = searchParams.get("query");
   if (query !== null) args.push("--query", query);
 
-  const result = await runJsonCommand<{ entries: unknown[]; total: number; truncated: boolean }>(args);
+  const result = await runJsonCommand<{
+    entries: unknown[];
+    total: number;
+    truncated: boolean;
+  }>(args);
   if (!result.ok) {
-    sendJson(res, result.failureKind === "not-found" ? 404 : 400, { error: result.message });
+    sendJson(res, result.failureKind === "not-found" ? 404 : 400, {
+      error: result.message,
+    });
     return;
   }
   sendJson(res, 200, result.data);
@@ -1291,12 +1521,20 @@ async function handleChatHistoryGet(deckId: string, searchParams: URLSearchParam
  * nothing already written to the presentation is rolled back — the
  * author's undo is the tool for that.
  */
-async function handleChatCancelPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+async function handleChatCancelPost(
+  manager: AgentManager,
+  res: ServerResponse,
+): Promise<void> {
   try {
     console.log(`[chat] ${new Date().toISOString()} cancel requested`);
     await manager.cancel();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "There is no turn currently in progress to stop" });
+    sendJson(res, 409, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "There is no turn currently in progress to stop",
+    });
     return;
   }
   sendJson(res, 202, { ok: true });
@@ -1311,12 +1549,20 @@ async function handleChatCancelPost(manager: AgentManager, res: ServerResponse):
  * The presentation itself is untouched: this clears the conversation, not
  * the deck.
  */
-async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Promise<void> {
+async function handleChatNewPost(
+  manager: AgentManager,
+  res: ServerResponse,
+): Promise<void> {
   try {
     console.log(`[chat] ${new Date().toISOString()} new session requested`);
     await manager.newSession();
   } catch (error) {
-    sendJson(res, 409, { error: error instanceof Error ? error.message : "Failed to restart conversation" });
+    sendJson(res, 409, {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to restart conversation",
+    });
     return;
   }
   sendJson(res, 200, { ok: true });
@@ -1328,7 +1574,11 @@ async function handleChatNewPost(manager: AgentManager, res: ServerResponse): Pr
  * kind settings-only write or an actual session swap (see its own
  * docstring) — this handler only translates its outcome/errors to HTTP.
  */
-async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleAgentSelectPost(
+  manager: AgentManager,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   let body: unknown;
   try {
     body = JSON.parse(await readBody(req));
@@ -1339,18 +1589,26 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
   const kind = (body as { kind?: unknown } | null)?.kind;
   const knownAdapters = manager.knownAdapters();
   if (!isAgentKind(kind, knownAdapters)) {
-    sendJson(res, 400, { error: `kind must be one of: ${knownAdapters.map((spec) => spec.kind).join(", ")}` });
+    sendJson(res, 400, {
+      error: `kind must be one of: ${knownAdapters.map((spec) => spec.kind).join(", ")}`,
+    });
     return;
   }
   try {
     const status = await manager.select(kind);
-    sendJson(res, 200, { ok: true, current: status.current, source: status.source });
+    sendJson(res, 200, {
+      ok: true,
+      current: status.current,
+      source: status.source,
+    });
   } catch (error) {
     if (error instanceof AgentSwitchLockedError) {
       sendJson(res, 409, { error: error.message, reason: "editing" });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to select agent" });
+    sendJson(res, 500, {
+      error: error instanceof Error ? error.message : "Failed to select agent",
+    });
   }
 }
 
@@ -1362,7 +1620,11 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
  * agent) is the author's problem to read, so it comes back as 409 with its
  * own wording rather than a generic 500.
  */
-async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleAgentModelPost(
+  manager: AgentManager,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   let body: unknown;
   try {
     body = JSON.parse(await readBody(req));
@@ -1377,13 +1639,19 @@ async function handleAgentModelPost(manager: AgentManager, req: IncomingMessage,
   }
   try {
     const status = await manager.setModel(modelId);
-    sendJson(res, 200, { ok: true, modelId: status.modelId, model: status.model });
+    sendJson(res, 200, {
+      ok: true,
+      modelId: status.modelId,
+      model: status.model,
+    });
   } catch (error) {
     if (error instanceof SlidraError) {
       sendJson(res, 409, { error: error.message });
       return;
     }
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Failed to switch model" });
+    sendJson(res, 500, {
+      error: error instanceof Error ? error.message : "Failed to switch model",
+    });
   }
 }
 
@@ -1426,7 +1694,12 @@ async function handleExportPost(
       async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
         const project = await loadProject(presentationId);
         const fileName = exportFileName(project.name, jobFormat);
-        const outputPath = path.join(resolveSlidraHome(), "exports", id, fileName);
+        const outputPath = path.join(
+          resolveSlidraHome(),
+          "exports",
+          id,
+          fileName,
+        );
         const result = await renderExportPdf({
           serverUrl: `http://${serverAddress.host}:${serverAddress.port}`,
           format: jobFormat,
@@ -1450,7 +1723,11 @@ async function handleExportPost(
  * already collapses that distinction (see its own comment), and the table
  * this route implements draws no distinction between them either.
  */
-async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: string, res: ServerResponse): Promise<void> {
+async function handleExportFileGet(
+  exportJobManager: ExportJobManager,
+  jobId: string,
+  res: ServerResponse,
+): Promise<void> {
   const filePath = exportJobManager.getFilePath(jobId);
   if (!filePath) {
     sendJson(res, 404, { error: "Export file not found" });
@@ -1478,8 +1755,14 @@ async function handleExportFileGet(exportJobManager: ExportJobManager, jobId: st
  * so this is a direct `runJsonCommand` call rather than going through
  * `slidra/argv.ts`'s encoder table.
  */
-async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: string): Promise<{ restoredPaths: string[] }> {
-  const result = await runJsonCommand<{ restoredPaths: string[] }>([name, presentationId]);
+async function runCommandRestoringPaths(
+  name: "undo" | "redo",
+  presentationId: string,
+): Promise<{ restoredPaths: string[] }> {
+  const result = await runJsonCommand<{ restoredPaths: string[] }>([
+    name,
+    presentationId,
+  ]);
   if (!result.ok) {
     throw new SlidraError(result.message);
   }
@@ -1489,8 +1772,10 @@ async function runCommandRestoringPaths(name: "undo" | "redo", presentationId: s
   return { restoredPaths: result.data.restoredPaths };
 }
 
-const runUndo = (id: string): Promise<{ restoredPaths: string[] }> => runCommandRestoringPaths("undo", id);
-const runRedo = (id: string): Promise<{ restoredPaths: string[] }> => runCommandRestoringPaths("redo", id);
+const runUndo = (id: string): Promise<{ restoredPaths: string[] }> =>
+  runCommandRestoringPaths("undo", id);
+const runRedo = (id: string): Promise<{ restoredPaths: string[] }> =>
+  runCommandRestoringPaths("redo", id);
 
 /**
  * `POST /api/undo` and `POST /api/redo` (T5, NOOP-93/#110). Both are human
@@ -1515,7 +1800,12 @@ async function handleUndoRedoPost(
     sendJson(res, 200, result);
     return true;
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof SlidraError ? error.message : "Could not complete the operation" });
+    sendJson(res, 400, {
+      error:
+        error instanceof SlidraError
+          ? error.message
+          : "Could not complete the operation",
+    });
     return false;
   }
 }
@@ -1543,7 +1833,12 @@ async function handleEditingBeginPost(
   editingLock: EditingLock,
   res: ServerResponse,
 ): Promise<void> {
-  const upstream = await postDeckServerJson(deckServer, "/editing/begin", deckId, "editor");
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/editing/begin",
+    deckId,
+    "editor",
+  );
   if (upstream.status !== 200) {
     sendJson(res, upstream.status, upstream.body);
     return;
@@ -1612,7 +1907,9 @@ export function createChatStreamRegistry() {
       }
       const stream = openEventStream(res);
       streams.add(stream);
-      const detach = manager.attachStream((event, data) => stream.send(event, data));
+      const detach = manager.attachStream((event, data) =>
+        stream.send(event, data),
+      );
       res.once("close", () => {
         detach();
         streams.delete(stream);
@@ -1648,7 +1945,10 @@ function readBody(req: IncomingMessage): Promise<string> {
  * rejected — same non-destructive-overflow posture `asset-upload.ts` used
  * to apply while streaming.
  */
-function readBodyBuffer(req: IncomingMessage, limitBytes: number): Promise<Buffer | "too-large"> {
+function readBodyBuffer(
+  req: IncomingMessage,
+  limitBytes: number,
+): Promise<Buffer | "too-large"> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -1662,7 +1962,9 @@ function readBodyBuffer(req: IncomingMessage, limitBytes: number): Promise<Buffe
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolve(overLimit ? "too-large" : Buffer.concat(chunks)));
+    req.on("end", () =>
+      resolve(overLimit ? "too-large" : Buffer.concat(chunks)),
+    );
     req.on("error", reject);
   });
 }
@@ -1710,7 +2012,9 @@ async function handleCommandForward(
 ): Promise<boolean> {
   const rawBytes = await readBodyBuffer(req, MAX_COMMAND_BODY_BYTES);
   if (rawBytes === "too-large") {
-    sendJson(res, 400, { error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)` });
+    sendJson(res, 400, {
+      error: `Request body too large (limit ${MAX_COMMAND_BODY_BYTES} bytes)`,
+    });
     return false;
   }
 
@@ -1732,7 +2036,9 @@ async function handleCommandForward(
     return false;
   }
   if (!COMMAND_WHITELIST.includes(name)) {
-    sendJson(res, 403, { error: `This endpoint does not accept command: ${name}` });
+    sendJson(res, 403, {
+      error: `This endpoint does not accept command: ${name}`,
+    });
     return false;
   }
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
@@ -1747,12 +2053,20 @@ async function handleCommandForward(
   try {
     ({ argv, cleanup } = await encodeCommandArgv(name, resolvedInput));
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : "Command execution failed" });
+    sendJson(res, 500, {
+      error:
+        error instanceof Error ? error.message : "Command execution failed",
+    });
     return false;
   }
 
   try {
-    const outcome = await postDeckServerCall(deckServer, [...argv, "--json"], deckId, "editor");
+    const outcome = await postDeckServerCall(
+      deckServer,
+      [...argv, "--json"],
+      deckId,
+      "editor",
+    );
     if (!outcome.ok) {
       // A door-level refusal (401/403/400/409) — never mistaken for
       // command output. This path should not be reachable in practice
@@ -1761,16 +2075,28 @@ async function handleCommandForward(
       // is even called), but a stale allow-list drifting out of sync must
       // still surface as an explicit error, not garbage decoded as if it
       // were the frame protocol.
-      sendJson(res, 500, { error: `deck server refused the command: ${outcome.doorError}` });
+      sendJson(res, 500, {
+        error: `deck server refused the command: ${outcome.doorError}`,
+      });
       return false;
     }
-    const result = toCommandResult(outcome.stdout.toString("utf8"), outcome.stderr.toString("utf8"));
+    const result = toCommandResult(
+      outcome.stdout.toString("utf8"),
+      outcome.stderr.toString("utf8"),
+    );
     if (!result.ok) {
       const status = result.failureKind === "not-found" ? 404 : 500;
-      sendJson(res, status, { error: result.message, failureKind: result.failureKind ?? null });
+      sendJson(res, status, {
+        error: result.message,
+        failureKind: result.failureKind ?? null,
+      });
       return false;
     }
-    sendJson(res, 200, { ok: true, data: result.data ?? {}, message: result.message });
+    sendJson(res, 200, {
+      ok: true,
+      data: result.data ?? {},
+      message: result.message,
+    });
     return true;
   } finally {
     await cleanup();
@@ -1798,11 +2124,15 @@ export async function handleAssetForward(
 ): Promise<boolean> {
   const sourceNameHeader = req.headers[ASSET_NAME_HEADER];
   const sourceUrlHeader = req.headers[ASSET_URL_HEADER];
-  const hasName = typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
-  const hasUrl = typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
+  const hasName =
+    typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
+  const hasUrl =
+    typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
 
   if (hasName && hasUrl) {
-    sendJson(res, 400, { error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}` });
+    sendJson(res, 400, {
+      error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}`,
+    });
     return false;
   }
   if (hasUrl && !policy.remoteUrl) {
@@ -1826,11 +2156,15 @@ export async function handleAssetForward(
     try {
       decodedUrl = decodeURIComponent(sourceUrlHeader);
     } catch {
-      sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_URL_HEADER}` });
+      sendJson(res, 400, {
+        error: `Invalid header encoding: ${ASSET_URL_HEADER}`,
+      });
       return false;
     }
     if (!/^https?:\/\//i.test(decodedUrl) && !policy.localPath) {
-      sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
+      sendJson(res, 400, {
+        error: `${ASSET_URL_HEADER} must be an http(s) URL`,
+      });
       return false;
     }
   }
@@ -1843,13 +2177,21 @@ export async function handleAssetForward(
   if (!hasUrl) {
     const read = await readBodyBuffer(req, MAX_ASSET_BODY_BYTES);
     if (read === "too-large") {
-      sendJson(res, 400, { error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)` });
+      sendJson(res, 400, {
+        error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)`,
+      });
       return false;
     }
     body = read;
   }
 
-  const upstream = await postDeckServerJson(deckServer, "/assets", deckId, "editor", { body, extraHeaders });
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/assets",
+    deckId,
+    "editor",
+    { body, extraHeaders },
+  );
   sendJson(res, upstream.status, upstream.body);
   return upstream.status === 200;
 }
@@ -1873,10 +2215,16 @@ const MAX_DECK_LIFECYCLE_JSON_BODY_BYTES = 64 * 1024;
 const MAX_OPEN_BODY_BYTES = 16 * 1024 * 1024;
 
 /** Reads and buffers a request body up to `limitBytes`, sending the standard 400 and returning `null` on overflow — the one place every deck-lifecycle forward below shares this check. */
-async function readDeckLifecycleBody(req: IncomingMessage, res: ServerResponse, limitBytes: number): Promise<Buffer | null> {
+async function readDeckLifecycleBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  limitBytes: number,
+): Promise<Buffer | null> {
   const body = await readBodyBuffer(req, limitBytes);
   if (body === "too-large") {
-    sendJson(res, 400, { error: `Request body too large (limit ${limitBytes} bytes)` });
+    sendJson(res, 400, {
+      error: `Request body too large (limit ${limitBytes} bytes)`,
+    });
     return null;
   }
   return body;
@@ -1889,14 +2237,28 @@ async function forwardDeckLifecycleJsonPost(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+  const body = await readDeckLifecycleBody(
+    req,
+    res,
+    MAX_DECK_LIFECYCLE_JSON_BODY_BYTES,
+  );
   if (body === null) return;
-  const upstream = await postDeckServerJson(deckServer, path, DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  const upstream = await postDeckServerJson(
+    deckServer,
+    path,
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+    { body },
+  );
   sendJson(res, upstream.status, upstream.body);
 }
 
 /** `POST /api/new` — forwards to the crate's `POST /new`. */
-async function handleNewForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleNewForward(
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   await forwardDeckLifecycleJsonPost(deckServer, "/new", req, res);
 }
 
@@ -1906,23 +2268,42 @@ async function handleNewForward(deckServer: DeckServerClient, req: IncomingMessa
  * `x-slidra-file-name` header shape `POST /api/asset`'s own byte-upload
  * mode uses, forwarded to the crate's `POST /open`.
  */
-async function handleOpenForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleOpenForward(
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   const body = await readDeckLifecycleBody(req, res, MAX_OPEN_BODY_BYTES);
   if (body === null) return;
   const fileNameHeader = req.headers["x-slidra-file-name"];
   const extraHeaders: Record<string, string> = {};
-  if (typeof fileNameHeader === "string") extraHeaders["x-slidra-file-name"] = fileNameHeader;
-  const upstream = await postDeckServerJson(deckServer, "/open", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body, extraHeaders });
+  if (typeof fileNameHeader === "string")
+    extraHeaders["x-slidra-file-name"] = fileNameHeader;
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/open",
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+    { body, extraHeaders },
+  );
   sendJson(res, upstream.status, upstream.body);
 }
 
 /** `POST /api/deck/import` — forwards to the crate's `POST /deck/import`. */
-async function handleDeckImportForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleDeckImportForward(
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   await forwardDeckLifecycleJsonPost(deckServer, "/deck/import", req, res);
 }
 
 /** `POST /api/deck/resolve` — forwards to the crate's `POST /deck/resolve`. */
-async function handleDeckResolveForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleDeckResolveForward(
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   await forwardDeckLifecycleJsonPost(deckServer, "/deck/resolve", req, res);
 }
 
@@ -1948,39 +2329,87 @@ function extractDeckIdField(rawBody: Buffer): string | null {
  * exactly (`{error, reason: "deck-bound"}`), since `deck-switch.test.ts`'s
  * own contract test for this ("AC5's other half") depends on it.
  */
-async function handleDeckRenameForward(deckSession: DeckSession, deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+async function handleDeckRenameForward(
+  deckSession: DeckSession,
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readDeckLifecycleBody(
+    req,
+    res,
+    MAX_DECK_LIFECYCLE_JSON_BODY_BYTES,
+  );
   if (body === null) return;
   const id = extractDeckIdField(body);
   if (id !== null && id === deckSession.currentId()) {
-    sendJson(res, 409, { error: `cannot rename the deck that is currently open: ${id}`, reason: "deck-bound" });
+    sendJson(res, 409, {
+      error: `cannot rename the deck that is currently open: ${id}`,
+      reason: "deck-bound",
+    });
     return;
   }
-  const upstream = await postDeckServerJson(deckServer, "/deck/rename", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/deck/rename",
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+    { body },
+  );
   sendJson(res, upstream.status, upstream.body);
 }
 
 /** `POST /api/deck/delete` — same bound-deck guard as `/api/deck/rename` above, and for the same reason. */
-async function handleDeckDeleteForward(deckSession: DeckSession, deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readDeckLifecycleBody(req, res, MAX_DECK_LIFECYCLE_JSON_BODY_BYTES);
+async function handleDeckDeleteForward(
+  deckSession: DeckSession,
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readDeckLifecycleBody(
+    req,
+    res,
+    MAX_DECK_LIFECYCLE_JSON_BODY_BYTES,
+  );
   if (body === null) return;
   const id = extractDeckIdField(body);
   if (id !== null && id === deckSession.currentId()) {
-    sendJson(res, 409, { error: `cannot delete the deck that is currently open: ${id}`, reason: "deck-bound" });
+    sendJson(res, 409, {
+      error: `cannot delete the deck that is currently open: ${id}`,
+      reason: "deck-bound",
+    });
     return;
   }
-  const upstream = await postDeckServerJson(deckServer, "/deck/delete", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor", { body });
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/deck/delete",
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+    { body },
+  );
   sendJson(res, upstream.status, upstream.body);
 }
 
 /** `POST /api/identity/sign-in` — forwards to the crate's `POST /identity/sign-in`. */
-async function handleIdentitySignInForward(deckServer: DeckServerClient, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleIdentitySignInForward(
+  deckServer: DeckServerClient,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   await forwardDeckLifecycleJsonPost(deckServer, "/identity/sign-in", req, res);
 }
 
 /** `POST /api/identity/sign-out` — forwards to the crate's `POST /identity/sign-out`; no body to read, matching the old handler's own contract. */
-async function handleIdentitySignOutForward(deckServer: DeckServerClient, res: ServerResponse): Promise<void> {
-  const upstream = await postDeckServerJson(deckServer, "/identity/sign-out", DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID, "editor");
+async function handleIdentitySignOutForward(
+  deckServer: DeckServerClient,
+  res: ServerResponse,
+): Promise<void> {
+  const upstream = await postDeckServerJson(
+    deckServer,
+    "/identity/sign-out",
+    DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+    "editor",
+  );
   sendJson(res, upstream.status, upstream.body);
 }
 
@@ -2015,7 +2444,11 @@ function resolveDefaultFontPath(): string {
   return path.join(here, "../../../assets/fonts/NotoSansTC-Presentation.ttf");
 }
 
-async function serveStatic(staticDir: string, pathname: string, res: ServerResponse): Promise<void> {
+async function serveStatic(
+  staticDir: string,
+  pathname: string,
+  res: ServerResponse,
+): Promise<void> {
   // The frontend has no client-side router, so the root path is the only
   // request that maps to index.html; every other path names a concrete
   // static asset and gets exactly that asset or an explicit failure — no
@@ -2046,7 +2479,9 @@ async function serveStatic(staticDir: string, pathname: string, res: ServerRespo
     }
     if (isRoot) {
       // index.html itself is missing: the frontend was never built at all.
-      sendJson(res, 500, { error: "Frontend has not been built yet, run build first" });
+      sendJson(res, 500, {
+        error: "Frontend has not been built yet, run build first",
+      });
       return;
     }
     sendJson(res, 404, { error: "file not found" });
