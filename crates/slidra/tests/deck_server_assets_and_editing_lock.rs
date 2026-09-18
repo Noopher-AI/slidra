@@ -270,6 +270,18 @@ fn agent_begin_reports_frozen_and_blocks_editor_writes_until_agent_end() {
         .unwrap();
     assert_eq!(call.status().as_u16(), 409);
 
+    let asset = post(
+        &base_url,
+        "/assets",
+        Some(&editor),
+        &[("x-slidra-asset-name", "blocked.png")],
+        &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0],
+    );
+    assert_eq!(
+        asset.status, 409,
+        "asset writes must share the editing floor"
+    );
+
     let end = post(&base_url, "/editing/agent-end", Some(&agent), &[], b"");
     assert_eq!(end.status, 200);
 
