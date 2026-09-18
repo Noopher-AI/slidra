@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
+// [E10.T5]: `POST /api/asset` now forwards to the crate's own `POST
+// /assets` (`asset-upload.ts` is deleted; `serve.ts`'s `handleAssetForward`
+// keeps only the policy pre-check). This file is unchanged and still
+// green — it never imported `asset-upload.ts` directly, only drove
+// `startServe`'s real HTTP surface — so it now doubles as an end-to-end
+// check of the Node-forward + crate-handler round trip, not just the old
+// Node-only implementation.
+
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

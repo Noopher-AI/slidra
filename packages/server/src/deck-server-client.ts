@@ -91,8 +91,10 @@ function closeChild(child: ChildProcessByStdio<null, Readable, null>): Promise<v
   });
 }
 
+export type CredentialKind = "editor" | "agent" | "viewer";
+
 /** `x-slidra-credential`'s wire shape (`server/credential.rs`'s `encode`), built here rather than imported from the crate — this Node process has no dependency edge to it, same posture `allowlist.rs`'s own doc comment describes for the whitelist's hand-copy. */
-function credentialHeader(kind: "editor" | "agent" | "viewer", workbenchId: string): string {
+function credentialHeader(kind: CredentialKind, workbenchId: string): string {
   return Buffer.from(JSON.stringify({ kind, workbenchId }), "utf8").toString("base64");
 }
 
@@ -121,7 +123,10 @@ export async function forwardDeckServerGet(
       ...extraHeaders,
     },
   });
+  await pipeUpstreamToResponse(upstream, res);
+}
 
+async function pipeUpstreamToResponse(upstream: Response, res: ServerResponse): Promise<void> {
   const headers: Record<string, string> = {};
   for (const [name, value] of upstream.headers.entries()) {
     if (HOP_BY_HOP.has(name.toLowerCase())) continue;
@@ -143,4 +148,35 @@ export async function forwardDeckServerGet(
   } finally {
     res.end();
   }
+}
+
+/**
+ * A POST to the deck server whose JSON response Node itself needs to read
+ * (rather than relay verbatim) — used by the editing-lock routes, which
+ * apply the crate's decision to Node's own `EditingLock` object afterward
+ * ("crate decides first, Node applies": see `serve.ts`'s editing routes).
+ */
+export async function postDeckServerJson(
+  client: DeckServerClient,
+  path: string,
+  workbenchId: string,
+  kind: CredentialKind,
+  options?: { body?: Buffer; extraHeaders?: Record<string, string> },
+): Promise<{ status: number; body: unknown }> {
+  const upstream = await fetch(`${client.baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "x-slidra-credential": credentialHeader(kind, workbenchId),
+      ...options?.extraHeaders,
+    },
+    body: options?.body === undefined ? undefined : new Uint8Array(options.body),
+  });
+  const text = await upstream.text();
+  let body: unknown = null;
+  try {
+    body = text.length > 0 ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: upstream.status, body };
 }

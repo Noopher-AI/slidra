@@ -292,6 +292,38 @@ describe("startServe", () => {
     expect(body.equals(RAMP_BYTES)).toBe(true);
   });
 
+  // [E10.T5]: `/api/editing/begin|end` now ask the crate's own editing-lock
+  // routes first ("crate decides first, Node applies" — Dev-Leader's
+  // ruling on NOOP-643), then apply the same decision to Node's local
+  // `EditingLock` exactly as before. This is the happy path over the real
+  // wire; the crate-refuses-so-Node-must-not-apply branch has no test at
+  // this level yet — nothing on the Node side puts the crate's own lock
+  // into the `agent` state (that only happens once agent turns mirror
+  // acquire/release to the crate too, not yet wired — see this ticket's
+  // delivery notes), so it cannot be observed through this black-box HTTP
+  // surface today. `crates/slidra/tests/deck_server_assets_and_editing_lock.rs`
+  // covers the crate's own refusal behavior directly.
+  it("POST /api/editing/begin then /end round-trips over the real wire, end is idempotent", async () => {
+    const id = await openFreshPresentation();
+    const server = await serve(id);
+
+    const begin = await fetch(`${server.url}/api/editing/begin`, { method: "POST" });
+    expect(begin.status).toBe(200);
+    expect(await begin.json()).toEqual({ ok: true });
+
+    const status = await fetch(`${server.url}/api/editing`);
+    expect(await status.json()).toEqual({ frozen: false });
+
+    const end = await fetch(`${server.url}/api/editing/end`, { method: "POST" });
+    expect(end.status).toBe(200);
+
+    // A second end is not an error — matches `EditingLock.endHumanEdit`'s
+    // own no-op-when-not-human contract, now exercised through the crate
+    // round trip too.
+    const end2 = await fetch(`${server.url}/api/editing/end`, { method: "POST" });
+    expect(end2.status).toBe(200);
+  });
+
   it("binds port 0 and reports back the actual assigned port", async () => {
     const id = await openFreshPresentation();
 

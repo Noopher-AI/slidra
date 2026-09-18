@@ -27,7 +27,6 @@ import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
 import type { ChangeBroadcaster } from "./changes.js";
 import { handleCommandPost } from "./command-endpoint.js";
-import { handleAssetPost } from "./asset-upload.js";
 import {
   handleDecksGet,
   handleDeletePost,
@@ -50,7 +49,12 @@ import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
 import { createDeckSession, DeckSwitchConflictError, type DeckIdentity, type DeckSession } from "./deck-switch.js";
-import { startDeckServer, forwardDeckServerGet, type DeckServerClient } from "./deck-server-client.js";
+import {
+  startDeckServer,
+  forwardDeckServerGet,
+  postDeckServerJson,
+  type DeckServerClient,
+} from "./deck-server-client.js";
 
 /**
  * `slidra serve` is a mode of the CLI, not a second backend (ADR-0002):
@@ -781,7 +785,7 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleAssetPost(deckId, req, res, fileEntryPolicy);
+        const wrote = await handleAssetForward(deckServer, deckId, fileEntryPolicy, req, res);
         if (wrote) saveController.markDirty();
         return;
       }
@@ -834,10 +838,20 @@ async function handleRequest(
         return;
       }
       if (url.pathname === "/api/editing/begin") {
-        handleEditingBeginPost(editingLock, res);
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
+        await handleEditingBeginPost(deckServer, deckId, editingLock, res);
         return;
       }
       if (url.pathname === "/api/editing/end") {
+        // "crate decides first, Node applies": `endHumanEdit()` never
+        // refuses (a no-op when not `human`, per its own doc comment), so
+        // there is no status to branch on here — the crate's `POST
+        // /editing/end` is called for the mirror, then the local object's
+        // existing event plumbing fires exactly as before.
+        const deckId = requireDeck(deckSession, res);
+        if (deckId === null) return;
+        await postDeckServerJson(deckServer, "/editing/end", deckId, "editor");
         editingLock.endHumanEdit();
         sendJson(res, 200, { ok: true });
         return;
@@ -1540,8 +1554,30 @@ async function handleUndoRedoPost(
  * `POST /api/editing/begin` — the lease T2 (NOOP-91)'s drag UI is meant to
  * take/renew (plan §4.1). Refused with 409 while the agent holds the
  * floor; otherwise starts (or renews) the human lease and returns 200.
+ *
+ * [E10.T5]: "crate decides first, Node applies" (Dev-Leader's ruling on
+ * NOOP-643) — the crate's own `POST /editing/begin` is asked FIRST; a
+ * refusal there is relayed as-is and Node's local `EditingLock` is left
+ * untouched (its state must never claim a lease the crate itself did not
+ * grant). Only once the crate agrees does this call the local object's
+ * existing `beginHumanEdit()`, which is what actually fires the
+ * `frozen`/`unfrozen`-adjacent event plumbing (`markDirty`,
+ * `editing-frozen`/`unfrozen` broadcasts) — nothing about those events
+ * changes. TODO([E10.T8]/F3): once the browser calls the crate's editing
+ * routes directly, this dual-write collapses to the crate alone and
+ * `editing-lock.ts`'s `EditingLock` class can be deleted outright.
  */
-function handleEditingBeginPost(editingLock: EditingLock, res: ServerResponse): void {
+async function handleEditingBeginPost(
+  deckServer: DeckServerClient,
+  deckId: string,
+  editingLock: EditingLock,
+  res: ServerResponse,
+): Promise<void> {
+  const upstream = await postDeckServerJson(deckServer, "/editing/begin", deckId, "editor");
+  if (upstream.status !== 200) {
+    sendJson(res, upstream.status, upstream.body);
+    return;
+  }
   try {
     editingLock.beginHumanEdit();
     sendJson(res, 200, { ok: true });
@@ -1631,6 +1667,115 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+/**
+ * Binary-safe counterpart of `readBody` — used for `/api/asset`'s upload
+ * body, which `readBody`'s `toString("utf8")` would corrupt for any
+ * non-text asset. Aborts (never destructive: it stops accumulating rather
+ * than throwing mid-stream) once `limitBytes` is exceeded, so an oversized
+ * upload cannot buffer arbitrarily far past the limit before being
+ * rejected — same non-destructive-overflow posture `asset-upload.ts` used
+ * to apply while streaming.
+ */
+function readBodyBuffer(req: IncomingMessage, limitBytes: number): Promise<Buffer | "too-large"> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let overLimit = false;
+    req.on("data", (chunk: Buffer) => {
+      if (overLimit) return;
+      total += chunk.length;
+      if (total > limitBytes) {
+        overLimit = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(overLimit ? "too-large" : Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+const ASSET_NAME_HEADER = "x-slidra-asset-name";
+const ASSET_URL_HEADER = "x-slidra-asset-url";
+const MAX_ASSET_BODY_BYTES = 32 * 1024 * 1024;
+
+/**
+ * `POST /api/asset` ([E10.T5] Slice B) — policy enforcement
+ * (`FileEntryPolicy.remoteUrl`/`uploadBytes`) stays here, in Node, since
+ * policy/launcher issuance is [S11.F6]/T9's job (out of this ticket's
+ * scope) and the crate's own `assets.rs` doc comment says as much: only
+ * once a mode is confirmed allowed does this forward to the crate's
+ * `POST /assets`, which does everything downstream (header validation,
+ * the 32 MiB cap, staging + `asset import`). Returns whether the upload
+ * actually wrote, mirroring the old `handleAssetPost`'s return value —
+ * `serve.ts`'s caller uses it to decide whether to schedule a
+ * continuous-save write-back.
+ */
+export async function handleAssetForward(
+  deckServer: DeckServerClient,
+  deckId: string,
+  policy: FileEntryPolicy,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<boolean> {
+  const sourceNameHeader = req.headers[ASSET_NAME_HEADER];
+  const sourceUrlHeader = req.headers[ASSET_URL_HEADER];
+  const hasName = typeof sourceNameHeader === "string" && sourceNameHeader.trim() !== "";
+  const hasUrl = typeof sourceUrlHeader === "string" && sourceUrlHeader.trim() !== "";
+
+  if (hasName && hasUrl) {
+    sendJson(res, 400, { error: `Cannot provide both ${ASSET_NAME_HEADER} and ${ASSET_URL_HEADER}` });
+    return false;
+  }
+  if (hasUrl && !policy.remoteUrl) {
+    sendJson(res, 403, { error: "Remote URL uploads are disabled" });
+    return false;
+  }
+  if (!hasUrl && !policy.uploadBytes) {
+    sendJson(res, 403, { error: "Byte uploads are disabled" });
+    return false;
+  }
+  if (hasUrl) {
+    // The crate's own URL-mode handler rejects every non-http(s) URL
+    // unconditionally (it has no `policy` to consult at all — see
+    // `assets.rs`'s own doc comment on why policy stays a Node concern).
+    // `policy.localPath` is checked here, in Node, before forwarding, so
+    // the one edition-specific escape hatch this contract has ("a non-
+    // http(s) source is a local path when the edition allows it") is not
+    // silently lost — dormant for the open edition (`localPath: false`
+    // always), but not deleted.
+    let decodedUrl: string;
+    try {
+      decodedUrl = decodeURIComponent(sourceUrlHeader);
+    } catch {
+      sendJson(res, 400, { error: `Invalid header encoding: ${ASSET_URL_HEADER}` });
+      return false;
+    }
+    if (!/^https?:\/\//i.test(decodedUrl) && !policy.localPath) {
+      sendJson(res, 400, { error: `${ASSET_URL_HEADER} must be an http(s) URL` });
+      return false;
+    }
+  }
+
+  const extraHeaders: Record<string, string> = {};
+  if (hasName) extraHeaders[ASSET_NAME_HEADER] = sourceNameHeader;
+  if (hasUrl) extraHeaders[ASSET_URL_HEADER] = sourceUrlHeader;
+
+  let body: Buffer | undefined;
+  if (!hasUrl) {
+    const read = await readBodyBuffer(req, MAX_ASSET_BODY_BYTES);
+    if (read === "too-large") {
+      sendJson(res, 400, { error: `Request body too large (limit ${MAX_ASSET_BODY_BYTES} bytes)` });
+      return false;
+    }
+    body = read;
+  }
+
+  const upstream = await postDeckServerJson(deckServer, "/assets", deckId, "editor", { body, extraHeaders });
+  sendJson(res, upstream.status, upstream.body);
+  return upstream.status === 200;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

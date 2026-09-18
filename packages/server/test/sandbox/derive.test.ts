@@ -24,7 +24,8 @@ import { openPolicy } from "../../src/policy/open.js";
 import type { FsRule, SandboxContext, WorkbenchPolicy } from "../../src/policy/types.js";
 import { createPassthroughLauncher } from "../../src/sandbox/passthrough-launcher.js";
 import type { SandboxLauncher } from "../../src/sandbox/launcher.js";
-import { handleAssetPost } from "../../src/asset-upload.js";
+import { handleAssetForward } from "../../src/serve.js";
+import type { DeckServerClient } from "../../src/deck-server-client.js";
 import { readAgentSettings } from "../../src/agent/settings.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -229,7 +230,19 @@ describe("srt-launcher.ts translates policy.network.outbound into srt's own shap
   );
 });
 
-describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
+describe("⑥ handleAssetForward refuses per policy.fileEntry (no server)", () => {
+  // [E10.T5]: policy enforcement is still a pure Node-side check
+  // (`serve.ts`'s `handleAssetForward`, ahead of forwarding to the crate's
+  // `POST /assets`) — every case below is refused before any forwarding
+  // would happen, so this `DeckServerClient` is never actually dialed.
+  // Its `baseUrl` deliberately resolves to nothing reachable: a test that
+  // silently started forwarding despite a policy refusal would hang/fail
+  // on a real connection attempt instead of passing by accident.
+  const unreachableDeckServer: DeckServerClient = {
+    baseUrl: "http://127.0.0.1:1",
+    close: async () => {},
+  };
+
   function fakeReq(headers: Record<string, string>): IncomingMessage {
     return { headers } as unknown as IncomingMessage;
   }
@@ -250,11 +263,12 @@ describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
 
   it("uploadBytes: false refuses a byte upload with 403, no filesystem path in the message", async () => {
     const { res, status, body } = fakeRes();
-    const wrote = await handleAssetPost(
+    const wrote = await handleAssetForward(
+      unreachableDeckServer,
       "pres-1",
+      { ...openPolicy.fileEntry, uploadBytes: false },
       fakeReq({ "x-slidra-asset-name": "photo.png" }),
       res,
-      { ...openPolicy.fileEntry, uploadBytes: false },
     );
     expect(wrote).toBe(false);
     expect(status()).toBe(403);
@@ -263,11 +277,12 @@ describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
 
   it("remoteUrl: false refuses a URL import with 403, before any download is attempted", async () => {
     const { res, status } = fakeRes();
-    const wrote = await handleAssetPost(
+    const wrote = await handleAssetForward(
+      unreachableDeckServer,
       "pres-1",
+      { ...openPolicy.fileEntry, remoteUrl: false },
       fakeReq({ "x-slidra-asset-url": encodeURIComponent("https://example.invalid/photo.png") }),
       res,
-      { ...openPolicy.fileEntry, remoteUrl: false },
     );
     expect(wrote).toBe(false);
     expect(status()).toBe(403);
@@ -275,11 +290,12 @@ describe("⑥ handleAssetPost refuses per policy.fileEntry (no server)", () => {
 
   it("localPath: false (the open edition's value) keeps refusing a non-http(s) URL exactly as before", async () => {
     const { res, status } = fakeRes();
-    const wrote = await handleAssetPost(
+    const wrote = await handleAssetForward(
+      unreachableDeckServer,
       "pres-1",
+      openPolicy.fileEntry,
       fakeReq({ "x-slidra-asset-url": encodeURIComponent("file:///etc/passwd") }),
       res,
-      openPolicy.fileEntry,
     );
     expect(wrote).toBe(false);
     expect(status()).toBe(400);
