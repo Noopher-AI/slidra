@@ -658,23 +658,14 @@ describe("startServe", () => {
     expect(JSON.stringify(body)).not.toContain("corrupted");
   });
 
-  it("old Save endpoints are absent because successful crate commands persist immediately", async () => {
+  it("old Save and Node deck-write proxy endpoints are absent because the browser calls the crate directly", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
 
-    const retired = await fetch(`${server.url}/api/save`, { method: "POST" });
-    expect(retired.status).toBe(405);
-
-    const setResponse = await fetch(`${server.url}/api/command`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "slide notes set", input: { slidePath: "slides/001.svg", text: "hello" } }),
-    });
-    expect(setResponse.status).toBe(200);
-
-    const flushed = await fetch(`${server.url}/api/save/flush`, { method: "POST" });
-    expect(flushed.status).toBe(405);
-    expect((await runCli(["cat", id, "slides/001.svg"])).message).toBeTruthy();
+    for (const path of ["/api/save", "/api/save/flush", "/api/command", "/api/asset", "/api/undo", "/api/redo"]) {
+      const response = await fetch(`${server.url}${path}`, { method: "POST" });
+      expect(response.status, `${path} must not remain as a Node proxy`).toBe(405);
+    }
   });
 
   // `GET /api/effects/<path>` — the step-plan route the player and
