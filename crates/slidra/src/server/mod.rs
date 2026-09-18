@@ -34,7 +34,9 @@ use crate::cli;
 use crate::commands::category::{Category, resolve_full_command};
 
 pub mod allowlist;
+pub mod assets;
 pub mod credential;
+pub mod editing_lock;
 pub mod events;
 pub mod raw;
 pub mod reads;
@@ -118,6 +120,12 @@ fn handle_connection(mut stream: TcpStream) {
         ("GET", p) if p.starts_with("/raw/") => {
             raw::handle(&request, &mut stream, &p["/raw/".len()..])
         }
+        ("POST", "/assets") => assets::handle(&request, &mut stream),
+        ("POST", "/editing/begin") => editing_lock::handle_begin(&request, &mut stream),
+        ("POST", "/editing/end") => editing_lock::handle_end(&request, &mut stream),
+        ("GET", "/editing") => editing_lock::handle_status(&request, &mut stream),
+        ("POST", "/editing/agent-begin") => editing_lock::handle_agent_begin(&request, &mut stream),
+        ("POST", "/editing/agent-end") => editing_lock::handle_agent_end(&request, &mut stream),
         _ => write_plain_response(&mut stream, 404, "not found"),
     }
 }
@@ -320,7 +328,13 @@ impl RawRequest {
 /// meant to.
 fn read_request(stream: &mut TcpStream) -> Option<RawRequest> {
     const MAX_HEAD_BYTES: usize = 64 * 1024;
-    const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
+    // Above `assets::MAX_ASSET_BODY_BYTES` (32 MiB) on purpose: this cap
+    // just bounds what the connection will ever read at all; the precise
+    // "over 32 MiB -> 400 with a JSON body" contract for uploads is
+    // `assets::handle`'s own check, which needs the body to have actually
+    // arrived to answer with a proper response instead of a dropped
+    // connection.
+    const MAX_BODY_BYTES: usize = 40 * 1024 * 1024;
 
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
@@ -436,6 +450,22 @@ fn handle_call(request: &RawRequest, stream: &mut TcpStream) {
     if !allowlist::is_allowed(credential.kind, name, category) {
         write_plain_response(stream, 403, "command outside this caller's allow-list");
         return;
+    }
+
+    // The editing-lock floor (NOOP-641 Plan §裁示1): a non-agent credential
+    // may not mutate this workbench's deck while an agent turn holds it —
+    // mirrors `editing-lock.ts`'s own gate, previously applied inline at
+    // `command-endpoint.ts`/`asset-upload.ts`/`save-state.ts`. The agent's
+    // OWN writes are never checked here: by the time one of its commands
+    // reaches this door, its turn has already called `POST /editing/
+    // agent-begin` (which itself waited out any human lease), so the floor
+    // is already correctly held.
+    if let Some(Category::DeckScoped { mutates: true, .. }) = category {
+        if credential.kind != CallerKind::Agent && editing_lock::is_frozen(&credential.workbench_id)
+        {
+            write_plain_response(stream, 409, "The agent is currently editing, please wait.");
+            return;
+        }
     }
 
     // AC8: the workbench identifier comes from the credential, never from
