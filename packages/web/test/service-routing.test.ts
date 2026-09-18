@@ -5,6 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { createServiceClients } from "../src/service-clients.js";
 import { createRoutingFetch } from "../src/service-routing.js";
 
+function framedEnvelope(value: unknown): Uint8Array {
+  const payload = new TextEncoder().encode(JSON.stringify(value));
+  const bytes = new Uint8Array(5 + payload.length + 5);
+  bytes[0] = 1;
+  new DataView(bytes.buffer).setUint32(1, payload.length, false);
+  bytes.set(payload, 5);
+  bytes[5 + payload.length] = 3;
+  new DataView(bytes.buffer).setUint32(6 + payload.length, 0, false);
+  return bytes;
+}
+
 describe("browser API routing", () => {
   it("routes deck and agent-runner APIs through their dedicated clients", async () => {
     const nativeFetch = vi.fn(async () => new Response(null, { status: 204 }));
@@ -63,5 +74,33 @@ describe("browser API routing", () => {
     for (const index of [0, 2, 3]) {
       expect(new Headers(nativeFetch.mock.calls[index]![1]?.headers).get("x-slidra-argv")).toBeTruthy();
     }
+  });
+
+  it("preserves an internal command failure as 500 instead of misclassifying it as a client error", async () => {
+    const nativeFetch = vi.fn(async () => new Response(framedEnvelope({
+      ok: false,
+      message: "the command failed after validation",
+      failureKind: "failed",
+    }), { status: 200 }));
+    const clients = createServiceClients(
+      {
+        workbenchId: "wb-9",
+        deck: { url: "http://deck.test:4100", credential: "deck-token" },
+        agentRunner: { url: "http://runner.test:4200", sessionToken: "runner-token" },
+      },
+      nativeFetch,
+    );
+
+    const response = await createRoutingFetch(clients, nativeFetch)("/api/command", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "slide add", input: { id: "browser-supplied-id" } }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "the command failed after validation",
+      failureKind: "failed",
+    });
   });
 });
