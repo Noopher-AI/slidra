@@ -418,11 +418,9 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        assert!(
-            fixture
-                .read_slide()
-                .contains(&format!(r#"id="{group_id}""#))
-        );
+        assert!(fixture
+            .read_slide()
+            .contains(&format!(r#"id="{group_id}""#)));
 
         let ungrouped = dispatch(
             &["element", "ungroup"],
@@ -610,11 +608,9 @@ mod tests {
         assert!(aligned.ok, "{}", aligned.message);
         // "top" moves every target's y to the union's top edge (0) — "b"
         // had y=5, so it moves up by 5.
-        assert!(
-            fixture
-                .read_slide()
-                .contains(r#"<g id="b" transform="translate(15 0)">"#)
-        );
+        assert!(fixture
+            .read_slide()
+            .contains(r#"<g id="b" transform="translate(15 0)">"#));
 
         let distributed = dispatch(
             &["element", "distribute"],
@@ -630,11 +626,9 @@ mod tests {
         for _ in 0..2 {
             history::undo(&fixture.id).unwrap();
         }
-        assert!(
-            fixture
-                .read_slide()
-                .contains(r#"<g id="b" transform="translate(15 5)">"#)
-        );
+        assert!(fixture
+            .read_slide()
+            .contains(r#"<g id="b" transform="translate(15 5)">"#));
     }
 
     #[test]

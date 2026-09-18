@@ -33,7 +33,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 
 use crate::cli;
-use crate::commands::category::{Category, resolve_full_command};
+use crate::commands::category::{resolve_full_command, Category};
 
 pub mod allowlist;
 pub mod assets;

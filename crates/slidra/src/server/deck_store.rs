@@ -889,13 +889,11 @@ mod tests {
         remove_deck(&created.id).expect("remove should succeed");
 
         assert!(!test_home.deck_folder.join("Doomed.slidra").exists());
-        assert!(
-            trash_data_home
-                .join("Trash")
-                .join("files")
-                .join("Doomed.slidra")
-                .exists()
-        );
+        assert!(trash_data_home
+            .join("Trash")
+            .join("files")
+            .join("Doomed.slidra")
+            .exists());
 
         let home = crate::workspace::resolve_home();
         let registry = crate::workspace::registry::read_registry(&home).unwrap();

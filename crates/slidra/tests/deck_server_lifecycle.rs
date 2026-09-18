@@ -446,13 +446,11 @@ fn rename_then_delete_round_trips_and_moves_the_file_to_trash() {
     assert!(!home.deck_folder.join("New Name.slidra").exists());
 
     if cfg!(target_os = "linux") {
-        assert!(
-            trash_data_home
-                .join("Trash")
-                .join("files")
-                .join("New Name.slidra")
-                .exists()
-        );
+        assert!(trash_data_home
+            .join("Trash")
+            .join("files")
+            .join("New Name.slidra")
+            .exists());
         unsafe { std::env::remove_var("XDG_DATA_HOME") };
     }
     std::fs::remove_dir_all(&trash_data_home).ok();

@@ -123,12 +123,10 @@ fn asset_upload_by_bytes_imports_and_returns_the_virtual_path() {
     );
     let value = json(&response);
     assert_eq!(value["ok"], true);
-    assert!(
-        value["data"]["path"]
-            .as_str()
-            .unwrap()
-            .starts_with("assets/")
-    );
+    assert!(value["data"]["path"]
+        .as_str()
+        .unwrap()
+        .starts_with("assets/"));
 
     unsafe { std::env::remove_var("SLIDRA_HOME") };
     std::fs::remove_dir_all(&home).ok();

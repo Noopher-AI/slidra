@@ -55,15 +55,13 @@ fn browser_origin_is_exact_and_preflight_never_needs_a_credential() {
             .unwrap(),
         "GET, POST, OPTIONS"
     );
-    assert!(
-        preflight
-            .headers()
-            .get("access-control-allow-headers")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("x-slidra-credential")
-    );
+    assert!(preflight
+        .headers()
+        .get("access-control-allow-headers")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("x-slidra-credential"));
     assert_eq!(preflight.headers().get("vary").unwrap(), "Origin");
 
     let credential_value = credential::encode(CallerKind::Editor, "wb-cors");
@@ -130,14 +128,12 @@ fn browser_preflight_allows_the_open_file_header() {
         .unwrap();
 
     assert_eq!(preflight.status().as_u16(), 204);
-    assert!(
-        preflight
-            .headers()
-            .get("access-control-allow-headers")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .split(',')
-            .any(|name| name.trim().eq_ignore_ascii_case("x-slidra-file-name"))
-    );
+    assert!(preflight
+        .headers()
+        .get("access-control-allow-headers")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(',')
+        .any(|name| name.trim().eq_ignore_ascii_case("x-slidra-file-name")));
 }

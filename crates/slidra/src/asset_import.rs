@@ -15,7 +15,7 @@
 //!   — the `--as csv` path (a deliberate, explicit hole).
 
 use crate::errors::{SlidraError, SlidraResult};
-use crate::media_format::{MediaFormatEntry, detect_media_format};
+use crate::media_format::{detect_media_format, MediaFormatEntry};
 use crate::table::csv::parse_table_csv;
 use std::collections::HashSet;
 
