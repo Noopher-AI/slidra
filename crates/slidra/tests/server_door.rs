@@ -255,6 +255,29 @@ fn viewer_can_read_but_not_mutate() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+#[test]
+fn editor_can_reach_undo_and_redo_through_the_only_command_door() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("editor-undo-redo");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "editor-undo-redo");
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let editor_cred = credential::encode(CallerKind::Editor, &id);
+
+    let undo = post_call(&base_url, Some(&editor_cred), &[], &["undo", &id, "--json"]);
+    assert_eq!(undo.status, 200, "the browser has no second command door");
+    assert_eq!(decode_frames(&undo.body).2, 0);
+
+    let redo = post_call(&base_url, Some(&editor_cred), &[], &["redo", &id, "--json"]);
+    assert_eq!(redo.status, 200, "the browser has no second command door");
+    assert_eq!(decode_frames(&redo.body).2, 0);
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(&home).ok();
+}
+
 /// AC3: the caller can never assert its own kind — its mere presence in
 /// the request is refused before the (otherwise valid) credential is even
 /// consulted.

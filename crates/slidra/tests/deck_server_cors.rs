@@ -109,3 +109,35 @@ fn browser_origin_is_exact_and_preflight_never_needs_a_credential() {
     assert_eq!(cli.status().as_u16(), 404);
     assert!(cli.headers().get("access-control-allow-origin").is_none());
 }
+
+#[test]
+fn browser_preflight_allows_the_open_file_header() {
+    let editor_origin = "http://editor.test:3000";
+    let addr = slidra::server::test_support::spawn_test_server_with_editor_origin(editor_origin);
+    let base = format!("http://{addr}");
+
+    let preflight = ureq::options(format!("{base}/open"))
+        .header("Origin", editor_origin)
+        .header("Access-Control-Request-Method", "POST")
+        .header(
+            "Access-Control-Request-Headers",
+            "content-type, x-slidra-file-name, x-slidra-credential",
+        )
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .call()
+        .unwrap();
+
+    assert_eq!(preflight.status().as_u16(), 204);
+    assert!(
+        preflight
+            .headers()
+            .get("access-control-allow-headers")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .split(',')
+            .any(|name| name.trim().eq_ignore_ascii_case("x-slidra-file-name"))
+    );
+}

@@ -254,6 +254,29 @@ fn list_decks_filters_by_owner_query_param() {
     assert_eq!(decks[0]["fileName"], "A.slidra");
 }
 
+#[test]
+fn claiming_anonymous_decks_does_not_backfill_an_absent_owner() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = TestHome::set_up("claim-owner-absence");
+    let files: std::collections::BTreeMap<String, Vec<u8>> =
+        slidra::presentation::build_minimal_presentation("Legacy")
+            .into_iter()
+            .collect();
+    let path = home.deck_folder.join("legacy.slidra");
+    slidra::deck::create_new_with_files(&path, &files).unwrap();
+
+    let before = slidra::server::deck_store::list_decks(None).unwrap();
+    assert_eq!(before[0].owner, None);
+
+    let claimed = slidra::server::deck_store::claim_anonymous("anonymous:signed-in").unwrap();
+    assert_eq!(claimed, 0, "an absent owner is not an anonymous-owner tag");
+    let after = slidra::server::deck_store::list_decks(None).unwrap();
+    assert_eq!(
+        after[0].owner, None,
+        "claiming must not backfill an absent owner"
+    );
+}
+
 // ---- POST /open -------------------------------------------------------
 
 #[test]
