@@ -50,7 +50,16 @@ export type FsRule =
   | { readonly kind: "deckFolderIfPresent" }
   | { readonly kind: "deckDirectory" }
   | { readonly kind: "literal"; readonly path: string; readonly onlyOn?: NodeJS.Platform }
-  | { readonly kind: "homeEntry"; readonly segments: readonly string[]; readonly onlyOn?: NodeJS.Platform };
+  | { readonly kind: "homeEntry"; readonly segments: readonly string[]; readonly onlyOn?: NodeJS.Platform }
+  /**
+   * The union of every *bundled* adapter's own state directories
+   * (`agent/adapters.ts`'s `AdapterSpec.writeRules`) — never a user-declared
+   * adapter's own, which is always `[]` (spec decision 7: a person picks
+   * which agent to use and nothing else). Resolved by `collectSandboxContext`
+   * into `ctx.adapterStateDirs`, so `open.ts` itself never spells out
+   * `.claude`/`.claude.json`/`.codex` again (AC2 — effective rules unchanged).
+   */
+  | { readonly kind: "adapterState" };
 
 /** The sandbox's read/write rules, one array of `FsRule` per purpose. `cliAllowWrite` is the CLI-sandbox's own (narrower) allow-list — `buildCliSandboxPolicy`'s only consumer. */
 export interface FilesystemPolicy {
@@ -92,6 +101,8 @@ export interface SandboxContext {
   readonly deckFolder: string | null;
   /** The open deck's own directory — set only for the CLI sandbox (`buildCliSandboxPolicy`); null for the agent sandbox, which has no single deck path to anchor `deckDirectory` rules to. */
   readonly deckDirectory: string | null;
+  /** Real paths an `"adapterState"` rule resolves to — every *bundled* adapter's own state directory, regardless of which one is current (AC2: collectSandboxContext's own default, not a narrower per-selection set). */
+  readonly adapterStateDirs: readonly string[];
 }
 
 /**

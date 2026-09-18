@@ -3,7 +3,7 @@
 
 import { startServe } from "./serve.js";
 import { readAgentSettings } from "./agent/settings.js";
-import { isAgentKind, type AgentKind } from "./agent/adapters.js";
+import { buildAdapterRegistry, isAgentKind, type AdapterSpec, type AgentKind } from "./agent/adapters.js";
 import type { AgentSource } from "./agent/manager.js";
 import { openPolicy } from "./policy/open.js";
 
@@ -25,26 +25,31 @@ import { openPolicy } from "./policy/open.js";
  * `AgentManager`'s job, inside `startServe`.
  */
 export async function runServeCli(argv: string[]): Promise<number> {
-  const parsed = parseServeArgv(argv);
+  // A broken settings.json must never prevent serve from starting (§4.1's
+  // division of labor: settings.ts reports honestly, cli.ts is the one
+  // place allowed to catch that and continue with `agent: null`/no declared
+  // adapters). Read before `--agent` is parsed (E10.T6/#400 D4): a declared
+  // adapter's own id must be as valid a `--agent` value as a bundled kind,
+  // and that requires the registry to already exist.
+  let settingsAgent: AgentKind | null = null;
+  let settingsModels: Partial<Record<AgentKind, string>> = {};
+  let adapters: readonly AdapterSpec[] = buildAdapterRegistry([]);
+  try {
+    const settings = await readAgentSettings();
+    settingsAgent = settings.agent;
+    settingsModels = settings.models;
+    adapters = buildAdapterRegistry(settings.adapters);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+
+  const parsed = parseServeArgv(argv, adapters);
   // NOOP-433: a presentation id is no longer required — "no deck open" is a
   // supported startup state (see ServeOptions.presentationId's own
   // docstring). `parsed` is only undefined for a malformed `--port`/`--host`/
   // `--agent`, each of which has already printed its own specific message.
   if (!parsed) {
     return 1;
-  }
-
-  // A broken settings.json must never prevent serve from starting (§4.1's
-  // division of labor: settings.ts reports honestly, cli.ts is the one
-  // place allowed to catch that and continue with `agent: null`).
-  let settingsAgent: AgentKind | null = null;
-  let settingsModels: Partial<Record<AgentKind, string>> = {};
-  try {
-    const settings = await readAgentSettings();
-    settingsAgent = settings.agent;
-    settingsModels = settings.models;
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
   }
 
   const kind: AgentKind | null = parsed.agent ?? settingsAgent ?? null;
@@ -59,6 +64,7 @@ export async function runServeCli(argv: string[]): Promise<number> {
       host: parsed.host,
       initialAgent: { kind, source },
       initialModels: settingsModels,
+      agentManager: { adapters },
     });
   } catch (error) {
     // Unrelated to agent selection — a missing presentation, a bound port,
@@ -102,8 +108,9 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
   }
   const card = status.agents.find((agent) => agent.kind === status.current);
   if (!card) {
-    // Unreachable given AgentManager always reports both ADAPTER_SPECS
-    // kinds — a thrown error here would mean the two have drifted apart.
+    // Unreachable given AgentManager always reports a card for every kind
+    // in its own registry — a thrown error here would mean the two have
+    // drifted apart.
     throw new Error(`/api/agent/probe did not report a card for current kind: ${status.current}`);
   }
   if (card.status === "available") {
@@ -115,6 +122,7 @@ async function printAgentStatusLine(serverUrl: string): Promise<void> {
 
 function parseServeArgv(
   argv: string[],
+  adapters: readonly AdapterSpec[],
 ): { presentationId?: string; port?: number; host?: string; agent?: AgentKind } | undefined {
   let presentationId: string | undefined;
   let port: number | undefined;
@@ -144,8 +152,8 @@ function parseServeArgv(
       i++;
     } else if (arg === "--agent") {
       const value = argv[i + 1];
-      if (!isAgentKind(value)) {
-        console.error("--agent must be one of: claude, codex, pi");
+      if (!isAgentKind(value, adapters)) {
+        console.error(`--agent must be one of: ${adapters.map((spec) => spec.kind).join(", ")}`);
         return undefined;
       }
       agent = value;

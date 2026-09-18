@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { SlidraError } from "../slidra/errors.js";
 import { resolveSlidraHome } from "../slidra/home.js";
-import { AGENT_KINDS, isAgentKind, type AgentKind } from "./adapters.js";
+import { AGENT_KINDS, type AgentKind, type DeclaredAdapterConfig } from "./adapters.js";
 
 /**
  * User-level agent selection, persisted at `<SLIDRA_HOME>/settings.json`.
@@ -16,14 +16,20 @@ import { AGENT_KINDS, isAgentKind, type AgentKind } from "./adapters.js";
  * reads/writes under it.
  *
  * The file may carry other keys in the future — this module only ever
- * reads/writes the `agent` key, and `writeAgentSelection` preserves
- * everything else byte-for-byte (see the "unknown keys" section below).
+ * reads/writes the `agent`/`models`/`adapters` keys, and `writeAgentSelection`
+ * preserves everything else byte-for-byte (see the "unknown keys" section
+ * below).
  */
 export interface AgentSettings {
   agent: AgentKind | null;
   /** The model the author last picked, per agent kind — applied to every new session of that kind. */
   models: Partial<Record<AgentKind, string>>;
+  /** User-declared third-party adapters (E10.T6/#400 D4) — `[]` when the key is absent or empty. `agent/adapters.ts`'s `buildAdapterRegistry` turns these into `AdapterSpec`s. */
+  adapters: readonly DeclaredAdapterConfig[];
 }
+
+/** A declared adapter's id must be lowercase, start with a letter or digit, and use only `-` as a separator — no `/`, `..`, whitespace, or uppercase, so it can never collide with a filesystem path or an existing built-in kind by casing alone. */
+const ADAPTER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 const SETTINGS_FILE_NAME = "settings.json";
 
@@ -50,7 +56,7 @@ export async function readAgentSettings(): Promise<AgentSettings> {
     raw = await readFile(filePath, "utf8");
   } catch (error) {
     if (isEnoent(error)) {
-      return { agent: null, models: {} };
+      return { agent: null, models: {}, adapters: [] };
     }
     throw error;
   }
@@ -66,14 +72,74 @@ export async function readAgentSettings(): Promise<AgentSettings> {
   }
 
   const models = readModels((parsed as Record<string, unknown>).models, filePath);
+  const adapters = readDeclaredAdapters((parsed as Record<string, unknown>).adapters, filePath);
+  const declaredIds = adapters.map((adapter) => adapter.id);
+
   const value = (parsed as Record<string, unknown>).agent;
   if (value === undefined || value === null) {
-    return { agent: null, models };
+    return { agent: null, models, adapters };
   }
-  if (isAgentKind(value)) {
-    return { agent: value, models };
+  if (typeof value === "string" && ((AGENT_KINDS as readonly string[]).includes(value) || declaredIds.includes(value))) {
+    return { agent: value, models, adapters };
   }
-  throw new SlidraError(`Settings file's agent field is invalid (must be claude, codex, pi, or null): ${filePath}`);
+  throw new SlidraError(
+    `Settings file's agent field is invalid (must be ${[...AGENT_KINDS, ...declaredIds].join(", ")}, or null): ${filePath}`,
+  );
+}
+
+/**
+ * Parses the `adapters` key: an object keyed by adapter id, each value
+ * `{ label?, command, args?, env? }` (E10.T6/#400 D4's behaviour table).
+ * Absent/empty is `[]`, not an error. Any other key present on a declared
+ * adapter (`writeRules`, `network`, `mcp`, `fileEntry`, `sandbox`, ...) is
+ * silently ignored — legal but inert (D2): nothing here can ever widen what
+ * the sandbox grants.
+ */
+function readDeclaredAdapters(value: unknown, filePath: string): DeclaredAdapterConfig[] {
+  if (value === undefined || value === null) return [];
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new SlidraError(`Settings file's adapters field must be an object keyed by adapter id: ${filePath}`);
+  }
+  const adapters: DeclaredAdapterConfig[] = [];
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!ADAPTER_ID_PATTERN.test(id)) {
+      throw new SlidraError(`Settings file's adapters key "${id}" is not a valid adapter id (must match ${ADAPTER_ID_PATTERN}): ${filePath}`);
+    }
+    if ((AGENT_KINDS as readonly string[]).includes(id)) {
+      throw new SlidraError(`Settings file's adapters key "${id}" collides with a built-in agent kind: ${filePath}`);
+    }
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      throw new SlidraError(`Settings file's adapters.${id} must be an object: ${filePath}`);
+    }
+    const { label, command, args, env } = raw as Record<string, unknown>;
+    if (typeof command !== "string" || command === "") {
+      throw new SlidraError(`Settings file's adapters.${id}.command must be a non-empty string: ${filePath}`);
+    }
+    let parsedArgs: string[] = [];
+    if (args !== undefined) {
+      if (!Array.isArray(args) || !args.every((entry) => typeof entry === "string")) {
+        throw new SlidraError(`Settings file's adapters.${id}.args must be an array of strings: ${filePath}`);
+      }
+      parsedArgs = args;
+    }
+    const parsedEnv: Record<string, string> = {};
+    if (env !== undefined) {
+      if (typeof env !== "object" || env === null || Array.isArray(env)) {
+        throw new SlidraError(`Settings file's adapters.${id}.env must be an object of strings: ${filePath}`);
+      }
+      for (const [key, envValue] of Object.entries(env as Record<string, unknown>)) {
+        if (typeof envValue !== "string") {
+          throw new SlidraError(`Settings file's adapters.${id}.env.${key} must be a string: ${filePath}`);
+        }
+        parsedEnv[key] = envValue;
+      }
+    }
+    if (label !== undefined && typeof label !== "string") {
+      throw new SlidraError(`Settings file's adapters.${id}.label must be a string: ${filePath}`);
+    }
+    adapters.push({ id, label: typeof label === "string" && label !== "" ? label : id, command, args: parsedArgs, env: parsedEnv });
+  }
+  return adapters;
 }
 
 /** `models` is keyed by agent kind; absent means nothing picked yet. Other keys are ignored, a wrong shape is an error. */

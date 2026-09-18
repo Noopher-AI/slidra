@@ -18,8 +18,15 @@ export type SaveState =
  */
 export type ExportFormat = "pdf" | "pdf-frames";
 
-/** The adapters `AgentManager` can report — restated here because the browser bundle must never depend on the Node-only server package. */
-export type AgentKind = "claude" | "codex" | "pi";
+/**
+ * The adapters `AgentManager` can report — restated here because the
+ * browser bundle must never depend on the Node-only server package. No
+ * longer a closed union (E10.T6/#400 D4): a user-declared third-party
+ * adapter's own id is just as valid as `claude`/`codex`/`pi` — the set of
+ * valid kinds is the server's own registry, not something the browser can
+ * enumerate at compile time.
+ */
+export type AgentKind = string;
 
 /** The `agent-changed` SSE payload — same shape `packages/server/test/agent/agent-api.test.ts` asserts on. */
 export interface AgentChangedEvent {
@@ -318,7 +325,7 @@ function parseAgentChangedEventData(event: Event): AgentChangedEvent | undefined
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, label } = parsed as { kind?: unknown; label?: unknown };
-  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
+  if (typeof kind !== "string" || kind === "") return undefined;
   if (typeof label !== "string") return undefined;
   return { kind, label };
 }
@@ -334,7 +341,7 @@ function parseAgentModelChangedEventData(event: Event): AgentModelChangedEvent |
   }
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { kind, modelId, name } = parsed as { kind?: unknown; modelId?: unknown; name?: unknown };
-  if (kind !== "claude" && kind !== "codex" && kind !== "pi") return undefined;
+  if (typeof kind !== "string" || kind === "") return undefined;
   if (typeof modelId !== "string" || typeof name !== "string") return undefined;
   return { kind, modelId, name };
 }

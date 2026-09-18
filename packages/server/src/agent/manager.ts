@@ -3,7 +3,7 @@
 
 import type * as acp from "@agentclientprotocol/sdk";
 import { SlidraError } from "../slidra/errors.js";
-import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AgentKind } from "./adapters.js";
+import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AdapterSpec, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
 import { ChatLog } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
@@ -31,8 +31,8 @@ export interface AgentCard {
   kind: AgentKind;
   label: string;
   status: AgentAvailability;
-  /** Always present, whether or not the agent is currently logged in (F2's copy button needs it either way). */
-  loginCommand: string;
+  /** Present for a bundled adapter, whether or not it is currently logged in (F2's copy button needs it either way). Absent for a user-declared adapter (E10.T6/#400 D4) — it has no login concept, so its card is always `status: "available"` and there is nothing to copy. */
+  loginCommand?: string;
   /** Present only when the probe itself could not positively confirm ordinary logged-out state — see `probe.ts`. */
   detail?: string;
 }
@@ -114,6 +114,14 @@ export interface AgentManagerOptions {
    * probes real CLIs.
    */
   assumeLoggedIn?: ReadonlySet<AgentKind>;
+  /**
+   * The effective set of adapters this manager knows about (E10.T6/#400
+   * D4) — every bundled one plus every user-declared one
+   * (`agent/adapters.ts`'s `buildAdapterRegistry`). Defaults to
+   * `ADAPTER_SPECS` (built-ins only), so every caller that never declares a
+   * custom adapter sees behaviour byte-identical to before this ticket.
+   */
+  adapters?: readonly AdapterSpec[];
 }
 
 /**
@@ -137,6 +145,7 @@ export class AgentManager {
   private readonly onModelChanged?: (payload: { kind: AgentKind; modelId: string; name: string }) => void;
   private readonly preferredModels: Partial<Record<AgentKind, string>>;
   private readonly assumeLoggedIn: ReadonlySet<AgentKind>;
+  private readonly adapters: readonly AdapterSpec[];
 
   private current: AgentKind | null;
   private source: AgentSource;
@@ -176,6 +185,7 @@ export class AgentManager {
     this.onModelChanged = options.onModelChanged;
     this.preferredModels = { ...options.initialModels };
     this.assumeLoggedIn = options.assumeLoggedIn ?? new Set();
+    this.adapters = options.adapters ?? ADAPTER_SPECS;
 
     this.current = options.initial.kind;
     this.source = options.initial.source;
@@ -299,17 +309,22 @@ export class AgentManager {
 
   /** Always reruns every probe in parallel (total time bounded by one probe's own timeout) and refreshes the cache. */
   async probe(): Promise<AgentStatus> {
-    const results = await Promise.all(ADAPTER_SPECS.map(async (spec) => [spec.kind, await this.probeOne(spec.kind)] as const));
+    const results = await Promise.all(this.adapters.map(async (spec) => [spec.kind, await this.probeOne(spec)] as const));
     this.probeCache = new Map<AgentKind, ProbeResult>(results);
     return this.buildStatus();
   }
 
-  /** See `assumeLoggedIn`'s own docstring for why a kind may skip the real probe entirely. */
-  private probeOne(kind: AgentKind): Promise<ProbeResult> {
-    if (this.assumeLoggedIn.has(kind)) {
+  /**
+   * See `assumeLoggedIn`'s own docstring for why a kind may skip the real
+   * probe entirely. A spec with no `probeCommand` (a user-declared adapter,
+   * E10.T6/#400 D4 — it has no login concept Slidra can probe) is reported
+   * "available" without spawning anything to check.
+   */
+  private probeOne(spec: AdapterSpec): Promise<ProbeResult> {
+    if (this.assumeLoggedIn.has(spec.kind) || !spec.probeCommand) {
       return Promise.resolve({ loggedIn: true });
     }
-    return probeLogin(kind, this.runCommand);
+    return probeLogin(spec.kind, this.runCommand, this.adapters);
   }
 
   private buildStatus(): AgentStatus {
@@ -325,14 +340,14 @@ export class AgentManager {
         active: getActiveLauncher()?.active ?? false,
         reason: getActiveLauncher()?.degradedReason ?? "write isolation has not been initialized for this server",
       },
-      agents: ADAPTER_SPECS.map((spec) => {
+      agents: this.adapters.map((spec) => {
         const result = cache?.get(spec.kind);
         const card: AgentCard = {
           kind: spec.kind,
           label: spec.label,
           status: result?.loggedIn ? "available" : "unauthenticated",
-          loginCommand: spec.loginCommand,
         };
+        if (spec.loginCommand !== undefined) card.loginCommand = spec.loginCommand;
         if (result?.detail !== undefined) card.detail = result.detail;
         return card;
       }),
@@ -372,7 +387,7 @@ export class AgentManager {
     this.source = "settings";
     this.rewireSession(nextSession);
 
-    const spec = adapterSpecFor(kind);
+    const spec = adapterSpecFor(kind, this.adapters);
     this.onAgentChanged?.({ kind, label: spec.label });
     // §7 decision 5: only when there was a live conversation to switch
     // FROM — the very first agent pick (no `previousSession`) has no prior
@@ -507,6 +522,11 @@ export class AgentManager {
   /** The kind currently selected, or null when none is — the `/` command list needs it to resolve the user skill directory. */
   currentKind(): AgentKind | null {
     return this.current;
+  }
+
+  /** The effective adapter registry this manager was built with (E10.T6/#400 D4) — `serve.ts`'s `POST /api/agent/select` validates its body's `kind` against this, so a declared custom adapter is as selectable as a bundled one. */
+  knownAdapters(): readonly AdapterSpec[] {
+    return this.adapters;
   }
 
   /** The current session's latest agent-reported command list; empty when no agent is selected. */

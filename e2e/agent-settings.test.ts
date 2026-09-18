@@ -281,3 +281,61 @@ it("with no agent, the chat panel shows an empty state, the input is disabled, a
   await expect.poll(() => textOf(page, ".agent-dot-connected"), { timeout: 10_000 }).toBe("Claude Code");
   await expect.poll(() => page.locator(".chat-empty-state").count()).toBe(0);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// [S11.F5]/E10.T6/#400 AC1: a user-declared adapter (settings.json's
+// `adapters` key) is spawned inside the sandbox with the same credential
+// handling as a bundled one, and no code in this repository names it.
+// ─────────────────────────────────────────────────────────────────────────
+
+it("a user-declared adapter from settings.json's adapters key is selectable, connects, and edits through the same sandbox path as a bundled one (AC1)", async () => {
+  const bothLoggedIn: CommandRunner = async () => outcome({ stdout: '{"loggedIn":true}' });
+  const CUSTOM_KIND = "my-custom-agent";
+  const CUSTOM_LABEL = "My Custom Agent";
+  const CUSTOM_TITLE = "Title changed by My Custom Agent";
+
+  activeServer = await startServerFor({
+    deckDir,
+    prefix: "agent-settings-a5",
+    initialAgent: { kind: null, source: "none" },
+    runCommand: bothLoggedIn,
+    // Declared exactly the way a person would write it — id, label,
+    // command, args, env — with none of the extra plumbing
+    // (E2E_PRESENTATION_ID, the sandbox-safe PATH) a bundled adapter's
+    // `resolveAdapterConfig` builds in. Slidra's own env (the shim PATH
+    // prefix, SLIDRA_SHIM_TOKEN/SLIDRA_SHIM_BASE_URL — `agent/manager.ts`'s
+    // `buildSession`) still has to win over whatever is declared here for
+    // the agent to reach the real `slidra` binary through the sandbox.
+    settingsAdapters: (presentationId) => ({
+      [CUSTOM_KIND]: {
+        label: CUSTOM_LABEL,
+        command: process.execPath,
+        args: [agentFixture],
+        env: {
+          PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
+          E2E_PRESENTATION_ID: presentationId,
+          E2E_NEW_TITLE: CUSTOM_TITLE,
+        },
+      },
+    }),
+  });
+
+  const page = await openPage(activeServer.server);
+  await openAgentMenu(page);
+
+  expect(await itemChecked(page, CUSTOM_KIND)).toBe("false");
+  await page.locator(`.chat-chip-menu [data-kind="${CUSTOM_KIND}"]`).click();
+  await expect.poll(() => textOf(page, ".agent-dot-connected"), { timeout: 10_000 }).toBe(CUSTOM_LABEL);
+
+  // Runs the declared adapter's own real subprocess through the exact same
+  // turn path a bundled adapter uses: it asks permission for a `slidra
+  // text set …` command, the allowlist grants it, and the command reaches
+  // the deck server through the shim — proving `launcher.wrap()`, the PATH
+  // prefix and the shim credential are all assembled identically to a
+  // bundled adapter (manager.ts:206-213), not a second, parallel path.
+  await page.locator(".chat-input textarea").fill("change the title");
+  await page.locator('.chat-input button[type="submit"]').click();
+
+  const slideText = page.frameLocator("iframe.slide-frame").locator("svg text").first();
+  await expect.poll(() => slideText.textContent(), { timeout: 10_000 }).toBe(CUSTOM_TITLE);
+});

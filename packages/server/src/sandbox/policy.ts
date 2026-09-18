@@ -7,6 +7,10 @@ import path from "node:path";
 import { readProjectsRegistry, resolveSlidraHome } from "../slidra/home.js";
 import type { FsRule, SandboxContext, WorkbenchPolicy } from "../policy/types.js";
 import type { SandboxConfig } from "./launcher.js";
+import { ADAPTER_SPECS } from "../agent/adapters.js";
+
+/** Every *bundled* adapter's own `writeRules`, concatenated in `ADAPTER_SPECS`'s order — `collectSandboxContext`'s default for `adapterWriteRules` (AC2: unchanged unless a caller explicitly overrides it). */
+const DEFAULT_ADAPTER_WRITE_RULES: readonly FsRule[] = ADAPTER_SPECS.flatMap((spec) => spec.writeRules);
 
 /** True only for a path that exists on disk *and* is a directory — never for "does not exist" or "exists as a file". */
 async function isExistingDirectory(candidate: string): Promise<boolean> {
@@ -29,9 +33,12 @@ export async function collectSandboxContext(options: {
   workbenchRoot: string;
   home?: string;
   deckPath?: string;
+  /** Resolved into `ctx.adapterStateDirs`. Defaults to every *bundled* adapter's own `writeRules` concatenated (`agent/adapters.ts`'s `ADAPTER_SPECS`) — a caller that never overrides this sees byte-identical `adapterStateDirs` to before E10.T6 (AC2). */
+  adapterWriteRules?: readonly FsRule[];
 }): Promise<SandboxContext> {
   const home = options.home ?? homedir();
   const slidraHome = resolveSlidraHome();
+  const platform = process.platform;
 
   const openDeckPaths: string[] = [];
   const registry = await readProjectsRegistry();
@@ -43,15 +50,31 @@ export async function collectSandboxContext(options: {
   const candidateDeckFolder = path.join(home, "Slidra");
   const deckFolder = (await isExistingDirectory(candidateDeckFolder)) ? candidateDeckFolder : null;
 
-  return {
+  // `resolveFsRule` only needs `home`/`platform` for the kinds a
+  // adapter's `writeRules` ever uses (`homeEntry`/`literal`) — safe to
+  // resolve against a context whose own `adapterStateDirs` is still empty.
+  const adapterStateDirs = resolveFsRules(options.adapterWriteRules ?? DEFAULT_ADAPTER_WRITE_RULES, {
     workbenchRoot: options.workbenchRoot,
     home,
     tempDir: tmpdir(),
-    platform: process.platform,
+    platform,
     slidraHome,
     openDeckPaths,
     deckFolder,
     deckDirectory: options.deckPath !== undefined ? path.dirname(options.deckPath) : null,
+    adapterStateDirs: [],
+  });
+
+  return {
+    workbenchRoot: options.workbenchRoot,
+    home,
+    tempDir: tmpdir(),
+    platform,
+    slidraHome,
+    openDeckPaths,
+    deckFolder,
+    deckDirectory: options.deckPath !== undefined ? path.dirname(options.deckPath) : null,
+    adapterStateDirs,
   };
 }
 
@@ -86,6 +109,8 @@ function resolveFsRule(rule: FsRule, ctx: SandboxContext): readonly string[] {
     case "homeEntry":
       if (rule.onlyOn !== undefined && rule.onlyOn !== ctx.platform) return [];
       return [path.join(ctx.home, ...rule.segments)];
+    case "adapterState":
+      return ctx.adapterStateDirs;
     default: {
       const exhaustive: never = rule;
       throw new Error(`sandbox policy: unknown FsRule kind: ${JSON.stringify(exhaustive)}`);
@@ -176,6 +201,7 @@ export function buildCliSandboxPolicy(options: { deckPath: string }): SandboxCon
     openDeckPaths: [],
     deckFolder: null,
     deckDirectory: path.dirname(options.deckPath),
+    adapterStateDirs: [],
   };
   return deriveCliSandboxConfig(policy, ctx);
 }
