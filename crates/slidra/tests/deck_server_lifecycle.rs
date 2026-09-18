@@ -817,3 +817,26 @@ fn list_decks_with_no_owner_param_shows_only_anonymous_owned_decks_sorted_by_fil
         "unclaimed decks only, sorted by file name"
     );
 }
+
+#[test]
+fn listing_fifty_never_opened_decks_does_not_mint_registry_ids() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = TestHome::set_up("list-fifty-unopened");
+    for index in 0..50 {
+        let path = home.deck_folder.join(format!("Deck {index:02}.slidra"));
+        let created = slidra::commands::new::run(&[path.to_string_lossy().into_owned()]);
+        assert!(created.ok, "fixture deck {index} must be created");
+    }
+
+    let addr = slidra::server::test_support::spawn_test_server();
+    let response = get(
+        &format!("http://{addr}"),
+        "/decks",
+        Some(&editor_cred()),
+        &[],
+    );
+    assert_eq!(response.status, 200);
+    let decks = json(&response)["decks"].as_array().unwrap().clone();
+    assert_eq!(decks.len(), 50);
+    assert!(decks.iter().all(|deck| deck["id"].is_null()));
+}

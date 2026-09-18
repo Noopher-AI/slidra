@@ -465,8 +465,14 @@ pub mod registry {
         fn registry_lock_excludes_a_second_holder_while_the_first_is_inside() {
             let home = temp_dir("lock-excludes");
             with_registry_lock(&home, || {
+                let started = std::time::Instant::now();
                 let blocked = with_registry_lock(&home, || Ok(()));
-                assert!(blocked.is_err(), "a second holder must not get in");
+                let err = blocked.expect_err("a live holder must time out");
+                assert_eq!(
+                    err.message(),
+                    "another slidra is writing presentation registry data, please try again later"
+                );
+                assert!(started.elapsed() >= LOCK_TIMEOUT);
                 Ok(())
             })
             .unwrap();

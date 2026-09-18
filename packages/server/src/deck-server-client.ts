@@ -132,6 +132,26 @@ export async function forwardDeckServerGet(
   await pipeUpstreamToResponse(upstream, res);
 }
 
+/** A credentialled GET whose JSON body is consumed by the Node runner. */
+export async function getDeckServerJson(
+  client: DeckServerClient,
+  path: string,
+  workbenchId: string,
+  kind: CredentialKind,
+): Promise<{ status: number; body: unknown }> {
+  const upstream = await fetch(`${client.baseUrl}${path}`, {
+    headers: { "x-slidra-credential": credentialHeader(kind, workbenchId) },
+  });
+  const text = await upstream.text();
+  let body: unknown = null;
+  try {
+    body = text.length > 0 ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: upstream.status, body };
+}
+
 async function pipeUpstreamToResponse(upstream: Response, res: ServerResponse): Promise<void> {
   const headers: Record<string, string> = {};
   for (const [name, value] of upstream.headers.entries()) {

@@ -11,7 +11,7 @@ import { injectEditorBootstrap, type EditorBootstrap } from "./editor-bootstrap.
 import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
 import { runJsonCommand, toCommandResult } from "./slidra/command.js";
 import { COMMAND_WHITELIST, encodeCommandArgv } from "./slidra/argv.js";
-import { readProjectsRegistry, resolveSlidraHome } from "./slidra/home.js";
+import { resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import {
   collectSlashCommands,
@@ -46,13 +46,7 @@ import {
 import { readAgentSettings } from "./agent/settings.js";
 import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
-import { createChangeBroadcaster } from "./changes.js";
-import type { ChangeBroadcaster } from "./changes.js";
-import {
-  broadcastSaveState,
-  createSaveController,
-  type SaveController,
-} from "./save-state.js";
+import { createChangeBroadcaster, type ChangeBroadcaster } from "./runner-events.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
 import { loadProject } from "./slidra/reads.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
@@ -67,6 +61,7 @@ import {
 import {
   startDeckServer,
   forwardDeckServerGet,
+  getDeckServerJson,
   postDeckServerJson,
   postDeckServerCall,
   type DeckServerClient,
@@ -271,7 +266,7 @@ export async function startServe(
     });
 
     if (options.presentationId !== undefined) {
-      initialDeck = await resolveDeckIdentity(options.presentationId);
+      initialDeck = await resolveDeckIdentity(deckServer, options.presentationId);
       initialWorkdir = await deployAgentWorkdir(
         sandboxRoot.path,
         options.presentationId,
@@ -290,33 +285,8 @@ export async function startServe(
     // changes.ts) — creating the handle itself touches no filesystem, so no
     // rollback is needed if listen() below fails. Built before the manager
     // below because `agent-changed` (NOOP-230 §4.4) rides this same fan-out.
-    const changeBroadcaster = createChangeBroadcaster(
-      initialDeck?.id ?? null,
-      deckServer,
-    );
+    const changeBroadcaster = createChangeBroadcaster();
     disposers.push(() => changeBroadcaster.dispose());
-
-    // NOOP-422 (Continuous save): owns the debounced write-back that replaced
-    // the manual Save button. Built right after the broadcaster/editingLock
-    // it depends on, before anything that might already mark the deck dirty.
-    const saveController = createSaveController({
-      presentationId: initialDeck?.id ?? null,
-      broadcaster: changeBroadcaster,
-      editingLock,
-    });
-    // Registered FIRST (unshift, not push) — server shutdown must write back
-    // any pending debounced edit before anything else tears down, including
-    // the broadcaster itself (AC3/AC5: closing must never abandon an edit
-    // still sitting in the debounce window).
-    disposers.unshift(async () => {
-      const before = await saveController.state();
-      if (before.known && before.dirty) {
-        process.stderr.write(
-          `Writing unsaved changes to ${before.fileName}…\n`,
-        );
-      }
-      await saveController.dispose();
-    });
 
     // NOOP-93 §4.4: one export job at a time, for this server's whole
     // lifetime — a fresh manager per `startServe` call, never persisted.
@@ -352,7 +322,6 @@ export async function startServe(
         chatStreams,
         changeBroadcaster,
         editingLock,
-        saveController,
         exportJobManager,
         serverAddress,
         computeSlashCommands,
@@ -470,13 +439,8 @@ export async function startServe(
     });
 
     const onFrozen = () => changeBroadcaster.broadcast("editing-frozen", {});
-    // The agent writes to the deck through the CLI directly, never through an
-    // HTTP route — its turn ending (releasing the floor) is the only
-    // observation point continuous-save has for "the agent may have just
-    // written something" (plan §4(a)'s table).
     const onUnfrozen = () => {
       changeBroadcaster.broadcast("editing-unfrozen", {});
-      saveController.markDirty();
     };
     editingLock.on("frozen", onFrozen);
     editingLock.on("unfrozen", onUnfrozen);
@@ -530,7 +494,7 @@ export async function startServe(
     // manager, for `unbind` (NOOP-433 §3).
     const deckSession = createDeckSession({
       initial: initialDeck,
-      resolveDeck: resolveDeckIdentity,
+      resolveDeck: (id) => resolveDeckIdentity(deckServer, id),
       guard: () => deckMutationGuard(editingLock, exportJobManager),
       unbind: async (outgoing) => {
         await changeBroadcaster.retarget(null);
@@ -547,11 +511,6 @@ export async function startServe(
         );
         await manager.retarget({ id: incoming.id, workdir });
         await changeBroadcaster.retarget(incoming.id);
-        // Flushes whatever is still pending on the OUTGOING deck (this
-        // controller's own `presentationId` is still the outgoing id at this
-        // point — `retarget` hasn't run yet) before pointing itself at the
-        // incoming one (NOOP-422 §4's retarget contract).
-        await saveController.retarget(incoming.id);
       },
     });
 
@@ -599,25 +558,40 @@ export async function startServe(
   }
 }
 
-/**
- * Resolves `id` to its public identity (NOOP-433's `deck-switch.ts` injects
- * this as `resolveDeck`) — `loadProject` alone already throws the exact
- * `SlidraNotFoundError` message ("no presentation found for id: <id>") an
- * unknown id must report (NOOP-433 §4's table); `readProjectsRegistry` is
- * consulted separately only for `sourcePath`, since `loadProject`'s own
- * `ProjectJson` never carries a real filesystem path (ADR-0003). A registry
- * entry with no `sourcePath` (or, in principle, no entry at all for an id
- * `loadProject` otherwise accepts) is legal — `sourcePath` is just `null`,
- * never a reason to refuse the switch (NOOP-433 §4's table, "合法但奇怪" row).
- */
-async function resolveDeckIdentity(id: string): Promise<DeckIdentity> {
-  const project = await loadProject(id);
-  const registry = await readProjectsRegistry();
-  const entry = registry.get(id);
-  return { id, name: project.name, sourcePath: entry?.sourcePath ?? null };
+/** Resolve opaque deck metadata exclusively through crate-owned APIs. */
+async function resolveDeckIdentity(
+  deckServer: DeckServerClient,
+  id: string,
+): Promise<DeckIdentity> {
+  const [project, decks] = await Promise.all([
+    getDeckServerJson(deckServer, "/presentation", id, "editor"),
+    getDeckServerJson(
+      deckServer,
+      "/decks?owner=Anonymous",
+      DECK_LIFECYCLE_CREDENTIAL_WORKBENCH_ID,
+      "editor",
+    ),
+  ]);
+  if (project.status === 404) {
+    throw new SlidraNotFoundError(`no presentation found for id: ${id}`);
+  }
+  if (project.status !== 200 || typeof project.body !== "object" || project.body === null) {
+    throw new SlidraError("Failed to resolve deck metadata");
+  }
+  const entries = (decks.body as { decks?: unknown } | null)?.decks;
+  const match = Array.isArray(entries)
+    ? entries.find((entry) => (entry as { id?: unknown } | null)?.id === id)
+    : undefined;
+  const fileName = (match as { fileName?: unknown } | undefined)?.fileName;
+  const name = (project.body as { name?: unknown }).name;
+  return {
+    id,
+    name: typeof name === "string" ? name : null,
+    fileName: typeof fileName === "string" ? fileName : null,
+  };
 }
 
-/** `DeckIdentity` -> the shape sent over the wire — never `sourcePath` itself (ADR-0003, NOOP-433 §7 decision 2), only its basename. */
+/** `DeckIdentity` is already safe opaque metadata; no real path exists here. */
 function toPublicDeck(deck: DeckIdentity): {
   id: string;
   name: string | null;
@@ -626,7 +600,7 @@ function toPublicDeck(deck: DeckIdentity): {
   return {
     id: deck.id,
     name: deck.name,
-    fileName: deck.sourcePath !== null ? path.basename(deck.sourcePath) : null,
+    fileName: deck.fileName,
   };
 }
 
@@ -663,7 +637,6 @@ async function handleRequest(
   chatStreams: ChatStreamRegistry,
   changeBroadcaster: ChangeBroadcaster,
   editingLock: EditingLock,
-  saveController: SaveController,
   exportJobManager: ExportJobManager,
   serverAddress: { host: string; port: number },
   computeSlashCommands: () => Promise<SlashCommand[]>,
@@ -787,8 +760,6 @@ async function handleRequest(
         // deck for the first time) as well as with one already open.
         await handleDeckSwitchPost(
           deckSession,
-          changeBroadcaster,
-          saveController,
           req,
           res,
         );
@@ -824,7 +795,6 @@ async function handleRequest(
           deckSession,
           deckServer,
           changeBroadcaster,
-          saveController,
           editingLock,
           exportJobManager,
           req,
@@ -871,8 +841,7 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleCommandForward(deckServer, deckId, req, res);
-        if (wrote) saveController.markDirty();
+        await handleCommandForward(deckServer, deckId, req, res);
         return;
       }
       if (url.pathname === "/api/asset") {
@@ -886,37 +855,13 @@ async function handleRequest(
           sendJson(res, 409, { error: new EditingLockConflictError().message });
           return;
         }
-        const wrote = await handleAssetForward(
+        await handleAssetForward(
           deckServer,
           deckId,
           fileEntryPolicy,
           req,
           res,
         );
-        if (wrote) saveController.markDirty();
-        return;
-      }
-      if (url.pathname === "/api/save/flush") {
-        // NOOP-422: replaces the old `POST /api/save` — the only routes that
-        // ever call this now are the Retry action on a failed save, the
-        // unsaved-changes modal's "Save now", and `applyTemplateToSlides`'s
-        // pre-dispatch save. Same "agent holds the floor" 409 gate every
-        // other human write route above uses.
-        //
-        // [E6.T2] moved `/api/open`/`/api/new` above to deck-independent
-        // routes (now forwarded to the crate) that never touch this server's
-        // currently-bound presentation — so, unlike before NOOP-422, neither
-        // route retargets or flushes saveController; switching TO a newly
-        // created/opened deck (and retargeting saveController) is
-        // `POST /api/deck/switch`'s job (`handleDeckSwitchPost` below).
-        const deckId = requireDeck(deckSession, res);
-        if (deckId === null) return;
-        if (editingLock.getState() === "agent") {
-          sendJson(res, 409, { error: new EditingLockConflictError().message });
-          return;
-        }
-        const state = await saveController.flush();
-        sendJson(res, 200, state);
         return;
       }
       if (url.pathname === "/api/export") {
@@ -940,25 +885,23 @@ async function handleRequest(
       if (url.pathname === "/api/undo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        const wrote = await handleUndoRedoPost(
+        await handleUndoRedoPost(
           editingLock,
           deckId,
           runUndo,
           res,
         );
-        if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/redo") {
         const deckId = requireDeck(deckSession, res);
         if (deckId === null) return;
-        const wrote = await handleUndoRedoPost(
+        await handleUndoRedoPost(
           editingLock,
           deckId,
           runRedo,
           res,
         );
-        if (wrote) saveController.markDirty();
         return;
       }
       if (url.pathname === "/api/editing/begin") {
@@ -1070,18 +1013,6 @@ async function handleRequest(
         res,
         extraHeaders,
       );
-      return;
-    }
-
-    if (url.pathname === "/api/save-state") {
-      // NOOP-93 §4.2: no-replay SSE (sse.ts) means the *initial* state on
-      // load/reconnect must come from a plain GET, same pattern as
-      // /api/editing above — never inferred from the last `save-state`
-      // event, which a fresh page load never saw.
-      const deckId = requireDeck(deckSession, res);
-      if (deckId === null) return;
-      const state = await saveController.state();
-      sendJson(res, 200, state);
       return;
     }
 
@@ -1300,14 +1231,12 @@ function requireDeck(
  * validation happens here, before `DeckSession.switchTo` is ever called;
  * every other outcome (conflict, unknown id, a `bind` failure) is
  * `switchTo`'s own to throw and this route's own to translate to HTTP
- * (§4's table). The `deck-changed`/`presentation-changed`/`save-state`
+ * (§4's table). The `deck-changed`/`presentation-changed`
  * broadcast only fires when a switch actually happened — the same-id
  * short-circuit rebuilds nothing, so there is nothing to announce.
  */
 async function handleDeckSwitchPost(
   deckSession: DeckSession,
-  changeBroadcaster: ChangeBroadcaster,
-  saveController: SaveController,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -1342,16 +1271,6 @@ async function handleDeckSwitchPost(
     return;
   }
 
-  if (result.switched) {
-    changeBroadcaster.broadcast("deck-changed", {
-      deck: toPublicDeck(result.deck),
-    });
-    changeBroadcaster.broadcast("presentation-changed", {});
-    // `deckSession`'s own `bind` (serve.ts's `createDeckSession` call) has
-    // already run `saveController.retarget(result.deck.id)` by the time
-    // `switchTo` resolves — this broadcasts that already-updated state.
-    await broadcastSaveState(changeBroadcaster, saveController);
-  }
   sendJson(res, 200, {
     ok: true,
     switched: result.switched,
@@ -1365,8 +1284,8 @@ async function handleDeckSwitchPost(
  * `deckSession` currently has bound (there is no `id` in the body). Refuses
  * with the same `{reason:"editing"}`/`{reason:"exporting"}` conflicts a
  * switch would (`guard`), and with `{reason:"no-deck"}` when nothing is
- * open. On success, flushes any pending debounced save against the OLD path
- * first, renames the file (forwarded to the crate's `POST /deck/rename` —
+ * open. On success, renames the file (forwarded to the crate's
+ * `POST /deck/rename` —
  * unguarded there, exactly like the old, now-deleted `DeckStore.renameBound`
  * this replaces), then re-points the file watcher at the new path
  * (`changeBroadcaster.retarget`) — `retarget` always tears down and rebuilds
@@ -1377,7 +1296,6 @@ async function handleRenameCurrentPost(
   deckSession: DeckSession,
   deckServer: DeckServerClient,
   changeBroadcaster: ChangeBroadcaster,
-  saveController: SaveController,
   editingLock: EditingLock,
   exportJobManager: ExportJobManager,
   req: IncomingMessage,
@@ -1405,9 +1323,6 @@ async function handleRenameCurrentPost(
     return;
   }
 
-  // Settles any edit still sitting in the debounce window against the OLD
-  // path before that path stops existing.
-  await saveController.flush();
   const forwardBody = Buffer.from(JSON.stringify({ id, name }), "utf8");
   const upstream = await postDeckServerJson(
     deckServer,
@@ -1430,23 +1345,9 @@ async function handleRenameCurrentPost(
     return;
   }
 
-  // `deckSession.current()` (GET /api/deck's own answer) otherwise keeps
-  // reporting the pre-rename name/sourcePath until the next switch.
-  await deckSession.refreshCurrent();
+  // `deckSession.current()` otherwise keeps reporting the pre-rename metadata.
+  await deckSession.refreshCurrent({ fileName });
   await changeBroadcaster.retarget(id);
-  // The crate's own savedAt snapshot (a `stat()` read, same idiom
-  // `deck_store.rs` uses for `create`/`rename`) is not reliable here:
-  // `refreshCurrent`'s `slidra cat` runs a real subprocess between that
-  // snapshot and this line, and under CI's timing that was observed to
-  // nudge the file's mtime past it, permanently reading the freshly-renamed
-  // deck as dirty. Forcing one real write-back instead re-establishes
-  // `savedAt` through the SAME Rust-`pack`-authored mechanism every other
-  // save already relies on (`slidra/save-state.ts`'s own docstring) —
-  // proven immune to a read run after it, unlike a Node-side stat guess.
-  // `flush` also broadcasts "save-state" itself, so no separate
-  // `broadcastSaveState` call is needed.
-  saveController.markDirty();
-  await saveController.flush();
   sendJson(res, 200, { ok: true, fileName });
 }
 

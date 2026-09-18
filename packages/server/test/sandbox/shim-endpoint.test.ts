@@ -20,7 +20,6 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleShimExec } from "../../src/sandbox/shim-endpoint.js";
 import { deployShimWrapper } from "../../src/sandbox/shim-wrapper.js";
-import { writeProjectsRegistry } from "../../src/slidra/home.js";
 import { setActivePolicy } from "../../src/sandbox/policy.js";
 import { openPolicy } from "../../src/policy/open.js";
 
@@ -116,7 +115,6 @@ beforeEach(async () => {
   process.env.SLIDRA_SANDBOX = "off";
 
   currentDeckId = "pres-1";
-  await writeProjectsRegistry(new Map([["pres-1", { deckPath: path.join(sandboxRoot, "deck.slidra") }]]));
   // The default cwd (no cwd header) is `<sandboxRoot>/<currentId>` — real
   // `serve.ts` always has this because `deployAgentWorkdir` created it;
   // here it must exist too, or `spawn()`'s own cwd lookup fails before the
@@ -329,12 +327,14 @@ describe("POST /api/agent/exec — behavior contract", () => {
     );
     const importEnvelope = JSON.parse(importStdout) as CliEnvelope<{ path: string }>;
     const assetVirtualPath = importEnvelope.data!.path;
+    currentDeckId = realId;
+    await mkdir(path.join(sandboxRoot, realId), { recursive: true });
 
     const { stdout, stderr, code } = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>((resolve, reject) => {
       const child = spawn(wrapperPath, ["cat", realId, assetVirtualPath], {
         // The agent's shell always runs inside its own deployed work
         // directory; the endpoint rejects any cwd outside the sandbox root.
-        cwd: path.join(sandboxRoot, "pres-1"),
+        cwd: path.join(sandboxRoot, realId),
         env: { ...process.env, SLIDRA_SHIM_TOKEN: TOKEN, SLIDRA_SHIM_BASE_URL: baseUrl },
         stdio: ["pipe", "pipe", "pipe"],
       });

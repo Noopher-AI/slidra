@@ -19,7 +19,6 @@ describe("browser API routing", () => {
     const routedFetch = createRoutingFetch(clients, nativeFetch);
 
     await routedFetch("/api/presentation");
-    await routedFetch("/api/command", { method: "POST" });
     await routedFetch("/api/chat", { method: "POST" });
     await routedFetch("/api/agent/model", { method: "POST" });
     await routedFetch("/api/export", { method: "POST" });
@@ -27,7 +26,6 @@ describe("browser API routing", () => {
 
     expect(nativeFetch.mock.calls.map(([url]) => url)).toEqual([
       "http://deck.test:4100/presentation",
-      "http://deck.test:4100/command",
       "http://runner.test:4200/api/chat",
       "http://runner.test:4200/api/agent/model",
       "http://runner.test:4200/api/export",

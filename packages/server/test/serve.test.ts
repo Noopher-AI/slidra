@@ -12,7 +12,6 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startServe } from "../src/serve.js";
 import type { RunningServer } from "../src/serve.js";
 import type { AgentAdapterConfig } from "../src/agent/session.js";
-import { deckPathFor } from "../src/slidra/home.js";
 import { openPolicy } from "../src/policy/open.js";
 
 const execFileAsync = promisify(execFile);
@@ -581,7 +580,7 @@ describe("startServe", () => {
     // per-slide real path to break individually, so this breaks every
     // read from the deck at once (chmod the file itself) — never
     // asserted against the response.
-    const deckPath = await deckPathFor(id);
+    const deckPath = path.join(slidraDir, "deck.slidra");
     await chmod(deckPath, 0o000);
 
     try {
@@ -652,33 +651,20 @@ describe("startServe", () => {
     await writeFile(registryPath, JSON.stringify(registry));
     const server = await serve(id);
 
-    // `/api/save-state` is the read that resolves the registry inside this
-    // process (`slidra/save-state.ts` → `readProjectsRegistry`), rather
-    // than delegating to the Rust binary — it is the `serve` path the
-    // legacy entry actually reaches.
-    const response = await fetch(`${server.url}/api/save-state`);
+    const response = await fetch(`${server.url}/api/presentation`);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain("corrupted");
   });
 
-  // NOOP-422: continuous save replaced the manual Save button — `/api/save`
-  // is retired entirely (405, the same "no POST route matched" answer any
-  // unknown path gets), and `/api/save/flush` is the one remaining manual
-  // escape hatch (Retry, the unsaved-changes modal's "Save now",
-  // `applyTemplateToSlides`'s pre-dispatch save).
-  it("POST /api/save no longer exists; POST /api/save/flush writes back and reports dirty:false", async () => {
+  it("old Save endpoints are absent because successful crate commands persist immediately", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
 
     const retired = await fetch(`${server.url}/api/save`, { method: "POST" });
     expect(retired.status).toBe(405);
 
-    // A real write through the one route that calls `saveController.
-    // markDirty()` synchronously (serve.ts's `/api/command` handler) —
-    // deterministic, unlike relying on the startup "resume a crash-dirty
-    // deck" check's own timing.
     const setResponse = await fetch(`${server.url}/api/command`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -687,10 +673,8 @@ describe("startServe", () => {
     expect(setResponse.status).toBe(200);
 
     const flushed = await fetch(`${server.url}/api/save/flush`, { method: "POST" });
-    expect(flushed.status).toBe(200);
-    const body = (await flushed.json()) as { known: boolean; dirty: boolean };
-    expect(body.known).toBe(true);
-    expect(body.dirty).toBe(false);
+    expect(flushed.status).toBe(405);
+    expect((await runCli(["cat", id, "slides/001.svg"])).message).toBeTruthy();
   });
 
   // `GET /api/effects/<path>` — the step-plan route the player and
@@ -767,7 +751,7 @@ describe("startServe", () => {
 
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
-      const deckPath = await deckPathFor(id);
+      const deckPath = path.join(slidraDir, "deck.slidra");
       const original = await readDeckFile(deckPath, "slides/001.svg");
       const damaged = original.replace(
         "</svg>",
