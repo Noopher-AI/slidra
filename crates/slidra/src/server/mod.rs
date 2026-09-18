@@ -59,7 +59,7 @@ const FRAME_STDERR: u8 = 2;
 const FRAME_EXIT: u8 = 3;
 
 const CORS_ALLOW_METHODS: &str = "GET, POST, OPTIONS";
-const CORS_ALLOW_HEADERS: &str = "content-type, if-none-match, range, x-slidra-argv, x-slidra-asset-name, x-slidra-asset-url, x-slidra-credential";
+const CORS_ALLOW_HEADERS: &str = "content-type, if-none-match, range, x-slidra-argv, x-slidra-asset-name, x-slidra-asset-url, x-slidra-credential, x-slidra-file-name";
 
 #[derive(Clone, Default)]
 struct ServerConfig {

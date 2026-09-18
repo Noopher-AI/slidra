@@ -10,6 +10,16 @@ interface ObjectUrlFactory {
 
 const URL_ATTRIBUTES = ["href", "xlink:href", "src", "poster", "data-slidra-media"] as const;
 const CSS_URL = /url\(\s*(["']?)([^"')]+)\1\s*\)/gi;
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".ogv"];
+const AUDIO_EXTENSIONS = [".mp3", ".wav", ".oga", ".ogg", ".m4a"];
+
+function mediaKind(reference: string): "video" | "audio" | null {
+  const dot = reference.lastIndexOf(".");
+  const extension = dot === -1 ? "" : reference.slice(dot).toLowerCase();
+  if (VIDEO_EXTENSIONS.includes(extension)) return "video";
+  if (AUDIO_EXTENSIONS.includes(extension)) return "audio";
+  return null;
+}
 
 function deckPath(reference: string, documentPath: string): string | null {
   const value = reference.trim();
@@ -46,6 +56,10 @@ export class DeckAssetResolver {
         if (!element.hasAttribute(attribute)) continue;
         const current = element.getAttribute(attribute);
         if (current === null) continue;
+        if (attribute === "data-slidra-media" && !element.hasAttribute("data-slidra-type")) {
+          const kind = mediaKind(current);
+          if (kind !== null) element.setAttribute("data-slidra-type", kind);
+        }
         element.setAttribute(attribute, await this.#resolveReference(current, documentPath));
       }
       const inlineStyle = element.getAttribute("style");

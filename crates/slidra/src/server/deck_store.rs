@@ -40,11 +40,14 @@ pub const ANONYMOUS_OWNER: &str = "Anonymous";
 const DEFAULT_OWNER: &str = ANONYMOUS_OWNER;
 pub const UNTITLED_DECK_NAME: &str = "Untitled";
 
-/// "Anonymous" is either the literal `ANONYMOUS_OWNER` tag or no owner at
-/// all (a file never opened/imported-in-place, or a legacy write with no
-/// owner field) — mirrors `deck-store.ts`'s own `isAnonymousOwner`.
+/// Decks with an absent owner remain visible to the anonymous identity,
+/// but absence is not an explicit anonymous tag and must never be claimed.
 pub fn is_anonymous_owner(owner: Option<&str>) -> bool {
     owner.is_none() || owner == Some(ANONYMOUS_OWNER)
+}
+
+fn is_claimable_anonymous_owner(owner: Option<&str>) -> bool {
+    owner == Some(ANONYMOUS_OWNER)
 }
 
 #[derive(Debug, Clone)]
@@ -642,7 +645,7 @@ pub fn claim_anonymous(owner_tag: &str) -> DeckStoreResult<u32> {
     let folder = ensure_deck_folder()?;
     let anonymous: Vec<DeckListEntry> = list_decks(None)?
         .into_iter()
-        .filter(|entry| is_anonymous_owner(entry.owner.as_deref()))
+        .filter(|entry| is_claimable_anonymous_owner(entry.owner.as_deref()))
         .collect();
     let mut claimed = 0u32;
     for entry in anonymous {
