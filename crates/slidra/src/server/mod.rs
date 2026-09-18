@@ -36,12 +36,14 @@ use crate::commands::category::{Category, resolve_full_command};
 pub mod allowlist;
 pub mod assets;
 pub mod credential;
+pub mod deck_store;
 pub mod editing_lock;
 pub mod events;
 pub mod raw;
 pub mod reads;
 pub mod redact;
 pub mod shim_client;
+pub mod trash;
 
 use credential::{CallerKind, Credential, CredentialError};
 

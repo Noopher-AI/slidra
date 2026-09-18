@@ -37,11 +37,15 @@ fn strip_extension(source_name: &str) -> &str {
 }
 
 /// Mirrors TS's `ILLEGAL_FILESYSTEM_CHARS = /[\\/:*?"<>|\x00-\x1f]/g`.
-fn is_illegal_filesystem_char(c: char) -> bool {
+/// `pub(crate)`: `server::deck_store`'s own `sanitize_deck_base_name`
+/// reuses this exact character class rather than redefining it a second
+/// time (deck names and asset names share the same filesystem-legality
+/// rule, only the fallback name and the "all illegal" edge case differ).
+pub(crate) fn is_illegal_filesystem_char(c: char) -> bool {
     matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || (c as u32) <= 0x1f
 }
 
-fn replace_illegal_filesystem_chars(s: &str) -> String {
+pub(crate) fn replace_illegal_filesystem_chars(s: &str) -> String {
     s.chars()
         .map(|c| {
             if is_illegal_filesystem_char(c) {
