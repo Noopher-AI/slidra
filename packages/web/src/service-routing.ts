@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import type { ServiceClients } from "./service-clients.js";
-import { encodeCommandArgv } from "./command-argv.js";
+import { COMMAND_WHITELIST, encodeCommandArgv } from "./command-argv.js";
 
 export type BrowserFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -90,6 +90,12 @@ async function routeDeckWrite(
     }
     if (typeof command.name !== "string" || command.name.length === 0) {
       return new Response(JSON.stringify({ error: "name must be a non-empty string" }), { status: 400 });
+    }
+    if (!COMMAND_WHITELIST.includes(command.name)) {
+      return new Response(JSON.stringify({ error: `This endpoint does not accept command: ${command.name}` }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
     }
     if (typeof command.input !== "object" || command.input === null || Array.isArray(command.input)) {
       return new Response(JSON.stringify({ error: "input must be an object" }), { status: 400 });
