@@ -510,6 +510,49 @@ describe("chat: not logged in", () => {
   });
 });
 
+// E10.T6/#400 D3/AC3: a declared adapter's command that starts but never
+// speaks ACP must fail with a named reason within a bounded time, never
+// hang the turn forever — the integration-level counterpart to
+// `probe.test.ts`'s unit coverage of `withAcpHandshakeTimeout` itself.
+describe("chat: a declared adapter that starts but never speaks ACP (AC3)", () => {
+  const originalHandshakeTimeout = process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS;
+
+  afterEach(() => {
+    if (originalHandshakeTimeout === undefined) delete process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS;
+    else process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS = originalHandshakeTimeout;
+  });
+
+  it("the turn fails with a named handshake-timeout error, naming the adapter and the bound — never a permanent hang", async () => {
+    // Small on purpose: this must not actually wait the real 10s default.
+    process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS = "300";
+
+    const hangingAdapter: AgentAdapterConfig = {
+      kind: "hanging-agent",
+      label: "Hanging Agent",
+      // A real subprocess that starts (so spawn's own "error"/"exit" paths
+      // never fire) and stays alive, but never reads or writes a single
+      // byte of JSON-RPC — `connection.initialize()` never settles on its
+      // own, so only the timeout can end it.
+      command: process.execPath,
+      args: ["-e", "setInterval(() => {}, 1000);"],
+    };
+    const server = await serve(hangingAdapter);
+    const stream = await fetch(`${server.url}/api/chat/stream`);
+    const sse = new SseReader(stream);
+
+    const events = sse.readUntil((e) => e.event === "chat-error");
+    await postChat(server, "hi");
+    const collected = await events;
+    await sse.close();
+
+    const errorEvent = collected.find((e) => e.event === "chat-error");
+    expect(errorEvent).toBeDefined();
+    const message = (errorEvent!.data as { message: string }).message;
+    expect(message).toContain("Hanging Agent");
+    expect(message).toContain("300ms");
+  });
+});
+
 describe("chat: session/request_permission — presentation files must go through the CLI, everything else is allowed", () => {
   /** Runs one permission scenario and returns the outcome the fake agent logged. */
   async function permissionOutcomeFor(config: Record<string, unknown>): Promise<unknown> {

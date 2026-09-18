@@ -21,6 +21,7 @@ import path from "node:path";
 import { getActiveLauncher } from "../sandbox/launcher.js";
 import { collectSandboxContext, deriveSandboxConfig } from "../sandbox/policy.js";
 import type { McpServerSpec, WorkbenchPolicy } from "../policy/types.js";
+import { withAcpHandshakeTimeout } from "./probe.js";
 
 /**
  * `fs/write_text_file` is always refused (ADR-0003, first layer). The
@@ -972,7 +973,7 @@ export class AgentChatSession extends EventEmitter {
 
   /** The actual initialize/newSession/editorial-brief-prompt sequence, wrapped by `establishSession` with `withInterrupt`. */
   private async performHandshake(connection: acp.ClientSideConnection): Promise<void> {
-    await connection.initialize({
+    await withAcpHandshakeTimeout(this.config.label, connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
       // Both file methods are declared available (ADR-0003). readTextFile
       // is the obvious one — it serves the virtual file tree. writeTextFile
@@ -985,7 +986,7 @@ export class AgentChatSession extends EventEmitter {
       // execution is the agent's own business (ADR-0004), never routed
       // through this client.
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
-    });
+    }));
 
     let session: acp.NewSessionResponse;
     try {

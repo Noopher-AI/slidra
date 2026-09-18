@@ -366,6 +366,23 @@ describe("startLiveReload", () => {
     expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "pi", label: "Pi (Local Qwen)" });
   });
 
+  it("accepts a user-declared adapter's own kind, not just claude/codex/pi (E10.T6/#400 D4)", () => {
+    let fake: FakeEventSource | undefined;
+    const onAgentChanged = vi.fn();
+    liveReload = startLiveReload({
+      onChange: () => {},
+      onAgentChanged,
+      eventSourceFactory: (url) => {
+        fake = new FakeEventSource(url) as unknown as EventSource;
+        return fake as unknown as EventSource;
+      },
+    });
+
+    fake!.emit("agent-changed", { kind: "my-custom-agent", label: "My Custom Agent" });
+
+    expect(onAgentChanged).toHaveBeenNthCalledWith(1, { kind: "my-custom-agent", label: "My Custom Agent" });
+  });
+
   it("calls onAgentModelChanged with the parsed agent-model-changed payload, dropping malformed ones", () => {
     let fake: FakeEventSource | undefined;
     const onAgentModelChanged = vi.fn();
@@ -379,11 +396,15 @@ describe("startLiveReload", () => {
     });
 
     fake!.emit("agent-model-changed", { kind: "codex", modelId: "gpt-5.5", name: "GPT-5.5" });
-    fake!.emit("agent-model-changed", { kind: "gemini", modelId: "x", name: "X" });
-    fake!.emit("agent-model-changed", { kind: "claude" });
+    // A user-declared adapter's own kind (E10.T6/#400 D4) is accepted just
+    // like a bundled one — no closed literal set to check against.
+    fake!.emit("agent-model-changed", { kind: "my-custom-agent", modelId: "x", name: "X" });
+    fake!.emit("agent-model-changed", { kind: "claude" }); // missing modelId/name — malformed
+    fake!.emit("agent-model-changed", { kind: "", modelId: "y", name: "Y" }); // empty kind — malformed
 
-    expect(onAgentModelChanged).toHaveBeenCalledTimes(1);
+    expect(onAgentModelChanged).toHaveBeenCalledTimes(2);
     expect(onAgentModelChanged).toHaveBeenNthCalledWith(1, { kind: "codex", modelId: "gpt-5.5", name: "GPT-5.5" });
+    expect(onAgentModelChanged).toHaveBeenNthCalledWith(2, { kind: "my-custom-agent", modelId: "x", name: "X" });
   });
 
   it("drops a malformed agent-changed payload instead of fabricating a value ([E3.T5])", () => {
@@ -398,8 +419,11 @@ describe("startLiveReload", () => {
       },
     });
 
-    fake!.emit("agent-changed", { kind: "not-a-real-kind", label: "Codex" });
+    // A non-empty `kind` string is no longer itself grounds for rejection
+    // (E10.T6/#400 D4 — a user-declared adapter's id looks exactly like
+    // this) — only a structurally malformed payload is dropped here.
     fake!.emit("agent-changed", { kind: "codex" }); // missing label
+    fake!.emit("agent-changed", { kind: "", label: "Empty kind" }); // empty kind
     fake!.emit("agent-changed", {});
 
     expect(onAgentChanged).not.toHaveBeenCalled();

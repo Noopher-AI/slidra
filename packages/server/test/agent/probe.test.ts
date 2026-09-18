@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { describe, expect, it } from "vitest";
-import { probeLogin, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { probeLogin, withAcpHandshakeTimeout, type CommandOutcome, type CommandRunner } from "../../src/agent/probe.js";
 
 // Pure decision logic driven entirely through an injected CommandRunner —
 // no real agent login command is ever spawned here: the "happy path,
@@ -121,5 +121,32 @@ describe("probeLogin", () => {
     expect(seen?.args.join(" ")).toContain("SLIDRA_PI_BASE_URL");
     expect(seen?.args.join(" ")).toContain("/models");
     expect(seen?.args.join(" ")).not.toContain(process.env.SLIDRA_PI_API_KEY ?? "not-present");
+  });
+});
+
+// E10.T6/#400 D3/AC3: a declared adapter that starts but never speaks ACP
+// must fail with a named reason within a bounded time, never hang forever.
+describe("withAcpHandshakeTimeout", () => {
+  afterEach(() => {
+    delete process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS;
+  });
+
+  it("resolves with the underlying work's value when it settles before the timeout", async () => {
+    await expect(withAcpHandshakeTimeout("My Agent", Promise.resolve("ok"), 50)).resolves.toBe("ok");
+  });
+
+  it("rejects the underlying work's own error when it rejects before the timeout", async () => {
+    await expect(withAcpHandshakeTimeout("My Agent", Promise.reject(new Error("boom")), 50)).rejects.toThrow("boom");
+  });
+
+  it("a work that never settles rejects within the given bound, naming the label and the millisecond bound", async () => {
+    const neverSettles = new Promise<void>(() => {});
+    await expect(withAcpHandshakeTimeout("My Agent", neverSettles, 20)).rejects.toThrow(/My Agent.*20ms/);
+  });
+
+  it("reads SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS as its default bound when no explicit timeoutMs is given", async () => {
+    process.env.SLIDRA_ACP_HANDSHAKE_TIMEOUT_MS = "20";
+    const neverSettles = new Promise<void>(() => {});
+    await expect(withAcpHandshakeTimeout("My Agent", neverSettles)).rejects.toThrow(/20ms/);
   });
 });

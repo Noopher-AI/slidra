@@ -20,7 +20,8 @@ import { createShimToken, setShimConfig } from "./sandbox/shim-config.js";
 import { handleShimExec } from "./sandbox/shim-endpoint.js";
 import type { FileEntryPolicy, WorkbenchPolicy } from "./policy/types.js";
 import { AgentManager, AgentSwitchLockedError, type AgentSource } from "./agent/manager.js";
-import { isAgentKind, resolveAdapterConfig, type AgentKind } from "./agent/adapters.js";
+import { ADAPTER_SPECS, buildAdapterRegistry, isAgentKind, resolveAdapterConfig, type AdapterSpec, type AgentKind } from "./agent/adapters.js";
+import { readAgentSettings } from "./agent/settings.js";
 import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster } from "./changes.js";
@@ -124,12 +125,23 @@ export interface ServeOptions {
   /**
    * Test-only injection seams for `AgentManager`'s login probe and adapter
    * resolution (`probe.ts`/`adapters.ts`). Production code (`cli.ts`) never
-   * sets this — real serve always probes the real CLIs and resolves the
-   * real adapter packages from `node_modules`.
+   * sets `runCommand`/`resolveAdapter` — real serve always probes the real
+   * CLIs and resolves the real adapter packages from `node_modules`.
    */
   agentManager?: {
     runCommand?: CommandRunner;
     resolveAdapter?: (kind: AgentKind) => AgentAdapterConfig;
+    /**
+     * The effective adapter registry (E10.T6/#400 D4) — every bundled kind
+     * plus every user-declared one. Given at all (`cli.ts` always gives
+     * one, built from `readAgentSettings()`), it wins outright. Omitted
+     * (every existing test, and any caller — e.g. `e2e/helpers/launch.ts`
+     * — that starts a server directly rather than through `cli.ts`) means
+     * this function reads `<SLIDRA_HOME>/settings.json` itself the same
+     * resilient way `cli.ts` does: a broken file never prevents serve from
+     * starting, it just falls back to built-ins only.
+     */
+    adapters?: readonly AdapterSpec[];
   };
   /**
    * Directory the built frontend is served from. Omitted everywhere in
@@ -356,10 +368,36 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
   const initialAgent: { kind: AgentKind | null; source: AgentSource } =
     options.initialAgent ?? (options.agent ? { kind: options.agent.kind, source: "cli" } : { kind: null, source: "none" });
   const fallbackAgent = options.agent;
+  // E10.T6/#400 D4: the effective adapter registry. `cli.ts` always passes
+  // one (built from the same `readAgentSettings()` call it already makes
+  // for `agent`/`models`); every other caller — every existing test, and
+  // any caller (e.g. `e2e/helpers/launch.ts`) that starts a server directly
+  // — gets it read here instead, the same resilient way (a broken
+  // settings.json never prevents serve from starting, it just falls back
+  // to built-ins only).
+  let adapters = options.agentManager?.adapters;
+  if (!adapters) {
+    try {
+      adapters = buildAdapterRegistry((await readAgentSettings()).adapters);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      adapters = ADAPTER_SPECS;
+    }
+  }
+  // Back-compat (see `agent`'s own docstring): a directly-given `agent`
+  // (every pre-NOOP-230 test suite, `e2e/helpers/launch.ts`) names a kind
+  // that may not appear in any registry built above — `AgentManager` must
+  // still be able to report a card for it (`status()`/`probe()` iterate the
+  // registry, and `POST /api/chat`'s pre-gate looks its `current` kind up
+  // in exactly that list), or the very first request throws reaching into
+  // a card that was never there.
+  if (fallbackAgent && !adapters.some((spec) => spec.kind === fallbackAgent.kind)) {
+    adapters = [...adapters, { kind: fallbackAgent.kind, label: fallbackAgent.label, writeRules: [] }];
+  }
   const resolveAdapter =
     options.agentManager?.resolveAdapter ??
     ((kind: AgentKind): AgentAdapterConfig =>
-      fallbackAgent && kind === fallbackAgent.kind ? fallbackAgent : resolveAdapterConfig(kind));
+      fallbackAgent && kind === fallbackAgent.kind ? fallbackAgent : resolveAdapterConfig(kind, adapters));
   const manager = new AgentManager({
     presentationId: initialDeck?.id ?? null,
     editingLock,
@@ -368,6 +406,7 @@ export async function startServe(options: ServeOptions): Promise<RunningServer> 
     initial: initialAgent,
     runCommand: options.agentManager?.runCommand,
     resolveAdapter,
+    adapters,
     onAgentChanged: (payload) => changeBroadcaster.broadcast("agent-changed", payload),
     onModelChanged: (payload) => changeBroadcaster.broadcast("agent-model-changed", payload),
     initialModels: options.initialModels,
@@ -1297,8 +1336,9 @@ async function handleAgentSelectPost(manager: AgentManager, req: IncomingMessage
     return;
   }
   const kind = (body as { kind?: unknown } | null)?.kind;
-  if (!isAgentKind(kind)) {
-    sendJson(res, 400, { error: "kind must be one of: claude, codex, pi" });
+  const knownAdapters = manager.knownAdapters();
+  if (!isAgentKind(kind, knownAdapters)) {
+    sendJson(res, 400, { error: `kind must be one of: ${knownAdapters.map((spec) => spec.kind).join(", ")}` });
     return;
   }
   try {

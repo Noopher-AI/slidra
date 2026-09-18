@@ -57,6 +57,7 @@ describe("policy pipeline purity and injectability (AC1/AC2)", () => {
     openDeckPaths: [],
     deckFolder: null,
     deckDirectory: null,
+    adapterStateDirs: [],
   };
 
   it("① is pure: the same policy against the same ctx twice yields deep-equal results", () => {
@@ -329,7 +330,7 @@ describe("a user-writable settings.json cannot widen network access or file entr
     // nothing else — an unknown key never becomes part of what the rest of
     // the server sees.
     const settings = await readAgentSettings();
-    expect(Object.keys(settings).sort()).toEqual(["agent", "models"]);
+    expect(Object.keys(settings).sort()).toEqual(["adapters", "agent", "models"]);
     expect(settings.agent).toBe("claude");
 
     const after = deriveSandboxConfig(openPolicy, await collectSandboxContext({ workbenchRoot: "/tmp/wb", home }));

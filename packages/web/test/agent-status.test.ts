@@ -86,6 +86,25 @@ describe("fromAgentResponse", () => {
     expect(result).toMatchObject({ kind: "ready", current: "pi", label: "Pi (Local Qwen)" });
   });
 
+  it("accepts a user-declared adapter's own kind as current, with no loginCommand at all (E10.T6/#400 D4)", () => {
+    const result = fromAgentResponse({
+      current: "my-custom-agent",
+      source: "settings",
+      agents: [{ kind: "my-custom-agent", label: "My Custom Agent", status: "available" }],
+    });
+    expect(result).toMatchObject({ kind: "ready", current: "my-custom-agent", label: "My Custom Agent" });
+  });
+
+  it("current naming a kind absent from agents[] → null, rather than fabricating a card for it", () => {
+    expect(
+      fromAgentResponse({
+        current: "not-in-the-list",
+        source: "settings",
+        agents: [{ kind: "claude", label: "Claude Code", status: "available", loginCommand: "claude auth login" }],
+      }),
+    ).toBeNull();
+  });
+
   it("keeps a card's detail (e.g. a detected anomaly) unchanged", () => {
     const result = fromAgentResponse({
       current: null,

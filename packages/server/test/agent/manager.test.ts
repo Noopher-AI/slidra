@@ -182,7 +182,7 @@ describe("AgentManager", () => {
 
     expect(calls).toHaveLength(callsBefore); // no new session built
     expect(changedEvents).toBe(0);
-    expect(await readAgentSettings()).toEqual({ agent: null, models: {} }); // never written
+    expect(await readAgentSettings()).toEqual({ agent: null, models: {}, adapters: [] }); // never written
     expect((await manager.status()).current).toBe("claude"); // unchanged
   });
 
@@ -210,7 +210,7 @@ describe("AgentManager", () => {
     expect(status.source).toBe("settings");
     expect(calls).toHaveLength(callsBeforeSelect); // no new session built
     expect(changedEvents).toBe(0);
-    expect(await readAgentSettings()).toEqual({ agent: "claude", models: {} });
+    expect(await readAgentSettings()).toEqual({ agent: "claude", models: {}, adapters: [] });
   });
 
   it("select() with a different kind: builds a new session via resolveAdapter, updates source, fires onAgentChanged — even when the target is not logged in", async () => {
@@ -238,7 +238,7 @@ describe("AgentManager", () => {
     expect(status.source).toBe("settings");
     expect(calls).toEqual(["claude", "codex"]); // initial session, then the swap
     expect(changed).toEqual({ kind: "codex", label: "Codex" });
-    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {} });
+    expect(await readAgentSettings()).toEqual({ agent: "codex", models: {}, adapters: [] });
   });
 
   it("select() propagates a settings-write failure and leaves the session unswapped", async () => {

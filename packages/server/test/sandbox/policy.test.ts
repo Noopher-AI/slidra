@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeProjectsRegistry } from "../../src/slidra/home.js";
 import {
@@ -15,6 +16,9 @@ import {
 } from "../../src/sandbox/policy.js";
 import { openPolicy } from "../../src/policy/open.js";
 import type { SandboxContext } from "../../src/policy/types.js";
+import { ADAPTER_SPECS } from "../../src/agent/adapters.js";
+
+const openPolicyTsPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../src/policy/open.ts");
 
 let slidraHome: string;
 let home: string;
@@ -38,9 +42,16 @@ describe("deriveSandboxConfig(openPolicy, ctx) — the agent sandbox", () => {
     const policy = deriveSandboxConfig(openPolicy, ctx);
     expect(policy.allowWrite).toContain(sandboxRoot);
     expect(policy.allowWrite).toContain(tmpdir());
-    expect(policy.allowWrite).toContain(path.join(home, ".claude"));
-    expect(policy.allowWrite).toContain(path.join(home, ".claude.json"));
-    expect(policy.allowWrite).toContain(path.join(home, ".codex"));
+    // E10.T6/#400 D1: every bundled adapter's own state directory is now
+    // data (`ADAPTER_SPECS[*].writeRules`), not spelled out here — the
+    // assertion's source moved with it, but the resolved paths (AC2) did not:
+    // this is still exactly `.claude`, `.claude.json`, `.codex`.
+    for (const spec of ADAPTER_SPECS) {
+      for (const rule of spec.writeRules) {
+        if (rule.kind !== "homeEntry") throw new Error(`unexpected writeRules kind in test fixture: ${rule.kind}`);
+        expect(policy.allowWrite).toContain(path.join(home, ...rule.segments));
+      }
+    }
     expect(policy.allowWrite).toContain(path.join(home, ".npm"));
     // `uv` always caches under `~/.cache/uv`, ignoring macOS's own
     // `~/Library/Caches` convention — both must be writable there.
@@ -50,6 +61,11 @@ describe("deriveSandboxConfig(openPolicy, ctx) — the agent sandbox", () => {
     // Landlock's write restriction would otherwise break it (found via
     // os-enforcement.test.ts's AC3 probe).
     expect(policy.allowWrite).toContain("/dev/null");
+  });
+
+  it("open.ts's own source names no adapter (AC2) — the write rules it grants come entirely from agent/adapters.ts's data now", async () => {
+    const source = await readFile(openPolicyTsPath, "utf8");
+    expect(source).not.toMatch(/claude|codex|\bpi\b/i);
   });
 
   it("never allow-lists the home directory itself, ~/.ssh, or SLIDRA_HOME", async () => {
@@ -111,6 +127,7 @@ describe("deriveCliSandboxConfig(openPolicy, ctx) — the CLI sandbox", () => {
       openDeckPaths: [],
       deckFolder: null,
       deckDirectory: path.dirname(deckPath),
+      adapterStateDirs: [],
     };
   }
 

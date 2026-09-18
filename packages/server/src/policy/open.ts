@@ -29,10 +29,10 @@ export const openPolicy: WorkbenchPolicy = {
       // macOS-only alias for the same temp directory Landlock/srt see under
       // a different name there (NOOP-425).
       { kind: "literal", path: "/private/tmp", onlyOn: "darwin" },
-      // Claude Code / Codex session state and token refresh (AC4).
-      { kind: "homeEntry", segments: [".claude"] },
-      { kind: "homeEntry", segments: [".claude.json"] },
-      { kind: "homeEntry", segments: [".codex"] },
+      // Every bundled adapter's own session state and token refresh (AC4),
+      // now data-driven from each `AdapterSpec.writeRules`
+      // (agent/adapters.ts) rather than named here (E10.T6/#400).
+      { kind: "adapterState" },
       // npm/pip/uv/playwright caches: read-only here would make those tools
       // hard-fail rather than merely run uncached.
       { kind: "homeEntry", segments: [".npm"] },
