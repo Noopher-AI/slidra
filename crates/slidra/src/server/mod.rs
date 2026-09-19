@@ -34,6 +34,7 @@ use std::sync::Arc;
 
 use crate::cli;
 use crate::commands::category::{Category, resolve_full_command};
+use serde_json::Value;
 
 pub mod allowlist;
 pub mod assets;
@@ -92,7 +93,7 @@ pub(crate) fn cors_response_headers() -> String {
 
 /// `slidra __deck-server [--addr <host:port>]` — binds (default
 /// `127.0.0.1:0`, an ephemeral port), prints exactly one line to stdout,
-/// `{"port":<n>}`, then serves forever. The one line is how a test
+/// `{"port":<n>,"workbenchId":<id-or-null>}`, then serves forever. The one line is how a test
 /// harness spawning this as a real subprocess (`tests/server_door.rs`,
 /// AC10) learns which port to call back on without a fixed, collision-
 /// prone port number.
@@ -113,6 +114,19 @@ pub fn run(args: &[OsString]) -> i32 {
             remote_url,
         },
     };
+    let initial_workbench_id = match parse_string_flag(args, "--initial-deck") {
+        Some(path) => {
+            let opened = crate::commands::open::run(&[path]);
+            if !opened.ok {
+                eprintln!("slidra __deck-server: failed to open initial deck: {}", opened.message);
+                return 1;
+            }
+            opened
+                .data
+                .and_then(|data| data.get("id").and_then(Value::as_str).map(str::to_string))
+        }
+        None => None,
+    };
     let listener = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
@@ -121,7 +135,10 @@ pub fn run(args: &[OsString]) -> i32 {
         }
     };
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
-    println!("{{\"port\":{port}}}");
+    println!(
+        "{}",
+        serde_json::json!({ "port": port, "workbenchId": initial_workbench_id })
+    );
     let _ = std::io::stdout().flush();
     serve_forever(listener, config)
 }
@@ -141,6 +158,16 @@ fn parse_editor_origin_flag(args: &[OsString]) -> Option<String> {
     while let Some(arg) = iter.next() {
         if arg == "--editor-origin" {
             return iter.next().and_then(|v| v.to_str()).map(str::to_string);
+        }
+    }
+    None
+}
+
+fn parse_string_flag(args: &[OsString], name: &str) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == name {
+            return iter.next().and_then(|value| value.to_str()).map(str::to_string);
         }
     }
     None

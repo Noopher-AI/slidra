@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { createDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -179,11 +179,8 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
   // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
-  const registry: CommandRegistry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
   await packDirectory(frozenDeckDir, slidraPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  const presentationId = opened.data!.id;
 
   const agent: AgentAdapterConfig = {
     kind: "claude",
@@ -192,13 +189,18 @@ async function startFrozenServer(): Promise<{ server: RunningServer; registry: C
     args: [agentFixture],
     env: {
       PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
-      E2E_PRESENTATION_ID: presentationId,
+      E2E_PRESENTATION_ID: "pending-workbench",
       E2E_NEW_TITLE: "frozen test doesn't look at this title",
       E2E_FREEZE_HOLD_MS: "3000",
     },
   };
 
-  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
+  const html = await (await fetch(server.url)).text();
+  const bootstrap = JSON.parse(html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/)![1]!) as { workbenchId: string; deck: { url: string } };
+  const presentationId = bootstrap.workbenchId;
+  agent.env!.E2E_PRESENTATION_ID = presentationId;
+  const registry = createDeckServerRegistry(bootstrap.deck.url, presentationId);
 
   return {
     server,

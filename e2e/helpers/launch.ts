@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Page } from "playwright";
 import { expect } from "vitest";
-import { createDefaultRegistry, type CommandRegistry } from "./cli.js";
+import { createDeckServerRegistry, type CommandRegistry } from "./cli.js";
 import { packDirectory } from "./pack.js";
 import { startServe, type RunningServer } from "../../packages/server/src/serve.js";
 import { openPolicy } from "../../packages/server/src/policy/open.js";
@@ -144,11 +144,9 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
     packSource = deckStagingDir;
   }
 
-  const registry: CommandRegistry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
   await packDirectory(packSource, slidraPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  const presentationId = opened.data!.id;
+  let presentationId = "pending-workbench";
 
   // Written only now, once the real `presentationId` is known — a declared
   // adapter's `env` (E2E_PRESENTATION_ID in particular, for fixtures that
@@ -178,7 +176,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
 
   const server = await startServe({
     policy: openPolicy,
-    presentationId,
+    presentationId: slidraPath,
     port: 0,
     agent,
     initialAgent,
@@ -187,6 +185,14 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
       resolveAdapter: resolveAdapter && ((kind) => resolveAdapter(kind, presentationId)),
     },
   });
+
+  const html = await (await fetch(server.url)).text();
+  const bootstrapMatch = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!bootstrapMatch) throw new Error("missing editor bootstrap");
+  const bootstrap = JSON.parse(bootstrapMatch[1]!) as { workbenchId: string; deck: { url: string } };
+  presentationId = bootstrap.workbenchId;
+  agent.env!.E2E_PRESENTATION_ID = presentationId;
+  const registry = createDeckServerRegistry(bootstrap.deck.url, presentationId);
 
   return {
     server,

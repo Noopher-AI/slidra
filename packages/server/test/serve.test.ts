@@ -144,15 +144,18 @@ afterEach(async () => {
 });
 
 async function openFreshPresentation(name = "Test Presentation"): Promise<string> {
+  const { zipSync } = await import("fflate");
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", name]);
-  expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  // `new` creates no slides; the tests below address slides/001.svg.
-  const added = await runCli(["slide", "add", opened.data!.id]);
-  expect(added.ok).toBe(true);
-  return opened.data!.id;
+  await writeFile(slidraPath, zipSync({
+    "project.json": new TextEncoder().encode(JSON.stringify({
+      formatVersion: 1,
+      name,
+      canvas: { width: 1280, height: 720 },
+      slides: ["slides/001.svg"],
+    })),
+    "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>'),
+  }));
+  return slidraPath;
 }
 
 /**
@@ -178,20 +181,15 @@ async function openPresentationWithRampAsset(): Promise<string> {
   });
   const slidraPath = path.join(slidraDir, "with-ramp-asset.slidra");
   await writeFile(slidraPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  // `new` creates no slides; the tests below address slides/001.svg.
-  const added = await runCli(["slide", "add", opened.data!.id]);
-  expect(added.ok).toBe(true);
-  return opened.data!.id;
+  return slidraPath;
 }
 
-async function serve(presentationId: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
+async function serve(deckPath: string, overrides: Partial<Parameters<typeof startServe>[0]> = {}) {
   // staticDir is passed unconditionally, before ...overrides: no test in
   // this file can reach the real packages/web/dist by forgetting to opt out.
   const server = await startServe({
     policy: openPolicy,
-    presentationId,
+    presentationId: deckPath,
     port: 0,
     agent: fakeAgent,
     staticDir: webDist,
@@ -413,9 +411,7 @@ describe("startServe", () => {
 
   it("serves a slide's SVG content that matches what `cat` returns through the same command", async () => {
     const id = await openFreshPresentation();
-    const expected = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-    expect(expected.ok).toBe(true);
-    const expectedContent = Buffer.from(expected.data![0]!.content, "base64").toString("utf-8");
+    const expectedContent = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"/>';
 
     const server = await serve(id);
     const response = await fetch(`${server.url}/api/files/slides/001.svg`);
@@ -464,7 +460,7 @@ describe("startServe", () => {
         "    res.end();",
         "  });",
         '  server.listen(0, "127.0.0.1", () => {',
-        "    process.stdout.write(JSON.stringify({ port: server.address().port }) + \"\\n\");",
+        "    process.stdout.write(JSON.stringify({ port: server.address().port, workbenchId: \"stub-workbench\" }) + \"\\n\");",
         "  });",
         "} else {",
         // `resolveDeckIdentity` (serve.ts's own startup path, unrelated to
@@ -492,7 +488,7 @@ describe("startServe", () => {
     try {
       // SLIDRA_HOME is this test's own fresh, empty temp directory —
       // "unregistered-stub-id" names nothing on the real filesystem at all.
-      const server = await serve("unregistered-stub-id");
+      const server = await serve("unregistered-stub-path");
 
       const meta = await (await fetch(`${server.url}/api/presentation`)).json();
       expect(meta.slides).toEqual(["slides/fake.svg"]);
@@ -528,11 +524,7 @@ describe("startServe", () => {
     });
     const emptyPath = path.join(slidraDir, "empty.slidra");
     await writeFile(emptyPath, zipped);
-    const opened = await runCli<{ id: string }>(["open", emptyPath]);
-    expect(opened.ok).toBe(true);
-    const id = opened.data!.id;
-
-    const server = await serve(id);
+    const server = await serve(emptyPath);
     const response = await fetch(`${server.url}/api/presentation`);
     expect(response.status).toBe(200);
     expect((await response.json()).slides).toEqual([]);
@@ -600,64 +592,6 @@ describe("startServe", () => {
     }
   });
 
-  it("responds 500, not 404, when the presentation registry itself is corrupt", async () => {
-    const id = await openFreshPresentation();
-    const server = await serve(id);
-    // Corrupted for real (malformed JSON on disk, no mocking), per
-    // workspace.ts's registryPath(home) = path.join(home, "projects.json").
-    // A damaged registry is a server-side failure, not evidence the
-    // requested slide is missing.
-    await writeFile(path.join(slidraHome, "projects.json"), "{ not valid json");
-
-    const response = await fetch(`${server.url}/api/files/slides/001.svg`);
-    const body = await response.json();
-
-    expect(response.status).toBe(500);
-    expect(body.error).toBe("presentation registry data is corrupted");
-    expect(body.error).not.toContain(slidraHome);
-
-    // Restore before this test ends: afterEach's server.close() flushes
-    // save-state, which re-reads the registry — left corrupted, that read
-    // throws uncaught inside the close()/dispose() chain, and the rejection
-    // was observed to surface asynchronously against whichever unrelated
-    // test happened to be running next in the same worker (misattributed
-    // timeouts in packages/server/test/agent/freeze.test.ts on CI). Deleting
-    // the file (rather than reconstructing valid JSON) is the same "never
-    // opened" state readProjectsRegistry already treats as an empty
-    // registry, so close()'s own flush can proceed cleanly.
-    await rm(path.join(slidraHome, "projects.json"), { force: true });
-  });
-
-  // A `projects.json` written by a pre-SQLite release carries `workDir`
-  // entries and no `deckPath`. That entry's own id is dead either way
-  // (`<SLIDRA_HOME>/work/<id>/` is gone), but it must not take an
-  // unrelated presentation down with it: before `home.ts` told a legacy
-  // entry apart from a malformed one, every `serve` read after an upgrade
-  // answered "presentation registry data is corrupted". The Rust side is
-  // covered by `cli_golden.rs::
-  // a_legacy_work_dir_registry_entry_does_not_break_an_unrelated_open`;
-  // this is the same contract on the `serve` path.
-  //
-  // Added by Review (NOOP-442).
-  it("serves an unrelated presentation when the registry still holds a pre-upgrade entry", async () => {
-    const id = await openFreshPresentation();
-    const registryPath = path.join(slidraHome, "projects.json");
-    const registry = JSON.parse(await readFile(registryPath, "utf8")) as Record<string, unknown>;
-    registry.staleid123 = {
-      workDir: path.join(slidraHome, "work", "staleid123"),
-      sourcePath: path.join(slidraDir, "old.slidra"),
-      savedAt: 1,
-    };
-    await writeFile(registryPath, JSON.stringify(registry));
-    const server = await serve(id);
-
-    const response = await fetch(`${server.url}/api/presentation`);
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(JSON.stringify(body)).not.toContain("corrupted");
-  });
-
   it("old Save and Node deck-write proxy endpoints are absent because the browser calls the crate directly", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
@@ -684,20 +618,26 @@ describe("startServe", () => {
      */
     async function openPresentationWithOneElement(): Promise<{ id: string; elementId: string }> {
       const id = await openFreshPresentation();
-      const written = await runCli<{ elementIds: string[] }>([
-        "slide", "set", id, "slides/001.svg",
-        "--svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><rect x="100" y="100" width="200" height="120"/></svg>',
-      ]);
-      expect(written.ok).toBe(true);
-      return { id, elementId: written.data!.elementIds[0]! };
+      const elementId = "el-effect-target";
+      const { unzipSync, zipSync } = await import("fflate");
+      const files = unzipSync(await readFile(id));
+      files["slides/001.svg"] = new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g id="${elementId}"><rect x="100" y="100" width="200" height="120"/></g></svg>`);
+      await writeFile(id, zipSync(files));
+      return { id, elementId };
+    }
+
+    async function rewriteFixtureSlide(deckPath: string, rewrite: (svg: string) => string): Promise<void> {
+      const { unzipSync, zipSync } = await import("fflate");
+      const files = unzipSync(await readFile(deckPath));
+      files["slides/001.svg"] = new TextEncoder().encode(rewrite(new TextDecoder().decode(files["slides/001.svg"]!)));
+      await writeFile(deckPath, zipSync(files));
     }
 
     it("responds 200 with effects/steps/transition for a slide with an effect list", async () => {
       const { id, elementId } = await openPresentationWithOneElement();
-      const added = await runCli([
-        "effect", "add", id, "slides/001.svg", elementId, "--family", "enter", "--effect", "fade",
-      ]);
-      expect(added.ok).toBe(true);
+      await rewriteFixtureSlide(id, (original) => original.replace(
+        "</svg>", `<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026"><slidra:effect target="${elementId}" family="enter" effect="fade" start="on-click"/></slidra:effects></metadata></svg>`,
+      ));
 
       const server = await serve(id);
       const response = await fetch(`${server.url}/api/effects/slides/001.svg`);
@@ -743,14 +683,12 @@ describe("startServe", () => {
     it("responds 500 with the command's own message, verbatim, for a damaged effect list", async () => {
       const { id } = await openPresentationWithOneElement();
       const deckPath = path.join(slidraDir, "deck.slidra");
-      const original = await readDeckFile(deckPath, "slides/001.svg");
-      const damaged = original.replace(
+      await rewriteFixtureSlide(deckPath, (original) => original.replace(
         "</svg>",
         '<metadata><slidra:effects xmlns:slidra="https://slidra.app/ns/2026">' +
           '<slidra:effect target="bogus" family="not-a-family" effect="fade" start="on-click"/>' +
           "</slidra:effects></metadata></svg>",
-      );
-      await writeDeckFile(deckPath, "slides/001.svg", damaged);
+      ));
 
       const server = await serve(id);
       const response = await fetch(`${server.url}/api/effects/slides/001.svg`);

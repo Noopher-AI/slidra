@@ -102,15 +102,13 @@ async function openFreshPresentation(name = "Test Presentation"): Promise<string
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", name]);
   if (!created.ok) throw new Error(created.message);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  if (!opened.ok) throw new Error(opened.message);
-  return opened.data!.id;
+  return slidraPath;
 }
 
-async function serve(presentationId: string): Promise<RunningServer> {
+async function serve(deckPath: string): Promise<RunningServer> {
   const server = await startServe({
     policy: openPolicy,
-    presentationId,
+    presentationId: deckPath,
     port: 0,
     agent: fakeAgent,
     staticDir: path.join(staticRoot, "dist"),

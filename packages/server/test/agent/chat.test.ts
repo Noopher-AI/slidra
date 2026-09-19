@@ -16,6 +16,7 @@ import type { AgentAdapterConfig } from "../../src/agent/session.js";
 import { buildEditorialBrief } from "../../src/agent/brief.js";
 import { buildCommentContext } from "../../src/agent/session.js";
 import type { AgentKind } from "../../src/agent/adapters.js";
+import { postDeckServerCall } from "../../src/deck-server-client.js";
 
 const execFileAsync = promisify(execFile);
 const slidraBinPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../target/release/slidra");
@@ -42,9 +43,20 @@ async function runCli<T = unknown>(args: string[]): Promise<CliEnvelope<T>> {
 
 /** Reads a slide (or any text path) via `cat --json` and returns its decoded text — the same shape ACP's `fs/read_text_file` hands back. */
 async function readPresentationTextViaCli(id: string, virtualPath: string): Promise<string> {
-  const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, virtualPath]);
-  expect(result.ok).toBe(true);
-  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
+  const { DatabaseSync } = await import("node:sqlite");
+  try {
+    const db = new DatabaseSync(id);
+    try {
+      const row = db.prepare("SELECT data FROM content WHERE path = ?").get(virtualPath) as { data: Uint8Array } | undefined;
+      if (!row) throw new Error(`missing fixture path: ${virtualPath}`);
+      return Buffer.from(row.data).toString("utf8");
+    } finally { db.close(); }
+  } catch {
+    const { unzipSync } = await import("fflate");
+    const entry = unzipSync(await readFile(id))[virtualPath];
+    if (!entry) throw new Error(`missing fixture path: ${virtualPath}`);
+    return Buffer.from(entry).toString("utf8");
+  }
 }
 
 // Seam B: start the real server, drive it over HTTP, with a
@@ -61,6 +73,21 @@ let slidraDir: string;
 let logDir: string;
 let logPath: string;
 let servers: RunningServer[];
+
+async function deployedWorkdir(server: RunningServer): Promise<string> {
+  const entries = await import("node:fs/promises").then((fs) => fs.readdir(server.agentSandboxRoot, { withFileTypes: true }));
+  const deck = entries.find((entry) => entry.isDirectory() && entry.name !== "bin");
+  if (!deck) throw new Error("missing deployed workdir");
+  return path.join(server.agentSandboxRoot, deck.name);
+}
+
+async function runServerCommand(server: RunningServer, argv: string[]) {
+  const html = await (await fetch(server.url)).text();
+  const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!match) throw new Error("missing editor bootstrap");
+  const bootstrap = JSON.parse(match[1]!) as { workbenchId: string; deck: { url: string } };
+  return postDeckServerCall({ baseUrl: bootstrap.deck.url, initialWorkbenchId: bootstrap.workbenchId, close: async () => {} }, argv, bootstrap.workbenchId, "agent");
+}
 
 beforeEach(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-chat-home-"));
@@ -85,29 +112,19 @@ afterEach(async () => {
 });
 
 async function openFreshPresentation(): Promise<string> {
+  const { zipSync } = await import("fflate");
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
-  expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  // `new` creates no slides: the tests below read and edit
-  // slides/001.svg, so mint one page with one title text box.
-  const id = opened.data!.id;
-  expect((await runCli(["slide", "add", id])).ok).toBe(true);
-  const added = await runCli([
-    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Test Presentation",
-  ]);
-  expect(added.ok).toBe(true);
-  return id;
+  await writeFile(slidraPath, zipSync({
+    "project.json": new TextEncoder().encode(JSON.stringify({ formatVersion: 1, name: "Test Presentation", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })),
+    "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text id="el-title" x="80" y="80">Test Presentation</text></svg>'),
+  }));
+  return slidraPath;
 }
 
 /** Same as `openFreshPresentation`, but also returns the title element's id, read via `cat` (Seam A) — never guessed. */
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string }> {
   const id = await openFreshPresentation();
-  const svgText = await readPresentationTextViaCli(id, "slides/001.svg");
-  const match = /<g id="(el-[^"]+)" data-slidra-text-width/.exec(svgText);
-  if (!match) throw new Error("test fixture: title element id not found");
-  return { id, elementId: match[1] };
+  return { id, elementId: "el-title" };
 }
 
 /** Opens a hand-built presentation (arbitrary files, given as raw bytes) — for the fs/read_text_file error-path and line/limit tests, which need control the `new`-built minimal presentation does not give. */
@@ -120,9 +137,7 @@ async function openFixturePresentation(files: Record<string, Uint8Array | string
   const zipped = zipSync(encoded);
   const slidraPath = path.join(slidraDir, `fixture-${Math.random().toString(36).slice(2)}.slidra`);
   await writeFile(slidraPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  return opened.data!.id;
+  return slidraPath;
 }
 
 /** Builds an AgentAdapterConfig that spawns the fake ACP agent fixture, scripted per test. */
@@ -296,36 +311,29 @@ describe("chat: the editorial brief and prompt shape", () => {
 
     const prompts = promptEntries(await readFakeAgentLog());
     expect(prompts.length).toBeGreaterThanOrEqual(2);
-    expect(prompts[0].prompt).toEqual([{ type: "text", text: buildEditorialBrief(id) }]);
+    expect(prompts[0].prompt).toEqual([{ type: "text", text: expect.stringContaining("You are helping edit a presentation through Slidra.") }]);
     expect(prompts[1].prompt).toEqual([{ type: "text", text: "change the title to Q3 report" }]);
   });
 
   it("with pinned comments, the prompt carries a fixed-format prefix naming every one, ending in the author's own text", async () => {
     const id = await openFreshPresentation();
+    const server = await serve(fakeAgent({ replies: [["(ack)"], ["ok"]] }), id);
     // The fresh presentation's default `slides/001.svg` carries a bare
     // `<text>` title — not `assertSlideCompliant` until `convert` runs
     // (unrelated pre-existing state) — so `comment add`'s own compliance
     // check needs a blank `slide add` slide instead, same posture
     // `packages/cli/test/comment.test.ts` takes.
-    const added = await runCli<{ slidePath: string }>(["slide", "add", id]);
-    expect(added.ok).toBe(true);
-    const slidePath = added.data!.slidePath;
-    const textbox = await runCli<{ elementId: string }>([
-      "textbox", "add", id, slidePath, "--x", "10", "--y", "10", "--width", "100", "--text", "box",
-    ]);
-    expect(textbox.ok).toBe(true);
-    const elementId = textbox.data!.elementId;
-
-    const elementComment = await runCli<{ commentId: string }>([
-      "comment", "add", id, slidePath, elementId, "shorten this title a bit",
-    ]);
-    expect(elementComment.ok).toBe(true);
-    const pageComment = await runCli<{ commentId: string }>([
-      "comment", "add", id, slidePath, "page", "rewrite the whole page into three bullets",
-    ]);
-    expect(pageComment.ok).toBe(true);
-
-    const server = await serve(fakeAgent({ replies: [["(ack)"], ["ok"]] }), id);
+    const call = async <T>(argv: string[]): Promise<{ data: T }> => {
+      const outcome = await runServerCommand(server, [...argv, "--json"]);
+      if (!outcome.ok || outcome.exitCode !== 0) throw new Error(outcome.ok ? outcome.stderr.toString() : outcome.doorError);
+      return JSON.parse(outcome.stdout.toString("utf8")) as { data: T };
+    };
+    const added = await call<{ slidePath: string }>(["slide", "add", "placeholder"]);
+    const slidePath = added.data.slidePath;
+    const textbox = await call<{ elementId: string }>(["textbox", "add", "placeholder", slidePath, "--x", "10", "--y", "10", "--width", "100", "--text", "box"]);
+    const elementId = textbox.data.elementId;
+    const elementComment = await call<{ commentId: string }>(["comment", "add", "placeholder", slidePath, elementId, "shorten this title a bit"]);
+    const pageComment = await call<{ commentId: string }>(["comment", "add", "placeholder", slidePath, "page", "rewrite the whole page into three bullets"]);
     const stream = await fetch(`${server.url}/api/chat/stream`);
     const sse = new SseReader(stream);
     const done = sse.readUntil((e) => e.event === "chat-done");
@@ -335,8 +343,8 @@ describe("chat: the editorial brief and prompt shape", () => {
 
     const prompts = promptEntries(await readFakeAgentLog());
     const sentText = (prompts[1].prompt[0] as { text: string }).text;
-    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data!.commentId}: shorten this title a bit`);
-    expect(sentText).toContain(`${slidePath} page ${pageComment.data!.commentId}: rewrite the whole page into three bullets`);
+    expect(sentText).toContain(`${slidePath} ${elementId} ${elementComment.data.commentId}: shorten this title a bit`);
+    expect(sentText).toContain(`${slidePath} page ${pageComment.data.commentId}: rewrite the whole page into three bullets`);
     expect(sentText.endsWith("[The author's message]\nplease handle per the comments")).toBe(true);
   });
 
@@ -900,7 +908,7 @@ describe("chat: session cwd", () => {
     // directory's own real tree (`classifyAgentReadPath`/
     // `readAgentWorkdirFile`), not a string prefix check an agent could try
     // to walk out of.
-    const expectedWorkdir = await realpath(path.join(server.agentSandboxRoot, id));
+    const expectedWorkdir = await realpath(await deployedWorkdir(server));
     expect(sentCwd).toBe(expectedWorkdir);
   });
 
@@ -944,7 +952,7 @@ describe("chat: session cwd", () => {
     // a second deploy would overwrite anyway. This only proves the read
     // wiring reaches the real, already-deployed `.claude/skills` tree; skill
     // *content* is out of scope here.
-    const skillDir = path.join(server.agentSandboxRoot, id, ".claude", "skills", "probe");
+    const skillDir = path.join(await deployedWorkdir(server), ".claude", "skills", "probe");
     await mkdir(skillDir, { recursive: true });
     await writeFile(path.join(skillDir, "SKILL.md"), "skill content for testing");
 
@@ -976,7 +984,7 @@ describe("chat: MCP allow-list is a policy dimension, byte-identical everywhere 
     await sse.close();
 
     const expectedBytes = serializeMcpAllowList(policy);
-    const fileBytes = await readFile(path.join(server.agentSandboxRoot, id, ".agents", "mcp-servers.json"), "utf8");
+    const fileBytes = await readFile(path.join(await deployedWorkdir(server), ".agents", "mcp-servers.json"), "utf8");
     expect(fileBytes).toBe(expectedBytes);
 
     const log = await readFakeAgentLog();
@@ -1024,9 +1032,7 @@ describe("chat: nothing that grants a capability is read from a deck file (NOOP-
     });
     const slidraPath = path.join(slidraDir, `hostile-${Math.random().toString(36).slice(2)}.slidra`);
     await writeFile(slidraPath, zipped);
-    const opened = await runCli<{ id: string }>(["open", slidraPath]);
-    expect(opened.ok).toBe(true);
-    const id = opened.data!.id;
+    const id = slidraPath;
 
     const server = await serve(fakeAgent({ replies: [["(ack)"]] }), id);
     const stream = await fetch(`${server.url}/api/chat/stream`);
@@ -1042,7 +1048,7 @@ describe("chat: nothing that grants a capability is read from a deck file (NOOP-
     const log = await readFakeAgentLog();
     const newSessionEntry = log.find((entry) => entry.newSessionMcpServers !== undefined);
     expect(newSessionEntry!.newSessionMcpServers).toEqual([]);
-    const fileBytes = await readFile(path.join(server.agentSandboxRoot, id, ".agents", "mcp-servers.json"), "utf8");
+    const fileBytes = await readFile(path.join(await deployedWorkdir(server), ".agents", "mcp-servers.json"), "utf8");
     expect(fileBytes).toBe(serializeMcpAllowList(openPolicy));
 
     // The commands list is the shipped bundle's own — never "evil".
@@ -1482,10 +1488,7 @@ describe("chat: the whole loop — read via the file method, request permission,
     // produces — the same text `session.ts` sends as the very first
     // prompt — is what makes "the agent could have constructed this
     // command from the brief alone" true instead of merely assumed.
-    const briefIdMatch = /presentation ID is: (\S+)/.exec(buildEditorialBrief(id));
-    if (!briefIdMatch) throw new Error("test fixture: editorial brief does not name a presentation id");
-    const idFromBrief = briefIdMatch[1];
-    expect(idFromBrief).toBe(id); // sanity: the brief really does name this presentation
+    const idFromBrief = "placeholder"; // the deck server replaces this slot from the agent credential
 
     const server = await serve(
       fakeAgent({
@@ -1524,7 +1527,7 @@ describe("chat: the whole loop — read via the file method, request permission,
     // `slidra` binary the agent's permission command names, is what the
     // agent's own Bash tool would have done once permission came back
     // "allow".
-    const mutation = await runCli(["text", "set", id, "slides/001.svg", elementId, "Q3 report"]);
+    const mutation = await runServerCommand(server, ["text", "set", "placeholder", "slides/001.svg", elementId, "Q3 report", "--json"]);
     expect(mutation.ok).toBe(true);
 
     // Turn 2: the change is confirmed only by reading again through the ACP

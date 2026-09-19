@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import { isRunnerRoute, runnerSessionAuthorized } from "./agent-runner-auth.js";
 import { injectEditorBootstrap, type EditorBootstrap } from "./editor-bootstrap.js";
 import { SlidraError, SlidraNotFoundError } from "./slidra/errors.js";
-import { runJsonCommand } from "./slidra/command.js";
 import { resolveSlidraHome } from "./slidra/home.js";
 import type { AgentAdapterConfig } from "./agent/session.js";
 import {
@@ -62,6 +61,7 @@ import {
   forwardDeckServerGet,
   getDeckServerJson,
   postDeckServerJson,
+  postDeckServerCall,
   type DeckServerClient,
 } from "./deck-server-client.js";
 
@@ -85,8 +85,9 @@ export interface ServeOptions {
    */
   policy: WorkbenchPolicy;
   /**
-   * Opaque id of an already-opened presentation (see `slidra open`) to
-   * start already bound to.
+   * Deck path for the launcher to open in the same long-lived deck-server
+   * process this serve session uses. The historical field name is retained
+   * so callers do not need a shape migration.
    *
    * NOOP-433: no longer required — "no deck open" is now a fully supported
    * startup state (every route answers coherently, see `deck-switch.ts`),
@@ -328,14 +329,20 @@ export async function startServe(
     // runner's exact, now-known origin. Starting it before listen() produced
     // an unusable origin and forced the bootstrap back through Node.
     const combinedOrigin = `http://${host}:${actualPort}`;
-    deckServer = await startDeckServer({ editorOrigin: combinedOrigin, fileEntry: options.policy.fileEntry });
+    deckServer = await startDeckServer({
+      editorOrigin: combinedOrigin,
+      fileEntry: options.policy.fileEntry,
+      initialDeckPath: options.presentationId,
+    });
     disposers.push(() => deckServer.close());
 
     if (options.presentationId !== undefined) {
-      initialDeck = await resolveDeckIdentity(deckServer, options.presentationId);
+      const initialId = deckServer.initialWorkbenchId;
+      if (initialId === null) throw new SlidraError("Deck server did not open the initial deck");
+      initialDeck = await resolveDeckIdentity(deckServer, initialId);
       initialWorkdir = await deployAgentWorkdir(
         sandboxRoot.path,
-        options.presentationId,
+        initialId,
         options.policy,
       );
     }
@@ -520,7 +527,7 @@ export async function startServe(
       url: `http://${host}:${actualPort}`,
       agentSandboxRoot: sandboxRoot.path,
       close: async () => {
-        for (const dispose of disposers) {
+        for (const dispose of [...disposers].reverse()) {
           await dispose();
         }
         await new Promise<void>((resolve, reject) => {
@@ -542,7 +549,7 @@ export async function startServe(
     // Startup can fail after the crate server is running (for example an
     // unknown deck or a busy port). Release every resource before rejecting.
     const failures: unknown[] = [];
-    for (const dispose of disposers) {
+    for (const dispose of [...disposers].reverse()) {
       try {
         await dispose();
       } catch (cleanupError) {
@@ -826,6 +833,7 @@ async function handleRequest(
           sandboxRoot: sandboxRootPath,
           token: shimToken,
           currentDeckId: () => deckSession.currentId(),
+          deckServer,
         });
         return;
       }
@@ -1038,7 +1046,7 @@ async function handleRequest(
       // connection existed.
       const deckId = requireDeck(deckSession, res);
       if (deckId === null) return;
-      await handleChatHistoryGet(deckId, url.searchParams, res);
+      await handleChatHistoryGet(deckServer, deckId, url.searchParams, res);
       return;
     }
 
@@ -1372,6 +1380,7 @@ async function handleChatPost(
  * (20, unfiltered) applies.
  */
 async function handleChatHistoryGet(
+  deckServer: DeckServerClient,
   deckId: string,
   searchParams: URLSearchParams,
   res: ServerResponse,
@@ -1382,11 +1391,21 @@ async function handleChatHistoryGet(
   const query = searchParams.get("query");
   if (query !== null) args.push("--query", query);
 
-  const result = await runJsonCommand<{
+  const outcome = await postDeckServerCall(deckServer, [...args, "--json"], deckId, "agent");
+  if (!outcome.ok) {
+    sendJson(res, outcome.doorStatus, { error: outcome.doorError });
+    return;
+  }
+  const result = JSON.parse(outcome.stdout.toString("utf8")) as {
+    ok: boolean;
+    message: string;
+    failureKind?: string;
+    data?: {
     entries: unknown[];
     total: number;
     truncated: boolean;
-  }>(args);
+    };
+  };
   if (!result.ok) {
     sendJson(res, result.failureKind === "not-found" ? 404 : 400, {
       error: result.message,

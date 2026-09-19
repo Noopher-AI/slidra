@@ -21,15 +21,11 @@
  * and every chunk is written to the response as it arrives — never buffered
  * until the process ends.
  */
-import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import { realpathSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { constants as osConstants } from "node:os";
 import path from "node:path";
-import { resolveSlidraBin } from "../slidra/bin.js";
-import { buildCliSandboxPolicy } from "./policy.js";
-import { getActiveLauncher } from "./launcher.js";
+import { postDeckServerCall, type DeckServerClient } from "../deck-server-client.js";
 
 const TOKEN_HEADER = "x-slidra-shim-token";
 const ARGV_HEADER = "x-slidra-shim-argv";
@@ -48,6 +44,7 @@ export interface ShimExecOptions {
   token: string;
   /** The currently bound deck's id, or null when none is bound. */
   currentDeckId(): string | null;
+  deckServer: DeckServerClient;
 }
 
 function headerValue(req: IncomingMessage, name: string): string | undefined {
@@ -131,15 +128,6 @@ function writeExitFrame(res: ServerResponse, exitCode: number): void {
   res.end(header);
 }
 
-/** `128 + signal number` — the POSIX shell convention `slidra-sandbox-exec`'s own caller (a real shell) would report for a signal-killed process. */
-function exitCodeFor(code: number | null, signal: NodeJS.Signals | null): number {
-  if (signal !== null) {
-    const signalNumber = (osConstants.signals as Record<string, number>)[signal] ?? 0;
-    return 128 + signalNumber;
-  }
-  return code ?? 0;
-}
-
 export function handleShimExec(req: IncomingMessage, res: ServerResponse, options: ShimExecOptions): void {
   const token = headerValue(req, TOKEN_HEADER);
   if (token === undefined || !tokensMatch(options.token, token)) {
@@ -170,43 +158,21 @@ export function handleShimExec(req: IncomingMessage, res: ServerResponse, option
     return;
   }
 
-  void runShimCommand(req, res, argv, cwd, currentId);
+  void runShimCommand(req, res, argv, currentId, options.deckServer);
 }
 
-async function runShimCommand(req: IncomingMessage, res: ServerResponse, argv: string[], cwd: string, deckId: string): Promise<void> {
-  const bin = resolveSlidraBin();
-  const policy = buildCliSandboxPolicy();
-  const launcher = getActiveLauncher();
-  const rawSpawn = { command: bin, args: argv, env: process.env, cwd };
-  const wrapped = launcher
-    ? await launcher.wrap(rawSpawn, policy)
-    : { command: rawSpawn.command, args: [...rawSpawn.args], env: rawSpawn.env, shell: false, cwd: rawSpawn.cwd };
-
-  // `spawn`, never `execFile`: the whole point of this endpoint is to
-  // stream, not buffer, and `execFile`'s `maxBuffer` would silently cap
-  // exactly the >1 MB output AC5 requires.
-  const child = spawn(wrapped.command, wrapped.args, {
-    cwd: wrapped.cwd,
-    env: wrapped.env,
-    shell: wrapped.shell,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
+async function runShimCommand(req: IncomingMessage, res: ServerResponse, argv: string[], deckId: string, deckServer: DeckServerClient): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  const outcome = await postDeckServerCall(deckServer, argv, deckId, "agent", Buffer.concat(chunks));
   res.writeHead(200, { "content-type": "application/octet-stream" });
   res.flushHeaders();
-
-  req.pipe(child.stdin);
-  child.stdout.on("data", (chunk: Buffer) => writeFrame(res, FRAME_STDOUT, chunk));
-  child.stderr.on("data", (chunk: Buffer) => writeFrame(res, FRAME_STDERR, chunk));
-
-  child.on("error", () => {
-    // The process never started at all (bad binary path, EACCES on the
-    // helper itself) — reported the same way a real shell reports "command
-    // not found", never as an HTTP-level error: the response already
-    // committed to 200 the moment headers flushed above.
-    writeExitFrame(res, 127);
-  });
-  child.on("close", (code, signal) => {
-    writeExitFrame(res, exitCodeFor(code, signal));
-  });
+  if (!outcome.ok) {
+    writeFrame(res, FRAME_STDERR, Buffer.from(outcome.doorError, "utf8"));
+    writeExitFrame(res, 1);
+    return;
+  }
+  if (outcome.stdout.length > 0) writeFrame(res, FRAME_STDOUT, outcome.stdout);
+  if (outcome.stderr.length > 0) writeFrame(res, FRAME_STDERR, outcome.stderr);
+  writeExitFrame(res, outcome.exitCode);
 }

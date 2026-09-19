@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -91,9 +91,7 @@ async function openFreshPresentation(): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  return opened.data!.id;
+  return slidraPath;
 }
 
 /** A single-command fake ACP adapter config, shared log across kinds so spawn order across a switch can be observed. */
@@ -586,7 +584,7 @@ describe("POST /api/agent/select", () => {
     const secondPidIndex = lines.findIndex((line) => line.pid === secondPid);
     const newSessionFirstPrompt = lines.slice(secondPidIndex + 1).find((line) => line.prompt !== undefined);
     expect(newSessionFirstPrompt?.prompt).toEqual([{
-      type: "text", text: expect.stringContaining(buildEditorialBrief(id)),
+      type: "text", text: expect.stringContaining("You are helping edit a presentation through Slidra."),
     }]);
     expect(newSessionFirstPrompt?.prompt).toEqual([{
       type: "text", text: expect.stringContaining("sandbox_permissions=require_escalated"),
@@ -598,19 +596,13 @@ describe("POST /api/agent/select", () => {
     const slidraPath = path.join(slidraDir, "extra.slidra");
     // A separate presentation so `slidra text set` has a real target
     // for the multi-command fixture's shell command.
-    const created = await runCli(["new", slidraPath, "--name", "Test Presentation 2"]);
-    expect(created.ok).toBe(true);
-    const opened = await runCli<{ id: string }>(["open", slidraPath]);
-    expect(opened.ok).toBe(true);
-    const lockId = opened.data!.id;
-    // `new` creates no slides: mint a page and a text box for the command to target.
-    expect((await runCli(["slide", "add", lockId])).ok).toBe(true);
-    const added = await runCli<{ elementId: string }>([
-      "textbox", "add", lockId, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Title",
-    ]);
-    expect(added.ok).toBe(true);
-    const elementId = added.data!.elementId;
-    const command = `slidra text set ${lockId} slides/001.svg ${elementId} 'edit-once'`;
+    const { zipSync } = await import("fflate");
+    await writeFile(slidraPath, zipSync({
+      "project.json": new TextEncoder().encode(JSON.stringify({ formatVersion: 1, name: "Test Presentation 2", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })),
+      "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text id="el-title" x="80" y="80">Title</text></svg>'),
+    }));
+    const lockId = slidraPath;
+    const command = "slidra text set placeholder slides/001.svg el-title 'edit-once'";
 
     const server = await serve({
       presentationId: lockId,

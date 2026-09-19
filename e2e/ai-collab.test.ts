@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -130,16 +130,18 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ policy: openPolicy, presentationId,
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath,
     port: 0,
     agent,
     skillDirs: { bundled: bundledSkillsDir, user: userSkillsDir },
   });
+  const live = await connectDeckServerRegistry(server.url);
+  agent.env!.E2E_PRESENTATION_ID = live.presentationId;
 
   return {
     server,
-    registry,
-    presentationId,
+    registry: live.registry,
+    presentationId: live.presentationId,
     slidraPath,
     cleanup: async () => {
       await server.close();

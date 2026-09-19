@@ -3,7 +3,8 @@
 
 import { randomUUID } from "node:crypto";
 import type * as acp from "@agentclientprotocol/sdk";
-import { runJsonCommandWithStdin } from "../slidra/command.js";
+import { postDeckServerCall, type DeckServerClient } from "../deck-server-client.js";
+import { SlidraError } from "../slidra/errors.js";
 
 /** Same union `AgentChatSession`'s `ChatEvents["chat-command"]` carries — restated here rather than imported to avoid a dependency from this module back onto `session.ts`. */
 type CommandStatus = acp.ToolCallStatus;
@@ -18,8 +19,8 @@ export interface ChatHistoryEntryInput {
 }
 
 export interface ChatLogOptions {
-  /** Injected for tests; defaults to actually shelling out to `slidra chat-history <id> --append -`. */
-  append?: (presentationId: string, entries: ChatHistoryEntryInput[]) => Promise<void>;
+  /** Persistence transport owned by the live deck server; injected in unit tests. */
+  append: (presentationId: string, entries: ChatHistoryEntryInput[]) => Promise<void>;
   /** Injected for tests — ISO 8601, same contract as `commands::comment`'s own clock. */
   now?: () => string;
   /** Injected for tests — `author`/`agent`/`divider` entries need a fresh id; `command` entries are keyed off `toolCallId` instead (see `recordCommand`). */
@@ -30,16 +31,19 @@ export interface ChatLogOptions {
 
 const DEFAULT_DEBOUNCE_MS = 500;
 
-async function defaultAppend(presentationId: string, entries: ChatHistoryEntryInput[]): Promise<void> {
-  const result = await runJsonCommandWithStdin(["chat-history", presentationId, "--append", "-"], JSON.stringify(entries));
-  if (!result.ok) {
-    // Best-effort persistence: a failed flush must not take the live
-    // conversation down (AC1/AC2 are about durability across a reload/
-    // reopen, not a hard requirement that every write to the browser also
-    // reaches disk). Logged so a systematic failure (e.g. a corrupted
-    // deck) is at least visible in the server's own log.
-    console.warn(`[chat-log] failed to persist ${entries.length} chat entr${entries.length === 1 ? "y" : "ies"}: ${result.message}`);
-  }
+export function deckServerAppend(deckServer: DeckServerClient) {
+  return async (presentationId: string, entries: ChatHistoryEntryInput[]): Promise<void> => {
+    const outcome = await postDeckServerCall(
+      deckServer,
+      ["chat-history", presentationId, "--append", "-", "--json"],
+      presentationId,
+      "agent",
+      JSON.stringify(entries),
+    );
+    if (!outcome.ok) throw new SlidraError(`deck server refused chat-history: ${outcome.doorError}`);
+    const result = JSON.parse(outcome.stdout.toString("utf8")) as { ok: boolean; message: string };
+    if (!result.ok) throw new SlidraError(result.message);
+  };
 }
 
 /**
@@ -75,9 +79,9 @@ export class ChatLog {
   /** The agent entry currently accumulating chunks, or `null` between turns/after a command/divider closed it. */
   private openAgentEntry: { entryId: string; text: string; at: string } | null = null;
 
-  constructor(presentationId: string, options: ChatLogOptions = {}) {
+  constructor(presentationId: string, options: ChatLogOptions) {
     this.presentationId = presentationId;
-    this.append = options.append ?? defaultAppend;
+    this.append = options.append;
     this.now = options.now ?? (() => new Date().toISOString());
     this.nextEntryId = options.nextEntryId ?? (() => `ce-${randomUUID()}`);
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
