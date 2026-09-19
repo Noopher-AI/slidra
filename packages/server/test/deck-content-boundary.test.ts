@@ -44,6 +44,7 @@ it.each([
   ["default import", 'import fs from "node:fs";\nconst deck = "rogue.slidra";\nexport const rogue = fs.readFileSync(deck);\n'],
   ["aliased member", 'import * as fs from "node:fs/promises";\nconst read = fs.readFile;\nconst deck = "rogue.slidra";\nexport const rogue = read(deck);\n'],
   ["require namespace", 'const fs = require("node:fs");\nconst deck = "rogue.slidra";\nexport const rogue = fs.writeFileSync(deck, "x");\n'],
+  ["inline require member", 'const deck = "rogue.slidra";\nexport const rogue = require("node:fs").readFileSync(deck);\n'],
   ["destructured require alias", 'const { copyFile: copy } = require("node:fs/promises");\nconst source = "source.slidra";\nconst target = "target.bin";\nexport const rogue = copy(source, target);\n'],
   ["second filesystem path argument", 'import * as fs from "node:fs/promises";\nconst source = "source.bin";\nconst target = "target.slidra";\nexport const rogue = fs.rename(source, target);\n'],
 ])("rejects %s filesystem access to a .slidra path", async (_label, source) => {
