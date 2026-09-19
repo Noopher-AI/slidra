@@ -764,6 +764,7 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
         .arg("--addr")
         .arg("127.0.0.1:0")
         .env("SLIDRA_HOME", &home)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -806,8 +807,11 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
         .output()
         .expect("shim binary must run");
 
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server.stdin.take());
+    let status = server
+        .wait()
+        .expect("deck server must shut down on stdin EOF");
+    assert!(status.success(), "deck server shutdown failed: {status}");
 
     assert!(
         shim_output.status.success(),
@@ -822,4 +826,130 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
     );
 
     std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("shim-closed-pipe");
+    let deck = home.join("large.slidra");
+    let created = commands::new::run(&[deck.to_string_lossy().into_owned()]);
+    assert!(created.ok, "{}", created.message);
+    slidra::workspace::virtual_fs::create_new_file(
+        &deck,
+        "assets/big.txt",
+        &vec![b'x'; 8 * 1024 * 1024],
+    )
+    .unwrap();
+
+    let bin = env!("CARGO_BIN_EXE_slidra");
+    let mut server = Command::new(bin)
+        .arg("__deck-server")
+        .args(["--asset-upload-bytes", "true", "--asset-remote-url", "true"])
+        .arg("--initial-deck")
+        .arg(&deck)
+        .env("SLIDRA_HOME", &home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut reader = BufReader::new(server.stdout.take().unwrap());
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let started: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+    let port = started["port"].as_u64().unwrap();
+    let id = started["workbenchId"].as_str().unwrap();
+    let credential = credential::encode(CallerKind::Agent, id);
+
+    let mut shim = Command::new(bin)
+        .args(["__shim", "cat", id, "assets/big.txt"])
+        .env("SLIDRA_SHIM_CREDENTIAL", credential)
+        .env("SLIDRA_SHIM_BASE_URL", format!("http://127.0.0.1:{port}"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut first = [0_u8; 1];
+    shim.stdout
+        .as_mut()
+        .unwrap()
+        .read_exact(&mut first)
+        .unwrap();
+    drop(shim.stdout.take());
+    let output = shim.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "closed consumer must not fail: {output:?}"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "closed consumer must keep stderr empty: {output:?}"
+    );
+
+    drop(server.stdin.take());
+    assert!(server.wait().unwrap().success());
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn documented_commands_dispatch_without_node() {
+    use std::process::Command;
+
+    let spec = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/spec/cli.md"),
+    )
+    .unwrap();
+    let command_names: Vec<&str> = spec
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("## `")
+                .and_then(|rest| rest.strip_suffix('`'))
+        })
+        .collect();
+    assert_eq!(command_names.len(), 92);
+    let empty_path = temp_home("no-node-path");
+    for name in command_names {
+        let output = Command::new(env!("CARGO_BIN_EXE_slidra"))
+            .args(name.split(' '))
+            .env("PATH", &empty_path)
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("node not found"),
+            "documented argv {name:?} fell through to Node: {output:?}"
+        );
+    }
+    std::fs::remove_dir_all(empty_path).ok();
+}
+
+#[test]
+fn cli_markdown_json_shape_is_preserved_through_call_door() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("json-shape-door");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "json-shape");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let credential = credential::encode(CallerKind::Editor, &id);
+
+    let response = post_call(
+        &base_url,
+        Some(&credential),
+        &[],
+        &["slide", "add", &id, "--json"],
+    );
+    assert_eq!(response.status, 200);
+    let (stdout, stderr, exit) = decode_frames(&response.body);
+    assert_eq!(exit, 0, "{}", String::from_utf8_lossy(&stderr));
+    let envelope: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(envelope["ok"], true);
+    assert!(envelope["data"]["slidePath"].as_str().is_some());
+    assert!(envelope["message"].as_str().is_some());
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(home).ok();
 }
