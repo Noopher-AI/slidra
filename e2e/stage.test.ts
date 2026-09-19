@@ -77,7 +77,7 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
 });
 
 afterAll(async () => {
@@ -153,7 +153,7 @@ async function startNonWidescreenServer(): Promise<{ server: RunningServer; clea
     },
   };
 
-  const altServer = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  const altServer = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
 
   return {
     server: altServer,

@@ -46,7 +46,6 @@ import type { CommandRunner } from "./agent/probe.js";
 import { openEventStream, type EventStream } from "./sse.js";
 import { createChangeBroadcaster, type ChangeBroadcaster } from "./runner-events.js";
 import { EditingLock, EditingLockConflictError } from "./editing-lock.js";
-import { loadProject } from "./slidra/reads.js";
 import { ExportJobManager, type ExportFormat } from "./export/job.js";
 import { renderExportPdf } from "./export/render.js";
 import { exportFileName } from "./export/output-name.js";
@@ -847,6 +846,7 @@ async function handleRequest(
         if (deckId === null) return;
         await handleExportPost(
           exportJobManager,
+          deckServer,
           deckId,
           serverAddress,
           changeBroadcaster,
@@ -1574,6 +1574,7 @@ async function handleAgentModelPost(
  */
 async function handleExportPost(
   exportJobManager: ExportJobManager,
+  deckServer: DeckServerClient,
   presentationId: string,
   serverAddress: { host: string; port: number },
   changeBroadcaster: ChangeBroadcaster,
@@ -1599,7 +1600,13 @@ async function handleExportPost(
       format,
       (event) => changeBroadcaster.broadcast("export", event),
       async (id: string, jobFormat: ExportFormat, onRunning, onProgress) => {
-        const project = await loadProject(presentationId);
+        const projectCall = await postDeckServerCall(deckServer, ["cat", presentationId, "project.json", "--json"], presentationId, "agent");
+        if (!projectCall.ok || projectCall.exitCode !== 0) {
+          throw new SlidraError(projectCall.ok ? projectCall.stderr.toString("utf8").trim() : projectCall.doorError);
+        }
+        const envelope = JSON.parse(projectCall.stdout.toString("utf8")) as { ok: boolean; data?: Array<{ content: string }>; message: string };
+        if (!envelope.ok || envelope.data?.length !== 1) throw new SlidraError(envelope.message || "Failed to load presentation");
+        const project = JSON.parse(Buffer.from(envelope.data[0]!.content, "base64").toString("utf8")) as { name: string };
         const fileName = exportFileName(project.name, jobFormat);
         const outputPath = path.join(
           resolveSlidraHome(),

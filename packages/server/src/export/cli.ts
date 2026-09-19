@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import path from "node:path";
-import { loadProject } from "../slidra/reads.js";
 import { startExportServer } from "./server.js";
 import { renderExportPdf } from "./render.js";
 import { exportFileName } from "./output-name.js";
@@ -22,16 +21,26 @@ export async function runExportCli(argv: string[]): Promise<number> {
     console.error(parsed.message);
     return 1;
   }
-  const { presentationId, format, outPath, port } = parsed.value;
-
-  let project;
+  const { presentationId: deckPath, format, outPath, port } = parsed.value;
+  let server;
   try {
-    project = await loadProject(presentationId);
+    server = await startExportServer({ deckPath, port });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
+  let project: { name: string; slides: string[] };
+  try {
+    const response = await fetch(`${server.url}/api/presentation`);
+    if (!response.ok) throw new Error((await response.json() as { error?: string }).error ?? "Failed to load presentation");
+    project = await response.json() as { name: string; slides: string[] };
+  } catch (error) {
+    await server.close();
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
   if (project.slides.length === 0) {
+    await server.close();
     console.error("Presentation has no slides");
     return 1;
   }
@@ -40,7 +49,6 @@ export async function runExportCli(argv: string[]): Promise<number> {
     ? path.resolve(outPath)
     : path.resolve(process.cwd(), exportFileName(project.name, format));
 
-  const server = await startExportServer({ presentationId, port });
   try {
     const result = await renderExportPdf({
       serverUrl: server.url,

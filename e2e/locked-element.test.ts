@@ -85,7 +85,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
 
   return {
     server,

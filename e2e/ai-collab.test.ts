@@ -7,7 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { startDeckServer } from "../packages/server/src/deck-server-client.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -558,8 +559,10 @@ it("a comment survives a Save/Open round-trip", async () => {
     // reasoning helpers/screenshot.ts's settleForScreenshot documents.
     await page.waitForTimeout(500);
 
-    const reopened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-    const comments = await listComments(registry, reopened.data!.id, "slides/001.svg");
+    const reopened = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false }, initialDeckPath: slidraPath });
+    const reopenedId = reopened.initialWorkbenchId!;
+    const comments = await listComments(createDeckServerRegistry(reopened.baseUrl, reopenedId), reopenedId, "slides/001.svg");
+    await reopened.close();
     expect(comments).toEqual([expect.objectContaining({ target: "el-title", text: "should still be here after saving" })]);
   } finally {
     await cleanup();

@@ -106,8 +106,7 @@ function env(): NodeJS.ProcessEnv {
 async function openFixture(deckDir: string): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   await packDirectory(deckDir, slidraPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  return opened.data!.id;
+  return slidraPath;
 }
 
 describe("argv validation — no browser needed, fails before ever touching Playwright", () => {
@@ -141,10 +140,10 @@ describe("argv validation — no browser needed, fails before ever touching Play
     expect(result.stderr.trim()).toBe("--out is missing a value");
   });
 
-  it("id does not exist", async () => {
+  it("deck path does not exist", async () => {
     const result = await runCli(["export", "no-such-id", "--format", "pdf"], { env: env() });
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("no presentation found for id: no-such-id");
+    expect(result.stderr).toContain("presentation file not found: no-such-id");
   });
 });
 

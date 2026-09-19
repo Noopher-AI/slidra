@@ -35,7 +35,7 @@ import { startDeckServer, forwardDeckServerGet, type DeckServerClient } from "..
  * chat session, or editing lock).
  */
 export interface ExportServerOptions {
-  presentationId: string;
+  deckPath: string;
   /** Defaults to an OS-assigned ephemeral port — this is a private, short-lived server for one export run, never a long-lived service with a fixed address to remember. */
   port?: number;
   host?: string;
@@ -52,7 +52,6 @@ export interface RunningExportServer {
 const DEFAULT_HOST = "127.0.0.1";
 
 export async function startExportServer(options: ExportServerOptions): Promise<RunningExportServer> {
-  const { presentationId } = options;
   const host = options.host ?? DEFAULT_HOST;
   const staticDir = options.staticDir ?? resolveWebDist();
 
@@ -61,7 +60,15 @@ export async function startExportServer(options: ExportServerOptions): Promise<R
   // `deckSession` at all (`presentationId` is fixed for its whole
   // lifetime), so there is exactly one workbench id to forward every
   // request with.
-  const deckServer = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false } });
+  const deckServer = await startDeckServer({
+    fileEntry: { uploadBytes: false, remoteUrl: false },
+    initialDeckPath: options.deckPath,
+  });
+  const presentationId = deckServer.initialWorkbenchId;
+  if (presentationId === null) {
+    await deckServer.close();
+    throw new Error("deck server did not open the export deck");
+  }
 
   const server = http.createServer((req, res) => {
     void handleRequest(presentationId, staticDir, deckServer, req, res);

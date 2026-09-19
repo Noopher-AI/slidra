@@ -254,20 +254,20 @@ it("copy-pasting a cell range (CLI) — a TSV round-trip, and the new text is vi
   const started = await start();
   const page = await openWithClipboard(started);
 
-  const copyResult = await runCli([
-    "table", "cell", "copy", started.presentationId, "slides/001.svg", "tbl-1", "--range", "0,0:0,2",
-  ]);
-  expect(copyResult.code).toBe(0);
-  const { tsv } = parseCliData<{ tsv: string }>(copyResult.stdout);
+  const copyResult = await started.registry.dispatch<{ tsv: string }>("table cell copy", {
+    id: started.presentationId, slidePath: "slides/001.svg", elementId: "tbl-1", range: "0,0:0,2",
+  });
+  expect(copyResult.ok).toBe(true);
+  const { tsv } = copyResult.data!;
   expect(tsv).toBe("A1\tB1\tC1");
 
   const tsvFile = path.join(await mkdtemp(path.join(tmpdir(), "slidra-e2e-clipboard-tsv-")), "cells.tsv");
   await writeFile(tsvFile, tsv, "utf-8");
-  const pasteResult = await runCli([
-    "table", "cell", "paste", started.presentationId, "slides/001.svg", "tbl-1", "--at", "2,0", "--tsv-file", tsvFile,
-  ]);
-  expect(pasteResult.code).toBe(0);
-  expect(parseCliData<{ cells: number }>(pasteResult.stdout).cells).toBe(3);
+  const pasteResult = await started.registry.dispatch<{ cells: number }>("table cell paste", {
+    id: started.presentationId, slidePath: "slides/001.svg", elementId: "tbl-1", at: "2,0", tsv,
+  });
+  expect(pasteResult.ok).toBe(true);
+  expect(pasteResult.data!.cells).toBe(3);
 
   const after = await readSlide(started.registry, started.presentationId, "slides/001.svg");
   const doc = parseSlideSvg(after);
@@ -310,12 +310,12 @@ it("the file change from a paste is reproducible via CLI element paste (the GUI 
 
   const svgFile = path.join(await mkdtemp(path.join(tmpdir(), "slidra-e2e-clipboard-svg-")), "clip.svg");
   await writeFile(svgFile, clipboardSvg, "utf-8");
-  const cliPaste = await runCli([
-    "element", "paste", started.presentationId, "slides/001.svg", "--dx", "20", "--dy", "20", "--svg-file", svgFile,
-  ]);
-  expect(cliPaste.code).toBe(0);
+  const cliPaste = await started.registry.dispatch<{ elementIds: string[] }>("element paste", {
+    id: started.presentationId, slidePath: "slides/001.svg", dx: 20, dy: 20, svg: clipboardSvg,
+  });
+  expect(cliPaste.ok).toBe(true);
   const cliResult = await readSlide(started.registry, started.presentationId, "slides/001.svg");
-  const cliNewId = parseCliData<{ elementIds: string[] }>(cliPaste.stdout).elementIds[0];
+  const cliNewId = cliPaste.data!.elementIds[0];
 
   // Same path, different only in the one thing that is *supposed* to differ
   // between two independent pastes: the cryptographically random new id

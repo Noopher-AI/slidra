@@ -7,7 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { startDeckServer, type DeckServerClient } from "../packages/server/src/deck-server-client.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -136,11 +137,14 @@ async function startRegistryFor(): Promise<{
   await packDirectory(deckDir, slidraPath);
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   const presentationId = opened.data!.id;
+  const deckServer: DeckServerClient = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false }, initialDeckPath: slidraPath });
+  const liveId = deckServer.initialWorkbenchId!;
 
   return {
-    registry,
-    presentationId,
+    registry: createDeckServerRegistry(deckServer.baseUrl, liveId),
+    presentationId: liveId,
     cleanup: async () => {
+      await deckServer.close();
       delete process.env.SLIDRA_HOME;
       delete process.env.SLIDRA_BIN;
       await rm(slidraHome, { recursive: true, force: true });

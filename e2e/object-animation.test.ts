@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Frame, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -92,12 +92,13 @@ async function startServerFor(): Promise<TestServer> {
     },
   };
 
-  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
+  const live = await connectDeckServerRegistry(server.url);
 
   return {
     server,
-    registry,
-    presentationId,
+    registry: live.registry,
+    presentationId: live.presentationId,
     cleanup: async () => {
       await server.close();
       delete process.env.SLIDRA_HOME;

@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Locator } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -82,7 +82,11 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
+  const live = await connectDeckServerRegistry(server.url);
+  registry = live.registry;
+  presentationId = live.presentationId;
+  agent.env!.E2E_PRESENTATION_ID = presentationId;
 });
 
 afterAll(async () => {

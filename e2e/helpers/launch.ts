@@ -109,6 +109,7 @@ export interface StartServerOptions {
 export interface StartedServer {
   server: RunningServer;
   registry: CommandRegistry;
+  deckPath: string;
   presentationId: string;
   cleanup: () => Promise<void>;
 }
@@ -197,6 +198,7 @@ export async function startServerFor(options: StartServerOptions): Promise<Start
   return {
     server,
     registry,
+    deckPath: slidraPath,
     presentationId,
     cleanup: async () => {
       await server.close();
