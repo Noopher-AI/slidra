@@ -21,8 +21,9 @@
 //! internal `workspace::registry::ENV_LOCK` (that one is `pub(crate)`,
 //! invisible to an external integration test crate like this file).
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use slidra::commands;
@@ -143,6 +144,24 @@ fn post_call_with_body(
     }
 }
 
+fn post_new(base_url: &str, credential_header: &str, name: &str) -> String {
+    let request = ureq::post(format!("{base_url}/new"))
+        .header(credential::CREDENTIAL_HEADER, credential_header)
+        .config()
+        .http_status_as_error(false)
+        .build();
+    let response = request
+        .send(serde_json::to_vec(&serde_json::json!({ "name": name })).unwrap())
+        .expect("request must be sent");
+    assert_eq!(response.status().as_u16(), 200);
+    let (_, body) = response.into_parts();
+    let body: serde_json::Value = serde_json::from_reader(body.into_reader()).unwrap();
+    body["id"]
+        .as_str()
+        .expect("new response must include id")
+        .to_string()
+}
+
 /// Decodes the same frame shape `server::write_frame_response` writes and
 /// `server::shim_client::relay_frames` reads: `[1 byte kind][4 bytes
 /// big-endian value][payload]`. Returns `(stdout, stderr, exit_code)`.
@@ -178,6 +197,169 @@ fn decode_frames(bytes: &[u8]) -> (Vec<u8>, Vec<u8>, i32) {
         stderr,
         exit_code.expect("response must end with an exit frame"),
     )
+}
+
+struct DoorOutput {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    exit: i32,
+}
+
+struct DeckServer {
+    child: Child,
+    base_url: String,
+    id: String,
+}
+
+impl DeckServer {
+    fn start(home: &std::path::Path, deck: &std::path::Path) -> Self {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_slidra"))
+            .arg("__deck-server")
+            .args(["--asset-upload-bytes", "true", "--asset-remote-url", "true"])
+            .arg("--initial-deck")
+            .arg(deck)
+            .env("SLIDRA_HOME", home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("deck server must start");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        let started: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+        Self {
+            base_url: format!("http://127.0.0.1:{}", started["port"].as_u64().unwrap()),
+            id: started["workbenchId"].as_str().unwrap().to_string(),
+            child,
+        }
+    }
+
+    fn call(&self, argv: &[&str]) -> DoorOutput {
+        self.call_as(CallerKind::Agent, argv)
+    }
+
+    fn call_as(&self, caller: CallerKind, argv: &[&str]) -> DoorOutput {
+        let credential = credential::encode(caller, &self.id);
+        let response = post_call(&self.base_url, Some(&credential), &[], argv);
+        assert_eq!(response.status, 200, "argv {argv:?}");
+        let (stdout, stderr, exit) = decode_frames(&response.body);
+        DoorOutput {
+            stdout,
+            stderr,
+            exit,
+        }
+    }
+}
+
+impl Drop for DeckServer {
+    fn drop(&mut self) {
+        drop(self.child.stdin.take());
+        assert!(self.child.wait().unwrap().success());
+    }
+}
+
+fn local_cli(argv: &[&str]) -> DoorOutput {
+    let argv: Vec<std::ffi::OsString> = argv.iter().map(std::ffi::OsString::from).collect();
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let exit = slidra::cli::run_argv_to(&argv, &mut stdout, &mut stderr, &mut std::io::empty());
+    DoorOutput {
+        stdout,
+        stderr,
+        exit,
+    }
+}
+
+fn create_deck(path: &std::path::Path) {
+    let path = path.to_string_lossy();
+    let output = local_cli(&["new", &path]);
+    assert_eq!(
+        output.exit,
+        0,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn seed_server(home: &std::path::Path, label: &str) -> (PathBuf, DeckServer) {
+    let deck = home.join(format!("{label}.slidra"));
+    create_deck(&deck);
+    let server = DeckServer::start(home, &deck);
+    let add = server.call(&["slide", "add", &server.id]);
+    assert_eq!(add.exit, 0, "{}", String::from_utf8_lossy(&add.stderr));
+    let textbox = server.call(&[
+        "textbox",
+        "add",
+        &server.id,
+        "slides/001.svg",
+        "--x",
+        "80",
+        "--y",
+        "80",
+        "--width",
+        "600",
+        "--text",
+        "title",
+    ]);
+    assert_eq!(
+        textbox.exit,
+        0,
+        "{}",
+        String::from_utf8_lossy(&textbox.stderr)
+    );
+    (deck, server)
+}
+
+fn first_element_id(server: &DeckServer) -> String {
+    let output = server.call(&["cat", &server.id, "slides/001.svg"]);
+    let svg = String::from_utf8(output.stdout).unwrap();
+    let start = svg.find("id=\"el-").unwrap() + 4;
+    let end = svg[start..].find('"').unwrap() + start;
+    svg[start..end].to_string()
+}
+
+fn assert_ok(output: &DoorOutput, argv: &[&str]) {
+    assert_eq!(
+        output.exit,
+        0,
+        "argv {argv:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn json_envelope(output: &DoorOutput) -> serde_json::Value {
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "JSON output failed to parse ({error}): {}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    })
+}
+
+fn base64_decode_for_test(input: &str) -> Vec<u8> {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let stripped: Vec<u8> = input.bytes().filter(|byte| *byte != b'=').collect();
+    let mut out = Vec::new();
+    for chunk in stripped.chunks(4) {
+        let mut buffer = 0_u32;
+        for (index, byte) in chunk.iter().enumerate() {
+            let value = ALPHABET
+                .iter()
+                .position(|candidate| candidate == byte)
+                .unwrap() as u32;
+            buffer |= value << (18 - index * 6);
+        }
+        out.push((buffer >> 16) as u8);
+        if chunk.len() > 2 {
+            out.push((buffer >> 8) as u8);
+        }
+        if chunk.len() > 3 {
+            out.push(buffer as u8);
+        }
+    }
+    out
 }
 
 /// AC2: no credential at all is refused, and never dispatched.
@@ -738,9 +920,6 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
 
     let _guard = ENV_LOCK.lock().unwrap();
     let home = temp_home("shim-e2e");
-    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
-    let id = seed_deck(&home, "shim-e2e");
-    unsafe { std::env::remove_var("SLIDRA_HOME") };
 
     let bin = env!("CARGO_BIN_EXE_slidra");
     let mut server = Command::new(bin)
@@ -749,6 +928,7 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
         .arg("--addr")
         .arg("127.0.0.1:0")
         .env("SLIDRA_HOME", &home)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -764,6 +944,19 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
     let port = port_json["port"]
         .as_u64()
         .expect("port field must be present");
+    let base_url = format!("http://127.0.0.1:{port}");
+    let lifecycle_credential = credential::encode(CallerKind::Editor, "lifecycle");
+    let id = post_new(&base_url, &lifecycle_credential, "shim-e2e");
+    let editor_credential = credential::encode(CallerKind::Editor, &id);
+    let add = post_call(
+        &base_url,
+        Some(&editor_credential),
+        &[],
+        &["slide", "add", &id],
+    );
+    assert_eq!(add.status, 200);
+    let (_, add_stderr, add_exit) = decode_frames(&add.body);
+    assert_eq!(add_exit, 0, "{}", String::from_utf8_lossy(&add_stderr));
 
     // `cat` isn't one of the editor's 68 hand-listed commands (the editor
     // reads file content over `/api/files/`, never this door).
@@ -774,12 +967,15 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
         .arg(&id)
         .arg("slides/001.svg")
         .env("SLIDRA_SHIM_CREDENTIAL", &credential)
-        .env("SLIDRA_SHIM_BASE_URL", format!("http://127.0.0.1:{port}"))
+        .env("SLIDRA_SHIM_BASE_URL", &base_url)
         .output()
         .expect("shim binary must run");
 
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server.stdin.take());
+    let status = server
+        .wait()
+        .expect("deck server must shut down on stdin EOF");
+    assert!(status.success(), "deck server shutdown failed: {status}");
 
     assert!(
         shim_output.status.success(),
@@ -794,4 +990,710 @@ fn shim_reaches_the_deck_server_with_no_node_process_in_the_path() {
     );
 
     std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("shim-closed-pipe");
+    let deck = home.join("large.slidra");
+    let created = commands::new::run(&[deck.to_string_lossy().into_owned()]);
+    assert!(created.ok, "{}", created.message);
+    slidra::workspace::virtual_fs::create_new_file(
+        &deck,
+        "assets/big.txt",
+        &vec![b'x'; 8 * 1024 * 1024],
+    )
+    .unwrap();
+
+    let bin = env!("CARGO_BIN_EXE_slidra");
+    let mut server = Command::new(bin)
+        .arg("__deck-server")
+        .args(["--asset-upload-bytes", "true", "--asset-remote-url", "true"])
+        .arg("--initial-deck")
+        .arg(&deck)
+        .env("SLIDRA_HOME", &home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut reader = BufReader::new(server.stdout.take().unwrap());
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let started: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+    let port = started["port"].as_u64().unwrap();
+    let id = started["workbenchId"].as_str().unwrap();
+    let credential = credential::encode(CallerKind::Agent, id);
+
+    let mut shim = Command::new(bin)
+        .args(["__shim", "cat", id, "assets/big.txt"])
+        .env("SLIDRA_SHIM_CREDENTIAL", credential)
+        .env("SLIDRA_SHIM_BASE_URL", format!("http://127.0.0.1:{port}"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut first = [0_u8; 1];
+    shim.stdout
+        .as_mut()
+        .unwrap()
+        .read_exact(&mut first)
+        .unwrap();
+    drop(shim.stdout.take());
+    let output = shim.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "closed consumer must not fail: {output:?}"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "closed consumer must keep stderr empty: {output:?}"
+    );
+
+    drop(server.stdin.take());
+    assert!(server.wait().unwrap().success());
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn every_documented_command_name_is_recognised_by_rust_dispatch() {
+    use std::process::Command;
+
+    let spec = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/spec/cli.md"),
+    )
+    .unwrap();
+    let command_names: Vec<&str> = spec
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("## `")
+                .and_then(|rest| rest.strip_suffix('`'))
+        })
+        .collect();
+    assert_eq!(command_names.len(), 92);
+    let empty_path = temp_home("no-node-path");
+    for name in command_names {
+        let output = Command::new(env!("CARGO_BIN_EXE_slidra"))
+            .args(name.split(' '))
+            .env("PATH", &empty_path)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("unknown command:") && !stderr.contains("unknown subcommand:"),
+            "documented command {name:?} was not recognised by Rust dispatch: {output:?}"
+        );
+    }
+    std::fs::remove_dir_all(empty_path).ok();
+}
+
+#[test]
+fn json_data_shape_matches_cli_md_for_every_documented_command() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("json-shape-door");
+    unsafe { std::env::set_var("SLIDRA_HOME", &home) };
+    let id = seed_deck(&home, "json-shape");
+    let addr = slidra::server::test_support::spawn_test_server();
+    let base_url = format!("http://{addr}");
+    let call_json = |argv: &[&str]| {
+        let caller = if argv.starts_with(&["slide", "render"]) {
+            CallerKind::Viewer
+        } else {
+            CallerKind::Agent
+        };
+        let credential = credential::encode(caller, &id);
+        let response = post_call(&base_url, Some(&credential), &[], argv);
+        assert_eq!(response.status, 200, "argv {argv:?}");
+        let (stdout, stderr, exit) = decode_frames(&response.body);
+        assert_eq!(
+            exit,
+            0,
+            "argv {argv:?}: {}",
+            String::from_utf8_lossy(&stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&stdout).unwrap()
+    };
+
+    let canvas = call_json(&[
+        "presentation",
+        "canvas",
+        "set",
+        &id,
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--json",
+    ]);
+    assert_eq!(
+        canvas["data"],
+        serde_json::json!({ "width": 1920, "height": 1080 })
+    );
+
+    let added = call_json(&["slide", "add", &id, "--json"]);
+    assert!(added["data"]["slidePath"].as_str().is_some());
+    let duplicated = call_json(&["slide", "duplicate", &id, "slides/001.svg", "--json"]);
+    let duplicate_path = duplicated["data"]["slidePath"].as_str().unwrap();
+    assert_eq!(
+        call_json(&["slide", "delete", &id, duplicate_path, "--json"])["data"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        call_json(&[
+            "slide",
+            "notes",
+            "set",
+            &id,
+            "slides/001.svg",
+            "hi",
+            "--json"
+        ])["data"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        call_json(&[
+            "slide",
+            "style",
+            "set",
+            &id,
+            "slides/001.svg",
+            "--background",
+            "#111",
+            "--json"
+        ])["data"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        call_json(&[
+            "slide",
+            "transition",
+            "set",
+            &id,
+            "slides/001.svg",
+            "--enter",
+            "fade",
+            "--json"
+        ])["data"],
+        serde_json::json!({})
+    );
+    let rendered = call_json(&["slide", "render", &id, "slides/001.svg", "--json"]);
+    let decoded = base64_decode_for_test(rendered["data"]["content"].as_str().unwrap());
+    assert!(String::from_utf8_lossy(&decoded).starts_with("<svg"));
+    let template = call_json(&["template", "add", &id, "--json"]);
+    assert!(template["data"]["templatePath"].as_str().is_some());
+    let templates = call_json(&["template", "list", &id, "--json"]);
+    assert!(templates["data"]["templates"].is_array());
+    let converted = call_json(&["convert", &id, "--json"]);
+    assert!(converted["data"]["slides"].is_array());
+
+    unsafe { std::env::remove_var("SLIDRA_HOME") };
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn concurrent_effect_adds_on_one_slide_are_serialised_by_the_presentation_lock() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("concurrent-effects-door");
+    let (_deck, server) = seed_server(&home, "effects");
+    let element = first_element_id(&server);
+    let credential = credential::encode(CallerKind::Editor, &server.id);
+    let base = server.base_url.clone();
+    let id = server.id.clone();
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            let base = base.clone();
+            let credential = credential.clone();
+            let id = id.clone();
+            let element = element.clone();
+            scope.spawn(move || {
+                let argv = [
+                    "effect",
+                    "add",
+                    &id,
+                    "slides/001.svg",
+                    &element,
+                    "--family",
+                    "enter",
+                    "--effect",
+                    "fade",
+                ];
+                let response = post_call(&base, Some(&credential), &[], &argv);
+                let (_, stderr, exit) = decode_frames(&response.body);
+                assert_eq!(exit, 0, "{}", String::from_utf8_lossy(&stderr));
+            });
+        }
+    });
+    let listed = server.call(&["effect", "list", &server.id, "slides/001.svg", "--json"]);
+    assert_ok(&listed, &["effect", "list"]);
+    assert_eq!(
+        json_envelope(&listed)["data"]["effects"]
+            .as_array()
+            .unwrap()
+            .len(),
+        8
+    );
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn undo_survives_closing_and_reopening_the_same_deck_file() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("undo-reopen-door");
+    let (deck, server) = seed_server(&home, "undo-reopen");
+    let before = server.call(&["cat", &server.id, "slides/001.svg"]).stdout;
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "notes",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "changed",
+        ]),
+        &["slide", "notes", "set"],
+    );
+    drop(server);
+    let reopened = DeckServer::start(&home, &deck);
+    assert_ok(&reopened.call(&["undo", &reopened.id]), &["undo"]);
+    let restored = reopened
+        .call(&["cat", &reopened.id, "slides/001.svg"])
+        .stdout;
+    assert_eq!(restored, before);
+    drop(reopened);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn undo_history_survives_copying_the_deck_file_to_a_clean_home() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("undo-copy-a");
+    let clean = temp_home("undo-copy-b");
+    let (deck, server) = seed_server(&home, "source");
+    let before = server.call(&["cat", &server.id, "slides/001.svg"]).stdout;
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "notes",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "changed",
+        ]),
+        &["slide", "notes", "set"],
+    );
+    drop(server);
+    let copy = clean.join("copy.slidra");
+    std::fs::copy(&deck, &copy).unwrap();
+    let copied = DeckServer::start(&clean, &copy);
+    assert_ok(&copied.call(&["undo", &copied.id]), &["undo"]);
+    let restored = copied.call(&["cat", &copied.id, "slides/001.svg"]).stdout;
+    assert_eq!(restored, before);
+    drop(copied);
+    std::fs::remove_dir_all(home).ok();
+    std::fs::remove_dir_all(clean).ok();
+}
+
+#[test]
+fn slidra_home_history_directory_is_never_created() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("no-history-dir-door");
+    let (_deck, server) = seed_server(&home, "history");
+    let element = first_element_id(&server);
+    for argv in [
+        vec![
+            "text",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            &element,
+            "plain",
+        ],
+        vec!["history", "begin-group", &server.id],
+        vec![
+            "text",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            &element,
+            "grouped",
+        ],
+        vec!["history", "end-group", &server.id],
+        vec!["undo", &server.id],
+        vec!["redo", &server.id],
+    ] {
+        assert_ok(&server.call(&argv), &argv);
+        assert!(
+            !home.join("history").exists(),
+            "argv {argv:?} created legacy history"
+        );
+    }
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn effect_list_without_a_list_matches_stderr_and_exit_code() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("effect-missing-door");
+    let (_deck, server) = seed_server(&home, "missing");
+    let output = server.call(&["effect", "list", &server.id, "slides/001.svg"]);
+    assert_eq!(output.exit, 1);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("effect"));
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn effect_add_then_undo_restores_original_bytes() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("effect-undo-door");
+    let (_deck, server) = seed_server(&home, "effect-undo");
+    let before = server.call(&["cat", &server.id, "slides/001.svg"]).stdout;
+    let element = first_element_id(&server);
+    assert_ok(
+        &server.call(&[
+            "effect",
+            "add",
+            &server.id,
+            "slides/001.svg",
+            &element,
+            "--family",
+            "enter",
+            "--effect",
+            "fade",
+        ]),
+        &["effect", "add"],
+    );
+    assert_ok(&server.call(&["undo", &server.id]), &["undo"]);
+    let restored = server.call(&["cat", &server.id, "slides/001.svg"]).stdout;
+    assert_eq!(restored, before);
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn cat_json_multi_path_returns_ordered_array_shape() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("cat-json-door");
+    let (_deck, server) = seed_server(&home, "cat-json");
+    let single = json_envelope(&server.call(&["cat", &server.id, "project.json", "--json"]));
+    assert_eq!(single["data"].as_array().unwrap().len(), 1);
+    let output = server.call(&[
+        "cat",
+        &server.id,
+        "slides/001.svg",
+        "project.json",
+        "slides/001.svg",
+        "--json",
+    ]);
+    let data = json_envelope(&output)["data"].as_array().unwrap().clone();
+    assert_eq!(
+        data.iter()
+            .map(|entry| entry["path"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["slides/001.svg", "project.json", "slides/001.svg"]
+    );
+    assert_eq!(data[0]["content"], data[2]["content"]);
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn effect_list_with_damaged_list_matches_stderr() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("effect-damaged-door");
+    let (deck, server) = seed_server(&home, "damaged");
+    drop(server);
+    let damaged = br#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:slidra="https://slidra.app/ns/2026"><metadata><slidra:effects><slidra:effect target="missing"/></slidra:effects></metadata></svg>"#;
+    slidra::workspace::virtual_fs::write_existing_file(&deck, "slides/001.svg", damaged).unwrap();
+    let server = DeckServer::start(&home, &deck);
+    let output = server.call(&["effect", "list", &server.id, "slides/001.svg"]);
+    assert_eq!(output.exit, 1);
+    assert!(!output.stderr.is_empty());
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn plan_set_then_validate_round_trip_via_rust_binary() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("plan-door");
+    let (_deck, server) = seed_server(&home, "plan");
+    let spec = "```json\n{ \"density\": \"presentation\", \"palette\": { \"background\": \"#101418\", \"secondary_bg\": \"#1B2129\", \"primary\": \"#4F8DFF\", \"accent\": \"#F5B942\", \"secondary_accent\": \"#6DD3A5\", \"text\": \"#F4F6F8\", \"muted\": \"#9AA7B4\" }, \"type_scale\": { \"cover\": 64, \"section\": 56, \"number\": 140, \"claim\": 48, \"title\": 40, \"subtitle\": 28, \"body\": 24, \"column\": 22, \"caption\": 18 } }\n```\n";
+    let bad = spec.replace("presentation", "loose");
+    assert_eq!(
+        server
+            .call(&["plan", "set", &server.id, "design-spec", &bad])
+            .exit,
+        1
+    );
+    assert_ok(
+        &server.call(&["plan", "set", &server.id, "design-spec", spec]),
+        &["plan", "set"],
+    );
+    let outline = "```json\n{ \"status\": \"draft\", \"mode\": \"briefing\", \"pages\": [ { \"n\": 1, \"relationship\": \"membership\", \"type\": \"bullets\", \"rhythm\": \"dense\", \"title\": \"Title\" } ] }\n```\n";
+    assert_ok(
+        &server.call(&["plan", "set", &server.id, "outline", outline]),
+        &["plan", "set"],
+    );
+    let listed = json_envelope(&server.call(&["plan", "list", &server.id, "--json"]));
+    assert_eq!(listed["data"]["plans"].as_array().unwrap().len(), 2);
+    assert!(
+        String::from_utf8_lossy(&server.call(&["cat", &server.id, "plan/outline.md"]).stdout)
+            .starts_with("```json")
+    );
+    assert_eq!(server.call(&["validate", &server.id, "--json"]).exit, 1);
+    assert_ok(
+        &server.call(&["plan", "delete", &server.id]),
+        &["plan", "delete"],
+    );
+    let after = json_envelope(&server.call(&["validate", &server.id, "--json"]));
+    assert!(
+        after["message"]
+            .as_str()
+            .unwrap()
+            .contains("no plan/ plan file")
+    );
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn font_import_embeds_a_second_family_that_text_can_then_use() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("font-door");
+    let deck = home.join("font.slidra");
+    create_deck(&deck);
+    let server = DeckServer::start(&home, &deck);
+    let source = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../assets/fonts/NotoSansTC-Presentation.ttf"
+    );
+    let argv = [
+        "font",
+        "import",
+        &server.id,
+        source,
+        "--family",
+        "Catalogue Serif",
+        "--license",
+        "SIL Open Font License 1.1",
+        "--source",
+        "https://example.org/font",
+        "--json",
+    ];
+    let imported = server.call(&argv);
+    assert_ok(&imported, &argv);
+    assert_eq!(
+        json_envelope(&imported)["data"]["file"],
+        "fonts/Catalogue-Serif.ttf"
+    );
+    assert_ok(
+        &server.call(&["slide", "add", &server.id]),
+        &["slide", "add"],
+    );
+    assert_ok(
+        &server.call(&[
+            "textbox",
+            "add",
+            &server.id,
+            "slides/001.svg",
+            "--x",
+            "80",
+            "--y",
+            "100",
+            "--width",
+            "600",
+            "--text",
+            "new font",
+            "--font-family",
+            "Catalogue Serif",
+        ]),
+        &["textbox", "add"],
+    );
+    assert_eq!(server.call(&argv[..argv.len() - 1]).exit, 1);
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn svg_asset_and_slide_background_round_trip_via_rust_binary() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("background-door");
+    let (_deck, server) = seed_server(&home, "background");
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#4F8DFF"/></svg>"##;
+    assert_ok(
+        &server.call(&[
+            "asset", "import", &server.id, "--svg", svg, "--name", "bg.svg",
+        ]),
+        &["asset", "import"],
+    );
+    assert_eq!(
+        server
+            .call(&[
+                "asset", "import", &server.id, "--svg", svg, "--name", "bg.svg"
+            ])
+            .exit,
+        1
+    );
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "background",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "--asset",
+            "assets/bg.svg",
+            "--opacity",
+            "0.8",
+        ]),
+        &["slide", "background", "set"],
+    );
+    let page =
+        String::from_utf8(server.call(&["cat", &server.id, "slides/001.svg"]).stdout).unwrap();
+    assert!(page.contains("data-slidra-role=\"background\""));
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "background",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "--none",
+        ]),
+        &["slide", "background", "set"],
+    );
+    assert_ok(&server.call(&["undo", &server.id]), &["undo"]);
+    assert!(
+        String::from_utf8(server.call(&["cat", &server.id, "slides/001.svg"]).stdout)
+            .unwrap()
+            .contains("el-background")
+    );
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn slide_add_svg_then_slide_set_svg_round_trip_via_rust_binary() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("slide-svg-door");
+    let deck = home.join("slide-svg.slidra");
+    create_deck(&deck);
+    let server = DeckServer::start(&home, &deck);
+    let page = r##"<svg viewBox="0 0 1280 720"><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40">Title</text></svg>"##;
+    assert_ok(
+        &server.call(&["slide", "add", &server.id, "--svg", page]),
+        &["slide", "add"],
+    );
+    assert_eq!(
+        server
+            .call(&[
+                "slide",
+                "add",
+                &server.id,
+                "--svg",
+                "<svg><script>1</script></svg>"
+            ])
+            .exit,
+        1
+    );
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "notes",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "speaker notes",
+        ]),
+        &["slide", "notes", "set"],
+    );
+    let replacement = r##"<svg viewBox="0 0 1280 720"><text id="el-title" data-slidra-text-width="1120" x="80" y="72" font-size="40">rewritten</text></svg>"##;
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "--svg",
+            replacement,
+        ]),
+        &["slide", "set"],
+    );
+    let contents =
+        String::from_utf8(server.call(&["cat", &server.id, "slides/001.svg"]).stdout).unwrap();
+    assert!(contents.contains("speaker notes") && contents.contains("rewritten"));
+    assert_ok(&server.call(&["undo", &server.id]), &["undo"]);
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn slide_add_refuses_a_page_that_breaks_its_own_rules_via_rust_binary() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("write-gate-door");
+    let deck = home.join("gate.slidra");
+    create_deck(&deck);
+    let server = DeckServer::start(&home, &deck);
+    let refused = r##"<svg viewBox="0 0 1280 720"><text id="el-a" data-slidra-text-width="600" x="80" y="100" font-size="40">top</text><text id="el-b" data-slidra-text-width="600" x="80" y="110" font-size="40">bottom</text><image id="el-p" href="../assets/nope.png"/></svg>"##;
+    let output = server.call(&["slide", "add", &server.id, "--svg", refused]);
+    assert_eq!(output.exit, 1);
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("geometry.text-overlap") && message.contains("asset.missing"));
+    let legal = r##"<svg viewBox="0 0 1280 720"><g id="el-mark" data-slidra-role="garnish"><text x="900" y="600" font-size="320">03</text></g></svg>"##;
+    assert_ok(
+        &server.call(&["slide", "add", &server.id, "--svg", legal]),
+        &["slide", "add"],
+    );
+    let bad_role = r##"<svg viewBox="0 0 1280 720"><g id="el-r" data-slidra-role="headline"><rect width="10" height="10"/></g></svg>"##;
+    assert_eq!(
+        server
+            .call(&["slide", "add", &server.id, "--svg", bad_role])
+            .exit,
+        1
+    );
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
+}
+
+#[test]
+fn editing_one_slide_writes_under_1mb_even_with_a_20mb_asset() {
+    const SIZE: usize = 20 * 1024 * 1024;
+    let _guard = ENV_LOCK.lock().unwrap();
+    let home = temp_home("budget-door");
+    let (deck, server) = seed_server(&home, "budget");
+    let asset = home.join("big.mp4");
+    let mut bytes = vec![
+        0, 0, 0, 0x18, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm',
+    ];
+    bytes.resize(SIZE, 0x5a);
+    std::fs::write(&asset, bytes).unwrap();
+    assert_ok(
+        &server.call(&["asset", "import", &server.id, asset.to_str().unwrap()]),
+        &["asset", "import"],
+    );
+    let before = std::fs::read(&deck).unwrap();
+    assert_ok(
+        &server.call(&[
+            "slide",
+            "notes",
+            "set",
+            &server.id,
+            "slides/001.svg",
+            "measured edit",
+        ]),
+        &["slide", "notes", "set"],
+    );
+    let after = std::fs::read(&deck).unwrap();
+    let changed = before.iter().zip(&after).filter(|(a, b)| a != b).count()
+        + after.len().saturating_sub(before.len());
+    assert!(changed < 1_000_000, "changed {changed} bytes");
+    drop(server);
+    std::fs::remove_dir_all(home).ok();
 }

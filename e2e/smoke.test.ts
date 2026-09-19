@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { createDeckServerRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -64,11 +64,9 @@ beforeAll(async () => {
   // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
-  registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
   await packDirectory(deckDir, slidraPath);
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  const presentationId = opened.data!.id;
+  let presentationId = "pending-workbench";
 
   const agent: AgentAdapterConfig = {
     kind: "claude",
@@ -91,7 +89,12 @@ beforeAll(async () => {
   };
 
   // Port 0: the OS assigns a free port and we read the real one back.
-  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
+  const html = await (await fetch(server.url)).text();
+  const bootstrap = JSON.parse(html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/)![1]!) as { workbenchId: string; deck: { url: string } };
+  presentationId = bootstrap.workbenchId;
+  agent.env!.E2E_PRESENTATION_ID = presentationId;
+  registry = createDeckServerRegistry(bootstrap.deck.url, presentationId);
 });
 
 afterAll(async () => {

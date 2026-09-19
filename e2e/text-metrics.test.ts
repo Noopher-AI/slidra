@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type Page } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { zipSync } from "fflate";
+import { createDeckServerRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { startDeckServer, type DeckServerClient } from "../packages/server/src/deck-server-client.js";
 import { requireBuilt } from "./helpers/launch.js";
 
 /**
@@ -55,6 +57,7 @@ let slidraDir: string;
 let registry: CommandRegistry;
 let presentationId: string;
 let fontDataUrl: string;
+let deckServer: DeckServerClient;
 
 beforeAll(async () => {
   await requireBuilt(rootDir);
@@ -72,18 +75,27 @@ beforeAll(async () => {
   // slidra serve now spawns the Rust binary for every read/write.
   process.env.SLIDRA_BIN = slidraBin;
 
-  registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  await registry.dispatch("new", { path: slidraPath, name: "font metrics smoke test" });
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  presentationId = opened.data!.id;
-  // `new` creates no slides; this test addresses slides/001.svg.
-  await registry.dispatch("slide add", { id: presentationId });
+  await writeFile(slidraPath, zipSync({
+    "project.json": new TextEncoder().encode(JSON.stringify({
+      formatVersion: 1,
+      name: "font metrics smoke test",
+      canvas: { width: 1280, height: 720 },
+      slides: [],
+    })),
+  }));
+  deckServer = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false }, initialDeckPath: slidraPath });
+  presentationId = deckServer.initialWorkbenchId!;
+  registry = createDeckServerRegistry(deckServer.baseUrl, presentationId);
+  // Keep creation and every subsequent mutation in this one runtime.
+  const addedSlide = await registry.dispatch("slide add", { id: presentationId });
+  if (!addedSlide.ok) throw new Error(addedSlide.message);
 }, 60_000);
 
 afterAll(async () => {
   await page?.close();
   await browser?.close();
+  await deckServer?.close();
   delete process.env.SLIDRA_HOME;
   delete process.env.SLIDRA_BIN;
   if (slidraHome) await rm(slidraHome, { recursive: true, force: true });

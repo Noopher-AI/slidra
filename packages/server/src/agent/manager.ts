@@ -5,7 +5,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { SlidraError } from "../slidra/errors.js";
 import { ADAPTER_SPECS, adapterSpecFor, resolveAdapterConfig, type AdapterSpec, type AgentKind } from "./adapters.js";
 import { AgentChatSession, type AgentAdapterConfig, type AgentModel, type AgentModelChoice, type ChatStreamSend } from "./session.js";
-import { ChatLog } from "./chat-log.js";
+import { ChatLog, deckServerAppend } from "./chat-log.js";
 import type { EditingLock } from "../editing-lock.js";
 import type { DeckServerClient } from "../deck-server-client.js";
 import { probeLogin, spawnCommandRunner, type CommandRunner, type ProbeResult } from "./probe.js";
@@ -194,7 +194,7 @@ export class AgentManager {
 
     this.current = options.initial.kind;
     this.source = options.initial.source;
-    this.chatLog = this.presentationId !== null ? new ChatLog(this.presentationId) : undefined;
+    this.chatLog = this.presentationId !== null ? new ChatLog(this.presentationId, { append: deckServerAppend(this.deckServer) }) : undefined;
 
     if (this.current !== null) {
       this.session = this.maybeBuildSession(this.current);
@@ -585,7 +585,7 @@ export class AgentManager {
         this.chatLog = undefined;
       }
     } else if (next) {
-      this.chatLog = new ChatLog(next.id);
+      this.chatLog = new ChatLog(next.id, { append: deckServerAppend(this.deckServer) });
     }
     this.presentationId = next?.id ?? null;
     this.workdir = next?.workdir ?? null;

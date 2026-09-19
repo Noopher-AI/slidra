@@ -10,6 +10,7 @@
 // 3.4).
 import { encodeCommandArgv, type EncodedCommand } from "../../packages/web/src/command-argv.js";
 import { runJsonCommand, type CommandResult } from "../../packages/server/src/slidra/command.js";
+import { postDeckServerCall, type DeckServerClient } from "../../packages/server/src/deck-server-client.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -101,5 +102,53 @@ export function createDefaultRegistry(): CommandRegistry {
         if (bodyDir !== undefined) await rm(bodyDir, { recursive: true, force: true });
       }
     },
+  };
+}
+
+/** A registry-shaped test adapter that executes every deck command in the live deck-server process. */
+export function createDeckServerRegistry(baseUrl: string, workbenchId: string): CommandRegistry {
+  const client: DeckServerClient = {
+    baseUrl,
+    initialWorkbenchId: workbenchId,
+    close: async () => {},
+  };
+  return {
+    async dispatch<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<CommandResult<T>> {
+      if (name === "cat") {
+        const credential = Buffer.from(JSON.stringify({ kind: "editor", workbenchId }), "utf8").toString("base64");
+        const response = await fetch(`${baseUrl}/raw/${String(input.path)}`, {
+          headers: { "x-slidra-credential": credential },
+        });
+        if (!response.ok) return { ok: false, message: await response.text() } as CommandResult<T>;
+        return { ok: true, message: "", data: { content: await response.text() } } as CommandResult<T>;
+      }
+      const e2eEncoder = E2E_ONLY_ENCODERS[name];
+      const encoded = e2eEncoder ? e2eEncoder({ ...input, id: workbenchId }) : await encodeCommandArgv(name, { ...input, id: workbenchId });
+      try {
+        const caller = name === "ls"
+          ? "viewer"
+          : ["comment list", "effect list", "convert"].includes(name)
+            ? "agent"
+            : "editor";
+        const outcome = await postDeckServerCall(client, [...encoded.argv, "--json"], workbenchId, caller, encoded.body);
+        if (!outcome.ok) throw new Error(`deck server refused ${name}: ${outcome.doorStatus} ${outcome.doorError}`);
+        const output = outcome.stdout.toString("utf8").trim();
+        const result = JSON.parse(output) as CommandResult<T>;
+        return name === "cat" ? (reshapeCatResult(result) as CommandResult<T>) : result;
+      } finally {
+        await encoded.cleanup();
+      }
+    },
+  };
+}
+
+export async function connectDeckServerRegistry(serverUrl: string): Promise<{ registry: CommandRegistry; presentationId: string }> {
+  const html = await (await fetch(serverUrl)).text();
+  const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+  if (!match) throw new Error("missing editor bootstrap");
+  const bootstrap = JSON.parse(match[1]!) as { workbenchId: string; deck: { url: string } };
+  return {
+    registry: createDeckServerRegistry(bootstrap.deck.url, bootstrap.workbenchId),
+    presentationId: bootstrap.workbenchId,
   };
 }

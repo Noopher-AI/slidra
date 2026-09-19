@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -158,24 +158,12 @@ async function clearDeckHistory(deckPath: string): Promise<void> {
 
 async function openFreshPresentationWithElement(): Promise<{ id: string; elementId: string; deckPath: string }> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
-  const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
-  expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  // `new` creates no slides: mint one page with one text
-  // box, and take the element id straight from `textbox add`'s own result.
-  const id = opened.data!.id;
-  expect((await runCli(["slide", "add", id])).ok).toBe(true);
-  const added = await runCli<{ elementId: string }>([
-    "textbox", "add", id, "slides/001.svg", "--x", "80", "--y", "80", "--width", "600", "--text", "Title",
-  ]);
-  expect(added.ok).toBe(true);
-  // These tests count undo entries, and the two setup commands above leave
-  // their own. Drop the history so the deck reaches each test exactly as it
-  // did when `new` still shipped a first slide: one page, empty undo stack.
-  // `slidraPath` IS the deck's real path (`new`/`open` operate on it directly).
-  await clearDeckHistory(slidraPath);
-  return { id, elementId: added.data!.elementId, deckPath: slidraPath };
+  const { zipSync } = await import("fflate");
+  await writeFile(slidraPath, zipSync({
+    "project.json": new TextEncoder().encode(JSON.stringify({ formatVersion: 1, name: "Test Presentation", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })),
+    "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g id="el-title"><text x="80" y="80">Title</text></g><g id="el-move"><rect x="100" y="200" width="50" height="50"/></g><g id="el-scale"><rect x="300" y="300" width="50" height="50"/></g><g id="el-rotate"><rect x="50" y="60" width="20" height="20"/></g><g id="el-textbox" data-slidra-text-width="200"><text x="10" y="10">hello</text></g></svg>'),
+  }));
+  return { id: slidraPath, elementId: "el-title", deckPath: slidraPath };
 }
 
 function fakeAgent(scenario: Record<string, unknown>): AgentAdapterConfig {
@@ -272,15 +260,27 @@ async function waitForCount(fn: () => Promise<number>, expected: number, timeout
 }
 
 async function readSlide(id: string): Promise<string> {
-  const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(result.ok).toBe(true);
-  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
+  const bytes = await readFile(id);
+  if (!bytes.subarray(0, 16).equals(Buffer.from("SQLite format 3\0"))) {
+    const { unzipSync } = await import("fflate");
+    return Buffer.from(unzipSync(bytes)["slides/001.svg"]!).toString("utf8");
+  }
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(id);
+  try {
+    db.exec("PRAGMA busy_timeout = 1000");
+    const row = db.prepare("SELECT data FROM content WHERE path = 'slides/001.svg'").get() as { data: Uint8Array };
+    return Buffer.from(row.data).toString("utf8");
+  } finally { db.close(); }
 }
 
 async function listAssets(id: string): Promise<string[]> {
-  const result = await runCli<{ entries: string[] }>(["ls", id, "assets"]);
-  expect(result.ok).toBe(true);
-  return result.data!.entries;
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(id);
+  try {
+    db.exec("PRAGMA busy_timeout = 1000");
+    return (db.prepare("SELECT path FROM content WHERE path LIKE 'assets/%'").all() as Array<{ path: string }>).map((row) => row.path.slice(7));
+  } finally { db.close(); }
 }
 
 /**
@@ -319,34 +319,13 @@ interface CommandExecutionFixture {
  */
 async function openFreshPresentationForCommandExecution(): Promise<CommandExecutionFixture> {
   const { id, elementId } = await openFreshPresentationWithElement();
-  const slidePath = "slides/001.svg";
-  const converted = await runCli(["convert", id]);
-  expect(converted.ok).toBe(true);
-
-  const move = await runCli<{ elementId: string }>([
-    "element", "insert", "rect", id, slidePath, "--x", "100", "--y", "200", "--width", "50", "--height", "50",
-  ]);
-  const scale = await runCli<{ elementId: string }>([
-    "element", "insert", "rect", id, slidePath, "--x", "300", "--y", "300", "--width", "50", "--height", "50",
-  ]);
-  const rotate = await runCli<{ elementId: string }>([
-    "element", "insert", "rect", id, slidePath, "--x", "50", "--y", "60", "--width", "20", "--height", "20",
-  ]);
-  const textbox = await runCli<{ elementId: string }>([
-    "textbox", "add", id, slidePath, "--x", "10", "--y", "10", "--width", "200", "--text", "hello",
-  ]);
-  expect(move.ok).toBe(true);
-  expect(scale.ok).toBe(true);
-  expect(rotate.ok).toBe(true);
-  expect(textbox.ok).toBe(true);
-
   return {
     id,
     elementId,
-    moveElementId: move.data!.elementId,
-    scaleElementId: scale.data!.elementId,
-    rotateElementId: rotate.data!.elementId,
-    textboxElementId: textbox.data!.elementId,
+    moveElementId: "el-move",
+    scaleElementId: "el-scale",
+    rotateElementId: "el-rotate",
+    textboxElementId: "el-textbox",
   };
 }
 
@@ -579,11 +558,13 @@ describe("T5: agent-turn undo grouping and editing freeze", () => {
     }
 
     const executedSlide = await readSlide(id);
-    expect(executedSlide).toContain(`<g id="${moveElementId}" transform="translate(110 195)">`);
+    expect(executedSlide).toMatch(new RegExp(`<g[^>]*(?:id="${moveElementId}"[^>]*transform="translate\\(10 -5\\)"|transform="translate\\(10 -5\\)"[^>]*id="${moveElementId}")`));
     expect(executedSlide).toMatch(
       new RegExp(`<g id="${scaleElementId}"[^>]*><rect[^>]*width="100"[^>]*height="100"`),
     );
-    expect(executedSlide).toContain(`<g id="${rotateElementId}" transform="translate(50 60) rotate(30)">`);
+    expect(executedSlide).toMatch(
+      new RegExp(`<g transform="rotate\\(30\\)" id="${rotateElementId}"><rect x="50" y="60"`),
+    );
     expect(executedSlide).toContain(`data-slidra-text-width="100"`);
   });
 

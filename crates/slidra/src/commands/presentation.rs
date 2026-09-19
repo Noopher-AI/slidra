@@ -107,7 +107,7 @@ fn set_presentation_canvas(id: &str, width: f64, height: f64) -> Result<(f64, f6
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry;
+    use crate::workbench::runtime;
     use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -128,7 +128,7 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str) -> Self {
-            let guard = registry::ENV_LOCK.lock().unwrap();
+            let guard = runtime::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let id = format!("test-{label}");
             unsafe {
@@ -147,7 +147,7 @@ mod tests {
                     ),
                 ],
             );
-            registry::register_for_test(&home, &id, &deck);
+            runtime::register_for_test(&home, &id, &deck);
             Fixture {
                 home,
                 deck,

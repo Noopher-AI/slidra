@@ -249,7 +249,7 @@ describe("export panel — progress, download, and parity with the CLI output", 
         // /CreationDate, so the raw bytes will always differ).
         const cliOutPath = path.join(tmpdir(), `cli-${started.presentationId}.pdf`);
         const cliResult = await runCli(
-          ["export", started.presentationId, "--format", "pdf-frames", "--out", cliOutPath],
+          ["export", started.deckPath, "--format", "pdf-frames", "--out", cliOutPath],
           process.env,
         );
         expect(cliResult.code).toBe(0);

@@ -239,7 +239,7 @@ fn move_to_finder_trash(file_path: &Path) -> SlidraResult<()> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
-    use crate::workspace::registry::ENV_LOCK;
+    use crate::workbench::runtime::ENV_LOCK;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

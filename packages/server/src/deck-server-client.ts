@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { Readable } from "node:stream";
+import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream } from "node:stream/web";
 import type { ServerResponse } from "node:http";
@@ -27,23 +27,30 @@ import type { FileEntryPolicy } from "./policy/types.js";
 
 export interface DeckServerClient {
   readonly baseUrl: string;
+  readonly initialWorkbenchId: string | null;
   close(): Promise<void>;
 }
 
 /** How long to wait for the child's one-line `{"port":N}` startup message before giving up. */
 const STARTUP_TIMEOUT_MS = 10_000;
+const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 export async function startDeckServer(
-  options: { editorOrigin?: string; fileEntry: Pick<FileEntryPolicy, "uploadBytes" | "remoteUrl"> },
+  options: {
+    editorOrigin?: string;
+    fileEntry: Pick<FileEntryPolicy, "uploadBytes" | "remoteUrl">;
+    initialDeckPath?: string;
+  },
 ): Promise<DeckServerClient> {
   const bin = resolveSlidraBin();
   const args = ["__deck-server"];
   if (options.editorOrigin !== undefined) args.push("--editor-origin", options.editorOrigin);
   args.push("--asset-upload-bytes", String(options.fileEntry.uploadBytes));
   args.push("--asset-remote-url", String(options.fileEntry.remoteUrl));
-  const child = spawn(bin, args, { stdio: ["ignore", "pipe", "inherit"] });
+  if (options.initialDeckPath !== undefined) args.push("--initial-deck", options.initialDeckPath);
+  const child = spawn(bin, args, { stdio: ["pipe", "pipe", "inherit"] });
 
-  const port = await new Promise<number>((resolve, reject) => {
+  const startup = await new Promise<{ port: number; workbenchId: string | null }>((resolve, reject) => {
     let buffer = "";
     const timeout = setTimeout(() => {
       cleanup();
@@ -55,10 +62,13 @@ export async function startDeckServer(
       if (newline === -1) return;
       const line = buffer.slice(0, newline);
       try {
-        const parsed = JSON.parse(line) as { port?: unknown };
+        const parsed = JSON.parse(line) as { port?: unknown; workbenchId?: unknown };
         if (typeof parsed.port !== "number") throw new Error("no port field");
+        if (parsed.workbenchId !== undefined && parsed.workbenchId !== null && typeof parsed.workbenchId !== "string") {
+          throw new Error("invalid workbenchId field");
+        }
         cleanup();
-        resolve(parsed.port);
+        resolve({ port: parsed.port, workbenchId: parsed.workbenchId ?? null });
       } catch {
         cleanup();
         reject(new SlidraError(`slidra __deck-server printed an unparseable startup line: ${line}`));
@@ -84,19 +94,28 @@ export async function startDeckServer(
   });
 
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://127.0.0.1:${startup.port}`,
+    initialWorkbenchId: startup.workbenchId,
     close: () => closeChild(child),
   };
 }
 
-function closeChild(child: ChildProcessByStdio<null, Readable, null>): Promise<void> {
-  return new Promise((resolve) => {
+function closeChild(child: ChildProcessByStdio<Writable, Readable, null>): Promise<void> {
+  return new Promise((resolve, reject) => {
     if (child.exitCode !== null || child.signalCode !== null) {
       resolve();
       return;
     }
-    child.once("exit", () => resolve());
-    child.kill();
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new SlidraError("slidra __deck-server did not shut down after stdin closed"));
+    }, SHUTDOWN_TIMEOUT_MS);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      if (code === 0) resolve();
+      else reject(new SlidraError(`slidra __deck-server exited during shutdown (code ${code}, signal ${signal})`));
+    });
+    child.stdin.end();
   });
 }
 
@@ -255,6 +274,7 @@ export async function postDeckServerCall(
   argv: string[],
   workbenchId: string,
   kind: CredentialKind,
+  body?: string | Buffer,
 ): Promise<CallOutcome> {
   const argvHeader = Buffer.from(JSON.stringify(argv), "utf8").toString("base64");
   const upstream = await fetch(`${client.baseUrl}/call`, {
@@ -263,6 +283,7 @@ export async function postDeckServerCall(
       "x-slidra-credential": credentialHeader(kind, workbenchId),
       "x-slidra-argv": argvHeader,
     },
+    body: body === undefined ? undefined : typeof body === "string" ? body : new Uint8Array(body),
   });
   if (upstream.status !== 200) {
     const doorError = await upstream.text();

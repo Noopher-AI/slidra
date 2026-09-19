@@ -220,7 +220,7 @@ pub fn get_or_create_thumbnail(file_name: &str) -> Result<ThumbnailResult, Thumb
         )));
     }
 
-    let mtime_ms = workspace::registry::deck_file_mtime_millis(&deck_path)?;
+    let mtime_ms = deck_store::deck_file_mtime_millis(&deck_path)?;
     let home = workspace::resolve_home();
     let dir = thumbnails_dir(&home);
     let cache_name = cache_file_name(&deck_path, mtime_ms);

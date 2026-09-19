@@ -67,14 +67,14 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str, test_id: &str, files: &[(&str, &[u8])]) -> Self {
-            let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = std::env::temp_dir().join(format!(
                 "slidra-test-fonts-{label}-home-{}",
                 crate::id::random_hex_suffix()
             ));
             std::fs::create_dir_all(&home).unwrap();
             let deck = crate::deck::build_test_deck(label, files);
-            workspace::registry::register_for_test(&home, test_id, &deck);
+            crate::workbench::runtime::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }

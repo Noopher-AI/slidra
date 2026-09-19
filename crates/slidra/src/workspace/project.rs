@@ -512,7 +512,7 @@ mod tests {
 
     impl WriteProjectFixture {
         fn new(label: &str) -> Self {
-            let guard = crate::workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = std::env::temp_dir().join(format!(
                 "slidra-test-project-write-{label}-home-{}",
                 crate::id::random_hex_suffix()
@@ -528,7 +528,7 @@ mod tests {
             // existing virtual file before write_project's own content
             // replaces it).
             let deck = crate::deck::build_test_deck(label, &[("project.json", b"{}")]);
-            crate::workspace::registry::register_for_test(&home, &id, &deck);
+            crate::workbench::runtime::register_for_test(&home, &id, &deck);
             WriteProjectFixture {
                 home,
                 deck,

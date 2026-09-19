@@ -268,11 +268,9 @@ describe("Seam B: GET /api/agent/commands and the agent-commands SSE event", () 
     const deckPath = path.join(slidraDir, "deck.slidra");
     const created = await runCli(["new", deckPath, "--name", "Test Presentation"]);
     expect(created.ok).toBe(true);
-    const opened = await runCli<{ id: string }>(["open", deckPath]);
-    expect(opened.ok).toBe(true);
     const server = await startServe({
       policy: openPolicy,
-      presentationId: opened.data!.id,
+      presentationId: deckPath,
       port: 0,
       agent,
       skillDirs: { bundled: bundledDir, user: userDir },

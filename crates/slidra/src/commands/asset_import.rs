@@ -318,7 +318,7 @@ fn failure_kind_for(err: &SlidraError) -> FailureKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry::ENV_LOCK;
+    use crate::workbench::runtime::ENV_LOCK;
     use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -341,7 +341,7 @@ mod tests {
             let guard = ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let deck = crate::deck::build_test_deck(label, &[]);
-            crate::workspace::registry::register_for_test(&home, test_id, &deck);
+            crate::workbench::runtime::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }

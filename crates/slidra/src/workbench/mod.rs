@@ -29,13 +29,12 @@
 //! This module does not read or write any of the state the previous local
 //! layout kept under `SLIDRA_HOME` beyond what is listed above — no
 //! per-presentation registry, no per-deck coordination file, no clipboard
-//! file. Removing that previous layout from the rest of the crate is a
-//! separate change; this module simply never depends on it in the first
-//! place (`mod.rs`'s own guard test in `#[cfg(test)]` below enforces this
-//! mechanically).
+//! file. The repo-wide build guard and this module's focused guard test enforce
+//! that boundary mechanically.
 
 pub mod deck_list;
 pub mod local;
+pub(crate) mod runtime;
 
 #[cfg(test)]
 pub(crate) mod conformance;
@@ -166,7 +165,7 @@ pub(crate) fn validate_upload_file_name(file_name: &str) -> SlidraResult<()> {
 /// of them assert about which `slidra-workbench-*` directories exist under
 /// the shared temp location, and cargo runs tests in parallel threads — so
 /// without this, another test's `open` can create a directory in the middle
-/// of such an assertion. Same stance as `workspace::registry::ENV_LOCK` for
+/// of such an assertion. Same stance as `crate::workbench::runtime::ENV_LOCK` for
 /// tests that touch `SLIDRA_HOME`.
 #[cfg(test)]
 static WORKBENCH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -209,12 +208,11 @@ mod guard_tests {
     /// registry file, its module path, or the per-deck coordination module
     /// path. Scanning stops at each file's first `#[cfg(test)]`
     /// (production code always precedes it here), so this test's own
-    /// `banned` literal below and the legitimate `workspace::registry::ENV_LOCK`
-    /// test-synchronization import (plan §7.12, required by every test that
+    /// `banned` literal below and the legitimate `crate::workbench::runtime::ENV_LOCK`
+    /// test-synchronization import (required by every test that
     /// touches `SLIDRA_HOME`) do not trip it themselves. This only proves
-    /// the NEW module's independence (this ticket's scope); the old doors
-    /// themselves are removed from the rest of the crate by a separate
-    /// ticket (see this module's own doc comment).
+    /// this module's independence; the repo-wide build guard covers every
+    /// production module.
     #[test]
     fn workbench_module_never_references_the_removed_local_layout() {
         let banned = ["projects.json", "workspace::registry", "workspace::lock"];

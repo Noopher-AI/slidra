@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,7 +81,7 @@ async function startServerFor(
     },
   };
 
-  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
 
   return {
     server,
@@ -544,13 +544,12 @@ it("a slide with no background rect (a blank page from `slide add`) still render
   // slidra serve now spawns the Rust binary for every read/write.
   process.env["SLIDRA_BIN"] = slidraBin;
   try {
-    const registry: CommandRegistry = createDefaultRegistry();
     const slidraPath = path.join(slidraDir, "deck.slidra");
-    await registry.dispatch("new", { path: slidraPath, name: "Backgroundless playback test" });
-    const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-    const presentationId = opened.data!.id;
-    // `new` creates no slides; this test addresses slides/001.svg.
-    await registry.dispatch("slide add", { id: presentationId });
+    const { zipSync } = await import("fflate");
+    await writeFile(slidraPath, zipSync({
+      "project.json": new TextEncoder().encode(JSON.stringify({ formatVersion: 1, name: "Backgroundless playback test", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })),
+      "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"></svg>'),
+    }));
 
     const agent: AgentAdapterConfig = {
       kind: "claude",
@@ -559,11 +558,11 @@ it("a slide with no background rect (a blank page from `slide add`) still render
       args: [agentFixture],
       env: {
         PATH: `${binDir}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
-        E2E_PRESENTATION_ID: presentationId,
+        E2E_PRESENTATION_ID: "pending-workbench",
         E2E_NEW_TITLE: "this test never sends a message",
       },
     };
-    const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+    const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
     try {
       const page = await browser.newPage({ viewport: VIEWPORT });
       await page.goto(server.url);

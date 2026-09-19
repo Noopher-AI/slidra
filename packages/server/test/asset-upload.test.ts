@@ -116,15 +116,17 @@ async function openDeck(fileName: string): Promise<string> {
   });
   const slidraPath = path.join(slidraDir, fileName);
   await writeFile(slidraPath, zipped);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  return opened.data!.id;
+  return slidraPath;
 }
 
 async function listAssets(presentationId: string): Promise<string[]> {
-  const result = await runCli<{ entries: string[] }>(["ls", presentationId, "assets"]);
-  expect(result.ok).toBe(true);
-  return result.data!.entries;
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(presentationId);
+  try {
+    return (db.prepare("SELECT path FROM content WHERE path LIKE 'assets/%' ORDER BY path").all() as Array<{ path: string }>).map((row) => row.path.slice("assets/".length));
+  } finally {
+    db.close();
+  }
 }
 
 async function serve(presentationId: string, policy: WorkbenchPolicy = openPolicy): Promise<RunningServer> {

@@ -10,7 +10,9 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser, type Locator } from "playwright";
 import { PNG } from "pngjs";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { connectDeckServerRegistry, createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { createDeckServerRegistry } from "./helpers/cli.js";
+import { startDeckServer } from "../packages/server/src/deck-server-client.js";
 import { packDirectory } from "./helpers/pack.js";
 import { loadPdf } from "./helpers/pdf.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
@@ -58,6 +60,7 @@ let slidraDir: string;
 let registry: CommandRegistry;
 let server: RunningServer;
 let presentationId: string;
+let presentationPath: string;
 
 beforeAll(async () => {
   await requireBuilt(webDistIndex, "packages/web/dist does not exist, please run npm run build first");
@@ -73,6 +76,7 @@ beforeAll(async () => {
 
   registry = createDefaultRegistry();
   const slidraPath = path.join(slidraDir, "demo.slidra");
+  presentationPath = slidraPath;
   await packDirectory(demoDir, slidraPath);
   const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
   presentationId = opened.data!.id;
@@ -89,7 +93,11 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
+  const live = await connectDeckServerRegistry(server.url);
+  registry = live.registry;
+  presentationId = live.presentationId;
+  agent.env!.E2E_PRESENTATION_ID = presentationId;
 });
 
 afterAll(async () => {
@@ -578,13 +586,15 @@ it("the same slide, before and after conversion, renders pixel-identical in the 
     await writeFile(path.join(sourceDir, "slides/001.svg"), bare);
     const convertSlidraPath = path.join(dir, "convert-test.slidra");
     await packDirectory(sourceDir, convertSlidraPath);
-    const opened = await registry.dispatch<{ id: string }>("open", { path: convertSlidraPath });
-    const convertTestId = opened.data!.id;
-    const convertResult = await registry.dispatch("convert", { id: convertTestId });
+    const convertServer = await startDeckServer({ fileEntry: { uploadBytes: false, remoteUrl: false }, initialDeckPath: convertSlidraPath });
+    const convertTestId = convertServer.initialWorkbenchId!;
+    const convertRegistry = createDeckServerRegistry(convertServer.baseUrl, convertTestId);
+    const convertResult = await convertRegistry.dispatch("convert", { id: convertTestId });
     expect(convertResult.ok).toBe(true);
-    const catResult = await registry.dispatch<{ content: string }>("cat", { id: convertTestId, path: "slides/001.svg" });
+    const catResult = await convertRegistry.dispatch<{ content: string }>("cat", { id: convertTestId, path: "slides/001.svg" });
     expect(catResult.ok).toBe(true);
     const converted = catResult.data!.content;
+    await convertServer.close();
     // Guard against a tautology: if conversion were a no-op, comparing the
     // two renders would prove nothing at all.
     expect(converted).not.toBe(bare);
@@ -675,7 +685,7 @@ it("the demo's four pages' background color is decided by the root <svg>'s backg
   }
 
   const outPath = path.join(slidraDir, "background-check.pdf");
-  await execFileAsync(slidraBin, ["export", presentationId, "--format", "pdf", "--out", outPath], {
+  await execFileAsync(slidraBin, ["export", presentationPath, "--format", "pdf", "--out", outPath], {
     env: { ...process.env, SLIDRA_HOME: slidraHome, SLIDRA_BIN: slidraBin },
   });
   const pdfBytes = await readFile(outPath);

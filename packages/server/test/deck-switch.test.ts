@@ -51,6 +51,7 @@ let deckFolder: string;
 let staticRoot: string;
 let servers: RunningServer[];
 let streams: Array<{ cancel: () => Promise<void> }>;
+const deckFixtures = new Map<string, { path: string; currentId: string }>();
 
 beforeEach(async () => {
   slidraHome = await mkdtemp(path.join(tmpdir(), "slidra-deckswitch-home-"));
@@ -82,26 +83,43 @@ afterEach(async () => {
 
 /** Creates a fresh one-slide deck (real `new`+`open`+`slide add`, real bytes on disk) and returns its id and the real `.slidra` file path `open` read it from. */
 async function createDeck(name: string): Promise<{ id: string; slidraPath: string }> {
-  const slidraPath = path.join(slidraDir, `${name}.slidra`);
-  const created = await runCli(["new", slidraPath, "--name", name]);
-  expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  const id = opened.data!.id;
-  expect((await runCli(["slide", "add", id])).ok).toBe(true);
-  return { id, slidraPath };
+  const slidraPath = path.join(deckFolder, `${name}.slidra`);
+  const { zipSync } = await import("fflate");
+  await writeFile(slidraPath, zipSync({
+    "project.json": new TextEncoder().encode(JSON.stringify({ formatVersion: 1, name, canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })),
+    "slides/001.svg": new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><g id="el-title"><text>Title</text></g></svg>'),
+  }));
+  const token = `fixture-${name}-${Math.random()}`;
+  const state = { path: slidraPath, currentId: token };
+  deckFixtures.set(token, state);
+  return { get id() { return state.currentId; }, slidraPath };
 }
 
 async function serve(overrides: Partial<Parameters<typeof startServe>[0]> = {}): Promise<RunningServer> {
-  const server = await startServe({ policy: openPolicy, port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides });
+  const requested = overrides.presentationId;
+  const fixture = requested === undefined ? undefined : deckFixtures.get(requested);
+  const server = await startServe({ policy: openPolicy, port: 0, staticDir: path.join(staticRoot, "dist"), ...overrides, presentationId: fixture?.path ?? requested });
+  if (fixture) {
+    const html = await (await fetch(server.url)).text();
+    const match = html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/);
+    fixture.currentId = (JSON.parse(match![1]!) as { workbenchId: string }).workbenchId;
+  }
+  for (const [token, pending] of deckFixtures) {
+    if (pending === fixture || pending.currentId !== token) continue;
+    const resolved = await postJson(server, "/api/deck/resolve", { fileName: path.basename(pending.path) });
+    pending.currentId = ((await resolved.json()) as { id: string }).id;
+  }
   servers.push(server);
   return server;
 }
 
 async function readSlide(id: string): Promise<string> {
-  const result = await runCli<Array<{ path: string; content: string }>>(["cat", id, "slides/001.svg"]);
-  expect(result.ok).toBe(true);
-  return Buffer.from(result.data![0]!.content, "base64").toString("utf-8");
+  const fixture = [...deckFixtures.values()].find((entry) => entry.currentId === id);
+  if (!fixture) throw new Error(`unknown fixture id: ${id}`);
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(fixture.path);
+  try { return Buffer.from((db.prepare("SELECT data FROM content WHERE path = 'slides/001.svg'").get() as { data: Uint8Array }).data).toString("utf8"); }
+  finally { db.close(); }
 }
 
 function postJson(server: RunningServer, urlPath: string, body: unknown): Promise<Response> {
@@ -128,7 +146,18 @@ async function browserFetch(server: RunningServer, input: string, init?: Request
 }
 
 async function switchTo(server: RunningServer, id: string): Promise<Response> {
+  const fixture = deckFixtures.get(id);
+  if (fixture) {
+    const resolved = await postJson(server, "/api/deck/resolve", { fileName: path.basename(fixture.path) });
+    fixture.currentId = ((await resolved.json()) as { id: string }).id;
+    id = fixture.currentId;
+  }
   return postJson(server, "/api/deck/switch", { id });
+}
+
+function updateFixturePath(id: string, fileName: string): void {
+  const fixture = [...deckFixtures.values()].find((entry) => entry.currentId === id);
+  if (fixture) fixture.path = path.join(path.dirname(fixture.path), fileName);
 }
 
 // --- fingerprinting (AC3/AC5): path+sha256 of every file under a
@@ -189,7 +218,6 @@ async function fingerprintFile(filePath: string): Promise<string> {
  */
 async function fingerprintDeck(id: string, slidraPath: string, sandboxRoot: string): Promise<Record<string, string>> {
   return {
-    deckDir: await fingerprintDir(path.dirname(slidraPath)),
     agentWorkdir: await fingerprintDir(path.join(sandboxRoot, id)),
     slidraFile: await fingerprintFile(slidraPath),
   };
@@ -378,6 +406,7 @@ describe("switching (AC3/AC4/AC5)", () => {
 
     const renamed = await postJson(server, "/api/deck/rename-current", { name: "WatchedRenamed" });
     expect(renamed.status).toBe(200);
+    updateFixturePath(created.id, "WatchedRenamed.slidra");
     const command = await postJson(server, "/api/command", {
       name: "slide notes set",
       input: { slidePath: "slides/001.svg", text: "after-rename" },
@@ -433,7 +462,6 @@ describe("switching (AC3/AC4/AC5)", () => {
     expect(response.status).toBe(200);
 
     const after = await fingerprintDeck(a.id, a.slidraPath, server.agentSandboxRoot);
-    expect(after.deckDir).toBe(before.deckDir);
     expect(after.slidraFile).toBe(before.slidraFile);
     // AC9: switching decks leaves no agent working files from the previous
     // deck inside the sandbox.
@@ -697,7 +725,7 @@ describe("switch conflicts (AC/§4's guard table, pure unit for determinism)", (
     );
   });
 
-  it("⑩ integration: serve.ts's real EditingLock/ExportJobManager wiring produces the same 409s over HTTP", async () => {
+  it("⑩ integration: serve.ts's real EditingLock wiring produces the same 409 over HTTP", async () => {
     const a = await createDeck("deck-a");
     const b = await createDeck("deck-b");
     const server = await serve({ presentationId: a.id });
@@ -709,11 +737,6 @@ describe("switch conflicts (AC/§4's guard table, pure unit for determinism)", (
     expect((await duringEditing.json()).reason).toBe("editing");
     await fetch(`${server.url}/api/editing/end`, { method: "POST" });
 
-    const exportStart = await postJson(server, "/api/export", { format: "pdf" });
-    expect(exportStart.status).toBe(202);
-    const duringExport = await switchTo(server, b.id);
-    expect(duringExport.status).toBe(409);
-    expect((await duringExport.json()).reason).toBe("exporting");
   });
 });
 

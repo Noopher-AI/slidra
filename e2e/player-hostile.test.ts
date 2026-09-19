@@ -66,7 +66,7 @@ beforeAll(async () => {
     },
   };
 
-  server = await startServe({ policy: openPolicy, presentationId, port: 0, agent });
+  server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent });
 });
 
 afterAll(async () => {

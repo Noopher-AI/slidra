@@ -6,9 +6,6 @@ import { EventEmitter } from "node:events";
 import { Readable, Writable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import { SlidraError, SlidraNotFoundError } from "../slidra/errors.js";
-import { readPresentationText } from "../slidra/reads.js";
-import { beginHistoryGroup, endHistoryGroup } from "../slidra/history-group.js";
-import { runJsonCommand } from "../slidra/command.js";
 import type { AgentKind } from "./adapters.js";
 import { buildEditorialBrief } from "./brief.js";
 import { isSlidraCommand } from "./command-allowlist.js";
@@ -17,7 +14,7 @@ import { touchesProtectedPath, type ProtectedPaths } from "./protected-paths.js"
 import { classifyAgentReadPath, readAgentWorkdirFile } from "./workdir.js";
 import { resolveSlidraHome } from "../slidra/home.js";
 import type { EditingLock } from "../editing-lock.js";
-import { postDeckServerJson, type DeckServerClient } from "../deck-server-client.js";
+import { postDeckServerCall, postDeckServerJson, type DeckServerClient } from "../deck-server-client.js";
 import path from "node:path";
 import { getActiveLauncher } from "../sandbox/launcher.js";
 import { collectSandboxContext, deriveSandboxConfig } from "../sandbox/policy.js";
@@ -50,8 +47,14 @@ interface SlideCommentWithPath {
 }
 
 /** `comment list <id> --json` (no slide-path) — every comment across the whole presentation, plan §3.7. */
-async function listAllComments(presentationId: string): Promise<SlideCommentWithPath[]> {
-  const result = await runJsonCommand<{ comments: SlideCommentWithPath[] }>(["comment", "list", presentationId]);
+async function runDeckJson<T>(deckServer: DeckServerClient, presentationId: string, argv: string[], body?: string): Promise<{ ok: boolean; message: string; data?: T }> {
+  const outcome = await postDeckServerCall(deckServer, [...argv, "--json"], presentationId, "agent", body);
+  if (!outcome.ok) throw new SlidraError(`deck server refused command: ${outcome.doorError}`);
+  return JSON.parse(outcome.stdout.toString("utf8")) as { ok: boolean; message: string; data?: T };
+}
+
+async function listAllComments(deckServer: DeckServerClient, presentationId: string): Promise<SlideCommentWithPath[]> {
+  const result = await runDeckJson<{ comments: SlideCommentWithPath[] }>(deckServer, presentationId, ["comment", "list", presentationId]);
   if (!result.ok) {
     throw new SlidraError(result.message);
   }
@@ -703,7 +706,7 @@ export class AgentChatSession extends EventEmitter {
     // failure the author can retry.
     let prompt = text;
     try {
-      const comments = await listAllComments(this.presentationId);
+      const comments = await listAllComments(this.deckServer, this.presentationId);
       const context = buildCommentContext(comments);
       if (context !== null) {
         // An empty message with comments pinned means "do what the pins
@@ -812,7 +815,7 @@ export class AgentChatSession extends EventEmitter {
     if (!this.turnHasEditLock) return;
     this.turnHasEditLock = false;
     try {
-      await endHistoryGroup(this.presentationId);
+      await runDeckJson(this.deckServer, this.presentationId, ["history", "end-group", this.presentationId]);
     } catch (error) {
       this.emitTyped("chat-error", { message: describeError(error) });
     } finally {
@@ -1244,7 +1247,7 @@ export class AgentChatSession extends EventEmitter {
     }
     await this.editingLock.acquireAgent();
     this.turnHasEditLock = true;
-    await beginHistoryGroup(this.presentationId);
+    await runDeckJson(this.deckServer, this.presentationId, ["history", "begin-group", this.presentationId]);
   }
 
   /**
@@ -1379,7 +1382,7 @@ export class AgentChatSession extends EventEmitter {
     try {
       content =
         target.kind === "presentation"
-          ? await readPresentationText(this.presentationId, target.virtualPath)
+          ? await this.readPresentationText(target.virtualPath)
           : await readAgentWorkdirFile(this.workdirReal, target.relativePath);
     } catch (error) {
       // Preserve the existing Traditional-Chinese wording verbatim — these
@@ -1397,6 +1400,28 @@ export class AgentChatSession extends EventEmitter {
       throw error;
     }
     return { content: applyLineWindow(content, params.line, params.limit) };
+  }
+
+  private async readPresentationText(virtualPath: string): Promise<string> {
+    const result = await runDeckJson<Array<{ path: string; content: string }>>(
+      this.deckServer,
+      this.presentationId,
+      ["cat", this.presentationId, virtualPath],
+    );
+    if (!result.ok) {
+      if (result.message.startsWith("file not found:") || result.message.startsWith("not a file:")) {
+        throw new SlidraNotFoundError(result.message);
+      }
+      throw new SlidraError(result.message);
+    }
+    const encoded = result.data?.[0]?.content;
+    if (typeof encoded !== "string") throw new SlidraError("cat returned malformed data");
+    const bytes = Buffer.from(encoded, "base64");
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new SlidraError(`${virtualPath} is a binary asset, cannot be read as text`);
+    }
   }
 
   /**

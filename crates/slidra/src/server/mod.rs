@@ -31,9 +31,12 @@ use std::ffi::OsString;
 use std::io::{Cursor, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use crate::cli;
 use crate::commands::category::{Category, resolve_full_command};
+use serde_json::Value;
 
 pub mod allowlist;
 pub mod assets;
@@ -92,11 +95,18 @@ pub(crate) fn cors_response_headers() -> String {
 
 /// `slidra __deck-server [--addr <host:port>]` — binds (default
 /// `127.0.0.1:0`, an ephemeral port), prints exactly one line to stdout,
-/// `{"port":<n>}`, then serves forever. The one line is how a test
+/// `{"port":<n>,"workbenchId":<id-or-null>}`, then serves forever. The one line is how a test
 /// harness spawning this as a real subprocess (`tests/server_door.rs`,
 /// AC10) learns which port to call back on without a fixed, collision-
 /// prone port number.
 pub fn run(args: &[OsString]) -> i32 {
+    struct RuntimeCleanup;
+    impl Drop for RuntimeCleanup {
+        fn drop(&mut self) {
+            crate::workbench::runtime::close_all();
+        }
+    }
+    let _runtime_cleanup = RuntimeCleanup;
     let addr = parse_addr_flag(args).unwrap_or_else(|| "127.0.0.1:0".to_string());
     let Some(upload_bytes) = parse_bool_flag(args, "--asset-upload-bytes") else {
         eprintln!("slidra __deck-server: missing or invalid --asset-upload-bytes");
@@ -113,6 +123,22 @@ pub fn run(args: &[OsString]) -> i32 {
             remote_url,
         },
     };
+    let initial_workbench_id = match parse_string_flag(args, "--initial-deck") {
+        Some(path) => {
+            let opened = crate::commands::open::run(&[path]);
+            if !opened.ok {
+                eprintln!(
+                    "slidra __deck-server: failed to open initial deck: {}",
+                    opened.message
+                );
+                return 1;
+            }
+            opened
+                .data
+                .and_then(|data| data.get("id").and_then(Value::as_str).map(str::to_string))
+        }
+        None => None,
+    };
     let listener = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
@@ -121,9 +147,20 @@ pub fn run(args: &[OsString]) -> i32 {
         }
     };
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
-    println!("{{\"port\":{port}}}");
+    println!(
+        "{}",
+        serde_json::json!({ "port": port, "workbenchId": initial_workbench_id })
+    );
     let _ = std::io::stdout().flush();
-    serve_forever(listener, config)
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_on_eof = Arc::clone(&shutdown);
+    std::thread::spawn(move || {
+        let mut input = std::io::stdin().lock();
+        let mut byte = [0_u8; 1];
+        while input.read(&mut byte).unwrap_or(0) != 0 {}
+        shutdown_on_eof.store(true, Ordering::Release);
+    });
+    serve_until_shutdown(listener, config, &shutdown)
 }
 
 fn parse_addr_flag(args: &[OsString]) -> Option<String> {
@@ -146,6 +183,19 @@ fn parse_editor_origin_flag(args: &[OsString]) -> Option<String> {
     None
 }
 
+fn parse_string_flag(args: &[OsString], name: &str) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == name {
+            return iter
+                .next()
+                .and_then(|value| value.to_str())
+                .map(str::to_string);
+        }
+    }
+    None
+}
+
 fn parse_bool_flag(args: &[OsString], name: &str) -> Option<bool> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -160,16 +210,35 @@ fn parse_bool_flag(args: &[OsString], name: &str) -> Option<bool> {
     None
 }
 
-fn serve_forever(listener: TcpListener, config: ServerConfig) -> i32 {
+fn serve_until_shutdown(listener: TcpListener, config: ServerConfig, shutdown: &AtomicBool) -> i32 {
+    if let Err(err) = listener.set_nonblocking(true) {
+        eprintln!("slidra __deck-server: failed to configure listener: {err}");
+        return 1;
+    }
     let config = Arc::new(config);
-    for incoming in listener.incoming() {
-        let Ok(stream) = incoming else { continue };
-        let config = Arc::clone(&config);
-        std::thread::spawn(move || {
-            handle_connection(stream, &config);
-        });
+    while !shutdown.load(Ordering::Acquire) {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let config = Arc::clone(&config);
+                std::thread::spawn(move || {
+                    handle_connection(stream, &config);
+                });
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => {
+                eprintln!("slidra __deck-server: failed to accept connection: {err}");
+                return 1;
+            }
+        }
     }
     0
+}
+
+fn serve_forever(listener: TcpListener, config: ServerConfig) -> i32 {
+    let never = AtomicBool::new(false);
+    serve_until_shutdown(listener, config, &never)
 }
 
 /// Reads exactly one HTTP/1.1 request off `stream`, dispatches it, and

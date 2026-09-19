@@ -840,10 +840,10 @@ mod tests {
         /// registers it as `test_id` under a fresh `SLIDRA_HOME`. Content
         /// for a specific test is written afterwards via `Fixture::write`.
         fn new(label: &str, test_id: &str) -> Self {
-            let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let deck = crate::deck::build_test_deck(label, &[]);
-            workspace::registry::register_for_test(&home, test_id, &deck);
+            crate::workbench::runtime::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }

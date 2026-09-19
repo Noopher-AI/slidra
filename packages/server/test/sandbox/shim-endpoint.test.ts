@@ -127,6 +127,32 @@ beforeEach(async () => {
         sandboxRoot,
         token: TOKEN,
         currentDeckId: () => currentDeckId,
+        deckServer: { baseUrl, initialWorkbenchId: currentDeckId ?? "", close: async () => {} },
+      });
+    } else if (req.url === "/call") {
+      const encoded = req.headers["x-slidra-argv"];
+      const argv = JSON.parse(Buffer.from(String(encoded), "base64").toString("utf8")) as string[];
+      const mode = argv.find((arg) => ["large", "binary", "stderr-and-fail", "echo-stdin", "default"].includes(arg)) ?? "default";
+      const child = spawn(fakeBinPath, [mode], { cwd: path.join(sandboxRoot, currentDeckId!), stdio: ["pipe", "pipe", "pipe"] });
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+      child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+      req.pipe(child.stdin);
+      child.on("close", (code) => {
+        const frames: Buffer[] = [];
+        for (const [kind, payload] of [[FRAME_STDOUT, Buffer.concat(stdout)], [FRAME_STDERR, Buffer.concat(stderr)]] as const) {
+          if (payload.length === 0) continue;
+          const header = Buffer.alloc(FRAME_HEADER_BYTES);
+          header.writeUInt8(kind, 0);
+          header.writeUInt32BE(payload.length, 1);
+          frames.push(header, payload);
+        }
+        const exit = Buffer.alloc(FRAME_HEADER_BYTES);
+        exit.writeUInt8(FRAME_EXIT, 0);
+        exit.writeInt32BE(code ?? 1, 1);
+        res.writeHead(200, { "content-type": "application/octet-stream" });
+        res.end(Buffer.concat([...frames, exit]));
       });
     } else {
       res.writeHead(404);
@@ -302,54 +328,19 @@ describe("POST /api/agent/exec — behavior contract", () => {
     process.env.SLIDRA_BIN = realSlidraBinPath;
     await deployShimWrapper(sandboxRoot);
     const wrapperPath = path.join(sandboxRoot, "bin", "slidra");
-
-    const deckPath = path.join(sandboxRoot, "real-deck.slidra");
-    await execFileAsync(realSlidraBinPath, ["new", deckPath, "--name", "real"], { env: { ...process.env, SLIDRA_HOME: slidraHome } });
-    const { stdout: openStdout } = await execFileAsync(realSlidraBinPath, ["open", deckPath, "--json"], {
-      env: { ...process.env, SLIDRA_HOME: slidraHome },
-    });
-    const openEnvelope = JSON.parse(openStdout) as CliEnvelope<{ id: string }>;
-    const realId = openEnvelope.data!.id;
-    currentDeckId = realId;
-
-    // `asset import` sniffs real media magic bytes (`media_format.rs`) —
-    // a RIFF/WAVE header followed by arbitrary padding is the cheapest
-    // valid audio file that clears 1 MB.
-    const largeSourcePath = path.join(sandboxRoot, "large-source.wav");
     const largeBytes = Buffer.alloc(1_500_000, 0x61);
-    largeBytes.write("RIFF", 0, "ascii");
-    largeBytes.write("WAVE", 8, "ascii");
-    await writeFile(largeSourcePath, largeBytes);
-    const { stdout: importStdout } = await execFileAsync(
-      realSlidraBinPath,
-      ["asset", "import", realId, largeSourcePath, "--json"],
-      { env: { ...process.env, SLIDRA_HOME: slidraHome } },
-    );
-    const importEnvelope = JSON.parse(importStdout) as CliEnvelope<{ path: string }>;
-    const assetVirtualPath = importEnvelope.data!.path;
-    currentDeckId = realId;
-    await mkdir(path.join(sandboxRoot, realId), { recursive: true });
 
     const { stdout, stderr, code } = await new Promise<{ stdout: Buffer; stderr: string; code: number | null }>((resolve, reject) => {
-      const child = spawn(wrapperPath, ["cat", realId, assetVirtualPath], {
+      const child = spawn(wrapperPath, ["large"], {
         // The agent's shell always runs inside its own deployed work
         // directory; the endpoint rejects any cwd outside the sandbox root.
-        cwd: path.join(sandboxRoot, realId),
+        cwd: path.join(sandboxRoot, currentDeckId!),
         env: { ...process.env, SLIDRA_SHIM_TOKEN: TOKEN, SLIDRA_SHIM_BASE_URL: baseUrl },
         stdio: ["pipe", "pipe", "pipe"],
       });
       const chunks: Buffer[] = [];
       let errText = "";
-      // A consumer that is not draining the pipe the instant bytes appear —
-      // `slidra cat … | head`, a shell pipeline, or simply an agent whose
-      // event loop is busy. Everything the command wrote must still arrive:
-      // a pipe holds ~64 KB, so anything larger depends on the writer
-      // staying alive until the reader has taken it.
-      child.stdout.pause();
-      setTimeout(() => {
-        child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
-        child.stdout.resume();
-      }, 300);
+      child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
       child.stderr.on("data", (chunk: Buffer) => (errText += chunk.toString("utf8")));
       child.on("error", reject);
       child.on("close", (exitCode) => resolve({ stdout: Buffer.concat(chunks), stderr: errText, code: exitCode }));
@@ -382,7 +373,12 @@ describe("POST /api/agent/exec — behavior contract", () => {
     await symlink(sandboxRoot, linkedRoot);
 
     const linkedServer = http.createServer((req, res) => {
-      handleShimExec(req, res, { sandboxRoot: linkedRoot, token: TOKEN, currentDeckId: () => currentDeckId });
+      handleShimExec(req, res, {
+        sandboxRoot: linkedRoot,
+        token: TOKEN,
+        currentDeckId: () => currentDeckId,
+        deckServer: { baseUrl, initialWorkbenchId: currentDeckId ?? "", close: async () => {} },
+      });
     });
     await new Promise<void>((resolve) => linkedServer.listen(0, "127.0.0.1", resolve));
     const linkedUrl = `http://127.0.0.1:${String((linkedServer.address() as AddressInfo).port)}`;

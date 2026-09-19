@@ -24,7 +24,6 @@ use std::io::{self, Read, Write};
 
 use crate::commands;
 use crate::result::{self, Renderer};
-use crate::workspace::lock::PresentationLock;
 
 /// Runs `argv` (already stripped of argv[0] — the binary name — by
 /// whichever caller built it) against the real process's own stdout/
@@ -114,11 +113,14 @@ fn dispatch_family_takeover(
         }
     }
 
-    let _lock = match hold_presentation_lock(&positional, err) {
-        Ok(lock) => lock,
-        Err(code) => return code,
-    };
-    let command_result = commands::dispatch(tokens, &positional);
+    let command_result =
+        match with_presentation_lock(&positional, || commands::dispatch(tokens, &positional)) {
+            Ok(result) => result,
+            Err(message) => {
+                let _ = writeln!(err, "{message}");
+                return 1;
+            }
+        };
 
     // No command registered here (or `undo`/`redo`) has a renderer — only
     // `cat`-shaped commands get a raw-bytes renderer, and this family
@@ -158,16 +160,7 @@ fn dispatch_legacy_takeover(
     // history for the full rationale (SQLite's own per-transaction file
     // locking already keeps concurrent `chat_history` writers from
     // corrupting each other).
-    let _lock = if command == "chat-history" {
-        None
-    } else {
-        match hold_presentation_lock(&positional, err) {
-            Ok(lock) => lock,
-            Err(code) => return code,
-        }
-    };
-
-    let (command_result, renderer): (crate::result::CommandResult, Option<Renderer<'_>>) =
+    let mut dispatch = || -> (crate::result::CommandResult, Option<Renderer<'_>>) {
         match command {
             "undo" => (commands::undo::run(&positional), None),
             "redo" => (commands::redo::run(&positional), None),
@@ -216,7 +209,19 @@ fn dispatch_legacy_takeover(
             _ => unreachable!(
                 "commands::match_takeover only returns TAKEOVER_TABLE entries, all handled above"
             ),
-        };
+        }
+    };
+    let (command_result, renderer) = if command == "chat-history" {
+        dispatch()
+    } else {
+        match with_presentation_lock(&positional, dispatch) {
+            Ok(result) => result,
+            Err(message) => {
+                let _ = writeln!(err, "{message}");
+                return 1;
+            }
+        }
+    };
 
     let code = result::render_to(out, err, &command_result, renderer, json_flag);
     // `validate` with findings exits 1 after rendering its full report:
@@ -235,26 +240,18 @@ fn dispatch_legacy_takeover(
 /// three positionals are tried against the registry and the first one
 /// that resolves is the presentation. `Err(code)` is the exit code to
 /// return after the timeout message has been written to `err`.
-fn hold_presentation_lock(
-    positional: &[String],
-    err: &mut dyn Write,
-) -> Result<Option<PresentationLock>, i32> {
+fn with_presentation_lock<T>(positional: &[String], body: impl FnOnce() -> T) -> Result<T, String> {
     for candidate in positional.iter().take(3) {
         if candidate.starts_with("--") {
             continue;
         }
-        let Ok(work_dir) = crate::workspace::resolve_work_dir(candidate) else {
+        if crate::workspace::resolve_work_dir(candidate).is_err() {
             continue;
-        };
-        return match PresentationLock::acquire(&work_dir) {
-            Ok(lock) => Ok(Some(lock)),
-            Err(lock_err) => {
-                let _ = writeln!(err, "{}", lock_err.message());
-                Err(1)
-            }
-        };
+        }
+        return crate::workbench::runtime::with_command_lock(candidate, body)
+            .map_err(|err| err.message().to_string());
     }
-    Ok(None)
+    Ok(body())
 }
 
 /// `chart data set --csv -`'s stdin substitution: `cli.md` requires this

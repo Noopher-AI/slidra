@@ -208,7 +208,8 @@ describe("④ title bar has no New/Open/Save (AC5) and Deck Space is usable at 1
     const harness = await startDeckSpaceServer("ac5-ac7");
     try {
       await seedDeck(harness.deckFolder, "Narrow.slidra", "Narrow Viewport Deck");
-      const page = await openPage(harness.server, { width: 1280, height: 720 });
+      const refreshedServer = await startServe({ policy: openPolicy, port: 0 });
+      const page = await openPage(refreshedServer, { width: 1280, height: 720 });
 
       await page.locator(".deck-card").first().click();
       await expect.poll(() => page.locator(".titlebar").count(), { timeout: 10_000 }).toBeGreaterThan(0);
@@ -227,7 +228,7 @@ describe("④ title bar has no New/Open/Save (AC5) and Deck Space is usable at 1
       expect(await page.getByRole("button", { name: "New deck" }).isVisible()).toBe(true);
       expect(await page.getByRole("button", { name: "Open file" }).isVisible()).toBe(true);
       const firstCard = page.locator(".deck-card").first();
-      expect(await firstCard.isVisible()).toBe(true);
+      await expect.poll(() => firstCard.isVisible(), { timeout: 10_000 }).toBe(true);
       expect(await firstCard.getByRole("button", { name: "Rename" }).isVisible()).toBe(true);
       expect(await firstCard.getByRole("button", { name: "Delete" }).isVisible()).toBe(true);
 
@@ -238,6 +239,7 @@ describe("④ title bar has no New/Open/Save (AC5) and Deck Space is usable at 1
       const widths = gridColumns.split(" ").map((token) => parseFloat(token));
       expect(widths.length).toBeGreaterThan(0);
       for (const width of widths) expect(width).toBeGreaterThanOrEqual(220 - 1);
+      await refreshedServer.close();
     } finally {
       await harness.cleanup();
     }

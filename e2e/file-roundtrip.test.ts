@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
-import { createDefaultRegistry, type CommandRegistry } from "./helpers/cli.js";
+import { createDefaultRegistry, createDeckServerRegistry, type CommandRegistry } from "./helpers/cli.js";
 import { packDirectory } from "./helpers/pack.js";
 import { startServe, type RunningServer } from "../packages/server/src/serve.js";
 import { openPolicy } from "../packages/server/src/policy/open.js";
@@ -61,17 +61,17 @@ async function startHarness(): Promise<Harness> {
 
   const slidraPath = path.join(slidraDir, "a.slidra");
   await packDirectory(deckDir, slidraPath);
-  const registry = createDefaultRegistry();
-  const opened = await registry.dispatch<{ id: string }>("open", { path: slidraPath });
-  const presentationId = opened.data!.id;
-
   // [E6.T2]: POST /api/open now lands the uploaded deck in the configured
   // deck folder (default ~/Slidra) rather than reopening the current
   // presentation in place — pointed at an isolated temp dir so this test
   // never touches the real host home directory.
   await writeFile(path.join(slidraHome, "settings.json"), JSON.stringify({ deckFolder }));
 
-  const server = await startServe({ policy: openPolicy, presentationId, port: 0, agent: fakeAgent, staticDir });
+  const server = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent: fakeAgent, staticDir });
+  const html = await (await fetch(server.url)).text();
+  const bootstrap = JSON.parse(html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/)![1]!) as { workbenchId: string; deck: { url: string } };
+  const presentationId = bootstrap.workbenchId;
+  const registry = createDeckServerRegistry(bootstrap.deck.url, presentationId);
 
   return { server, registry, presentationId, slidraPath, slidraHome, slidraDir, deckFolder, staticDir };
 }
@@ -115,7 +115,7 @@ describe("continuous save (NOOP-422)", () => {
     });
     expect(setResponse.status).toBe(200);
 
-    // Re-open the edited file through the public CLI contract in a completely
+    // Re-open the edited file through a second real deck-server in a completely
     // separate SLIDRA_HOME. Direct crate writes are durable when the command
     // returns; there is no Node-owned dirty/save-state phase to observe.
     secondHome = await mkdtemp(path.join(tmpdir(), "slidra-roundtrip-home2-"));
@@ -124,15 +124,17 @@ describe("continuous save (NOOP-422)", () => {
     // slidra serve now spawns the Rust binary for every read/write.
     process.env.SLIDRA_BIN = slidraBin;
     try {
-      const secondRegistry = createDefaultRegistry();
-      const secondOpened = await secondRegistry.dispatch<{ id: string }>("open", { path: slidraPath });
-      const secondId = secondOpened.data!.id;
-      const editedSlide = await secondRegistry.dispatch<{ content: string }>("cat", {
-        id: secondId,
-        path: "slides/001.svg",
-      });
-      expect(editedSlide.ok).toBe(true);
-      expect(editedSlide.data!.content).toContain("roundtrip edited");
+      const secondServer = await startServe({ policy: openPolicy, presentationId: slidraPath, port: 0, agent: fakeAgent, staticDir: harness.staticDir });
+      try {
+        const html = await (await fetch(secondServer.url)).text();
+        const bootstrap = JSON.parse(html.match(/<script id="slidra-bootstrap" type="application\/json">([^<]+)<\/script>/)![1]!) as { workbenchId: string; deck: { url: string } };
+        const secondRegistry = createDeckServerRegistry(bootstrap.deck.url, bootstrap.workbenchId);
+        const editedSlide = await secondRegistry.dispatch<{ content: string }>("cat", { path: "slides/001.svg" });
+        expect(editedSlide.ok).toBe(true);
+        expect(editedSlide.data!.content).toContain("roundtrip edited");
+      } finally {
+        await secondServer.close();
+      }
     } finally {
       process.env.SLIDRA_HOME = previousHome;
       // slidra serve now spawns the Rust binary for every read/write.

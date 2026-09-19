@@ -178,16 +178,8 @@ pub fn delete_presentation_file(id: &str, virtual_path: &str) -> SlidraResult<()
     }
 }
 
-/// `<SLIDRA_HOME>/clipboard/<presentationId>.json` — sibling to
-/// `history/<id>/`, outside the working directory (packing the working dir
-/// into `.slidra` must never leak clipboard contents). Per-id filing is the
-/// entire mechanism enforcing "same presentation only".
-fn clipboard_file_path(home: &Path, id: &str) -> PathBuf {
-    home.join("clipboard").join(format!("{id}.json"))
-}
-
-/// Reads the presentation's clipboard file's raw text. Returns `Err` with
-/// "clipboard is empty" when the file has never been written (ENOENT) — the
+/// Reads the active workbench clipboard's raw text. Returns `Err` with
+/// "clipboard is empty" when it has never been written — the
 /// caller (`element paste`, P7) is what turns that into a `Failed`
 /// `CommandResult`. JSON-parsing the text into a typed payload, and the
 /// "clipboard data is corrupted" error a parse failure produces, is deliberately NOT
@@ -195,26 +187,13 @@ fn clipboard_file_path(home: &Path, id: &str) -> PathBuf {
 /// it (`element::clipboard::ClipboardPayload`, P7), which this ticket's
 /// foundation phase does not yet define.
 pub fn read_clipboard_file(id: &str) -> SlidraResult<String> {
-    let home = workspace::resolve_home();
-    match std::fs::read_to_string(clipboard_file_path(&home, id)) {
-        Ok(text) => Ok(text),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            Err(SlidraError::invalid("clipboard is empty"))
-        }
-        Err(_) => Err(SlidraError::invalid("failed to read clipboard")),
-    }
+    crate::workbench::runtime::read_clipboard(id)
 }
 
-/// Writes `contents` (already-serialized JSON) to the presentation's
-/// clipboard file, creating the `clipboard/` directory on first use. Never
-/// touches undo history — the clipboard file is not presentation content.
+/// Writes `contents` (already-serialized JSON) to the active workbench's
+/// in-memory clipboard. Never touches undo history or presentation content.
 pub fn write_clipboard_file(id: &str, contents: &str) -> SlidraResult<()> {
-    let home = workspace::resolve_home();
-    let dir = home.join("clipboard");
-    std::fs::create_dir_all(&dir)
-        .map_err(|_| SlidraError::invalid("failed to write to clipboard"))?;
-    std::fs::write(clipboard_file_path(&home, id), contents)
-        .map_err(|_| SlidraError::invalid("failed to write to clipboard"))
+    crate::workbench::runtime::write_clipboard(id, contents)
 }
 
 #[cfg(test)]
@@ -240,7 +219,7 @@ mod tests {
         /// Builds a deck holding a slide and a template with known
         /// content, registers it under a fresh `SLIDRA_HOME` as `test_id`.
         fn new(label: &str, test_id: &str) -> Self {
-            let guard = workspace::registry::ENV_LOCK.lock().unwrap();
+            let guard = crate::workbench::runtime::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let deck = crate::deck::build_test_deck(
                 label,
@@ -253,7 +232,7 @@ mod tests {
                     ("templates/001.svg", b"<svg>TEMPLATE</svg>"),
                 ],
             );
-            workspace::registry::register_for_test(&home, test_id, &deck);
+            crate::workbench::runtime::register_for_test(&home, test_id, &deck);
             unsafe {
                 std::env::set_var("SLIDRA_HOME", &home);
             }

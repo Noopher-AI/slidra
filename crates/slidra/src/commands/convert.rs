@@ -156,7 +156,7 @@ fn failure_kind_for(err: &SlidraError) -> FailureKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::registry;
+    use crate::workbench::runtime;
     use std::path::PathBuf;
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -177,7 +177,7 @@ mod tests {
 
     impl Fixture {
         fn new(label: &str, project_json: &str, slides: &[(&str, &str)]) -> Self {
-            let guard = registry::ENV_LOCK.lock().unwrap();
+            let guard = runtime::ENV_LOCK.lock().unwrap();
             let home = temp_dir(&format!("{label}-home"));
             let test_id = format!("test-{label}");
             unsafe {
@@ -188,7 +188,7 @@ mod tests {
                 files.push((path, content.as_bytes()));
             }
             let deck = crate::deck::build_test_deck(label, &files);
-            registry::register_for_test(&home, &test_id, &deck);
+            runtime::register_for_test(&home, &test_id, &deck);
             Fixture {
                 home,
                 deck,

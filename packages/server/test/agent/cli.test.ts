@@ -97,9 +97,7 @@ async function openFreshPresentation(): Promise<string> {
   const slidraPath = path.join(slidraDir, "deck.slidra");
   const created = await runCli(["new", slidraPath, "--name", "Test Presentation"]);
   expect(created.ok).toBe(true);
-  const opened = await runCli<{ id: string }>(["open", slidraPath]);
-  expect(opened.ok).toBe(true);
-  return opened.data!.id;
+  return slidraPath;
 }
 
 interface StartedCli {
