@@ -1060,7 +1060,7 @@ fn cat_through_a_closed_pipe_exits_zero_without_an_error() {
 }
 
 #[test]
-fn documented_commands_dispatch_without_node() {
+fn every_documented_command_name_is_recognised_by_rust_dispatch() {
     use std::process::Command;
 
     let spec = std::fs::read_to_string(
@@ -1082,9 +1082,10 @@ fn documented_commands_dispatch_without_node() {
             .env("PATH", &empty_path)
             .output()
             .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            !String::from_utf8_lossy(&output.stderr).contains("node not found"),
-            "documented argv {name:?} fell through to Node: {output:?}"
+            !stderr.contains("unknown command:") && !stderr.contains("unknown subcommand:"),
+            "documented command {name:?} was not recognised by Rust dispatch: {output:?}"
         );
     }
     std::fs::remove_dir_all(empty_path).ok();
