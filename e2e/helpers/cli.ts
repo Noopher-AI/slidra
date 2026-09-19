@@ -125,7 +125,11 @@ export function createDeckServerRegistry(baseUrl: string, workbenchId: string): 
       const e2eEncoder = E2E_ONLY_ENCODERS[name];
       const encoded = e2eEncoder ? e2eEncoder({ ...input, id: workbenchId }) : await encodeCommandArgv(name, { ...input, id: workbenchId });
       try {
-        const caller = ["comment list", "effect list", "convert"].includes(name) ? "agent" : "editor";
+        const caller = name === "ls"
+          ? "viewer"
+          : ["comment list", "effect list", "convert"].includes(name)
+            ? "agent"
+            : "editor";
         const outcome = await postDeckServerCall(client, [...encoded.argv, "--json"], workbenchId, caller, encoded.body);
         if (!outcome.ok) throw new Error(`deck server refused ${name}: ${outcome.doorStatus} ${outcome.doorError}`);
         const output = outcome.stdout.toString("utf8").trim();
