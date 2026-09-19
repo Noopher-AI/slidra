@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { Readable } from "node:stream";
+import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream } from "node:stream/web";
 import type { ServerResponse } from "node:http";
@@ -33,6 +33,7 @@ export interface DeckServerClient {
 
 /** How long to wait for the child's one-line `{"port":N}` startup message before giving up. */
 const STARTUP_TIMEOUT_MS = 10_000;
+const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 export async function startDeckServer(
   options: {
@@ -47,7 +48,7 @@ export async function startDeckServer(
   args.push("--asset-upload-bytes", String(options.fileEntry.uploadBytes));
   args.push("--asset-remote-url", String(options.fileEntry.remoteUrl));
   if (options.initialDeckPath !== undefined) args.push("--initial-deck", options.initialDeckPath);
-  const child = spawn(bin, args, { stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawn(bin, args, { stdio: ["pipe", "pipe", "inherit"] });
 
   const startup = await new Promise<{ port: number; workbenchId: string | null }>((resolve, reject) => {
     let buffer = "";
@@ -99,14 +100,22 @@ export async function startDeckServer(
   };
 }
 
-function closeChild(child: ChildProcessByStdio<null, Readable, null>): Promise<void> {
-  return new Promise((resolve) => {
+function closeChild(child: ChildProcessByStdio<Writable, Readable, null>): Promise<void> {
+  return new Promise((resolve, reject) => {
     if (child.exitCode !== null || child.signalCode !== null) {
       resolve();
       return;
     }
-    child.once("exit", () => resolve());
-    child.kill();
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new SlidraError("slidra __deck-server did not shut down after stdin closed"));
+    }, SHUTDOWN_TIMEOUT_MS);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      if (code === 0) resolve();
+      else reject(new SlidraError(`slidra __deck-server exited during shutdown (code ${code}, signal ${signal})`));
+    });
+    child.stdin.end();
   });
 }
 

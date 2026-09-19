@@ -3,9 +3,9 @@
 
 //! Process-local ownership of active workbenches.
 
+use super::WorkbenchStore;
 use super::deck_list;
 use super::local::LocalWorkbench;
-use super::WorkbenchStore;
 use crate::errors::{SlidraError, SlidraResult};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -82,6 +82,13 @@ pub(crate) fn close(id: &str) -> SlidraResult<()> {
         .remove(id)
         .map(drop)
         .ok_or_else(|| SlidraError::not_found(format!("no presentation found for id: {id}")))
+}
+
+/// Drains every workbench owned by this process. Dropping each entry removes
+/// its ephemeral local root; callers use this at the deck-server lifecycle
+/// boundary so process shutdown does not leave live-session state behind.
+pub(crate) fn close_all() {
+    locked().entries.clear();
 }
 
 pub(crate) fn read_clipboard(id: &str) -> SlidraResult<String> {

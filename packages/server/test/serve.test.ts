@@ -462,6 +462,8 @@ describe("startServe", () => {
         '  server.listen(0, "127.0.0.1", () => {',
         "    process.stdout.write(JSON.stringify({ port: server.address().port, workbenchId: \"stub-workbench\" }) + \"\\n\");",
         "  });",
+        "  process.stdin.resume();",
+        '  process.stdin.once("end", () => server.close(() => process.exit(0)));',
         "} else {",
         // `resolveDeckIdentity` (serve.ts's own startup path, unrelated to
         // this ticket) still calls `loadProject` — a per-call `slidra cat

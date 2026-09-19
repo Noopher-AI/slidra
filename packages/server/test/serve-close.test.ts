@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright contributors to the Slidra project
 
 import { connect, type Socket } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -171,6 +171,41 @@ function assertSocketReleased(socket: Socket): Promise<void> {
 }
 
 describe("RunningServer.close()", () => {
+  it("removes the child process workbench from an isolated TMPDIR without changing the deck", async () => {
+    const deckPath = await openFreshPresentation("shutdown cleanup");
+    const deckBefore = await readFile(deckPath);
+    const isolatedTmp = await mkdtemp(path.join(tmpdir(), "slidra-deck-server-tmp-"));
+    const previousTmp = process.env.TMPDIR;
+    process.env.TMPDIR = isolatedTmp;
+    try {
+      const server = await serve(deckPath);
+      servers = servers.filter((candidate) => candidate !== server);
+      const duringEntries = await readdir(isolatedTmp, { withFileTypes: true });
+      const during = [];
+      for (const entry of duringEntries) {
+        if (!entry.isDirectory()) continue;
+        try {
+          await readFile(path.join(isolatedTmp, entry.name, "deck"));
+          during.push(entry.name);
+        } catch {
+          // Other child-owned temp directories are not workbenches.
+        }
+      }
+      if (during.length !== 1) throw new Error(`expected one runtime workbench, found ${JSON.stringify(during)}`);
+
+      await server.close();
+
+      const after = await readdir(isolatedTmp);
+      if (after.includes(during[0])) throw new Error(`runtime workbench survived shutdown: ${JSON.stringify(after)}`);
+      const deckAfter = await readFile(deckPath);
+      if (!deckAfter.equals(deckBefore)) throw new Error("opening and closing changed the deck bytes");
+    } finally {
+      if (previousTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previousTmp;
+      await rm(isolatedTmp, { recursive: true, force: true });
+    }
+  });
+
   it("resolves promptly while a request is still in flight (headers begun, never terminated) on the socket", async () => {
     const id = await openFreshPresentation();
     const server = await serve(id);
