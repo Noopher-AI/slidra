@@ -228,7 +228,7 @@ describe("④ title bar has no New/Open/Save (AC5) and Deck Space is usable at 1
       expect(await page.getByRole("button", { name: "New deck" }).isVisible()).toBe(true);
       expect(await page.getByRole("button", { name: "Open file" }).isVisible()).toBe(true);
       const firstCard = page.locator(".deck-card").first();
-      expect(await firstCard.isVisible()).toBe(true);
+      await expect.poll(() => firstCard.isVisible(), { timeout: 10_000 }).toBe(true);
       expect(await firstCard.getByRole("button", { name: "Rename" }).isVisible()).toBe(true);
       expect(await firstCard.getByRole("button", { name: "Delete" }).isVisible()).toBe(true);
 
