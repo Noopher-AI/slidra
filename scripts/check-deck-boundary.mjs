@@ -101,8 +101,9 @@ for (const file of await filesBelow(path.join(root, "packages"), ".ts")) {
       const directFunction = ts.isIdentifier(node.expression) && fsFunctions.has(node.expression.text);
       const namespaceMember =
         ts.isPropertyAccessExpression(node.expression) &&
-        ts.isIdentifier(node.expression.expression) &&
-        fsNamespaces.has(node.expression.expression.text);
+        ((ts.isIdentifier(node.expression.expression) &&
+          fsNamespaces.has(node.expression.expression.text)) ||
+          isRequire(node.expression.expression));
       if ((directFunction || namespaceMember) && node.arguments.some(expressionHasDeckPath)) {
         const { line } = ast.getLineAndCharacterOfPosition(node.getStart(ast));
         offenders.push(`${path.relative(root, file)}:${line + 1}: direct .slidra filesystem I/O`);
