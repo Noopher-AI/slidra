@@ -1,0 +1,35 @@
+{
+  "name": "slidra",
+  "version": "0.1.0",
+  "description": "The open .slidra presentation format specification and a zero-dependency viewer that plays .slidra decks in the browser.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "slidra-viewer": "server.js"
+  },
+  "files": [
+    "server.js",
+    "public/",
+    "spec/",
+    "docs/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test --no-warnings",
+    "examples": "node --no-warnings tools/build-examples.mjs"
+  },
+  "keywords": [
+    "slidra",
+    "presentation",
+    "slides",
+    "svg",
+    "viewer",
+    "sqlite"
+  ]
+}
