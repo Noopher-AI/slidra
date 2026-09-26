@@ -133,7 +133,8 @@ await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5, in
 ## Development
 
 ```bash
-npm test                  # unit tests: SQLite reader (cross-checked against node:sqlite), ZIP reader, deck & effect validation
+npm test                  # unit tests: readers (SQLite cross-checked against node:sqlite, ZIP), deck, effect and slide preparation,
+                          # frame documents and CSP, the slide runtime's step clock (in a vm with a fake DOM), writer, validator, conformance
 npm run examples          # rebuild examples/ (Node ≥ 22.5 for node:sqlite)
 npm run conformance       # rebuild conformance/decks and manifest.json from conformance/cases.mjs
 npm run lint              # ESLint (flat config in eslint.config.mjs)
