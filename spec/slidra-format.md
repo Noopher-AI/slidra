@@ -306,6 +306,33 @@ A reader MUST ignore (and SHOULD report) a link whose value is none of these: an
 
 SVG's own `<a href>` is not a Slidra link: readers MUST NOT follow it, and writers use `data-slidra-link` instead. Following a link never changes the deck and never runs anything from the slide (§17).
 
+### 4.9 Layout roles
+
+`data-slidra-role` on an element container says what the element is for in the slide's layout. It is semantic only: it never changes rendering or playback. Readers MAY ignore it; writers MUST preserve it.
+
+```xml
+<g id="el-Ab3xK9mQ2pLw" data-slidra-name="Timeline" data-slidra-role="spine">…</g>
+<g id="el-Q2xpY2tNZTEy" data-slidra-name="Step 1" data-slidra-role="node">…</g>
+```
+
+| Value | The element is |
+|---|---|
+| `background` | the slide's background image, under the rules of §4.6 (fixed id `el-background`, locked, first after `<metadata>`, at most one per slide) |
+| `field` | the region where a relationship happens: a card's base, a column's panel, a colour band |
+| `node` | a single semantic unit: each card, each column of a comparison, each station of a flow |
+| `spine` | the slide's reading axis: a timeline's main line, a section page's colour bar |
+| `edge` | a necessary connection between nodes: a causal arrow, a dependency line |
+| `label` | text attached to an owner: a card's bullet words, a node's name |
+| `garnish` | decoration added only once the relationship holds: underlines, small squares, emphasis bars |
+
+`garnish` is a layout meaning, not an accessibility one: an element that assistive technology should skip still carries `data-slidra-decorative="true"` (§4.7).
+
+**Extensions.** A value of the form `<prefix>:<name>`, where both parts match `[a-z][a-z0-9-]*` (for example `pro:timeline`), is a tool-specific extension. Readers MUST ignore it, writers MUST preserve it, and a checker MUST NOT report it as an error.
+
+**Anything else** (`nodes`, `Node`, `pro:`, …) is invalid, and a checker reports it as an error. It does not make the slide corrupt: playback ignores roles.
+
+How roles relate to each other on a slide (how many spines it has, whether every edge joins two nodes) is not a format rule; such checks belong to authoring tools.
+
 ---
 
 ## 5. Metadata

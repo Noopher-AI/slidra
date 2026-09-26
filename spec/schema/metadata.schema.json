@@ -122,7 +122,7 @@
     "source": { "type": "object", "required": ["src"], "properties": { "src": { "type": "string", "minLength": 1 } } },
 
     "element": {
-      "description": "The data-slidra-* attributes of an element container (§4, §11, §12). Unknown data-slidra-* attributes are allowed and MUST be preserved.",
+      "description": "The data-slidra-* attributes of an element container (§4, §11, §12). data-slidra-role is a core layout role or a <prefix>:<name> extension (§4.9); only background is tied to an id (§4.6). Unknown data-slidra-* attributes are allowed and MUST be preserved.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "pattern": "^el-(?:[A-Za-z0-9_-]{12}|background)$" },
@@ -130,7 +130,7 @@
         "data-slidra-lock": { "const": "true" },
         "data-slidra-decorative": { "const": "true" },
         "data-slidra-link": { "type": "string", "pattern": "^(?:https?://\\S+|mailto:\\S+|#s-[A-Za-z0-9_-]{12}|#(?:next|previous|first|last))$" },
-        "data-slidra-role": { "const": "background" },
+        "data-slidra-role": { "anyOf": [{ "enum": ["background", "field", "node", "spine", "edge", "label", "garnish"] }, { "type": "string", "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$" }] },
         "data-slidra-text-width": { "$ref": "#/$defs/positive" },
         "data-slidra-text-height": { "$ref": "#/$defs/number" },
         "data-slidra-text-align": { "enum": ["left", "center", "right"] },
@@ -144,7 +144,7 @@
         "data-slidra-header": { "enum": ["0", "1"] },
         "data-slidra-theme": { "enum": ["dark", "light", "zebra"] }
       },
-      "allOf": [{ "if": { "required": ["data-slidra-role"] }, "then": { "properties": { "id": { "const": "el-background" } } } }]
+      "allOf": [{ "if": { "required": ["data-slidra-role"], "properties": { "data-slidra-role": { "const": "background" } } }, "then": { "properties": { "id": { "const": "el-background" } } } }]
     },
     "slide": {
       "description": "The Slidra attributes of a slide's root <svg> (§3).",
