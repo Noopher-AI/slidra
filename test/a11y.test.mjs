@@ -81,3 +81,14 @@ test("applyAccessibility moves titles to aria-label and hides decoration", () =>
   assert.equal(root.getAttribute("aria-label"), "Slide");
   assert.equal(root.getAttribute("lang"), "en");
 });
+
+test("what revealing an element says: its own item or the items inside it", async () => {
+  const { textRevealedBy } = await import("../lib/viewer/a11y.js");
+  const model = slideAccessibility(slide, { lang: "en" });
+  assert.equal(textRevealedBy(model, "el-group0000000"), "First in group. Second in group");
+  assert.equal(textRevealedBy(model, "el-child20000000"), "Second in group");
+  assert.equal(textRevealedBy(model, "el-photo0000000"), "The team on a beach. Twelve people, sunset");
+  assert.equal(textRevealedBy(model, "el-glow00000000"), "", "decorative elements say nothing");
+  assert.equal(textRevealedBy(null, "x"), "");
+  assert.deepEqual(model.items.find((item) => item.id === "el-child10000000").within, ["el-group0000000"]);
+});

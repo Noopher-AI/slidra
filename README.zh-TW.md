@@ -72,6 +72,8 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 `project.json` 裡的文件資訊（作者、日期、描述、關鍵字、封面頁）會顯示在簡報庫、標題列和總覽頁上方。
 
+viewer 本身也支援輔助科技與鍵盤操作（播放規格 §9）：以禮貌模式的 live region 報讀每張投影片（頁碼、總頁數、標題），並念出每個步驟新出現的內容；總覽可以用方向鍵移動；對話框會把焦點留在框內；各頁以 axe 檢查沒有 serious 等級的問題；系統設定 `prefers-reduced-motion` 時，所有效果與轉場都會立即完成。
+
 投影片支援無障礙語意（格式規格 §4.7）：每張投影片的 frame 都帶有 deck 的 `lang`（或投影片自己的 `xml:lang`）；投影片的 `<title>` 會成為總覽和螢幕閱讀器看到的名稱；元素的 `<title>` 會轉成 `aria-label`，簡報時不會跳出提示框；標了 `data-slidra-decorative` 的元素則對輔助科技隱藏。
 
 元素可以是連結（格式規格 §4.8）：`data-slidra-link` 可以在新分頁開網頁、依 `data-slidra-slide-id` 跳到另一張投影片，或是 `#next`／`#previous`／`#first`／`#last`。點擊連結元素，或用 Tab 移過去再按 Enter 即可。其他種類的 URL 一律忽略。

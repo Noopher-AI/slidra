@@ -121,7 +121,7 @@ export default function ViewerShell() {
               <path d="M12.5 4.5 7 10l5.5 5.5" />
             </svg>
           </button>
-          <div className="counter" aria-live="polite">
+          <div className="counter">
             <span id="slide-counter">1 / 1</span>
             <span id="step-dots" className="step-dots" aria-hidden="true"></span>
           </div>
@@ -163,6 +163,8 @@ export default function ViewerShell() {
             </svg>
           </button>
         </div>
+
+        <p id="announcer" className="visually-hidden" aria-live="polite" aria-atomic="true"></p>
 
         <div id="blank" className="blank" hidden aria-hidden="true"></div>
 

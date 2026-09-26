@@ -24,6 +24,8 @@
   var linkIds = plan.linkIds || [];
   // A presenter view's copy of the slide plays every medium silently (playback §6.1).
   var muted = plan.muted === true;
+  // The viewer asked for reduced motion (playback §9): every effect at once, same order and steps.
+  var reduceMotion = plan.reducedMotion === true;
   var triggers = plan.triggers || {};
   var triggerIds = plan.triggerIds || [];
   var has = Object.prototype.hasOwnProperty;
@@ -573,14 +575,15 @@
     }
     if (effect.family === "enter") unhideForEnter(effect.target);
 
-    var duration = duringReplay ? 0 : Math.round((effect.duration || 0) * 1000);
-    var delay = duringReplay ? 0 : Math.round(((offsetSeconds || 0) + (effect.delay || 0)) * 1000);
+    var instant = duringReplay || reduceMotion;
+    var duration = instant ? 0 : Math.round((effect.duration || 0) * 1000);
+    var delay = instant ? 0 : Math.round(((offsetSeconds || 0) + (effect.delay || 0)) * 1000);
     if (effect.family === "path") return animatePath(el, effect, duration, delay);
 
     if (effect.by) {
       var build = buildFor(effect.target, effect.by);
       if (build.units.length > 0) {
-        animateBuild(effect, build, duration, delay, duringReplay ? 0 : Math.round((effect.stagger || 0) * 1000));
+        animateBuild(effect, build, duration, delay, instant ? 0 : Math.round((effect.stagger || 0) * 1000));
         return null;
       }
     }

@@ -72,6 +72,8 @@ What plays: all 20 effects of the five effect families (enter, emphasis, exit, m
 
 Document metadata from `project.json` (author, dates, description, keywords, cover slide) shows up in the library, in the title bar and at the top of the overview.
 
+The viewer itself works with assistive technology and the keyboard (playback §9): a polite live region announces each slide (number, total, title) and reads out what each step reveals, the overview moves with the arrow keys, dialogs keep focus inside, the pages pass axe with no serious findings, and with `prefers-reduced-motion` every effect and transition happens at once.
+
 Slides are accessible (format §4.7): each slide frame carries the deck's `lang` (or the slide's own `xml:lang`), a slide's `<title>` names it in the overview and to screen readers, element `<title>`s become `aria-label`s (so they never pop up as tooltips mid-talk), and `data-slidra-decorative` elements are hidden from assistive technology.
 
 Elements can be links (format §4.8): `data-slidra-link` opens a web page in a new tab, jumps to another slide by its `data-slidra-slide-id`, or goes `#next` / `#previous` / `#first` / `#last`. Click a linked element or Tab to it and press Enter. Any other kind of URL is ignored.
