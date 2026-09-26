@@ -40,3 +40,14 @@ export async function waitForSlide(page, n, total) {
   await expectCounter(page, `${n} / ${total}`);
   await expect.poll(async () => inSlide(page, () => document.readyState)).toBe("complete");
 }
+
+/** Jumps to slide `n` (1-based) through the overview, arriving at its opening state. */
+export async function jumpTo(page, n, total) {
+  await page.keyboard.press("g");
+  await page
+    .locator(".overview-item")
+    .nth(n - 1)
+    .locator("button")
+    .click();
+  await waitForSlide(page, n, total);
+}

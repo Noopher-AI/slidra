@@ -22,6 +22,8 @@
   var stageMedia = plan.stageMedia || {};
   var embedIds = plan.embedIds || [];
   var linkIds = plan.linkIds || [];
+  var triggers = plan.triggers || {};
+  var triggerIds = plan.triggerIds || [];
   var has = Object.prototype.hasOwnProperty;
 
   // -1: no step applied yet — the slide's opening state.
@@ -298,9 +300,19 @@
           { opacity: 0, transform: compose(base, "translateY(40px)") },
           { opacity: 1, transform: compose(base, "translateY(0px)") },
         ];
+      case "enter/fly-down":
+        return [
+          { opacity: 0, transform: compose(base, "translateY(-40px)") },
+          { opacity: 1, transform: compose(base, "translateY(0px)") },
+        ];
       case "enter/fly-left":
         return [
           { opacity: 0, transform: compose(base, "translateX(40px)") },
+          { opacity: 1, transform: compose(base, "translateX(0px)") },
+        ];
+      case "enter/fly-right":
+        return [
+          { opacity: 0, transform: compose(base, "translateX(-40px)") },
           { opacity: 1, transform: compose(base, "translateX(0px)") },
         ];
       case "enter/zoom":
@@ -317,6 +329,26 @@
       case "exit/disappear":
       case "exit/fade-out":
         return [{ opacity: 1 }, { opacity: 0 }];
+      case "exit/fly-out-up":
+        return [
+          { opacity: 1, transform: compose(base, "translateY(0px)") },
+          { opacity: 0, transform: compose(base, "translateY(-40px)") },
+        ];
+      case "exit/fly-out-down":
+        return [
+          { opacity: 1, transform: compose(base, "translateY(0px)") },
+          { opacity: 0, transform: compose(base, "translateY(40px)") },
+        ];
+      case "exit/fly-out-left":
+        return [
+          { opacity: 1, transform: compose(base, "translateX(0px)") },
+          { opacity: 0, transform: compose(base, "translateX(-40px)") },
+        ];
+      case "exit/fly-out-right":
+        return [
+          { opacity: 1, transform: compose(base, "translateX(0px)") },
+          { opacity: 0, transform: compose(base, "translateX(40px)") },
+        ];
       case "exit/zoom-out":
         return [
           { opacity: 1, transform: compose(base, "scale(1)") },
@@ -353,7 +385,158 @@
       var point = pathEl.getPointAtLength((length * i) / SAMPLES);
       keyframes.push({ transform: compose(base, "translate(" + (point.x - start.x) + "px, " + (point.y - start.y) + "px)") });
     }
-    return el.animate(keyframes, { duration: duration, delay: delay, fill: "forwards", easing: "linear" });
+    return el.animate(keyframes, { duration: duration, delay: delay, fill: "forwards", easing: easingFor(effect) });
+  }
+
+  /** spec/playback.md §3.2.1: the named curves; `ease` by default, `linear` for a path. */
+  var EASINGS = {
+    ease: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+    linear: "linear",
+    "ease-in": "cubic-bezier(0.42, 0, 1, 1)",
+    "ease-out": "cubic-bezier(0, 0, 0.58, 1)",
+    "ease-in-out": "cubic-bezier(0.42, 0, 0.58, 1)",
+    overshoot: "cubic-bezier(0.34, 1.56, 0.64, 1)",
+  };
+
+  function easingFor(effect) {
+    if (effect.easing && has.call(EASINGS, effect.easing)) return EASINGS[effect.easing];
+    return effect.family === "path" ? "linear" : EASINGS.ease;
+  }
+
+  // ── Text builds (spec/playback.md §3.5) ──────────────────────────────
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var builds = Object.create(null); // target + "|" + by -> { units: [...], shapes: [...] }
+
+  function isSvgElement(node, name) {
+    return node && node.nodeType === 1 && node.namespaceURI === SVG_NS && node.localName === name;
+  }
+
+  function containsText(node) {
+    return isSvgElement(node, "text") || (node.getElementsByTagNameNS && node.getElementsByTagNameNS(SVG_NS, "text").length > 0);
+  }
+
+  /** Wraps the non-white-space runs (word) or characters (letter) of every text node under `node` in bare <tspan>s, which move no glyph. */
+  function splitText(node, by, units) {
+    var children = [];
+    for (var child = node.firstChild; child; child = child.nextSibling) children.push(child);
+    for (var i = 0; i < children.length; i++) {
+      var c = children[i];
+      if (c.nodeType === 1) {
+        splitText(c, by, units);
+        continue;
+      }
+      if (c.nodeType !== 3 && c.nodeType !== 4) continue;
+      var parts = by === "word" ? c.data.split(/(\s+)/) : Array.from(c.data);
+      var fragment = document.createDocumentFragment();
+      for (var p = 0; p < parts.length; p++) {
+        if (parts[p] === "") continue;
+        if (/^\s+$/.test(parts[p])) {
+          fragment.appendChild(document.createTextNode(parts[p]));
+          continue;
+        }
+        var span = document.createElementNS(SVG_NS, "tspan");
+        span.textContent = parts[p];
+        fragment.appendChild(span);
+        units.push(span);
+      }
+      node.replaceChild(fragment, c);
+    }
+  }
+
+  /** A <text>'s lines: runs of its children, each starting at a tspan with x or data-slidra-break, wrapped in one <tspan>. */
+  function splitLines(text, units) {
+    var groups = [];
+    var current = [];
+    for (var child = text.firstChild; child; child = child.nextSibling) {
+      var startsLine = isSvgElement(child, "tspan") && (child.hasAttribute("x") || child.getAttribute("data-slidra-break") === "true");
+      if (startsLine && current.length > 0) {
+        groups.push(current);
+        current = [];
+      }
+      current.push(child);
+    }
+    if (current.length > 0) groups.push(current);
+    if (groups.length <= 1) {
+      units.push(text);
+      return;
+    }
+    for (var g = 0; g < groups.length; g++) {
+      var wrapper = document.createElementNS(SVG_NS, "tspan");
+      text.insertBefore(wrapper, groups[g][0]);
+      for (var n = 0; n < groups[g].length; n++) wrapper.appendChild(groups[g][n]);
+      units.push(wrapper);
+    }
+  }
+
+  /** The units and the non-text shapes of `target` for a build by `by`, split once and cached. */
+  function buildFor(target, by) {
+    var key = target + "|" + by;
+    if (builds[key]) return builds[key];
+    var el = document.getElementById(target);
+    var build = { units: [], shapes: [] };
+    if (el) {
+      var visit = function (node) {
+        for (var child = node.firstChild; child; child = child.nextSibling) {
+          if (child.nodeType !== 1) continue;
+          if (isSvgElement(child, "text")) {
+            if (by === "line") splitLines(child, build.units);
+            else splitText(child, by, build.units);
+          } else if (containsText(child)) {
+            visit(child);
+          } else if (!isSvgElement(child, "title") && !isSvgElement(child, "desc") && !isSvgElement(child, "metadata")) {
+            build.shapes.push(child);
+          }
+        }
+      };
+      visit(el);
+    }
+    builds[key] = build;
+    return build;
+  }
+
+  function prepareBuilds() {
+    var all = steps.slice();
+    for (var t = 0; t < triggerIds.length; t++) all = all.concat(triggers[triggerIds[t]] || []);
+    for (var s = 0; s < all.length; s++) {
+      for (var e = 0; e < all[s].effects.length; e++) {
+        var effect = all[s].effects[e];
+        if (effect.by) buildFor(effect.target, effect.by);
+      }
+    }
+  }
+
+  function unitCount(effect) {
+    return effect.by ? buildFor(effect.target, effect.by).units.length : 0;
+  }
+
+  /** An effect's length on the step clock (spec/playback.md §3.1). */
+  function lengthOf(effect) {
+    var length = (effect.duration || 0) * (effect.repeat || 1);
+    var units = unitCount(effect);
+    if (units > 1) length += (units - 1) * (effect.stagger || 0);
+    return length;
+  }
+
+  /** Fades every unit (and, with the first or last unit, the shapes) of a build. */
+  function animateBuild(effect, build, duration, delay, stagger) {
+    var enter = effect.family === "enter";
+    var frames = enter
+      ? [
+          { fillOpacity: 0, strokeOpacity: 0 },
+          { fillOpacity: 1, strokeOpacity: 1 },
+        ]
+      : [
+          { fillOpacity: 1, strokeOpacity: 1 },
+          { fillOpacity: 0, strokeOpacity: 0 },
+        ];
+    var options = function (offset) {
+      return { duration: duration, delay: delay + offset, fill: enter ? "backwards" : "forwards", easing: easingFor(effect) };
+    };
+    for (var u = 0; u < build.units.length; u++) build.units[u].animate(frames, options(u * stagger));
+    var shapeOffset = enter ? 0 : (build.units.length - 1) * stagger;
+    var shapeFrames = enter ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }];
+    for (var sh = 0; sh < build.shapes.length; sh++) build.shapes[sh].animate(shapeFrames, options(shapeOffset));
   }
 
   /**
@@ -390,16 +573,25 @@
     var delay = duringReplay ? 0 : Math.round(((offsetSeconds || 0) + (effect.delay || 0)) * 1000);
     if (effect.family === "path") return animatePath(el, effect, duration, delay);
 
+    if (effect.by) {
+      var build = buildFor(effect.target, effect.by);
+      if (build.units.length > 0) {
+        animateBuild(effect, build, duration, delay, duringReplay ? 0 : Math.round((effect.stagger || 0) * 1000));
+        return null;
+      }
+    }
+
     var keyframes = keyframesFor(el, effect);
     if (!keyframes) return null;
     return el.animate(keyframes, {
       duration: duration,
       delay: delay,
+      iterations: effect.repeat || 1,
       // An exit must stay gone; an entrance shows its first keyframe while
       // it waits out its delay (its pre-hide rule is already gone, so without
       // a backwards fill it would sit at full opacity until it starts).
       fill: effect.family === "exit" ? "forwards" : effect.family === "enter" ? "backwards" : "none",
-      easing: "ease",
+      easing: easingFor(effect),
     });
   }
 
@@ -418,7 +610,7 @@
       fn(effect, base);
       var start = base + (effect.delay || 0);
       prevStart = start;
-      prevEnd = start + (effect.duration || 0);
+      prevEnd = start + lengthOf(effect);
     }
   }
 
@@ -458,6 +650,7 @@
     }
     mediaElements = Object.create(null);
     for (var e = 0; e < embedIds.length; e++) post({ event: "embed-command", id: embedIds[e], command: "pause" });
+    resetTriggers();
 
     for (var s = 0; s <= target; s++) applyStep(steps[s], true);
   }
@@ -487,6 +680,42 @@
   // element ids are linked and reports an activation by id.
 
   var linked = Object.create(null);
+
+  // ── Triggers (spec/playback.md §3.6) ─────────────────────────────────
+
+  var triggerPosition = Object.create(null); // trigger id -> last step run (-1: none)
+
+  function resetTriggers() {
+    for (var i = 0; i < triggerIds.length; i++) triggerPosition[triggerIds[i]] = -1;
+  }
+
+  function setUpTriggers() {
+    resetTriggers();
+    for (var i = 0; i < triggerIds.length; i++) {
+      var el = document.getElementById(triggerIds[i]);
+      if (!el) continue;
+      el.setAttribute("tabindex", "0");
+      if (!el.getAttribute("role")) el.setAttribute("role", "button");
+      el.style.cursor = "pointer";
+    }
+  }
+
+  /** The trigger element containing `node`, if any. */
+  function triggerFor(node) {
+    for (var el = node; el && el.nodeType === 1; el = el.parentNode) {
+      var id = el.getAttribute("id");
+      if (id && has.call(triggerPosition, id)) return id;
+    }
+    return null;
+  }
+
+  function runTrigger(id) {
+    var list = triggers[id] || [];
+    var next = triggerPosition[id] + 1;
+    if (next >= list.length) return;
+    triggerPosition[id] = next;
+    applyStep(list[next], false);
+  }
 
   function setUpLinks() {
     for (var i = 0; i < linkIds.length; i++) {
@@ -527,6 +756,12 @@
         followLink(focusedLink);
         return;
       }
+      var focusedTrigger = triggerFor(document.activeElement);
+      if (focusedTrigger) {
+        event.preventDefault();
+        runTrigger(focusedTrigger);
+        return;
+      }
     }
     if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === " " || event.key === "PageDown" || event.key === "Enter") {
       event.preventDefault();
@@ -564,6 +799,11 @@
     var link = linkFor(target);
     if (link) {
       followLink(link);
+      return;
+    }
+    var trigger = triggerFor(target);
+    if (trigger) {
+      runTrigger(trigger);
       return;
     }
     if (target && target.closest && target.closest("button, video, audio, a")) return;
@@ -637,6 +877,8 @@
   resetHidden();
   buildStageMedia();
   setUpLinks();
+  setUpTriggers();
+  prepareBuilds();
 
   // Arriving backwards lands on the slide's last step: replay up to it.
   var startStep = typeof plan.startStep === "number" ? plan.startStep : -1;
