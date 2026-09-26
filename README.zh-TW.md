@@ -41,6 +41,7 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | 設定 | 預設值 | |
 |---|---|---|
 | `SLIDRA_DECKS` | `decks:examples` | 要列在首頁的目錄（往下找三層）或 `.slidra` 檔 |
+| `SLIDRA_ALLOW_REMOTE` | 未設定 | 設為 `1` 時，這台 server 列出的 deck 可以直接載入網路資源，不必先詢問（見下方說明） |
 | `--port`、`PORT` | `3000` | |
 | `--hostname` | 所有網路介面 | |
 
@@ -72,7 +73,7 @@ deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁�
 
 容器本身同樣不可信任：讀取器能承受截斷、損毀或惡意構造的檔案（`test/fuzz.test.mjs` 以變異方式 fuzz；`npm run fuzz` 會跑較長的一輪），並以錯誤訊息收場。超過 1 GB 的 deck、單一條目超過 256 MB、條目超過 50,000 個，以及解壓後超出宣告大小的 ZIP 條目，一律拒絕開啟。
 
-投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。
+投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。如果 deck 引用了網路上的資源（`https:` 圖片、CSS `url()`、YouTube 嵌入），在你按下 **Load external content** 之前一律不載入，因為光是一張遠端圖片，就會讓那台 server 知道你何時打開了這份 deck（格式規格 §13）。封鎖是靠投影片 frame 的 Content-Security-Policy 做到的，不是改寫 markup。
 
 ## 驗證 deck
 

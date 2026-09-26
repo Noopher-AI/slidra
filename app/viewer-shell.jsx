@@ -148,6 +148,13 @@ export default function ViewerShell() {
           </button>
         </div>
 
+        <div id="remote-notice" className="remote-notice" role="region" aria-label="External content" hidden>
+          <p id="remote-text"></p>
+          <button id="remote-allow" className="remote-allow" type="button">
+            Load external content
+          </button>
+        </div>
+
         <div id="progress" className="progress" aria-hidden="true">
           <span id="progress-bar"></span>
         </div>
