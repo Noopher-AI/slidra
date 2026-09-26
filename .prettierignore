@@ -7,3 +7,4 @@ package-lock.json
 *.css
 conformance/manifest.json
 conformance/decks/
+packages/*/dist/

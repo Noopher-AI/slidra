@@ -1,45 +1,54 @@
 "use client";
 
-// The embeddable player (/embed?deck=…): the stage and a small control bar,
-// for an <iframe> on another site. lib/viewer/embed.js wires it up.
+// The embeddable player (/embed?deck=…[#slide]): the <slidra-player> web
+// component (lib/element/) filling the frame, plus a link to the full
+// viewer. Only this server's own decks play here.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function EmbedShell() {
+  const [deck, setDeck] = useState(null);
+  const [start, setStart] = useState(1);
+  const [slide, setSlide] = useState(1);
+  const [status, setStatus] = useState("");
+
   useEffect(() => {
-    import("../../lib/viewer/embed.js").then(({ startEmbed }) => startEmbed());
+    const deckUrl = new URLSearchParams(location.search).get("deck") ?? "";
+    // An embed never fetches a URL from its query string that is not one of this server's decks.
+    if (!deckUrl.startsWith("/decks/")) {
+      setStatus("Nothing to play: the embed code names no deck on this server.");
+      return;
+    }
+    import("../../lib/element/index.js").then(() => {
+      const first = Math.max(1, Number.parseInt(location.hash.slice(1), 10) || 1);
+      setStart(first);
+      setSlide(first);
+      setDeck(deckUrl);
+    });
   }, []);
 
+  useEffect(() => {
+    const player = document.getElementById("player");
+    if (!player) return;
+    const follow = (event) => setSlide(event.detail.slide);
+    player.addEventListener("slidechange", follow);
+    player.focus();
+    return () => player.removeEventListener("slidechange", follow);
+  }, [deck]);
+
   return (
-    <main id="embed" className="embed">
-      <div id="e-stage" className="embed-stage">
-        <div id="e-surface" className="surface">
-          <iframe id="e-frame" className="slide-frame" title="Slide" sandbox="allow-scripts" allow="autoplay; fullscreen"></iframe>
-          <div id="e-embeds" className="embed-layer"></div>
-        </div>
-      </div>
-      <nav className="embed-bar" aria-label="Playback">
-        <button id="e-prev" className="icon-button" type="button" aria-label="Previous">
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M12.5 4.5 7 10l5.5 5.5" />
-          </svg>
-        </button>
-        <span id="e-counter" className="embed-counter" aria-live="polite"></span>
-        <button id="e-next" className="icon-button" type="button" aria-label="Next">
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M7.5 4.5 13 10l-5.5 5.5" />
-          </svg>
-        </button>
-        <a id="e-open" className="embed-open" target="_blank" rel="noopener">
-          Open in Slidra
+    <main className="embed">
+      {deck ? <slidra-player id="player" src={deck} slide={String(start)} controls="" runtime-src="/js/player-runtime.js" class="embed-player"></slidra-player> : null}
+      {deck ? (
+        <a id="e-open" className="embed-open" href={`/?deck=${encodeURIComponent(deck)}#${slide}`} target="_blank" rel="noopener">
+          Open in Slidra ↗
         </a>
-        <button id="e-fullscreen" className="icon-button" type="button" aria-label="Fullscreen">
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M3.5 7.5v-4h4M16.5 7.5v-4h-4M3.5 12.5v4h4M16.5 12.5v4h-4" />
-          </svg>
-        </button>
-      </nav>
-      <p id="e-status" className="embed-status" role="status" hidden></p>
+      ) : null}
+      {status ? (
+        <p id="e-status" className="embed-status" role="status">
+          {status}
+        </p>
+      ) : null}
     </main>
   );
 }

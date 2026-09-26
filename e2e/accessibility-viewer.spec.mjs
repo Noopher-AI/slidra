@@ -68,6 +68,7 @@ test("the overview moves with the arrow keys and dialogs keep Tab inside", async
   await waitForSlide(page, 10, 10);
 
   await page.keyboard.press("?");
+  await expect(page.locator("#key-help")).toBeVisible();
   const inside = () => page.evaluate(() => Boolean(document.activeElement.closest("#key-help")));
   for (let i = 0; i < 4; i++) {
     await page.keyboard.press("Tab");

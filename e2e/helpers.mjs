@@ -38,6 +38,8 @@ export async function openDeckFile(page, bytes, name = "test.slidra") {
 /** Waits until the slide runtime has reported ready for slide `n` (1-based). */
 export async function waitForSlide(page, n, total) {
   await expectCounter(page, `${n} / ${total}`);
+  // The counter changes as soon as the move starts; the frame is marked once the new slide is ready for keys.
+  await expect(page.locator("#slide-frame")).toHaveAttribute("data-ready-slide", String(n));
   await expect.poll(async () => inSlide(page, () => document.readyState)).toBe("complete");
 }
 

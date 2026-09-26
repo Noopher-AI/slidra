@@ -48,6 +48,17 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.slidra#3` opens the showcase at slide 3. Such a link previews as the deck in chat apps and social sites: its name, description and cover slide (`/api/og` renders the cover as a 1200×630 PNG on the server, with every external reference in the slide removed first).
 
+## Web component
+
+`<slidra-player>` puts a deck on any page, with no framework and no server of its own. `npm run build:element` builds it into one ES module with the slide runtime inside (`packages/slidra-player/`, published as `@slidra/player`):
+
+```html
+<script type="module" src="slidra-player.js"></script>
+<slidra-player src="talk.slidra" controls slide="3"></slidra-player>
+```
+
+It has `next()`, `previous()`, `goTo(n)`, `slide`, `step` and `slideCount`, and fires `slidechange`, `stepchange` and `error`. Slides still render in sandboxed frames, and network resources stay blocked unless the element has `allow-remote`. `/embed` is built on it. See [`packages/slidra-player/README.md`](packages/slidra-player/README.md).
+
 ## Embedding
 
 Any deck this server lists can be embedded in another site:
@@ -102,6 +113,7 @@ lib/decks.js         server-side deck discovery (SLIDRA_DECKS)
 lib/schema.js        compiles spec/schema/ with Ajv (Node only; tests and tools)
 lib/writer/          the reference writer: build, edit and convert decks (Node ≥ 22.5)
 lib/validate.js      the checks behind bin/slidra-validate.mjs
+lib/element/         <slidra-player>, the web component (packages/slidra-player/ is its npm package)
 lib/viewer/
   sqlite-reader.js      read-only SQLite file-format reader (b-trees, records, overflow pages)
   zip-reader.js         read-only ZIP reader for legacy decks
