@@ -4,6 +4,8 @@ import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 import { applyAccessibility, chartSummary, slideAccessibility, tableText, textOf } from "../lib/viewer/a11y.js";
 
 const NS = "https://slidra.app/ns/2026";
+/** xmldom elements stand in for DOM elements here; a11y.js only uses DOM Level 2 calls both provide. */
+/** @returns {any} */
 const parse = (body, rootAttrs = "") =>
   new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:slidra="${NS}" viewBox="0 0 1280 720"${rootAttrs}>${body}</svg>`, "image/svg+xml").documentElement;
 
