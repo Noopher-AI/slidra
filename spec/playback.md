@@ -190,3 +190,14 @@ A deck printed or exported to a page-based format (PDF, images) shows each slide
 A player MAY also export a slide once per step, showing what the audience sees after that step. When it does, each page shows the pre-hidden elements that have entered by then and hides those that have left; emphasis and motion paths are shown at rest.
 
 Speaker notes (format §9) appear on printed pages only when the person printing asks for them. Comments (format §10) never do.
+
+## 9. Assistive technology and reduced motion
+
+A player SHOULD tell assistive technology what changes, without the viewer having to look for it:
+
+- on a slide change, the slide's number, the total and its title (format §4.7), if it has one;
+- on a step, what that step reveals: the text (format §4.7's "what a reader derives") of each element that enters in it, in effect-list order.
+
+It SHOULD announce these politely (never interrupting speech), keep keyboard focus where the viewer can keep presenting, let every control and the overview be used from the keyboard, and keep focus inside a dialog while one is open.
+
+When the viewer's system asks for reduced motion (`prefers-reduced-motion: reduce`), a player SHOULD play every effect with zero duration and delay, in the same order and steps (media still plays), and make page transitions instant; a morph (§5.1) becomes an instant change. Nothing about the deck's content changes.
