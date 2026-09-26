@@ -4,46 +4,38 @@
 //   node --no-warnings tools/build-examples.mjs [--font path/to/font.ttf] [--media dir]
 //
 // --font  an OFL font to embed (subset it first to keep the deck small)
+// --out   where to write the decks (default: examples/)
 // --media a directory holding intro.webm / narration.oga for the media slide
 
-import { readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import { DeckWriter } from "../lib/writer/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = path.join(ROOT, "examples");
 const NS = "https://slidra.app/ns/2026";
 const args = process.argv.slice(2);
 const argValue = (name) => {
   const i = args.indexOf(name);
   return i === -1 ? null : args[i + 1];
 };
+const OUT = argValue("--out") ? path.resolve(argValue("--out")) : path.join(ROOT, "examples");
 const fontPath = argValue("--font");
 const mediaDir = argValue("--media");
 
 // ─── Container writers ─────────────────────────────────────────────────
 
-/** Writes a formatVersion 5 deck exactly as RFC 0001 describes it. */
+/** Writes a formatVersion 5 deck through the reference writer (lib/writer/). */
 function writeSqliteDeck(file, entries) {
-  rmSync(file, { force: true });
-  const db = new DatabaseSync(file);
-  db.exec("PRAGMA journal_mode = DELETE");
-  db.exec("PRAGMA application_id = 1399612530"); // ASCII "Sldr"
-  db.exec("PRAGMA user_version = 5");
-  db.exec(
-    "CREATE TABLE content (\n    id INTEGER PRIMARY KEY,\n    path TEXT NOT NULL UNIQUE,\n    kind INTEGER NOT NULL,   -- 0 = file, 1 = directory\n    data BLOB                -- NULL for a directory row\n)",
-  );
-  const insert = db.prepare("INSERT INTO content (path, kind, data) VALUES (?, ?, ?)");
-  for (const dir of ["slides", "assets", "fonts"]) insert.run(dir, 1, null);
+  const { slides, ...fields } = JSON.parse(String(entries.find(([entryPath]) => entryPath === "project.json")[1]));
+  const deck = new DeckWriter(fields);
   for (const [entryPath, data] of entries) {
-    if (data === null) {
-      if (!["slides", "assets", "fonts"].includes(entryPath)) insert.run(entryPath, 1, null);
-      continue;
-    }
-    insert.run(entryPath, 0, typeof data === "string" ? Buffer.from(data, "utf8") : data);
+    if (entryPath === "project.json" || slides.includes(entryPath)) continue;
+    if (data === null) deck.addDirectory(entryPath);
+    else deck.addFile(entryPath, data);
   }
-  db.close();
+  for (const slide of slides) deck.addSlide(entries.find(([entryPath]) => entryPath === slide)[1], { path: slide });
+  deck.write(file);
 }
 
 function project(name, slides, extra = {}) {
@@ -793,4 +785,4 @@ writeSqliteDeck(path.join(OUT, "showcase.slidra"), deck.entries);
 writeSqliteDeck(path.join(OUT, "minimal.slidra"), minimalDeck.entries);
 // Every glyph the example decks use, for subsetting the embedded font.
 writeFileSync(path.join(ROOT, "tools", ".showcase-text.txt"), deck.text + minimalDeck.text);
-console.log("wrote examples/showcase.slidra, examples/minimal.slidra");
+console.log(`wrote ${path.relative(process.cwd(), path.join(OUT, "showcase.slidra"))}, ${path.relative(process.cwd(), path.join(OUT, "minimal.slidra"))}`);
