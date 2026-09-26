@@ -85,7 +85,13 @@ UTF-8 JSON, the deck's root metadata. Machine-readable: [`schema/project.schema.
       "source": "https://fonts.google.com/noto/specimen/Noto+Sans+TC"
     }
   ],
-  "templates": [{ "file": "templates/001.svg", "name": "Title Slide" }]
+  "templates": [{ "file": "templates/001.svg", "name": "Title Slide" }],
+  "author": "Alice Chen",
+  "created": "2026-09-01T09:00:00Z",
+  "modified": "2026-09-20T17:45:00+08:00",
+  "description": "Quarterly review for the platform team.",
+  "keywords": ["review", "Q3"],
+  "cover": "slides/001.svg"
 }
 ```
 
@@ -98,10 +104,20 @@ UTF-8 JSON, the deck's root metadata. Machine-readable: [`schema/project.schema.
 | `fonts` | `FontEntry[]` | no | Embedded fonts (§8). |
 | `templates` | `(string \| { file, name })[]` | no | Template slides; bare strings are the legacy form and may be mixed with objects. |
 | `transition` | string | no | Reserved; no effect. |
+| `author` | string | no | Who made the deck, as it should be displayed. |
+| `created` | string | no | When the deck was first created: an RFC 3339 date-time (`2026-09-01T09:00:00Z`). Never changed afterwards. |
+| `modified` | string | no | When the deck's content last changed, RFC 3339. Writers update it on every save that changes content. |
+| `description` | string | no | A one- or two-sentence summary, plain text. |
+| `keywords` | string[] | no | Free-form tags. |
+| `cover` | string | no | The slide that represents the deck in lists and previews. MUST be one of `slides`; default is the first slide. |
+
+### 2.1 Document metadata
+
+`author`, `created`, `modified`, `description`, `keywords` and `cover` describe the deck; they never change how it renders or plays. A reader that shows them (in a library, a title bar, a link preview) MUST treat them as untrusted plain text. Writers MUST write them with the types above. A reader MUST NOT reject a deck over them: it ignores a field of the wrong type, an unparseable date, and a `cover` that is not one of `slides` (falling back to the first slide), and it may report the problem.
 
 **Unknown fields are preserved.** A writer MUST keep fields it does not understand; a reader MUST NOT reject a deck for carrying them. Writers serialise with 2-space indentation and a trailing newline, preserving key order.
 
-### 2.1 `FontEntry`
+### 2.2 `FontEntry`
 
 ```ts
 interface FontEntry {
@@ -309,7 +325,7 @@ At most one `<slidra:transition>` per slide; two or more, or an invalid value, m
 
 ## 8. Fonts
 
-Fonts are stored under `fonts/` and registered in `project.json` (§2.1). Slides refer to them by `font-family` name only; a reader that renders the deck MUST make every registered font available under its `family` name (e.g. with `@font-face`). A deck with no `fonts` array but a `fonts/NotoSansTC-Presentation.ttf` file SHOULD be rendered with that file as `Noto Sans TC`.
+Fonts are stored under `fonts/` and registered in `project.json` (§2.2). Slides refer to them by `font-family` name only; a reader that renders the deck MUST make every registered font available under its `family` name (e.g. with `@font-face`). A deck with no `fonts` array but a `fonts/NotoSansTC-Presentation.ttf` file SHOULD be rendered with that file as `Noto Sans TC`.
 
 A slide opened on its own, outside its deck, falls back to system fonts — pixel-identical rendering is then not guaranteed. Fonts are deliberately not inlined into every slide.
 
