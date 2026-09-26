@@ -74,7 +74,10 @@ npm run lint              # ESLint（設定在 eslint.config.mjs）
 npm run format            # Prettier；npm run format:check 只檢查不改寫
 npm run typecheck         # 以 TypeScript 檢查帶 JSDoc 型別的 JavaScript（jsconfig.json，checkJs）
 npm run check             # lint + format:check + typecheck + 單元測試，開 PR 前先跑一次
+npm run test:e2e          # 瀏覽器測試（Playwright，Chromium）：播放、導覽、投影片沙箱
 ```
+
+瀏覽器測試會自己在 port 3107 啟動 `next dev`（可用 `SLIDRA_E2E_PORT` 改掉）。第一次請先執行 `npx playwright install chromium` 安裝瀏覽器。測試用的 deck 由 `test/fixtures/make-deck.mjs` 即時產生。
 
 viewer 核心是純 ES modules（`lib/viewer/`），由 Next.js 打包；`npm run dev` 會自動重新載入。
 
