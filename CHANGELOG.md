@@ -10,6 +10,11 @@ This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The player reads a deck through a `DeckSource` (`lib/viewer/source.js`): `project()`, `slide(path)` and `fileUrl(path)`, with optional `slideIds()` and `presenter()`. It fetches only the slides it shows and prepares, and loads fonts and images from the source's URLs, admitted one by one by the slide frame's CSP. `openDeck` and every file-based path play exactly as before (`deckSourceFromBytes`). `<slidra-player>` takes one as its `source` property; `startViewer({ source, presenterUrl })` and `startPresenter({ openSource })` let a page play one in the viewer and its presenter view.
 
+### Tooling
+
+- `npm run bundle` builds `dist/slidra-bundle/` deterministically, for vendoring the format and player at one tag: the viewer library (`player/slidra-viewer.js`, the public API of the new `lib/viewer/index.js`, slide runtime inlined), the viewer's and presenter view's markup and stylesheet, `<slidra-player>`, the slide runtime, a self-contained validator (`validator/slidra-validate.mjs`: `validateDeck` and the CLI, ajv and xmldom bundled), the schemas, the spec, the conformance suite and a `MANIFEST.json` of sizes and sha256s with the source commit. Pushing a `format-v*` tag attaches `slidra-bundle-<tag>.tar.gz` and its `.sha256` to that tag's GitHub release.
+- When bundled, `startViewer` and `startPresenter` use the inlined slide runtime instead of fetching `/js/player-runtime.js`. The validator CLI moved to `lib/validate-cli.js`; `bin/slidra-validate.mjs` behaves as before.
+
 ## 6.0.0 — formatVersion 6
 
 formatVersion 6 freezes the format as it stands here: the SQLite container of 0.1.0, unchanged, plus everything under *Format and playback* below, including the layout-role vocabulary. A deck says so with `formatVersion` 6 in `project.json` and `PRAGMA user_version` 6.

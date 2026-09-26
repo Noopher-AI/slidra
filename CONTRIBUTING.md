@@ -35,6 +35,7 @@ npm run dev                       # the viewer on http://localhost:3000
 | `npm run validate -- <deck>` | Check a deck against the spec |
 | `npm run fuzz` | A long mutation-fuzzing run of the deck readers |
 | `npm run build:element` | Build the `<slidra-player>` bundle into `packages/slidra-player/dist/` |
+| `npm run bundle` | Build `dist/slidra-bundle/`, the deterministic bundle for vendoring that each `format-v*` tag releases |
 
 ## Making a change
 

@@ -183,12 +183,36 @@ npm run lint              # ESLint（設定在 eslint.config.mjs）
 npm run format            # Prettier；npm run format:check 只檢查不改寫
 npm run typecheck         # 以 TypeScript 檢查帶 JSDoc 型別的 JavaScript（jsconfig.json，checkJs）
 npm run check             # lint + format:check + typecheck + 單元測試，開 PR 前先跑一次
+npm run bundle            # 建置供 vendoring 的 dist/slidra-bundle/（見「供 vendoring 的 bundle」）
 npm run test:e2e          # 瀏覽器測試（Playwright，Chromium）：播放、導覽、投影片沙箱
 ```
 
 瀏覽器測試會自己在 port 3107 啟動 `next dev`（可用 `SLIDRA_E2E_PORT` 改掉）。第一次請先執行 `npx playwright install chromium` 安裝瀏覽器。測試用的 deck 由 `test/fixtures/make-deck.mjs` 即時產生。
 
 viewer 核心是純 ES modules（`lib/viewer/`），由 Next.js 打包；`npm run dev` 會自動重新載入。
+
+## 供 vendoring 的 bundle
+
+`npm run bundle` 會產生 `dist/slidra-bundle/`：其他專案要在某個 tag 上 vendor 這份格式與播放器所需的一切，不必再下載或安裝任何東西。每個 `format-v*` tag（例如 `format-v6`）的 GitHub release 會附上 `slidra-bundle-<tag>.tar.gz` 和對應的 `.sha256` 檔（`.github/workflows/release-bundle.yml`）。
+
+| 路徑 | 內容 |
+|---|---|
+| `player/slidra-viewer.js` | viewer 函式庫打包成一個 ES module（`lib/viewer/index.js`），內含投影片 runtime：`openDeck`、`Deck`、`DeckError`、`deckInfo`、`FORMAT_VERSION`、`APPLICATION_ID`、`NAMESPACE`、`DEFAULT_LIMITS`；deck source（`deckSourceFromBytes`、`BytesDeckSource`、`PlayableDeck`、`openSource`；`DeckSource` 介面寫在 `lib/viewer/source.js`）；`Player`、`prepareSlide`、`PLAYER_RUNTIME`；viewer 頁面的 `startViewer` 與 `startPresenter`；以及做縮圖、列印與匯出用的 `buildPrintout`、`printEntries`、`markupAtStep`、`PER_PAGE`、`renderThumbnail`、`renderSlidePng`、`fontFaceCss`、`staticDocument`、`zipStore` |
+| `player/viewer-shell.html`、`player/presenter-shell.html`、`player/slidra-viewer.css` | `startViewer` 與 `startPresenter` 掛載用的 markup，以及它的樣式表 |
+| `player/slidra-player.js` | `<slidra-player>` web component |
+| `player/player-runtime.js` | 投影片 runtime，即 `/js/player-runtime.js` 提供的那一份 |
+| `validator/slidra-validate.mjs` | 含相依套件的驗證器（Node 22.5 以上）：`import { validateDeck } from "./slidra-validate.mjs"`，或直接執行 `node slidra-validate.mjs [--json] [--strict] <deck>…`；旁邊附 `THIRD-PARTY-LICENSES.txt` |
+| `schema/`、`spec/`、`conformance/` | JSON Schema、規格（含 RFC），以及一致性測試 deck 與其 `manifest.json`、`README.md` |
+| `MANIFEST.json`、`LICENSE` | formatVersion、來源 commit，以及其他每個檔案的大小與 sha256，依路徑排序 |
+
+建置是確定性的：同一個 commit 產出逐位元組相同的檔案。要驗證 vendor 進來的副本，可以在該 tag 重新建置後比對 manifest：
+
+```bash
+git checkout format-v6 && npm ci && npm run bundle
+diff dist/slidra-bundle/MANIFEST.json path/to/vendored/MANIFEST.json
+```
+
+或用 release 附的檢查碼驗證 tarball：`sha256sum -c slidra-bundle-format-v6.tar.gz.sha256`。
 
 ## 部署
 

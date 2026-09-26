@@ -214,12 +214,36 @@ npm run lint              # ESLint (flat config in eslint.config.mjs)
 npm run format            # Prettier; npm run format:check only reports
 npm run typecheck         # TypeScript over the JSDoc-annotated JavaScript (jsconfig.json, checkJs)
 npm run check             # lint + format:check + typecheck + unit tests: run before opening a pull request
+npm run bundle            # build dist/slidra-bundle/ for vendoring (see "Bundle for vendoring")
 npm run test:e2e          # browser tests (Playwright, Chromium): playback, navigation, the slide sandbox
 ```
 
 The browser tests start their own `next dev` on port 3107 (`SLIDRA_E2E_PORT` overrides it). Install the browser once with `npx playwright install chromium`. Test decks are built on the fly by `test/fixtures/make-deck.mjs`.
 
 The viewer core is plain ES modules (`lib/viewer/`) bundled by Next.js; `npm run dev` reloads on save.
+
+## Bundle for vendoring
+
+`npm run bundle` builds `dist/slidra-bundle/`: everything another project needs to vendor the format and the player at one tag, with nothing to fetch or install. Each `format-v*` tag (for example `format-v6`) gets it attached to its GitHub release as `slidra-bundle-<tag>.tar.gz`, with a `.sha256` file beside it (`.github/workflows/release-bundle.yml`).
+
+| Path | What it is |
+|---|---|
+| `player/slidra-viewer.js` | The viewer library as one ES module (`lib/viewer/index.js`), the slide runtime inlined: `openDeck`, `Deck`, `DeckError`, `deckInfo`, `FORMAT_VERSION`, `APPLICATION_ID`, `NAMESPACE`, `DEFAULT_LIMITS`; deck sources (`deckSourceFromBytes`, `BytesDeckSource`, `PlayableDeck`, `openSource`; the `DeckSource` interface is documented in `lib/viewer/source.js`); `Player`, `prepareSlide`, `PLAYER_RUNTIME`; the viewer's pages `startViewer` and `startPresenter`; and `buildPrintout`, `printEntries`, `markupAtStep`, `PER_PAGE`, `renderThumbnail`, `renderSlidePng`, `fontFaceCss`, `staticDocument`, `zipStore` for thumbnails, printouts and exports |
+| `player/viewer-shell.html`, `player/presenter-shell.html`, `player/slidra-viewer.css` | The markup `startViewer` and `startPresenter` wire themselves onto, and its stylesheet |
+| `player/slidra-player.js` | The `<slidra-player>` web component |
+| `player/player-runtime.js` | The slide runtime, as served at `/js/player-runtime.js` |
+| `validator/slidra-validate.mjs` | The validator with its dependencies (Node ≥ 22.5): `import { validateDeck } from "./slidra-validate.mjs"`, or run it as `node slidra-validate.mjs [--json] [--strict] <deck>…`; `THIRD-PARTY-LICENSES.txt` beside it |
+| `schema/`, `spec/`, `conformance/` | The JSON Schemas, the specification (with its RFCs), and the conformance decks with `manifest.json` and `README.md` |
+| `MANIFEST.json`, `LICENSE` | formatVersion, the source commit, and the size and sha256 of every other file, sorted by path |
+
+The build is deterministic: the same commit gives byte-identical files. To check a vendored copy, either rebuild at the tag and compare manifests:
+
+```bash
+git checkout format-v6 && npm ci && npm run bundle
+diff dist/slidra-bundle/MANIFEST.json path/to/vendored/MANIFEST.json
+```
+
+or check the release tarball against its checksum: `sha256sum -c slidra-bundle-format-v6.tar.gz.sha256`.
 
 ## Deployment
 
