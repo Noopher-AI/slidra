@@ -57,7 +57,7 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 <slidra-player src="talk.slidra" controls slide="3"></slidra-player>
 ```
 
-It has `next()`, `previous()`, `goTo(n)`, `slide`, `step` and `slideCount`, and fires `slidechange`, `stepchange` and `error`. Slides still render in sandboxed frames, and network resources stay blocked unless the element has `allow-remote`. `/embed` is built on it. See [`packages/slidra-player/README.md`](packages/slidra-player/README.md).
+It has `next()`, `previous()`, `goTo(n)`, `slide`, `step` and `slideCount`, and fires `slidechange`, `stepchange` and `error`. Instead of `src`, a page can set its `source` property to a [deck source](#deck-sources), and the element reads only the slides it shows from it. Slides still render in sandboxed frames, and network resources stay blocked unless the element has `allow-remote`. `/embed` is built on it. See [`packages/slidra-player/README.md`](packages/slidra-player/README.md).
 
 ## Embedding
 
@@ -90,7 +90,7 @@ Any deck this server lists can be embedded in another site:
 
 What plays: all 20 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, six easing curves, repeats, text builds by line, word or letter, click triggers on any element, per-slide page transitions (fade, slide, zoom, and morph, which moves elements that share an id from one slide's layout to the next), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Current decks (formatVersion 6, SQLite) open, and so do legacy ones, read-only: formatVersion 5 (SQLite) and 1–4 (ZIP).
 
-**Presenter view.** Press `P` (or the presenter button) to open a second window for yourself: the current slide playing silently, the next step or slide, your notes, an elapsed timer with pause and reset, and the clock. This window stays the audience screen (drag it to the projector and press `F`), plays the sound, and stops showing notes while the presenter view is open. Keys and buttons in either window move both. The deck goes to the presenter window over a `BroadcastChannel`, so decks opened from a local file work too.
+**Presenter view.** Press `P` (or the presenter button) to open a second window for yourself: the current slide playing silently, the next step or slide, your notes, an elapsed timer with pause and reset, and the clock. This window stays the audience screen (drag it to the projector and press `F`), plays the sound, and stops showing notes while the presenter view is open. Keys and buttons in either window move both. The deck goes to the presenter window over a `BroadcastChannel`, so decks opened from a local file work too. A deck played from a [deck source](#deck-sources) sends the source's `presenter()` descriptor instead, and the presenter page opens its own source from it (`startPresenter({ openSource })`).
 
 Document metadata from `project.json` (author, dates, description, keywords, cover slide) shows up in the library, in the title bar and at the top of the overview.
 
@@ -117,9 +117,10 @@ lib/element/         <slidra-player>, the web component (packages/slidra-player/
 lib/viewer/
   sqlite-reader.js      read-only SQLite file-format reader (b-trees, records, overflow pages)
   zip-reader.js         read-only ZIP reader for legacy decks
-  deck.js               opens a deck, validates project.json, inlines entries as data: URLs
+  deck.js               opens a deck file, validates project.json, inlines entries as data: URLs
+  source.js             the DeckSource interface the player reads decks through, and the source for a file
   effects.js            effect & transition validation, step derivation (pure, unit-tested)
-  slide.js              per-slide preparation: dynamic text, play plan, asset inlining
+  slide.js              per-slide preparation: dynamic text, play plan, deck file references
   frame.js              the sandboxed srcdoc documents slides render in
   player.js             the host: page transitions, navigation, embeds
   app.js                home page and presenter UI
@@ -136,9 +137,36 @@ Large decks stay light: overview and library thumbnails are small PNGs rendered 
 
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
 
+### Deck sources
+
+The player never needs the whole file: it reads a deck through a **deck source** (`lib/viewer/source.js`), and asks it only for what it shows.
+
+```js
+/** @typedef {{
+ *   project(): Promise<object>,                       // project.json, parsed; the player checks it again
+ *   slide(path: string): Promise<string>,             // one slide's SVG markup, fetched when needed
+ *   fileUrl(path: string): Promise<string|null> | string | null, // a URL for a font, image, video or audio file
+ *   slideIds?(): Promise<(string|null)[]>,            // optional: each slide's data-slidra-slide-id, for links
+ *   presenter?(): unknown,                            // optional: what a presenter window opens its own copy from
+ * }} DeckSource */
+```
+
+`deckSourceFromBytes(bytes)` is the source behind the viewer, `/embed` and `<slidra-player src>`: the whole file in memory, files handed out as `data:` URLs, exactly as before. A server can implement the same interface and never send the file: project.json, one slide at a time (speaker notes stripped for viewers, if it likes), and each packaged file at its own URL. The player prepares only the slides around the current one (plus thumbnails and printouts when asked), reads `@font-face` and `<image href>` from the source's URLs instead of inlining them, and draws thumbnails and printouts from copies it fetches (so font URLs, loaded in CORS mode from the frame's opaque origin, and image URLs used in thumbnails need `Access-Control-Allow-Origin`). Everything a source returns is still untrusted: project.json is validated again, slides are prepared like any other, and only `data:`, `blob:` and `http(s):` file URLs are used.
+
+```js
+const player = document.querySelector("slidra-player");
+player.source = {
+  project: () => fetch("/api/decks/42/project.json").then((r) => r.json()),
+  slide: (path) => fetch(`/api/decks/42/${path}`).then((r) => r.text()),
+  fileUrl: (path) => filesByPath[path] ?? null, // e.g. content-addressed https URLs
+};
+```
+
+The viewer app takes one too: `startViewer({ source, presenterUrl })` in `lib/viewer/app.js`, with `startPresenter({ openSource })` on the presenter page turning the source's `presenter()` descriptor back into a source.
+
 The container is untrusted as well: the readers survive truncated, corrupted and hostile files (mutation-fuzzed in `test/fuzz.test.mjs`; `npm run fuzz` runs a long campaign) and fail with a message. Decks over 1 GB, single entries over 256 MB, more than 50,000 entries, and ZIP entries that inflate beyond their declared size are refused.
 
-Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all. A deck that references the network (an `https:` image, a CSS `url()`, a YouTube embed) loads none of it until you press **Load external content**, because even one remote image tells its server when you opened the deck (format §13). The block is the slide frame's Content-Security-Policy, not a markup rewrite.
+Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all; a deck source's own file URLs are admitted one by one (origin and path, never a whole scheme), and are not the deck's network content. A deck that references the network (an `https:` image, a CSS `url()`, a YouTube embed) loads none of it until you press **Load external content**, because even one remote image tells its server when you opened the deck (format §13). The block is the slide frame's Content-Security-Policy, not a markup rewrite.
 
 ## Validating decks
 
