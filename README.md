@@ -82,6 +82,7 @@ public/js/player-runtime.js  runs inside each slide frame: steps, Web Animations
 spec/                the format and playback specifications
 examples/            example decks (tools/build-examples.mjs rebuilds them)
 test/                unit tests (node --test)
+e2e/                 browser tests (Playwright)
 ```
 
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
@@ -97,7 +98,10 @@ npm run lint              # ESLint (flat config in eslint.config.mjs)
 npm run format            # Prettier; npm run format:check only reports
 npm run typecheck         # TypeScript over the JSDoc-annotated JavaScript (jsconfig.json, checkJs)
 npm run check             # lint + format:check + typecheck + unit tests: run before opening a pull request
+npm run test:e2e          # browser tests (Playwright, Chromium): playback, navigation, the slide sandbox
 ```
+
+The browser tests start their own `next dev` on port 3107 (`SLIDRA_E2E_PORT` overrides it). Install the browser once with `npx playwright install chromium`. Test decks are built on the fly by `test/fixtures/make-deck.mjs`.
 
 The viewer core is plain ES modules (`lib/viewer/`) bundled by Next.js; `npm run dev` reloads on save.
 
