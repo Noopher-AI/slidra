@@ -334,20 +334,29 @@ An effect is a playback-time animation of exactly one element. A slide's effects
 | `duration` | no | Seconds, as a plain decimal (`0.6`, `2`, `.5`; no sign, exponent or hex). Default `0.6`; `0` for `media`. |
 | `delay` | no | Seconds. Default `0`. |
 | `d` | for `path` | SVG path data (slide coordinates, relative motion). |
+| `easing` | no | `ease` \| `linear` \| `ease-in` \| `ease-out` \| `ease-in-out` \| `overshoot`. Default `ease`; `linear` for `path`. Not allowed on `media`. |
+| `repeat` | no | How many times the effect runs, a positive integer. Default `1`. `emphasis` only. |
+| `by` | no | `line` \| `word` \| `letter`: build the target's text one unit at a time (playback §3.5). `enter` and `exit` only. |
+| `stagger` | no | Seconds between units when `by` is set. Default `0.1`. Only with `by`. |
+| `trigger` | no | Id of an element on this slide. The effect then runs when that element is activated, not when the slide advances (§6.3). |
 
 ### 6.2 Families
 
 | Family | Effects |
 |---|---|
-| `enter` | `appear`, `fade`, `fly-up`, `fly-left`, `zoom` |
+| `enter` | `appear`, `fade`, `fly-up`, `fly-down`, `fly-left`, `fly-right`, `zoom` |
 | `emphasis` | `pulse`, `spin`, `grow` |
-| `exit` | `disappear`, `fade-out`, `zoom-out` |
+| `exit` | `disappear`, `fade-out`, `fly-out-up`, `fly-out-down`, `fly-out-left`, `fly-out-right`, `zoom-out` |
+
+A `fly-*` name says which way the element moves: `fly-up` rises into place from below, `fly-out-left` leaves towards the left.
 | `path` | `path` |
 | `media` | `play`, `pause` |
 
 ### 6.3 Steps
 
 Effects are grouped into **steps**, the unit of advancing: every `on-click` effect opens a new step; `with-previous` and `after-previous` effects join the current one. Steps are derived, never stored.
+
+Effects with a `trigger` are left out of the slide's steps. Each trigger element gets its own sequence, built from its effects in list order by the same rule: every activation of the trigger (a click, or Enter while it has focus) runs its next step. Advancing the slide never runs them.
 
 ### 6.4 Validity
 
@@ -358,7 +367,9 @@ A slide's effect list is **corrupt** — and a reader MUST NOT animate it (it SH
 - `target` names no element on the slide;
 - a `path` effect has no `d`;
 - `duration` or `delay` is present but not a finite, non-negative decimal number (an empty `duration=""` is invalid, not "default"; `1e3`, `0x10` and `Infinity` are invalid too);
-- the first effect's `start` is not `on-click`;
+- the first effect's `start` is not `on-click` — counting only effects without a `trigger`, and separately for each trigger's own effects;
+- `easing`, `by` or `repeat` has a value not listed above, `stagger` is not a valid number of seconds, or `trigger` names no element on the slide;
+- `easing` is set on a `media` effect, `repeat` on a family other than `emphasis`, `by` on a family other than `enter` and `exit`, or `stagger` without `by`;
 - a `media` `play` effect's target has no `data-slidra-media` (and is not an embed), or names an unsupported format.
 
 How each family animates is specified in [`playback.md`](playback.md).
