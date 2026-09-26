@@ -72,6 +72,18 @@ deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁�
 
 投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。
 
+## 驗證 deck
+
+`slidra-validate` 依規格檢查 deck，每一項發現都會標出依據的條文。錯誤包括讀取器必須拒絕的、會讓投影片被視為損壞的，以及 writer 絕不能產生的內容；警告則是規格裡的 SHOULD，例如缺少替代文字，或 deck 需要連網才能載入資源。
+
+```bash
+npm run validate -- talk.slidra                # 或：node bin/slidra-validate.mjs talk.slidra
+✓ talk.slidra (sqlite, formatVersion 5, 12 slides): 0 errors, 1 warning
+  warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
+```
+
+`--json` 輸出機器可讀的報告，`--strict` 讓警告也算失敗，`--quiet` 只顯示錯誤。所有 deck 都有效時結束碼為 0，任何一個有錯誤時為 1，參數錯誤時為 2。同樣的檢查也可以直接呼叫 `lib/validate.js` 的 `validateDeck(bytes)`。
+
 ## 產生 deck
 
 `lib/writer/` 是參考實作的 writer（需要 Node 22.5 以上的 `node:sqlite`）。規格對 writer 的要求它全部照做：RFC 0001 的檔頭、明確的目錄列、安全的路徑、依 schema 檢查 `project.json` 並保留原本的欄位順序、保留看不懂的欄位與資料表，並以原子方式取代檔案。
