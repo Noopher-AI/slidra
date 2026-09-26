@@ -4,8 +4,11 @@
 **Status:** Stable
 **Namespace:** `https://slidra.app/ns/2026`
 **Companion documents:** [`playback.md`](playback.md) (how a deck plays) · [`rfcs/0001-sqlite-container-format.md`](rfcs/0001-sqlite-container-format.md) (why the container is SQLite)
+**Schemas:** [`schema/project.schema.json`](schema/project.schema.json) (§2) · [`schema/metadata.schema.json`](schema/metadata.schema.json) (§4–§12)
 
 A `.slidra` file is a self-contained presentation: slides, their animations, speaker notes, media and fonts, in one file. Slides are plain SVG — the slide file *is* the rendered artifact, not an intermediate format.
+
+The JSON Schemas under [`schema/`](schema/) are normative for the shapes they describe. Where this text and a schema disagree, that is a bug in one of them; report it. A schema cannot express every rule (a listed slide must exist in the container, an effect's target must name an element on its slide), so the prose also states rules the schemas leave out.
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY** are to be read as in RFC 2119. A *reader* is any program that opens a deck (a viewer, a converter); a *writer* is any program that creates or changes one.
 
@@ -65,7 +68,7 @@ Every entry path is relative, `/`-separated, and MUST NOT be empty, start with `
 
 ## 2. `project.json`
 
-UTF-8 JSON, the deck's root metadata.
+UTF-8 JSON, the deck's root metadata. Machine-readable: [`schema/project.schema.json`](schema/project.schema.json) (JSON Schema 2020-12).
 
 ```jsonc
 {
@@ -110,7 +113,7 @@ interface FontEntry {
 }
 ```
 
-`file` and `licenseFile` follow §1.4.
+`file` and `licenseFile` follow §1.4. Writers MUST write all five fields. To render a deck, a reader needs only `file` and `family` and MUST NOT reject a deck for missing the other three.
 
 ---
 
@@ -218,7 +221,7 @@ At most one element per slide carries `data-slidra-role="background"`. It has th
 
 ## 5. Metadata
 
-Slide-level metadata lives in `<metadata>` as elements in the Slidra namespace. Recognised elements:
+Slide-level metadata lives in `<metadata>` as elements in the Slidra namespace. Machine-readable: [`schema/metadata.schema.json`](schema/metadata.schema.json). XML attributes are strings, so an element is checked by reading its attributes into a JSON object and validating it against the definition named after the element (`$defs/effect` for `<slidra:effect>`, `$defs/element` for an element container, and so on). Recognised elements:
 
 | Element | Purpose |
 |---|---|
@@ -250,7 +253,7 @@ An effect is a playback-time animation of exactly one element. A slide's effects
 | `family` | yes | `enter` \| `emphasis` \| `exit` \| `path` \| `media` |
 | `effect` | yes | One of the family's effects (§6.2). |
 | `start` | yes | `on-click` \| `with-previous` \| `after-previous` |
-| `duration` | no | Seconds. Default `0.6`; `0` for `media`. |
+| `duration` | no | Seconds, as a plain decimal (`0.6`, `2`, `.5`; no sign, exponent or hex). Default `0.6`; `0` for `media`. |
 | `delay` | no | Seconds. Default `0`. |
 | `d` | for `path` | SVG path data (slide coordinates, relative motion). |
 
@@ -276,7 +279,7 @@ A slide's effect list is **corrupt** — and a reader MUST NOT animate it (it SH
 - `family`, `effect` or `start` is not one of the values above;
 - `target` names no element on the slide;
 - a `path` effect has no `d`;
-- `duration` or `delay` is present but not a finite, non-negative decimal number (an empty `duration=""` is invalid, not "default");
+- `duration` or `delay` is present but not a finite, non-negative decimal number (an empty `duration=""` is invalid, not "default"; `1e3`, `0x10` and `Infinity` are invalid too);
 - the first effect's `start` is not `on-click`;
 - a `media` `play` effect's target has no `data-slidra-media` (and is not an embed), or names an unsupported format.
 
