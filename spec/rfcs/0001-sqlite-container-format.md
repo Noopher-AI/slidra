@@ -1,6 +1,7 @@
 # RFC 0001: The SQLite container — the deck file is the workspace
 
 **Status:** accepted, implemented (format version 5)
+**Note:** format version 6 keeps this container unchanged (only `user_version` and `formatVersion` read `6`); version 5 is now legacy. See [`slidra-format.md` §1.2](../slidra-format.md#12-legacy-containers-formatversion-15). This RFC is kept as written.
 **Supersedes:** the ZIP container of format versions 1–4
 
 ## Summary

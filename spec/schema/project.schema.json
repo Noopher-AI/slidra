@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://slidra.app/schema/5/project.schema.json",
+  "$id": "https://slidra.app/schema/6/project.schema.json",
   "title": ".slidra project.json",
-  "description": "The deck's root metadata (slidra-format.md §2). Unknown fields are allowed and MUST be preserved by writers. Rules that need the container (every listed path names an existing file; formatVersion 5 only in a SQLite container, 1-4 only in a ZIP one) are checked by readers, not by this schema.",
+  "description": "The deck's root metadata (slidra-format.md §2). Unknown fields are allowed and MUST be preserved by writers. Rules that need the container (every listed path names an existing file; formatVersion 6, or legacy 5, only in a SQLite container; legacy 1-4 only in a ZIP one) are checked by readers, not by this schema.",
   "type": "object",
   "required": ["formatVersion", "name", "canvas", "slides"],
   "properties": {
     "formatVersion": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 5
+      "maximum": 6
     },
     "name": {
       "type": "string"
