@@ -5,6 +5,7 @@
 **Namespace:** `https://slidra.app/ns/2026`
 **Companion documents:** [`playback.md`](playback.md) (how a deck plays) · [`rfcs/0001-sqlite-container-format.md`](rfcs/0001-sqlite-container-format.md) (why the container is SQLite)
 **Schemas:** [`schema/project.schema.json`](schema/project.schema.json) (§2) · [`schema/metadata.schema.json`](schema/metadata.schema.json) (§4–§12)
+**Conformance suite:** [`../conformance/`](../conformance/) — decks with the verdict a conforming reader must reach
 
 A `.slidra` file is a self-contained presentation: slides, their animations, speaker notes, media and fonts, in one file. Slides are plain SVG — the slide file *is* the rendered artifact, not an intermediate format.
 
