@@ -546,6 +546,8 @@ A deck is meant to be opened by people other than its author, and a valid SVG ca
 - SHOULD render each slide in a sandboxed, opaque-origin frame (`<iframe sandbox="allow-scripts">` without `allow-same-origin` when it needs its own runtime inside the frame; never both flags together), with a Content-Security-Policy that admits only the reader's own runtime;
 - MUST treat every id, attribute and text value from a slide as data — in particular when building selectors, JSON or HTML from them;
 - MUST NOT follow entry paths outside the deck (§1.4);
+- MUST treat the container bytes as untrusted too: a malformed or hostile file (a truncated database, a page pointing outside the file, a ZIP entry that inflates far beyond its declared size) MUST end in an error that says the deck cannot be read, never a crash or a hang;
+- SHOULD enforce limits on the size of the file, of any one entry and on the number of entries, checking a ZIP entry's declared size before inflating it, and say which limit a deck exceeded;
 - MUST open external links (§4.8) only on the user's own activation, outside the viewer, without giving the opened page a reference back to it (`noopener`), and only for `http:`, `https:` and `mailto:` URLs.
 
 ---
