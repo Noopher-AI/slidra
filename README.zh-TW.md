@@ -14,6 +14,7 @@
 一個 `.slidra` 檔就是一份完整的簡報：SVG 投影片、動畫與換頁轉場、講者備忘稿、影音與字型，全部以列的形式存在同一個 SQLite 資料庫裡。這個 repository 包含：
 
 - **格式規格**：[`spec/slidra-format.md`](spec/slidra-format.md)（deck 是什麼）、[`spec/playback.md`](spec/playback.md)（deck 怎麼播放）、[`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md)（為什麼容器是 SQLite），以及 [`spec/schema/`](spec/schema/) 底下 `project.json` 與投影片詞彙的 JSON Schema。
+- **一致性測試套件**：[`conformance/`](conformance/)，49 個小型 deck，各自附上符合規格的讀取器應該得到的判定，可用來測試任何實作。
 - **Viewer**：在瀏覽器打開 `.slidra` 就能播放，動畫照跑。以 Next.js 建置，檔案不會上傳。
 
 為什麼開放格式、為什麼選 SVG：請看〈[為什麼我們開放 `.slidra` 格式](docs/why-open-the-slidra-format_zh.md)〉。
@@ -94,6 +95,7 @@ await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5，�
 ```bash
 npm test                  # 單元測試：SQLite 讀取器（與 node:sqlite 交叉比對）、ZIP 讀取器、deck 與效果驗證
 npm run examples          # 重建 examples/（需要 Node 22.5 以上的 node:sqlite）
+npm run conformance       # 依 conformance/cases.mjs 重建 conformance/decks 與 manifest.json
 npm run lint              # ESLint（設定在 eslint.config.mjs）
 npm run format            # Prettier；npm run format:check 只檢查不改寫
 npm run typecheck         # 以 TypeScript 檢查帶 JSDoc 型別的 JavaScript（jsconfig.json，checkJs）

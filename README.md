@@ -14,6 +14,7 @@
 A `.slidra` file is one self-contained presentation: SVG slides, their animations and page transitions, speaker notes, media and fonts, stored as rows of a single SQLite database. This repository holds:
 
 - **The specification** — [`spec/slidra-format.md`](spec/slidra-format.md) (what a deck *is*), [`spec/playback.md`](spec/playback.md) (how a deck *plays*), [`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md) (why the container is SQLite), and JSON Schemas for `project.json` and the slide vocabulary under [`spec/schema/`](spec/schema/).
+- **A conformance suite** — [`conformance/`](conformance/): 49 small decks with the verdict a conforming reader must reach, for testing any implementation.
 - **A viewer** — open a `.slidra` file in your browser and present it, animations included. Built with Next.js; nothing is uploaded.
 
 Why open the format, and why SVG: [Why We Are Opening the `.slidra` Format](docs/why-open-the-slidra-format.md).
@@ -89,6 +90,7 @@ lib/viewer/
 public/js/player-runtime.js  runs inside each slide frame: steps, Web Animations, media
 spec/                the format and playback specifications; spec/schema/ holds their JSON Schemas
 examples/            example decks (tools/build-examples.mjs rebuilds them)
+conformance/         conformance decks + manifest (tools/build-conformance.mjs rebuilds them)
 test/                unit tests (node --test)
 e2e/                 browser tests (Playwright)
 ```
@@ -120,6 +122,7 @@ await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5, in
 ```bash
 npm test                  # unit tests: SQLite reader (cross-checked against node:sqlite), ZIP reader, deck & effect validation
 npm run examples          # rebuild examples/ (Node ≥ 22.5 for node:sqlite)
+npm run conformance       # rebuild conformance/decks and manifest.json from conformance/cases.mjs
 npm run lint              # ESLint (flat config in eslint.config.mjs)
 npm run format            # Prettier; npm run format:check only reports
 npm run typecheck         # TypeScript over the JSDoc-annotated JavaScript (jsconfig.json, checkJs)
