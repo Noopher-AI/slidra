@@ -85,7 +85,9 @@ function boot(plan, ids) {
   vm.runInContext(RUNTIME, context);
   const send = (command) => listeners.window.message({ data: { source: "slidra-host", command }, source: parent });
   const click = (id) => listeners.document.click({ target: doc.elements.get(id) });
-  return { doc, posted, send, click, hide };
+  const press = (key) => listeners.document.keydown({ key, ctrlKey: false, metaKey: false, altKey: false, preventDefault() {} });
+  const hold = (value) => listeners.window.message({ data: { source: "slidra-host", command: "hold-keys", hold: value }, source: parent });
+  return { doc, posted, send, click, hide, press, hold };
 }
 
 const effect = (target, family, name, start, extra = {}) => ({ target, family, effect: name, start, duration: 0.6, delay: 0, ...extra });
@@ -228,4 +230,23 @@ test("a trigger runs its own steps without advancing, and retreat starts it over
   send("retreat");
   click("t");
   assert.equal(doc.animations.at(-1).target, "a", "retreat reset the trigger to its first step");
+});
+
+test("while the host holds the keys, every key goes to the host; a digit holds them at once", () => {
+  const { doc, posted, press, hold } = boot(plan([[effect("a", "emphasis", "pulse", "on-click")]]), ["a"]);
+  const keys = () => posted.filter((m) => m.event === "key").map((m) => m.key);
+  hold(true);
+  press("ArrowRight");
+  press("Enter");
+  assert.deepEqual(keys(), ["ArrowRight", "Enter"]);
+  assert.equal(doc.animations.length, 0, "the slide did not advance");
+  hold(false);
+  press("ArrowRight");
+  assert.equal(doc.animations.length, 1);
+
+  // A digit is forwarded and holds the keys before the host has answered, so Enter cannot advance.
+  press("4");
+  press("Enter");
+  assert.deepEqual(keys().slice(-2), ["4", "Enter"]);
+  assert.equal(doc.animations.length, 1);
 });

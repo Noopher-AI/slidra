@@ -57,6 +57,9 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 | `G` (or `O`) | Overview of all slides |
 | `N` | Speaker notes |
 | `F` | Fullscreen |
+| `B` or `.` / `W` or `,` | Black / white screen; any key or click brings the slide back |
+| A number, then `Enter` | Go to that slide |
+| `?` | List the keyboard shortcuts |
 | `Esc` | Close overview → leave fullscreen → close the deck |
 
 What plays: all 20 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, six easing curves, repeats, text builds by line, word or letter, click triggers on any element, per-slide page transitions (fade, slide, zoom, and morph, which moves elements that share an id from one slide's layout to the next), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Both the current SQLite container (format 5) and legacy ZIP decks (format 1–4) open.

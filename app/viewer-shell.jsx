@@ -148,6 +148,71 @@ export default function ViewerShell() {
           </button>
         </div>
 
+        <div id="blank" className="blank" hidden aria-hidden="true"></div>
+
+        <div id="goto" className="goto" role="status" hidden>
+          Go to slide <b id="goto-number"></b> <kbd>Enter</kbd>
+        </div>
+
+        <div id="key-help" className="key-help" role="dialog" aria-modal="true" aria-labelledby="key-help-title" hidden>
+          <div className="key-help-card">
+            <div className="key-help-head">
+              <h2 id="key-help-title">Keyboard shortcuts</h2>
+              <button id="key-help-close" className="icon-button" type="button" aria-label="Close" title="Close (Esc)">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5 5l10 10M15 5 5 15" />
+                </svg>
+              </button>
+            </div>
+            <dl className="key-help-list">
+              <dt>
+                <kbd>→</kbd> <kbd>Space</kbd> <kbd>PageDown</kbd> <kbd>Enter</kbd>
+              </dt>
+              <dd>Next step or slide</dd>
+              <dt>
+                <kbd>←</kbd> <kbd>PageUp</kbd> <kbd>Backspace</kbd>
+              </dt>
+              <dd>Previous step or slide</dd>
+              <dt>
+                <kbd>Home</kbd> <kbd>End</kbd>
+              </dt>
+              <dd>First slide, end of the last slide</dd>
+              <dt>
+                <kbd>1</kbd>…<kbd>9</kbd> then <kbd>Enter</kbd>
+              </dt>
+              <dd>Go to that slide</dd>
+              <dt>
+                <kbd>B</kbd> <kbd>.</kbd>
+              </dt>
+              <dd>Black screen (any key returns)</dd>
+              <dt>
+                <kbd>W</kbd> <kbd>,</kbd>
+              </dt>
+              <dd>White screen</dd>
+              <dt>
+                <kbd>G</kbd> <kbd>O</kbd>
+              </dt>
+              <dd>Overview of all slides</dd>
+              <dt>
+                <kbd>N</kbd>
+              </dt>
+              <dd>Speaker notes</dd>
+              <dt>
+                <kbd>F</kbd>
+              </dt>
+              <dd>Fullscreen</dd>
+              <dt>
+                <kbd>?</kbd>
+              </dt>
+              <dd>This list</dd>
+              <dt>
+                <kbd>Esc</kbd>
+              </dt>
+              <dd>Close a panel, leave fullscreen, close the deck</dd>
+            </dl>
+          </div>
+        </div>
+
         <div id="remote-notice" className="remote-notice" role="region" aria-label="External content" hidden>
           <p id="remote-text"></p>
           <button id="remote-allow" className="remote-allow" type="button">
