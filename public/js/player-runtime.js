@@ -395,8 +395,10 @@
     return el.animate(keyframes, {
       duration: duration,
       delay: delay,
-      // An exit must stay gone; every other family ends at identity.
-      fill: effect.family === "exit" ? "forwards" : "none",
+      // An exit must stay gone; an entrance shows its first keyframe while
+      // it waits out its delay (its pre-hide rule is already gone, so without
+      // a backwards fill it would sit at full opacity until it starts).
+      fill: effect.family === "exit" ? "forwards" : effect.family === "enter" ? "backwards" : "none",
       easing: "ease",
     });
   }
