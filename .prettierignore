@@ -1,0 +1,7 @@
+.next/
+node_modules/
+examples/
+decks/
+package-lock.json
+*.md
+*.css

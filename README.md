@@ -93,6 +93,10 @@ Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox
 ```bash
 npm test                  # unit tests: SQLite reader (cross-checked against node:sqlite), ZIP reader, deck & effect validation
 npm run examples          # rebuild examples/ (Node ≥ 22.5 for node:sqlite)
+npm run lint              # ESLint (flat config in eslint.config.mjs)
+npm run format            # Prettier; npm run format:check only reports
+npm run typecheck         # TypeScript over the JSDoc-annotated JavaScript (jsconfig.json, checkJs)
+npm run check             # lint + format:check + typecheck + unit tests: run before opening a pull request
 ```
 
 The viewer core is plain ES modules (`lib/viewer/`) bundled by Next.js; `npm run dev` reloads on save.

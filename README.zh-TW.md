@@ -70,6 +70,10 @@ deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁�
 ```bash
 npm test                  # 單元測試：SQLite 讀取器（與 node:sqlite 交叉比對）、ZIP 讀取器、deck 與效果驗證
 npm run examples          # 重建 examples/（需要 Node 22.5 以上的 node:sqlite）
+npm run lint              # ESLint（設定在 eslint.config.mjs）
+npm run format            # Prettier；npm run format:check 只檢查不改寫
+npm run typecheck         # 以 TypeScript 檢查帶 JSDoc 型別的 JavaScript（jsconfig.json，checkJs）
+npm run check             # lint + format:check + typecheck + 單元測試，開 PR 前先跑一次
 ```
 
 viewer 核心是純 ES modules（`lib/viewer/`），由 Next.js 打包；`npm run dev` 會自動重新載入。

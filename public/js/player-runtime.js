@@ -308,19 +308,11 @@
           { opacity: 1, transform: compose(base, "scale(1)") },
         ];
       case "emphasis/pulse":
-        return [
-          { transform: compose(base, "scale(1)") },
-          { transform: compose(base, "scale(1.15)") },
-          { transform: compose(base, "scale(1)") },
-        ];
+        return [{ transform: compose(base, "scale(1)") }, { transform: compose(base, "scale(1.15)") }, { transform: compose(base, "scale(1)") }];
       case "emphasis/spin":
         return [{ transform: compose(base, "rotate(0deg)") }, { transform: compose(base, "rotate(360deg)") }];
       case "emphasis/grow":
-        return [
-          { transform: compose(base, "scale(1)") },
-          { transform: compose(base, "scale(1.3)") },
-          { transform: compose(base, "scale(1)") },
-        ];
+        return [{ transform: compose(base, "scale(1)") }, { transform: compose(base, "scale(1.3)") }, { transform: compose(base, "scale(1)") }];
       case "exit/disappear":
       case "exit/fade-out":
         return [{ opacity: 1 }, { opacity: 0 }];
