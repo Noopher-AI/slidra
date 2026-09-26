@@ -69,6 +69,8 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 ## 運作方式
 
+大型 deck 也不會拖垮瀏覽器：總覽和簡報庫的縮圖是從每張投影片算一次的小 PNG（以 SVG 圖片繪製，不會執行 script、也不會連網），只保留目前投影片附近約十二張的前處理結果，內嵌資源則共用一個有上限的快取。
+
 deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁面的檔案不會離開你的電腦。SQLite 讀取器是自己寫的唯讀實作（`lib/viewer/sqlite-reader.js`），不需要 WebAssembly。
 
 容器本身同樣不可信任：讀取器能承受截斷、損毀或惡意構造的檔案（`test/fuzz.test.mjs` 以變異方式 fuzz；`npm run fuzz` 會跑較長的一輪），並以錯誤訊息收場。超過 1 GB 的 deck、單一條目超過 256 MB、條目超過 50,000 個，以及解壓後超出宣告大小的 ZIP 條目，一律拒絕開啟。

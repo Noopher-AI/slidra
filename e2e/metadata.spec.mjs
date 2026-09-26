@@ -6,8 +6,9 @@ test("the library shows a deck's author and description and previews its cover s
   const card = page.locator(".deck-card", { hasText: "Quarterly Review" });
   await expect(card).toContainText("2 slides · Alice Chen");
   await expect(card).toHaveAttribute("title", "Numbers for the platform team.");
-  const thumb = card.locator(".deck-thumb iframe");
-  await expect(thumb).toHaveAttribute("srcdoc", /The cover slide/);
+  const thumb = card.locator(".deck-thumb img");
+  await expect(thumb).toHaveAttribute("data-slide", "2");
+  await expect.poll(() => thumb.evaluate((img) => /** @type {HTMLImageElement} */ (img).naturalWidth)).toBeGreaterThan(0);
 });
 
 test("the viewer shows the author in the title bar and the full metadata in the overview", async ({ page }) => {

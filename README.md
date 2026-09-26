@@ -97,6 +97,8 @@ test/                unit tests (node --test)
 e2e/                 browser tests (Playwright)
 ```
 
+Large decks stay light: overview and library thumbnails are small PNGs rendered once from each slide (drawn as an SVG image, which runs no script and loads nothing), only the dozen slides around the current one are kept prepared, and inlined assets share a bounded cache.
+
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
 
 The container is untrusted as well: the readers survive truncated, corrupted and hostile files (mutation-fuzzed in `test/fuzz.test.mjs`; `npm run fuzz` runs a long campaign) and fail with a message. Decks over 1 GB, single entries over 256 MB, more than 50,000 entries, and ZIP entries that inflate beyond their declared size are refused.
