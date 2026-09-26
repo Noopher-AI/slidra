@@ -41,6 +41,7 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | Setting | Default | |
 |---|---|---|
 | `SLIDRA_DECKS` | `decks:examples` | Directories (searched 3 levels deep) or `.slidra` files to list on the home page |
+| `SLIDRA_ALLOW_REMOTE` | unset | `1` lets the decks this server lists load network resources without asking (see below) |
 | `--port`, `PORT` | `3000` | |
 | `--hostname` | all interfaces | |
 
@@ -100,7 +101,7 @@ The deck is parsed **entirely in the browser**: the server only hands out bytes,
 
 The container is untrusted as well: the readers survive truncated, corrupted and hostile files (mutation-fuzzed in `test/fuzz.test.mjs`; `npm run fuzz` runs a long campaign) and fail with a message. Decks over 1 GB, single entries over 256 MB, more than 50,000 entries, and ZIP entries that inflate beyond their declared size are refused.
 
-Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all.
+Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all. A deck that references the network (an `https:` image, a CSS `url()`, a YouTube embed) loads none of it until you press **Load external content**, because even one remote image tells its server when you opened the deck (format §13). The block is the slide frame's Content-Security-Policy, not a markup rewrite.
 
 ## Validating decks
 

@@ -9,10 +9,17 @@ const csp = (html) => /http-equiv="Content-Security-Policy" content="([^"]*)"/.e
 test("the play document's CSP admits only the runtime, by a fresh nonce (format §17)", () => {
   const a = playDocument("<svg/>", "", plan(), -1, "/*runtime*/");
   const b = playDocument("<svg/>", "", plan(), -1, "/*runtime*/");
-  assert.match(csp(a), /^default-src 'none'; script-src 'nonce-[A-Za-z0-9+/]{22}=='; style-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data:$/);
+  assert.match(csp(a), /^default-src 'none'; script-src 'nonce-[A-Za-z0-9+/]{22}=='; style-src 'unsafe-inline'; img-src data:; media-src data:; font-src data:$/);
   assert.notEqual(csp(a), csp(b), "every document gets its own nonce");
   const nonce = /'nonce-([^']+)'/.exec(csp(a))[1];
   assert.equal((a.match(new RegExp(`<script nonce="${nonce.replace(/[+/]/g, "\\$&")}">`, "g")) ?? []).length, 2, "the plan and the runtime, nothing else");
+});
+
+test("network images, media and fonts are blocked until the deck is allowed them (format §13)", () => {
+  assert.doesNotMatch(csp(playDocument("<svg/>", "", plan(), -1, "")), /https:/);
+  assert.match(csp(playDocument("<svg/>", "", plan(), -1, "", { allowRemote: true })), /img-src data: https:; media-src data: https:; font-src data: https:$/);
+  assert.doesNotMatch(csp(staticDocument("<svg/>", "")), /https:/);
+  assert.match(csp(staticDocument("<svg/>", "", { allowRemote: true })), /img-src data: https:/);
 });
 
 test("the static document runs no script at all", () => {
