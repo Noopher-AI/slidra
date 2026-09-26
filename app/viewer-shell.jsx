@@ -55,7 +55,7 @@ export default function ViewerShell() {
             </div>
           </div>
 
-          <div id="dropzone" className="dropzone" tabIndex="0" role="button" aria-label="Drop a .slidra file here, or press Enter to choose one">
+          <div id="dropzone" className="dropzone" tabIndex={0} role="button" aria-label="Drop a .slidra file here, or press Enter to choose one">
             <div className="dropzone-screen">
               <div className="dropzone-glyph" aria-hidden="true">
                 <svg viewBox="0 0 64 64">

@@ -96,7 +96,7 @@ test("validates project.json", () => {
   assert.throws(() => readProject(entries({ ...good, canvas: { width: 0, height: 1 } }), "sqlite"), /canvas/);
   assert.throws(() => readProject(entries({ ...good, slides: ["slides/002.svg"] }), "sqlite"), /no such file/);
   assert.throws(() => readProject(entries({ ...good, slides: ["../etc/passwd"] }), "sqlite"), /invalid slide path/);
-  assert.equal(readProject(entries({ ...good, futureField: { a: 1 } }), "sqlite").futureField.a, 1, "unknown fields are kept");
+  assert.deepEqual(readProject(entries({ ...good, futureField: { a: 1 } }), "sqlite").futureField, { a: 1 }, "unknown fields are kept");
 });
 
 test("entry paths may not escape the deck", () => {

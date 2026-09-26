@@ -580,6 +580,7 @@ function minimal(showcaseEntries) {
   );
 
   // 6 · Four checks
+  /** @type {[string, string, string[]][]} */
   const checks = [
     ["Align", "a.x == b.x", ["Left edges share", "one number."]],
     ["Space", "b.y − (a.y + a.h)", ["The gap is a", "subtraction."]],
@@ -636,6 +637,7 @@ function minimal(showcaseEntries) {
   );
 
   // 8 · Timeline
+  /** @type {[string, string[]][]} */
   const stages = [
     ["Prompt", ["A model writes SVG", "at stated coordinates"]],
     ["Draft", ["Every object gets", "a stable el- id"]],
@@ -676,6 +678,7 @@ function minimal(showcaseEntries) {
   );
 
   // 9 · Donut chart, measured from the showcase deck
+  /** @type {[string, (p: string) => boolean, string][]} */
   const groups = [
     ["Media", (p) => p.startsWith("assets/") && /\.(webm|oga)$/.test(p), M.red],
     ["Fonts", (p) => p.startsWith("fonts/"), M.ink],
@@ -758,6 +761,7 @@ function minimal(showcaseEntries) {
   );
 
   const slidePaths = slides.map((_, i) => `slides/${String(i + 1).padStart(3, "0")}.svg`);
+  /** @type {[string, string | Buffer | null][]} */
   const entries = [
     ["slides", null],
     ["assets", null],
