@@ -1,10 +1,20 @@
 # Changelog
 
-All notable changes to the `.slidra` format and this repository. The format's own version is `formatVersion` in `project.json`; every change below keeps decks at formatVersion 5 and is backward compatible unless it says otherwise.
+All notable changes to the `.slidra` format and this repository. The format's own version is `formatVersion` in `project.json` (and `PRAGMA user_version`); each release below says which formatVersion it defines.
 
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
+
+## 6.0.0 — formatVersion 6
+
+formatVersion 6 freezes the format as it stands here: the SQLite container of 0.1.0, unchanged, plus everything under *Format and playback* below. A deck says so with `formatVersion` 6 in `project.json` and `PRAGMA user_version` 6.
+
+### Breaking
+
+- **formatVersion 6 is the current format; 5 is legacy** (format §1.2). Writers write 6. Readers may still open a formatVersion 5 (SQLite) or 1–4 (ZIP) deck read-only, and a writer that edits one converts it to 6 once, atomically. Any other version is rejected.
+- **The conformance suite covers formatVersion 6 only.** It no longer contains legacy decks: `accept-legacy-zip-v4` and `container-zip-claims-v5` are gone, every other case is rebuilt at formatVersion 6, and `project-format-version-6` (reject) became `project-format-version-7`. New: `project-format-version-0`. A reader that implements only formatVersion 6 passes the whole suite.
+- The JSON Schemas' `$id`s move from `https://slidra.app/schema/5/…` to `https://slidra.app/schema/6/…`.
 
 ### Format and playback
 
@@ -30,11 +40,13 @@ This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Examples
 
 - `motion.slidra` and `sharing.slidra`, feature tours of this round (`tools/build-feature-examples.mjs`).
+- Every example deck is rebuilt at formatVersion 6.
 
 ### Tools
 
 - `slidra-validate`, a validator for decks.
-- `lib/writer/`, the reference writer: build, edit in place, and convert legacy ZIP decks.
+- `lib/writer/`, the reference writer: build formatVersion 6, edit in place (upgrading a formatVersion 5 deck to 6), and convert legacy decks.
+- `slidra-validate` reports a legacy deck (formatVersion 1–5) as a `legacy-format-version` warning.
 
 ### Fixed
 

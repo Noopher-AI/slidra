@@ -1,12 +1,12 @@
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "description": "Expected reader verdicts for the .slidra conformance decks. See conformance/README.md.",
   "cases": [
     {
       "id": "container-not-a-deck",
       "file": "decks/container-not-a-deck.slidra",
       "rule": "format §1.1",
-      "description": "Neither a SQLite nor a ZIP header.",
+      "description": "Not a SQLite database: the file is plain text.",
       "expect": {
         "open": "reject"
       }
@@ -24,7 +24,7 @@
       "id": "container-user-version-mismatch",
       "file": "decks/container-user-version-mismatch.slidra",
       "rule": "format §1.1",
-      "description": "user_version 4 while project.json says formatVersion 5.",
+      "description": "user_version 7 while project.json says formatVersion 6.",
       "expect": {
         "open": "reject"
       }
@@ -57,15 +57,6 @@
       }
     },
     {
-      "id": "container-zip-claims-v5",
-      "file": "decks/container-zip-claims-v5.slidra",
-      "rule": "format §1.2",
-      "description": "A ZIP container whose project.json says formatVersion 5.",
-      "expect": {
-        "open": "reject"
-      }
-    },
-    {
       "id": "project-not-json",
       "file": "decks/project-not-json.slidra",
       "rule": "format §2",
@@ -84,10 +75,19 @@
       }
     },
     {
-      "id": "project-format-version-6",
-      "file": "decks/project-format-version-6.slidra",
+      "id": "project-format-version-7",
+      "file": "decks/project-format-version-7.slidra",
       "rule": "format §2",
-      "description": "formatVersion 6.",
+      "description": "formatVersion 7, a version this format does not define (user_version agrees).",
+      "expect": {
+        "open": "reject"
+      }
+    },
+    {
+      "id": "project-format-version-0",
+      "file": "decks/project-format-version-0.slidra",
+      "rule": "format §2",
+      "description": "formatVersion 0, with user_version 0.",
       "expect": {
         "open": "reject"
       }
@@ -159,20 +159,6 @@
       "file": "decks/accept-unknown-fields-and-tables.slidra",
       "rule": "format §1.1, §2",
       "description": "application_id 0, an unknown project.json field and an extra table: all tolerated.",
-      "expect": {
-        "open": "accept",
-        "slides": [
-          {
-            "status": "ok"
-          }
-        ]
-      }
-    },
-    {
-      "id": "accept-legacy-zip-v4",
-      "file": "decks/accept-legacy-zip-v4.slidra",
-      "rule": "format §1.2",
-      "description": "A legacy ZIP deck at formatVersion 4.",
       "expect": {
         "open": "accept",
         "slides": [

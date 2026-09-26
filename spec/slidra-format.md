@@ -1,6 +1,6 @@
 # The `.slidra` Format
 
-**Format version:** 5
+**Format version:** 6
 **Status:** Stable
 **Namespace:** `https://slidra.app/ns/2026`
 **Companion documents:** [`playback.md`](playback.md) (how a deck plays) · [`rfcs/0001-sqlite-container-format.md`](rfcs/0001-sqlite-container-format.md) (why the container is SQLite)
@@ -17,7 +17,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT** and **MAY** are
 
 ## 1. Container
 
-### 1.1 SQLite (formatVersion 5)
+### 1.1 SQLite (formatVersion 6)
 
 A `.slidra` file is a SQLite 3 database. Its presentation content lives in one table:
 
@@ -37,7 +37,7 @@ Header fields:
 | Field | Value |
 |---|---|
 | `PRAGMA application_id` | `0x536C6472` (ASCII `Sldr`) |
-| `PRAGMA user_version` | `5`, equal to `project.json`'s `formatVersion` |
+| `PRAGMA user_version` | `6`, equal to `project.json`'s `formatVersion` |
 | Text encoding | UTF-8 |
 | Journal mode | `DELETE` (writers MUST NOT leave a deck in WAL mode) |
 
@@ -45,9 +45,19 @@ A reader MUST identify the container by its first bytes (`SQLite format 3\0`), n
 
 The database MAY contain other tables (a writer's undo history, a conversation log, …). They are not part of the presentation: readers MUST ignore every table other than `content`, and writers MUST preserve tables they do not understand.
 
-### 1.2 Legacy ZIP (formatVersion 1–4)
+### 1.2 Legacy containers (formatVersion 1–5)
 
-Before version 5, a `.slidra` file was a ZIP archive (`PK\x03\x04`) holding the same entries as files. Readers MAY support it read-only; writers MUST NOT produce it. A writer that opens one converts it once to the SQLite container at `formatVersion` 5, atomically (build the new file beside the old one, then rename).
+The current format is version 6. Two earlier forms of a deck exist:
+
+| `formatVersion` | Container | Status |
+|---|---|---|
+| `6` | SQLite (§1.1) | Current |
+| `5` | SQLite, identical in layout to §1.1, with `user_version` `5` | Legacy |
+| `1`–`4` | ZIP archive (`PK\x03\x04`) holding the same entries as files | Legacy |
+
+Version 6 froze the vocabulary that version 5 had been growing (the metadata fields of §2, accessibility §4.7, slide ids and links, the effect options of §5 and the `morph` transition); the container itself did not change.
+
+Readers MAY open a legacy deck read-only. Writers MUST write version 6 and MUST NOT produce a legacy deck. A writer that edits a legacy deck converts it once to version 6, atomically (build the new file beside the old one, then rename, or change it inside one transaction): a version-5 deck by setting `formatVersion` and `user_version` to `6`, a ZIP deck by building the SQLite container of §1.1 from its entries. Any `formatVersion` other than 1–6 MUST be rejected.
 
 ### 1.3 Entries
 
@@ -73,7 +83,7 @@ UTF-8 JSON, the deck's root metadata. Machine-readable: [`schema/project.schema.
 
 ```jsonc
 {
-  "formatVersion": 5,
+  "formatVersion": 6,
   "name": "My Presentation",
   "canvas": { "width": 1280, "height": 720 },
   "slides": ["slides/001.svg", "slides/002.svg"],
@@ -98,7 +108,7 @@ UTF-8 JSON, the deck's root metadata. Machine-readable: [`schema/project.schema.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `formatVersion` | integer | yes | `5` in a SQLite container; `1`–`4` only in a legacy ZIP container. Any other value MUST be rejected. |
+| `formatVersion` | integer | yes | `6`. A legacy deck (§1.2) carries `5` in a SQLite container or `1`–`4` in a ZIP container. Any other value, or a value that does not match its container, MUST be rejected. |
 | `name` | string | yes | Display name. |
 | `canvas` | `{ width, height }` | yes | Positive, finite numbers, in px. Every slide's `viewBox` matches it. |
 | `slides` | string[] | yes | Ordered slide paths. May be empty. Every path MUST name an existing file. |
@@ -536,7 +546,7 @@ Templates are complete slide SVGs under `templates/`, listed in `project.json`'s
 3. **Slides are independent.** Swapping two slides changes nothing but their order.
 4. **Flat addressing.** Elements are addressed by opaque ids, stable under reordering and renaming.
 5. **Forward compatible.** Unknown `project.json` fields, unknown `data-slidra-*` attributes and unknown tables survive every writer.
-6. **No silent correction.** An invalid `project.json`, an out-of-range `formatVersion` or a corrupt effect list is an explicit error, never quietly patched. The single sanctioned conversion is legacy ZIP → SQLite (§1.2).
+6. **No silent correction.** An invalid `project.json`, an out-of-range `formatVersion` or a corrupt effect list is an explicit error, never quietly patched. The single sanctioned conversion is a legacy deck (formatVersion 1–5) → formatVersion 6, made by a writer that edits it (§1.2).
 
 ---
 

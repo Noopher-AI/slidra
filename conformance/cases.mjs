@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { deflateRawSync } from "node:zlib";
+import { FORMAT_VERSION } from "../lib/viewer/deck.js";
 import { DeckWriter } from "../lib/writer/index.js";
 
 const NS = "https://slidra.app/ns/2026";
@@ -33,7 +33,7 @@ function deck({ slides, project = {}, files = {}, validate = true }) {
 }
 
 /** A SQLite container built row by row, for container-level breakage the writer refuses to produce. */
-function rawSqlite({ applicationId = 0x536c6472, userVersion = 5, table = "content", rows }) {
+function rawSqlite({ applicationId = 0x536c6472, userVersion = FORMAT_VERSION, table = "content", rows }) {
   return withTemp((file) => {
     const db = new DatabaseSync(file);
     db.exec("PRAGMA journal_mode = DELETE");
@@ -57,45 +57,7 @@ function withTemp(write) {
   }
 }
 
-/** A legacy ZIP container (deflated entries). */
-function zip(entries) {
-  const locals = [];
-  const centrals = [];
-  let offset = 0;
-  for (const [name, text] of entries) {
-    const nameBytes = Buffer.from(name);
-    const data = Buffer.from(text);
-    const body = deflateRawSync(data);
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);
-    local.writeUInt16LE(8, 8);
-    local.writeUInt32LE(body.length, 18);
-    local.writeUInt32LE(data.length, 22);
-    local.writeUInt16LE(nameBytes.length, 26);
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(20, 6);
-    central.writeUInt16LE(8, 10);
-    central.writeUInt32LE(body.length, 20);
-    central.writeUInt32LE(data.length, 24);
-    central.writeUInt16LE(nameBytes.length, 28);
-    central.writeUInt32LE(offset, 42);
-    locals.push(local, nameBytes, body);
-    centrals.push(central, nameBytes);
-    offset += 30 + nameBytes.length + body.length;
-  }
-  const size = centrals.reduce((n, b) => n + b.length, 0);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(size, 12);
-  end.writeUInt32LE(offset, 16);
-  return new Uint8Array(Buffer.concat([...locals, ...centrals, end]));
-}
-
-const project = (fields = {}) => JSON.stringify({ formatVersion: 5, name: "Conformance", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"], ...fields });
+const project = (fields = {}) => JSON.stringify({ formatVersion: FORMAT_VERSION, name: "Conformance", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"], ...fields });
 const baseRows = (json = project()) => [
   ["slides", null],
   ["assets", null],
@@ -126,7 +88,7 @@ export const CASES = [
   {
     id: "container-not-a-deck",
     rule: "format §1.1",
-    description: "Neither a SQLite nor a ZIP header.",
+    description: "Not a SQLite database: the file is plain text.",
     build: () => new TextEncoder().encode("just some text, not a deck"),
     expect: { open: "reject" },
   },
@@ -140,8 +102,8 @@ export const CASES = [
   {
     id: "container-user-version-mismatch",
     rule: "format §1.1",
-    description: "user_version 4 while project.json says formatVersion 5.",
-    build: () => rawSqlite({ userVersion: 4, rows: baseRows() }),
+    description: "user_version 7 while project.json says formatVersion 6.",
+    build: () => rawSqlite({ userVersion: 7, rows: baseRows() }),
     expect: { open: "reject" },
   },
   {
@@ -165,17 +127,6 @@ export const CASES = [
     build: () => rawSqlite({ rows: [...baseRows(), ["assets\\evil.txt", "x"]] }),
     expect: { open: "reject" },
   },
-  {
-    id: "container-zip-claims-v5",
-    rule: "format §1.2",
-    description: "A ZIP container whose project.json says formatVersion 5.",
-    build: () =>
-      zip([
-        ["project.json", project()],
-        ["slides/001.svg", svg(box(A))],
-      ]),
-    expect: { open: "reject" },
-  },
   { id: "project-not-json", rule: "format §2", description: "project.json is not JSON.", build: () => rawSqlite({ rows: baseRows("{ name: nope") }), expect: { open: "reject" } },
   {
     id: "project-missing",
@@ -184,12 +135,25 @@ export const CASES = [
     build: () => rawSqlite({ rows: baseRows().filter(([p]) => p !== "project.json") }),
     expect: { open: "reject" },
   },
-  { id: "project-format-version-6", rule: "format §2", description: "formatVersion 6.", build: () => rawSqlite({ rows: baseRows(project({ formatVersion: 6 })) }), expect: { open: "reject" } },
+  {
+    id: "project-format-version-7",
+    rule: "format §2",
+    description: "formatVersion 7, a version this format does not define (user_version agrees).",
+    build: () => rawSqlite({ userVersion: 7, rows: baseRows(project({ formatVersion: 7 })) }),
+    expect: { open: "reject" },
+  },
+  {
+    id: "project-format-version-0",
+    rule: "format §2",
+    description: "formatVersion 0, with user_version 0.",
+    build: () => rawSqlite({ userVersion: 0, rows: baseRows(project({ formatVersion: 0 })) }),
+    expect: { open: "reject" },
+  },
   {
     id: "project-name-missing",
     rule: "format §2",
     description: "project.json has no name.",
-    build: () => rawSqlite({ rows: baseRows(JSON.stringify({ formatVersion: 5, canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })) }),
+    build: () => rawSqlite({ rows: baseRows(JSON.stringify({ formatVersion: FORMAT_VERSION, canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] })) }),
     expect: { open: "reject" },
   },
   {
@@ -234,17 +198,6 @@ export const CASES = [
         db.exec("CREATE TABLE undo_history (id INTEGER PRIMARY KEY, op TEXT)");
         db.close();
       }),
-    expect: { open: "accept", slides: [{ status: "ok" }] },
-  },
-  {
-    id: "accept-legacy-zip-v4",
-    rule: "format §1.2",
-    description: "A legacy ZIP deck at formatVersion 4.",
-    build: () =>
-      zip([
-        ["project.json", project({ formatVersion: 4 })],
-        ["slides/001.svg", svg(box(A))],
-      ]),
     expect: { open: "accept", slides: [{ status: "ok" }] },
   },
   {
@@ -417,7 +370,7 @@ export const CASES = [
 /** conformance/manifest.json: every case's file, rule, description and expected verdict. */
 export function manifest() {
   return {
-    formatVersion: 5,
+    formatVersion: FORMAT_VERSION,
     description: "Expected reader verdicts for the .slidra conformance decks. See conformance/README.md.",
     cases: CASES.map(({ id, rule, description, expect }) => ({ id, file: `decks/${id}.slidra`, rule, description, expect })),
   };

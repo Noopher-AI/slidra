@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://slidra.app/schema/5/metadata.schema.json",
+  "$id": "https://slidra.app/schema/6/metadata.schema.json",
   "title": ".slidra SVG vocabulary",
   "description": "Attribute rules for the Slidra-specific parts of a slide SVG. XML attributes are strings, so an element is checked by reading its attributes into a JSON object of strings (absent attributes are absent keys) and validating that object against the definition named after the element: $defs/effect for <slidra:effect>, $defs/transition for <slidra:transition>, and so on. $defs/element applies to every element container (<g id=\"el-…\">). Structural rules (at most one <slidra:transition> per slide; the first effect starts on-click; a target names an element on the slide) are checked by readers, not by this schema.",
   "$defs": {

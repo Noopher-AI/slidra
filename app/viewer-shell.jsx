@@ -66,7 +66,7 @@ export default function ViewerShell() {
               <p className="dropzone-title">
                 Drop a <span>.slidra</span> file
               </p>
-              <p className="dropzone-sub">SQLite (v5) and legacy ZIP (v1–4) decks</p>
+              <p className="dropzone-sub">SQLite (v6) and legacy (v1–5) decks</p>
             </div>
             <div className="dropzone-legs" aria-hidden="true"></div>
           </div>

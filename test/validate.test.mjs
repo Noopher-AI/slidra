@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { validateDeck } from "../lib/validate.js";
-import { makeDeck, svg } from "./fixtures/make-deck.mjs";
+import { makeDeck, makeLegacyDeck, svg, zip } from "./fixtures/make-deck.mjs";
 
 const manifest = JSON.parse(readFileSync(new URL("../conformance/manifest.json", import.meta.url), "utf8"));
 const conformanceDeck = (file) => new Uint8Array(readFileSync(new URL(`../conformance/${file}`, import.meta.url)));
@@ -58,7 +58,7 @@ test("a clean deck has no findings at all", async () => {
     }),
   );
   assert.deepEqual([...report.errors, ...report.warnings], []);
-  assert.deepEqual(report.summary, { container: "sqlite", formatVersion: 5, slides: 1 });
+  assert.deepEqual(report.summary, { container: "sqlite", formatVersion: 6, slides: 1 });
 });
 
 test("reports slide-level rule breaks with their location", async () => {
@@ -101,6 +101,47 @@ test("reports slide-level rule breaks with their location", async () => {
   assert.deepEqual([duplicate.path, duplicate.element], ["slides/001.svg", "el-AAAAAAAAAAAA"]);
 });
 
+test("a legacy deck is a warning, not an error", async () => {
+  const slides = [svg(box("el-AAAAAAAAAAAA"))];
+  const five = await validateDeck(makeLegacyDeck({ project: { lang: "en" }, slides }));
+  assert.equal(five.valid, true);
+  assert.deepEqual(five.errors, []);
+  assert.deepEqual(
+    five.warnings.map((w) => [w.code, w.rule]),
+    [["legacy-format-version", "format §1.2"]],
+  );
+  assert.match(five.warnings[0].message, /formatVersion 5.*writers produce formatVersion 6/);
+  assert.equal(five.summary.formatVersion, 5);
+
+  const project = JSON.stringify({ formatVersion: 4, name: "Z", lang: "en", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] });
+  const four = await validateDeck(
+    zip([
+      ["project.json", project],
+      ["slides/001.svg", slides[0]],
+    ]),
+  );
+  assert.equal(four.summary.container, "zip");
+  assert.ok(four.warnings.some((w) => w.code === "legacy-format-version"));
+  assert.ok(!four.errors.some((e) => e.code === "legacy-format-version"));
+
+  const current = await validateDeck(makeDeck({ project: { lang: "en" }, slides }));
+  assert.ok(!codes(current).includes("legacy-format-version"));
+});
+
+test("a formatVersion this format does not define is an error", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "slidra-v7-"));
+  const file = path.join(dir, "seven.slidra");
+  writeFileSync(file, makeDeck({ project: { lang: "en" }, slides: [svg(box("el-AAAAAAAAAAAA"))] }));
+  const db = new DatabaseSync(file);
+  const row = /** @type {{ data: Uint8Array }} */ (db.prepare("SELECT data FROM content WHERE path = 'project.json'").get());
+  db.prepare("UPDATE content SET data = ? WHERE path = 'project.json'").run(Buffer.from(Buffer.from(row.data).toString("utf8").replace('"formatVersion": 6', '"formatVersion": 7'), "utf8"));
+  db.exec("PRAGMA user_version = 7");
+  db.close();
+  const report = await validateDeck(new Uint8Array(readFileSync(file)));
+  assert.equal(report.valid, false);
+  assert.deepEqual(codes(report), ["deck-rejected"]);
+});
+
 test("a deck left in WAL mode is an error", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "slidra-wal-"));
   const file = path.join(dir, "wal.slidra");
@@ -121,7 +162,7 @@ test("CLI: exit status, text and JSON output", () => {
 
   const ok = run([good]);
   assert.equal(ok.status, 0, ok.stderr);
-  assert.match(ok.stdout, /^✓ .*minimal\.slidra \(sqlite, formatVersion 5, 10 slides\): 0 errors/m);
+  assert.match(ok.stdout, /^✓ .*minimal\.slidra \(sqlite, formatVersion 6, 10 slides\): 0 errors/m);
 
   const failing = run(["--json", good, bad]);
   assert.equal(failing.status, 1);

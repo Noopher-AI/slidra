@@ -33,14 +33,14 @@ test("rejects bytes that are not SQLite", () => {
 test("reads the showcase deck's content table", () => {
   const bytes = new Uint8Array(readFileSync(new URL("../examples/showcase.slidra", import.meta.url)));
   const db = new SqliteReader(bytes);
-  assert.equal(db.userVersion, 5);
+  assert.equal(db.userVersion, 6);
   assert.equal(db.applicationId, 0x536c6472);
   const rows = db.readTable("content");
   const byPath = new Map(rows.map((row) => [row.path, row]));
   assert.equal(byPath.get("slides").kind, 1);
   assert.equal(byPath.get("slides").data, null);
   const project = JSON.parse(new TextDecoder().decode(byPath.get("project.json").data));
-  assert.equal(project.formatVersion, 5);
+  assert.equal(project.formatVersion, 6);
   for (const slide of project.slides) assert.ok(byPath.get(slide).data instanceof Uint8Array);
 });
 
