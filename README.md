@@ -61,6 +61,8 @@ What plays: all 14 effects of the five effect families (enter, emphasis, exit, m
 
 Document metadata from `project.json` (author, dates, description, keywords, cover slide) shows up in the library, in the title bar and at the top of the overview.
 
+Slides are accessible (format §4.7): each slide frame carries the deck's `lang` (or the slide's own `xml:lang`), a slide's `<title>` names it in the overview and to screen readers, element `<title>`s become `aria-label`s (so they never pop up as tooltips mid-talk), and `data-slidra-decorative` elements are hidden from assistive technology.
+
 ## How it works
 
 ```

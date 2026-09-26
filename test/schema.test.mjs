@@ -43,6 +43,7 @@ const valid = [
 
 /** Rules only a writer is held to (document metadata §2.1; every FontEntry field §2.2; templates are not read during playback). Readers accept these. */
 const writerOnly = [
+  { ...base, lang: "not a language!" },
   { ...base, author: 42 },
   { ...base, created: "yesterday" },
   { ...base, keywords: "a, b" },
