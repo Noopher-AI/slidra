@@ -14,7 +14,7 @@
 A `.slidra` file is one self-contained presentation: SVG slides, their animations and page transitions, speaker notes, media and fonts, stored as rows of a single SQLite database. This repository holds:
 
 - **The specification** — [`spec/slidra-format.md`](spec/slidra-format.md) (what a deck *is*), [`spec/playback.md`](spec/playback.md) (how a deck *plays*), [`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md) (why the container is SQLite), and JSON Schemas for `project.json` and the slide vocabulary under [`spec/schema/`](spec/schema/).
-- **A conformance suite** — [`conformance/`](conformance/): 49 small decks with the verdict a conforming reader must reach, for testing any implementation.
+- **A conformance suite** — [`conformance/`](conformance/): 48 small formatVersion 6 decks with the verdict a conforming reader must reach, for testing any implementation. Legacy decks are outside the suite.
 - **A viewer** — open a `.slidra` file in your browser and present it, animations included. Built with Next.js; nothing is uploaded.
 
 Why open the format, and why SVG: [Why We Are Opening the `.slidra` Format](docs/why-open-the-slidra-format.md).
@@ -88,7 +88,7 @@ Any deck this server lists can be embedded in another site:
 | `Z` | Magnify 2× around the pointer; `Z` or `Esc` again restores |
 | `Esc` | Close overview → leave fullscreen → close the deck |
 
-What plays: all 20 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, six easing curves, repeats, text builds by line, word or letter, click triggers on any element, per-slide page transitions (fade, slide, zoom, and morph, which moves elements that share an id from one slide's layout to the next), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Both the current SQLite container (format 5) and legacy ZIP decks (format 1–4) open.
+What plays: all 20 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, six easing curves, repeats, text builds by line, word or letter, click triggers on any element, per-slide page transitions (fade, slide, zoom, and morph, which moves elements that share an id from one slide's layout to the next), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Current decks (formatVersion 6, SQLite) open, and so do legacy ones, read-only: formatVersion 5 (SQLite) and 1–4 (ZIP).
 
 **Presenter view.** Press `P` (or the presenter button) to open a second window for yourself: the current slide playing silently, the next step or slide, your notes, an elapsed timer with pause and reset, and the clock. This window stays the audience screen (drag it to the projector and press `F`), plays the sound, and stops showing notes while the presenter view is open. Keys and buttons in either window move both. The deck goes to the presenter window over a `BroadcastChannel`, so decks opened from a local file work too.
 
@@ -146,15 +146,15 @@ Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox
 
 ```bash
 npm run validate -- talk.slidra                # or: node bin/slidra-validate.mjs talk.slidra
-✓ talk.slidra (sqlite, formatVersion 5, 12 slides): 0 errors, 1 warning
+✓ talk.slidra (sqlite, formatVersion 6, 12 slides): 0 errors, 1 warning
   warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
 ```
 
-`--json` prints machine-readable reports, `--strict` fails on warnings, `--quiet` prints errors only. The exit status is 0 when every deck is valid, 1 when any has errors, 2 on a usage error. The same checks are available as `validateDeck(bytes)` from `lib/validate.js`.
+A legacy deck (formatVersion 1–5) is a `legacy-format-version` warning, not an error; any other version is an error. `--json` prints machine-readable reports, `--strict` fails on warnings, `--quiet` prints errors only. The exit status is 0 when every deck is valid, 1 when any has errors, 2 on a usage error. The same checks are available as `validateDeck(bytes)` from `lib/validate.js`.
 
 ## Writing decks
 
-`lib/writer/` is the reference writer (Node ≥ 22.5, `node:sqlite`). It applies every rule the spec puts on writers: the RFC 0001 header, explicit directory rows, safe paths, `project.json` checked against the schema and serialised in its original key order, unknown fields and tables kept, and an atomic replace of the file.
+`lib/writer/` is the reference writer (Node ≥ 22.5, `node:sqlite`). It applies every rule the spec puts on writers: the RFC 0001 header, explicit directory rows, safe paths, `project.json` checked against the schema and serialised in its original key order, unknown fields and tables kept, and an atomic replace of the file. It writes formatVersion 6; `editDeck` upgrades a legacy formatVersion 5 deck to 6 in the same transaction as the edit, and `convertLegacyDeck` converts a formatVersion 5 or ZIP (1–4) deck once.
 
 ```js
 import { DeckWriter, editDeck, convertLegacyDeck, newElementId, newSlideId } from "./lib/writer/index.js";
@@ -165,7 +165,7 @@ deck.addFile("assets/photo.png", pngBytes);
 deck.write("q3.slidra");
 
 await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new Date().toISOString() })));
-await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5, in place
+await convertLegacyDeck("old-deck.slidra"); // formatVersion 1–5 → 6, in place
 ```
 
 `tools/build-examples.mjs` builds `examples/` with it (`--out <dir>` writes somewhere else). So does `tools/build-feature-examples.mjs`, which writes the two feature tours:

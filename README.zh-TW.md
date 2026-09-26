@@ -14,7 +14,7 @@
 一個 `.slidra` 檔就是一份完整的簡報：SVG 投影片、動畫與換頁轉場、講者備忘稿、影音與字型，全部以列的形式存在同一個 SQLite 資料庫裡。這個 repository 包含：
 
 - **格式規格**：[`spec/slidra-format.md`](spec/slidra-format.md)（deck 是什麼）、[`spec/playback.md`](spec/playback.md)（deck 怎麼播放）、[`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md)（為什麼容器是 SQLite），以及 [`spec/schema/`](spec/schema/) 底下 `project.json` 與投影片詞彙的 JSON Schema。
-- **一致性測試套件**：[`conformance/`](conformance/)，49 個小型 deck，各自附上符合規格的讀取器應該得到的判定，可用來測試任何實作。
+- **一致性測試套件**：[`conformance/`](conformance/)，48 個 formatVersion 6 的小型 deck，各自附上符合規格的讀取器應該得到的判定，可用來測試任何實作。舊版 deck 不在套件範圍內。
 - **Viewer**：在瀏覽器打開 `.slidra` 就能播放，動畫照跑。以 Next.js 建置，檔案不會上傳。
 
 為什麼開放格式、為什麼選 SVG：請看〈[為什麼我們開放 `.slidra` 格式](docs/why-open-the-slidra-format_zh.md)〉。
@@ -88,7 +88,7 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | `Z` | 以游標為中心放大 2 倍，再按 `Z` 或 `Esc` 還原 |
 | `Esc` | 依序：關閉總覽、離開全螢幕、關閉 deck |
 
-支援範圍：五類共 20 種效果（進場、強調、離場、路徑動畫、媒體），可用 `on-click`、`with-previous`、`after-previous` 安排時序，並支援六種 easing 曲線、重複播放、逐行／逐字／逐字元的文字動畫，以及點擊任一元素觸發的動畫；每張投影片各自的換頁轉場（fade、slide、zoom，以及 morph：id 相同的元素會從上一張的位置平滑移動到下一張）；內嵌字型、影片與音訊、YouTube 嵌入、圖表與表格、動態文字（`{{ slide_number }}`、`{{ slide_total }}`、`{{ presentation_name }}`），以及講者備忘稿。現行的 SQLite 容器（format 5）和舊版 ZIP deck（format 1–4）都能開。
+支援範圍：五類共 20 種效果（進場、強調、離場、路徑動畫、媒體），可用 `on-click`、`with-previous`、`after-previous` 安排時序，並支援六種 easing 曲線、重複播放、逐行／逐字／逐字元的文字動畫，以及點擊任一元素觸發的動畫；每張投影片各自的換頁轉場（fade、slide、zoom，以及 morph：id 相同的元素會從上一張的位置平滑移動到下一張）；內嵌字型、影片與音訊、YouTube 嵌入、圖表與表格、動態文字（`{{ slide_number }}`、`{{ slide_total }}`、`{{ presentation_name }}`），以及講者備忘稿。現行的 deck（formatVersion 6，SQLite）可以開，舊版 deck 也能以唯讀方式開啟：formatVersion 5（SQLite）與 1–4（ZIP）。
 
 **簡報者檢視。** 按 `P`（或簡報者按鈕）會開出只給你看的第二個視窗，裡面有靜音播放的目前投影片、下一個步驟或下一張、備忘稿、可暫停與重設的計時器，以及目前時間。原本的視窗則作為觀眾畫面（拖到投影機後按 `F`）並負責播放聲音；簡報者檢視開著時，觀眾畫面不會顯示備忘稿。在任一視窗按鍵或按按鈕，兩邊都會同步移動。deck 是透過 `BroadcastChannel` 傳給簡報者視窗的，所以從本機檔案打開的 deck 也能用。
 
@@ -116,15 +116,15 @@ deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁�
 
 ```bash
 npm run validate -- talk.slidra                # 或：node bin/slidra-validate.mjs talk.slidra
-✓ talk.slidra (sqlite, formatVersion 5, 12 slides): 0 errors, 1 warning
+✓ talk.slidra (sqlite, formatVersion 6, 12 slides): 0 errors, 1 warning
   warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
 ```
 
-`--json` 輸出機器可讀的報告，`--strict` 讓警告也算失敗，`--quiet` 只顯示錯誤。所有 deck 都有效時結束碼為 0，任何一個有錯誤時為 1，參數錯誤時為 2。同樣的檢查也可以直接呼叫 `lib/validate.js` 的 `validateDeck(bytes)`。
+舊版 deck（formatVersion 1–5）只會得到 `legacy-format-version` 警告，不算錯誤；其他版本號則是錯誤。`--json` 輸出機器可讀的報告，`--strict` 讓警告也算失敗，`--quiet` 只顯示錯誤。所有 deck 都有效時結束碼為 0，任何一個有錯誤時為 1，參數錯誤時為 2。同樣的檢查也可以直接呼叫 `lib/validate.js` 的 `validateDeck(bytes)`。
 
 ## 產生 deck
 
-`lib/writer/` 是參考實作的 writer（需要 Node 22.5 以上的 `node:sqlite`）。規格對 writer 的要求它全部照做：RFC 0001 的檔頭、明確的目錄列、安全的路徑、依 schema 檢查 `project.json` 並保留原本的欄位順序、保留看不懂的欄位與資料表，並以原子方式取代檔案。
+`lib/writer/` 是參考實作的 writer（需要 Node 22.5 以上的 `node:sqlite`）。規格對 writer 的要求它全部照做：RFC 0001 的檔頭、明確的目錄列、安全的路徑、依 schema 檢查 `project.json` 並保留原本的欄位順序、保留看不懂的欄位與資料表，並以原子方式取代檔案。它寫出的是 formatVersion 6；`editDeck` 編輯舊版 formatVersion 5 的 deck 時，會在同一個 transaction 裡把它升級成 6，`convertLegacyDeck` 則把 formatVersion 5 或 ZIP（1–4）的 deck 一次轉換完成。
 
 ```js
 import { DeckWriter, editDeck, convertLegacyDeck, newElementId, newSlideId } from "./lib/writer/index.js";
@@ -135,7 +135,7 @@ deck.addFile("assets/photo.png", pngBytes);
 deck.write("q3.slidra");
 
 await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new Date().toISOString() })));
-await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5，原地轉換
+await convertLegacyDeck("old-deck.slidra"); // formatVersion 1–5 → 6，原地轉換
 ```
 
 `tools/build-examples.mjs` 也用它產生 `examples/`（加 `--out <dir>` 可輸出到別的目錄）。`tools/build-feature-examples.mjs` 同樣用它產生兩份功能導覽 deck：
