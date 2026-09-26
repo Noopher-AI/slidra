@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EffectError, cssEscapeId, deriveSteps, enterTargets, validateEffect, validateTransition } from "../public/js/effects.js";
+import { EffectError, cssEscapeId, deriveSteps, enterTargets, validateEffect, validateTransition } from "../lib/viewer/effects.js";
 
 const raw = (target, family, effect, start, extra = {}) => ({ target, family, effect, start, duration: null, delay: null, d: null, ...extra });
 

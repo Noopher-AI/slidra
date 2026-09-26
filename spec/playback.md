@@ -3,7 +3,7 @@
 **Applies to:** format version 5 ([`slidra-format.md`](slidra-format.md))
 **Status:** Stable
 
-This document specifies how a conforming player presents a deck: what is on screen when a slide opens, what one "advance" does, how each effect animates, and how slides change. The reference implementation is this repository's viewer (`public/js/player-runtime.js` for everything inside a slide, `public/js/player.js` for page changes).
+This document specifies how a conforming player presents a deck: what is on screen when a slide opens, what one "advance" does, how each effect animates, and how slides change. The reference implementation is this repository's viewer (`public/js/player-runtime.js` for everything inside a slide, `lib/viewer/player.js` for page changes).
 
 ---
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
-import { DeckError, isSafeEntryPath, openDeck, readProject } from "../public/js/deck.js";
+import { DeckError, isSafeEntryPath, openDeck, readProject } from "../lib/viewer/deck.js";
 
 const load = (name) => new Uint8Array(readFileSync(new URL(`../examples/${name}`, import.meta.url)));
 

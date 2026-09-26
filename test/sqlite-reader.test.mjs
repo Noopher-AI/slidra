@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SqliteReader, isSqlite, parseColumns, readVarint } from "../public/js/sqlite-reader.js";
+import { SqliteReader, isSqlite, parseColumns, readVarint } from "../lib/viewer/sqlite-reader.js";
 
 const sqlite = await import("node:sqlite").catch(() => null);
 

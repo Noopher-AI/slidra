@@ -3,3 +3,7 @@ decks/*
 !decks/.gitkeep
 .DS_Store
 tools/.showcase-text.txt
+.next/
+.vercel/
+next-env.d.ts
+.env*
