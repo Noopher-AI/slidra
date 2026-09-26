@@ -5,3 +5,5 @@ decks/
 package-lock.json
 *.md
 *.css
+conformance/manifest.json
+conformance/decks/
