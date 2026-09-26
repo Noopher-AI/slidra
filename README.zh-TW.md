@@ -71,6 +71,24 @@ deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁�
 
 投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。
 
+## 產生 deck
+
+`lib/writer/` 是參考實作的 writer（需要 Node 22.5 以上的 `node:sqlite`）。規格對 writer 的要求它全部照做：RFC 0001 的檔頭、明確的目錄列、安全的路徑、依 schema 檢查 `project.json` 並保留原本的欄位順序、保留看不懂的欄位與資料表，並以原子方式取代檔案。
+
+```js
+import { DeckWriter, editDeck, convertLegacyDeck, newElementId, newSlideId } from "./lib/writer/index.js";
+
+const deck = new DeckWriter({ name: "Q3 review", author: "Alice", lang: "en" });
+deck.addSlide(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-slidra-slide-id="${newSlideId()}">…</svg>`);
+deck.addFile("assets/photo.png", pngBytes);
+deck.write("q3.slidra");
+
+await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new Date().toISOString() })));
+await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5，原地轉換
+```
+
+`tools/build-examples.mjs` 也用它產生 `examples/`（加 `--out <dir>` 可輸出到別的目錄）。
+
 ## 開發
 
 ```bash
