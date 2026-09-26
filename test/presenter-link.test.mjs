@@ -47,3 +47,11 @@ test("elapsed time reads like a stopwatch", () => {
 test("the presenter view cannot open panels on the audience screen", () => {
   for (const key of ["g", "G", "n", "N", "?", "f", "F", "o"]) assert.equal(FORWARDED_KEYS.includes(key), false, key);
 });
+
+test("laser messages carry a point on the slide or off, nothing else", async () => {
+  const { readLaser } = await import("../lib/viewer/presenter-link.js");
+  assert.deepEqual(readLaser({ type: "laser", x: 0.25, y: 1 }), { x: 0.25, y: 1 });
+  assert.equal(readLaser({ type: "laser", off: true }), "off");
+  for (const bad of [{ type: "laser", x: 1.5, y: 0 }, { type: "laser", x: "0.2", y: 0.2 }, { type: "laser", x: NaN, y: 0 }, { type: "key", x: 0, y: 0 }, null])
+    assert.equal(readLaser(bad), null, JSON.stringify(bad));
+});

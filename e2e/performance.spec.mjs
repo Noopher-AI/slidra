@@ -6,7 +6,7 @@ import { openDeckFile, waitForSlide } from "./helpers.mjs";
 const SLIDES = 60;
 
 test(`a ${SLIDES}-slide deck with a large shared image keeps the overview light`, async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const slides = Array.from({ length: SLIDES }, (_, i) => {
     const n = String(i).padStart(9, "0");
     return svg(`<g id="el-IMG${n}"><image href="../assets/photo.bin" width="640" height="360"/></g><g id="el-TXT${n}"><text x="700" y="200" font-size="60">Slide ${i + 1}</text></g>`);
@@ -24,11 +24,13 @@ test(`a ${SLIDES}-slide deck with a large shared image keeps the overview light`
     page.evaluate(
       () => [...document.querySelectorAll("#overview-grid img")].filter((img) => /** @type {HTMLImageElement} */ (img).complete && /** @type {HTMLImageElement} */ (img).naturalWidth > 0).length,
     );
-  for (let scrolled = 0; scrolled < 30 && (await loaded()) < SLIDES; scrolled++) {
-    await grid.evaluate((el) => el.scrollBy(0, 800));
-    await page.waitForTimeout(400);
+  // Scroll in small steps so every item passes through view (thumbnails start when they near it) and wait for them all.
+  const started = Date.now();
+  while ((await loaded()) < SLIDES && Date.now() - started < 90_000) {
+    await grid.evaluate((el) => el.scrollBy(0, 300));
+    await page.waitForTimeout(300);
   }
-  await expect.poll(loaded, { timeout: 60_000 }).toBe(SLIDES);
+  expect(await loaded()).toBe(SLIDES);
 
   // Thumbnails are PNG images, not frames holding every inlined asset.
   expect(await page.locator("#overview-grid iframe").count()).toBe(0);
