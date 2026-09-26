@@ -64,3 +64,12 @@ test("speaker notes toggle with N and follow the slide", async ({ page }) => {
   await waitForSlide(page, 2, 7);
   await expect(page.locator("#notes-text")).toContainText("The container is one SQLite table");
 });
+
+test("the specs and their JSON Schemas are served", async ({ request }) => {
+  const schema = await request.get("/spec/schema/project.schema.json");
+  expect(schema.ok()).toBe(true);
+  expect(schema.headers()["content-type"]).toContain("application/json");
+  expect((await schema.json()).$id).toBe("https://slidra.app/schema/5/project.schema.json");
+  expect((await request.get("/spec/slidra-format.md")).ok()).toBe(true);
+  expect((await request.get("/spec/schema/../../package.json")).status()).toBe(404);
+});
