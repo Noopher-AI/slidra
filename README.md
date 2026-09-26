@@ -44,8 +44,19 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | `SLIDRA_ALLOW_REMOTE` | unset | `1` lets the decks this server lists load network resources without asking (see below) |
 | `--port`, `PORT` | `3000` | |
 | `--hostname` | all interfaces | |
+| `SLIDRA_EMBED_ORIGINS` | `*` | Origins allowed to frame `/embed`, space-separated |
 
 A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.slidra#3` opens the showcase at slide 3. Such a link previews as the deck in chat apps and social sites: its name, description and cover slide (`/api/og` renders the cover as a 1200×630 PNG on the server, with every external reference in the slide removed first).
+
+## Embedding
+
+Any deck this server lists can be embedded in another site:
+
+```html
+<iframe src="https://your-server/embed?deck=%2Fdecks%2F0%2Fshowcase.slidra" width="960" height="584" style="border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>
+```
+
+`/embed` shows the stage and a small control bar with an **Open in Slidra** link, and is the only page other sites may frame (`Content-Security-Policy: frame-ancestors *`; set `SLIDRA_EMBED_ORIGINS` to a space-separated list of origins to narrow that). Every other page sends `X-Frame-Options: SAMEORIGIN`. Deck pages advertise an oEmbed endpoint (`/api/oembed?url=<deck link>`), so tools that unfurl links can embed decks automatically.
 
 ## Presenting
 
