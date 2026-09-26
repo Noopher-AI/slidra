@@ -27,6 +27,10 @@ This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Screen-reader announcements, keyboard overview, focus-trapped dialogs, reduced motion.
 - Large decks: PNG thumbnails and bounded caches.
 
+### Examples
+
+- `motion.slidra` and `sharing.slidra`, feature tours of this round (`tools/build-feature-examples.mjs`).
+
 ### Tools
 
 - `slidra-validate`, a validator for decks.

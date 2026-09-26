@@ -11,3 +11,4 @@ test-results/
 playwright-report/
 e2e/.generated/
 packages/*/dist/
+tools/.feature-text.txt
