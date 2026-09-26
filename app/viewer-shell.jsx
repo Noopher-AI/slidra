@@ -151,7 +151,7 @@ export default function ViewerShell() {
               <path d="M14.5 6.5h3M14.5 9.5h3M14.5 12.5h3M5 15.5h5" />
             </svg>
           </button>
-          <button id="print-button" className="icon-button" type="button" aria-label="Print or save as PDF" title="Print or save as PDF (Ctrl+P)">
+          <button id="print-button" className="icon-button" type="button" aria-label="Print or export" title="Print, save as PDF or export images (Ctrl+P)">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M5.5 7.5V3.5h9v4M5.5 14.5h-2v-6a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v6h-2" />
               <rect x="5.5" y="11.5" width="9" height="5.5" rx=".8" />
@@ -173,7 +173,7 @@ export default function ViewerShell() {
         <div id="print-dialog" className="key-help" role="dialog" aria-modal="true" aria-labelledby="print-title" hidden>
           <form id="print-form" className="key-help-card print-form">
             <div className="key-help-head">
-              <h2 id="print-title">Print or save as PDF</h2>
+              <h2 id="print-title">Print or export</h2>
               <button id="print-cancel" className="icon-button" type="button" aria-label="Cancel" title="Cancel (Esc)">
                 <svg viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M5 5l10 10M15 5 5 15" />
@@ -205,9 +205,17 @@ export default function ViewerShell() {
               </label>
             </fieldset>
             <p className="print-hint">In the print dialog, choose “Save as PDF” as the destination to get a PDF.</p>
-            <button id="print-go" className="remote-allow" type="submit">
-              Print…
-            </button>
+            <div className="print-actions">
+              <button id="print-go" className="remote-allow" type="submit">
+                Print…
+              </button>
+              <button id="export-slide" className="presenter-button" type="button">
+                Current slide as PNG
+              </button>
+              <button id="export-all" className="presenter-button" type="button">
+                All slides as PNG (.zip)
+              </button>
+            </div>
           </form>
         </div>
 

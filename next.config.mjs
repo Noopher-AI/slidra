@@ -6,6 +6,8 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/decks": ["./decks/**/*.slidra", "./examples/**/*.slidra"],
     "/decks/**": ["./decks/**/*.slidra", "./examples/**/*.slidra"],
+    "/api/og": ["./decks/**/*.slidra", "./examples/**/*.slidra"],
+    "/": ["./decks/**/*.slidra", "./examples/**/*.slidra"],
     "/spec/**": ["./spec/**/*.md", "./spec/**/*.json"],
   },
   async headers() {

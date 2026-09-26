@@ -45,7 +45,7 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | `--port`, `PORT` | `3000` | |
 | `--hostname` | all interfaces | |
 
-A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.slidra#3` opens the showcase at slide 3.
+A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.slidra#3` opens the showcase at slide 3. Such a link previews as the deck in chat apps and social sites: its name, description and cover slide (`/api/og` renders the cover as a 1200×630 PNG on the server, with every external reference in the slide removed first).
 
 ## Presenting
 
@@ -60,7 +60,7 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 | `B` or `.` / `W` or `,` | Black / white screen; any key or click brings the slide back |
 | A number, then `Enter` | Go to that slide |
 | `?` | List the keyboard shortcuts |
-| `Ctrl`/`⌘` + `P` | Print, or save as PDF: one slide per page, notes pages or handouts (2, 3 or 6 per page), optionally one page per animation step |
+| `Ctrl`/`⌘` + `P` | Print, save as PDF (one slide per page, notes pages or handouts with 2, 3 or 6 per page, optionally one page per animation step) or export images: the current slide as a PNG, or every slide as PNGs in a ZIP |
 | `P` | Presenter view in a second window |
 | `L` | Laser pointer (from the presenter view too: point at your copy, the dot shows on the audience screen) |
 | `Z` | Magnify 2× around the pointer; `Z` or `Esc` again restores |
