@@ -246,7 +246,7 @@ button { font: inherit; }
   background: linear-gradient(160deg, var(--stage-2), var(--stage));
   overflow: hidden;
 }
-.deck-thumb iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.deck-thumb iframe, .deck-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; object-fit: contain; }
 .deck-thumb .thumb-glyph { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(244, 246, 248, .3); font-family: var(--font-mono); font-size: 12px; }
 .deck-thumb::after {
   content: "";
@@ -479,7 +479,7 @@ button { font: inherit; }
   outline-offset: 3px;
   transition: outline-color .15s, transform .2s var(--ease-out);
 }
-.overview-thumb iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.overview-thumb iframe, .overview-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; object-fit: contain; }
 .overview-item button:hover .overview-thumb { transform: translateY(-2px); }
 .overview-item button:focus-visible .overview-thumb, .overview-item.is-current .overview-thumb { outline-color: var(--red); }
 .overview-label { display: flex; gap: 8px; font-size: 12px; }
