@@ -14,7 +14,7 @@
 一個 `.slidra` 檔就是一份完整的簡報：SVG 投影片、動畫與換頁轉場、講者備忘稿、影音與字型，全部以列的形式存在同一個 SQLite 資料庫裡。這個 repository 包含：
 
 - **格式規格**：[`spec/slidra-format.md`](spec/slidra-format.md)（deck 是什麼）、[`spec/playback.md`](spec/playback.md)（deck 怎麼播放）、[`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md)（為什麼容器是 SQLite），以及 [`spec/schema/`](spec/schema/) 底下 `project.json` 與投影片詞彙的 JSON Schema。
-- **一致性測試套件**：[`conformance/`](conformance/)，48 個 formatVersion 6 的小型 deck，各自附上符合規格的讀取器應該得到的判定，可用來測試任何實作。舊版 deck 不在套件範圍內。
+- **一致性測試套件**：[`conformance/`](conformance/)，51 個 formatVersion 6 的小型 deck，各自附上符合規格的讀取器應該得到的判定，可用來測試任何實作。舊版 deck 不在套件範圍內。
 - **Viewer**：在瀏覽器打開 `.slidra` 就能播放，動畫照跑。以 Next.js 建置，檔案不會上傳。
 
 為什麼開放格式、為什麼選 SVG：請看〈[為什麼我們開放 `.slidra` 格式](docs/why-open-the-slidra-format_zh.md)〉。
@@ -120,7 +120,7 @@ npm run validate -- talk.slidra                # 或：node bin/slidra-validate.
   warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
 ```
 
-舊版 deck（formatVersion 1–5）只會得到 `legacy-format-version` 警告，不算錯誤；其他版本號則是錯誤。`--json` 輸出機器可讀的報告，`--strict` 讓警告也算失敗，`--quiet` 只顯示錯誤。所有 deck 都有效時結束碼為 0，任何一個有錯誤時為 1，參數錯誤時為 2。同樣的檢查也可以直接呼叫 `lib/validate.js` 的 `validateDeck(bytes)`。
+`data-slidra-role` 的值如果既不是版面角色（`background`、`field`、`node`、`spine`、`edge`、`label`、`garnish`，見格式 §4.9），也不是 `pro:timeline` 這類 `<prefix>:<name>` 擴充值，會得到 `role-unknown` 錯誤；角色不會影響播放。舊版 deck（formatVersion 1–5）只會得到 `legacy-format-version` 警告，不算錯誤；其他版本號則是錯誤。`--json` 輸出機器可讀的報告，`--strict` 讓警告也算失敗，`--quiet` 只顯示錯誤。所有 deck 都有效時結束碼為 0，任何一個有錯誤時為 1，參數錯誤時為 2。同樣的檢查也可以直接呼叫 `lib/validate.js` 的 `validateDeck(bytes)`。
 
 ## 產生 deck
 
