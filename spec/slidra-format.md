@@ -387,12 +387,14 @@ A slide's page transition is per slide and has two edges: how the slide arrives 
 
 | Attribute | Values | Default |
 |---|---|---|
-| `enter` | `none` \| `fade` \| `slide` \| `zoom` | `none` |
+| `enter` | `none` \| `fade` \| `slide` \| `zoom` \| `morph` | `none` |
 | `enter-duration` | seconds ≥ 0 | `0.6` |
 | `exit` | `none` \| `fade` \| `slide` \| `zoom` | `none` |
 | `exit-duration` | seconds ≥ 0 | `0.5` |
 
-At most one `<slidra:transition>` per slide; two or more, or an invalid value, makes the slide's playback data corrupt (§6.4).
+At most one `<slidra:transition>` per slide; two or more, or an invalid value, makes the slide's playback data corrupt (§6.4). `morph` is an arrival only: `exit="morph"` is invalid.
+
+`morph` animates from the slide being left to this one element by element, pairing elements by `id` (playback §5.1). Element ids are stable (§4.1), so a writer makes a "magic move" by keeping an element's id on both slides and changing its position, size or opacity.
 
 ---
 

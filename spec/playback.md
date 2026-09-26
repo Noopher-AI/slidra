@@ -132,6 +132,24 @@ A transition animates the whole slide surface, not the elements inside it.
 - A second forward request while an exit is still playing is ignored, not queued.
 - A duration of `0` means no animation.
 
+### 5.1 Morph
+
+`enter="morph"` animates the incoming slide's elements from where the outgoing slide showed them, instead of animating the surface. It plays on every arrival that leaves another slide on screen (forward, backward or a jump); with no slide on screen before it (the first slide shown), it plays as `fade`. When the incoming slide morphs, the outgoing slide's `exit` edge is skipped.
+
+The player captures the outgoing slide **as it is on screen** when the move starts (its current step applied) and pairs element containers by `id`:
+
+| Element | During the morph |
+|---|---|
+| On both slides, visible on both | Moves and scales from its box on the outgoing slide to its box on the incoming one (boxes in slide coordinates, including every ancestor's transform), and its opacity goes from the old value to the new. |
+| Only on the incoming slide, or hidden on the outgoing one | Fades in (opacity 0 → its value). |
+| Only on the outgoing slide, or pre-hidden on the incoming one | Stays drawn where it was and fades out (→ opacity 0), then is gone. |
+
+- Only the outermost paired element of a nesting is animated; its descendants move with it.
+- An element pre-hidden on the incoming slide (§2) keeps its opening state: the morph never reveals it.
+- The slide background (`background-color` on the root) changes from the old color to the new one over the same time.
+- Everything runs for the incoming slide's `enter-duration`, easing `ease-in-out`. Advancing or retreating while it runs finishes it at once first.
+- The incoming slide's first paint already shows the morph's first frame; the player MUST NOT flash the incoming slide's resting state or an empty surface in between.
+
 ## 6. Speaker notes and chrome
 
 Speaker notes (format §9) are shown to the presenter only — never on the audience surface. Comments (format §10) are never shown during playback.
