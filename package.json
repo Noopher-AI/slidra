@@ -19,7 +19,8 @@
     "typecheck": "tsc -p jsconfig.json",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
     "test:e2e": "playwright test",
-    "conformance": "node --no-warnings tools/build-conformance.mjs"
+    "conformance": "node --no-warnings tools/build-conformance.mjs",
+    "validate": "node --no-warnings bin/slidra-validate.mjs"
   },
   "keywords": [
     "slidra",
@@ -31,6 +32,9 @@
   ],
   "private": true,
   "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "next": "^16.3.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
@@ -40,12 +44,12 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
-    "@xmldom/xmldom": "^0.9.12",
-    "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1",
     "eslint": "^9.39.5",
     "globals": "^17.12.0",
     "prettier": "^3.9.9",
     "typescript": "^7.0.2"
+  },
+  "bin": {
+    "slidra-validate": "bin/slidra-validate.mjs"
   }
 }
