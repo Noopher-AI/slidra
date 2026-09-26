@@ -6,6 +6,10 @@ This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Viewer
+
+- The player reads a deck through a `DeckSource` (`lib/viewer/source.js`): `project()`, `slide(path)` and `fileUrl(path)`, with optional `slideIds()` and `presenter()`. It fetches only the slides it shows and prepares, and loads fonts and images from the source's URLs, admitted one by one by the slide frame's CSP. `openDeck` and every file-based path play exactly as before (`deckSourceFromBytes`). `<slidra-player>` takes one as its `source` property; `startViewer({ source, presenterUrl })` and `startPresenter({ openSource })` let a page play one in the viewer and its presenter view.
+
 ## 6.0.0 — formatVersion 6
 
 formatVersion 6 freezes the format as it stands here: the SQLite container of 0.1.0, unchanged, plus everything under *Format and playback* below, including the layout-role vocabulary. A deck says so with `formatVersion` 6 in `project.json` and `PRAGMA user_version` 6.
@@ -37,7 +41,6 @@ formatVersion 6 freezes the format as it stands here: the SQLite container of 0.
 - `<slidra-player>` web component (`@slidra/player`).
 - Screen-reader announcements, keyboard overview, focus-trapped dialogs, reduced motion.
 - Large decks: PNG thumbnails and bounded caches.
-- The player reads a deck through a `DeckSource` (`lib/viewer/source.js`): `project()`, `slide(path)` and `fileUrl(path)`, with optional `slideIds()` and `presenter()`. It fetches only the slides it shows and prepares, and loads fonts and images from the source's URLs, admitted one by one by the slide frame's CSP. `openDeck` and every file-based path play exactly as before (`deckSourceFromBytes`). `<slidra-player>` takes one as its `source` property; `startViewer({ source, presenterUrl })` and `startPresenter({ openSource })` let a page play one in the viewer and its presenter view.
 
 ### Examples
 

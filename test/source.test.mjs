@@ -26,7 +26,7 @@ function lazySource({ slides, fonts = [], files = [], ids = true, presenter }) {
     calls,
     async project() {
       calls.project++;
-      return { formatVersion: 5, name: "Lazy deck", canvas: { width: 1280, height: 720 }, slides: paths, fonts };
+      return { formatVersion: 6, name: "Lazy deck", canvas: { width: 1280, height: 720 }, slides: paths, fonts };
     },
     async slide(path) {
       calls.slides.push(path);
@@ -69,12 +69,13 @@ test("deckSourceFromBytes serves a file's project, slides, files and slide ids",
 });
 
 test("a source's project.json is checked again: the player treats a source as untrusted", () => {
-  const good = { formatVersion: 5, name: "x", canvas: { width: 1, height: 1 }, slides: ["slides/001.svg"] };
+  const good = { formatVersion: 6, name: "x", canvas: { width: 1, height: 1 }, slides: ["slides/001.svg"] };
   assert.equal(checkSourceProject(good), good);
   for (const bad of [
     null,
     [],
-    { ...good, formatVersion: 99 },
+    { ...good, formatVersion: 7 },
+    { ...good, formatVersion: 0 },
     { ...good, formatVersion: "5" },
     { ...good, name: 3 },
     { ...good, canvas: { width: 0, height: 1 } },
@@ -114,6 +115,7 @@ test("opening a source reads project.json and nothing else", async () => {
   const deck = await PlayableDeck.open(source);
   assert.equal(deck.slides.length, 30);
   assert.equal(deck.name, "Lazy deck");
+  assert.equal(deck.legacy, false);
   assert.deepEqual(source.calls, { project: 1, slides: [], files: [], slideIds: 0 });
   await assert.rejects(PlayableDeck.open(/** @type {any} */ ({ project: async () => ({}) })), /not a deck source/);
   await assert.rejects(
