@@ -105,7 +105,8 @@ await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5，�
 ## 開發
 
 ```bash
-npm test                  # 單元測試：SQLite 讀取器（與 node:sqlite 交叉比對）、ZIP 讀取器、deck 與效果驗證
+npm test                  # 單元測試：讀取器（SQLite 與 node:sqlite 交叉比對、ZIP）、deck、效果與投影片前處理、
+                          # frame 文件與 CSP、投影片 runtime 的步驟時鐘（在 vm 裡以假 DOM 執行）、writer、驗證器、一致性套件
 npm run examples          # 重建 examples/（需要 Node 22.5 以上的 node:sqlite）
 npm run conformance       # 依 conformance/cases.mjs 重建 conformance/decks 與 manifest.json
 npm run lint              # ESLint（設定在 eslint.config.mjs）
