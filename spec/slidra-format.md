@@ -505,6 +505,8 @@ Tables use the same "data plus rendering" shape:
 
 Media and data files live under `assets/` (CSV files under `assets/data/`). Slides reference them with paths relative to the slide, e.g. `href="../assets/photo.png"`. References are resolved against the slide's own path inside the deck; a reader MUST NOT resolve them against anything outside the deck. Absolute URLs (`https:`) are allowed but make a deck no longer self-contained.
 
+Loading anything from the network tells the server behind the URL that, and when, the deck was opened; a hostile deck can use a single 1×1 image as a tracking beacon. A reader that renders slides SHOULD therefore load no network resource from a deck (images, media, CSS `url()`s, fonts, third-party embeds such as §4.5's `data-slidra-embed`) until the viewer agrees to it for that deck, and SHOULD say how many such resources the deck wants. A reader MAY trust decks from a source its operator configured as trusted.
+
 ---
 
 ## 14. Dynamic text
@@ -544,6 +546,7 @@ A deck is meant to be opened by people other than its author, and a valid SVG ca
 
 - MUST NOT execute any script, `on*` handler or `javascript:` URL from the slide;
 - SHOULD render each slide in a sandboxed, opaque-origin frame (`<iframe sandbox="allow-scripts">` without `allow-same-origin` when it needs its own runtime inside the frame; never both flags together), with a Content-Security-Policy that admits only the reader's own runtime;
+- SHOULD block network resources from a deck until the viewer allows them (§13), enforcing it in the frame's Content-Security-Policy rather than by rewriting markup;
 - MUST treat every id, attribute and text value from a slide as data — in particular when building selectors, JSON or HTML from them;
 - MUST NOT follow entry paths outside the deck (§1.4);
 - MUST treat the container bytes as untrusted too: a malformed or hostile file (a truncated database, a page pointing outside the file, a ZIP entry that inflates far beyond its declared size) MUST end in an error that says the deck cannot be read, never a crash or a hang;
