@@ -63,6 +63,8 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 投影片支援無障礙語意（格式規格 §4.7）：每張投影片的 frame 都帶有 deck 的 `lang`（或投影片自己的 `xml:lang`）；投影片的 `<title>` 會成為總覽和螢幕閱讀器看到的名稱；元素的 `<title>` 會轉成 `aria-label`，簡報時不會跳出提示框；標了 `data-slidra-decorative` 的元素則對輔助科技隱藏。
 
+元素可以是連結（格式規格 §4.8）：`data-slidra-link` 可以在新分頁開網頁、依 `data-slidra-slide-id` 跳到另一張投影片，或是 `#next`／`#previous`／`#first`／`#last`。點擊連結元素，或用 Tab 移過去再按 Enter 即可。其他種類的 URL 一律忽略。
+
 ## 運作方式
 
 deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁面的檔案不會離開你的電腦。SQLite 讀取器是自己寫的唯讀實作（`lib/viewer/sqlite-reader.js`），不需要 WebAssembly。

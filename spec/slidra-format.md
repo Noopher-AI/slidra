@@ -151,6 +151,7 @@ Each slide is one SVG document under `slides/`.
 - `style="background-color:…"` on the root sets the slide background.
 - A slide is **self-contained**: its graphics, element ids, effects, transition, notes and comments all live in its own SVG. Reordering slides touches only `project.json`'s `slides` array.
 - Files are conventionally named `001.svg`, `002.svg`, … by position; the number is not an identity.
+- `data-slidra-slide-id` on the root is the slide's stable identity: `s-` + 12 base64url characters, opaque, unique within the deck, and kept when the slide is moved, renamed or edited. It is optional; a slide without one cannot be the target of a link (§4.8). Writers that copy a slide MUST give the copy a new id.
 - An SVG `<title>` as the root's first child (after `<metadata>`, if any) is the slide's title, for lists, the overview and assistive technology (§4.7).
 
 ---
@@ -270,6 +271,29 @@ A checker SHOULD flag every element that shows an image, media or a chart and ha
 A reader that renders slides in a browser SHOULD also stop `<title>` from showing as a hover tooltip during playback (for example by moving it to `aria-label`); the stored SVG is not changed.
 
 **Writers** SHOULD give every element that shows an image, media or a chart either a `<title>` or `data-slidra-decorative="true"`, and SHOULD set `lang`.
+
+### 4.8 Links
+
+`data-slidra-link` on an element container makes the element a link. Activating it (a click or tap on the element, or Enter while it has keyboard focus) follows the link **instead of** advancing the slide.
+
+```xml
+<g id="el-cta000000000" data-slidra-link="https://slidra.app/spec">…</g>        <!-- a web page -->
+<g id="el-appendix0000" data-slidra-link="#s-Q2xpY2tNZTEy">…</g>                <!-- another slide -->
+<g id="el-back00000000" data-slidra-link="#first">…</g>                         <!-- a navigation action -->
+```
+
+| Value | Meaning |
+|---|---|
+| `https://…`, `http://…`, `mailto:…` | Opens the URL outside the presentation (a new browser tab, the mail client). The viewer itself never navigates away. |
+| `#s-…` | Goes to the slide whose `data-slidra-slide-id` (§3) matches, arriving at its opening state. |
+| `#next`, `#previous` | Goes to the next / previous slide, skipping the rest of the current slide's steps. |
+| `#first`, `#last` | Goes to the first / last slide. |
+
+Every slide a link arrives at opens in its opening state (playback §2), with its page transitions played as for any other jump.
+
+A reader MUST ignore (and SHOULD report) a link whose value is none of these: another URL scheme (`javascript:`, `data:`, `file:` …), a relative path, or a slide id that no slide in the deck carries. An ignored link is not an error that makes the slide corrupt; the element behaves as if it had no link. A reader SHOULD show linked elements as interactive (a pointer cursor, a focus ring) and make them reachable with Tab.
+
+SVG's own `<a href>` is not a Slidra link: readers MUST NOT follow it, and writers use `data-slidra-link` instead. Following a link never changes the deck and never runs anything from the slide (§17).
 
 ---
 
@@ -507,7 +531,8 @@ A deck is meant to be opened by people other than its author, and a valid SVG ca
 - MUST NOT execute any script, `on*` handler or `javascript:` URL from the slide;
 - SHOULD render each slide in a sandboxed, opaque-origin frame (`<iframe sandbox="allow-scripts">` without `allow-same-origin` when it needs its own runtime inside the frame; never both flags together), with a Content-Security-Policy that admits only the reader's own runtime;
 - MUST treat every id, attribute and text value from a slide as data — in particular when building selectors, JSON or HTML from them;
-- MUST NOT follow entry paths outside the deck (§1.4).
+- MUST NOT follow entry paths outside the deck (§1.4);
+- MUST open external links (§4.8) only on the user's own activation, outside the viewer, without giving the opened page a reference back to it (`noopener`), and only for `http:`, `https:` and `mailto:` URLs.
 
 ---
 
