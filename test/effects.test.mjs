@@ -22,24 +22,24 @@ test("rejects malformed effects", () => {
 });
 
 test("steps open at every on-click; the first effect must be on-click", () => {
-  const effects = [
-    raw("a", "enter", "fade", "on-click"),
-    raw("b", "enter", "zoom", "with-previous"),
-    raw("c", "emphasis", "pulse", "on-click"),
-    raw("d", "exit", "fade-out", "after-previous"),
-  ].map((r, i) => validateEffect(r, i, true));
+  const effects = [raw("a", "enter", "fade", "on-click"), raw("b", "enter", "zoom", "with-previous"), raw("c", "emphasis", "pulse", "on-click"), raw("d", "exit", "fade-out", "after-previous")].map(
+    (r, i) => validateEffect(r, i, true),
+  );
   const steps = deriveSteps(effects);
-  assert.deepEqual(steps.map((s) => s.effects.map((e) => e.target)), [["a", "b"], ["c", "d"]]);
+  assert.deepEqual(
+    steps.map((s) => s.effects.map((e) => e.target)),
+    [
+      ["a", "b"],
+      ["c", "d"],
+    ],
+  );
   assert.throws(() => deriveSteps([validateEffect(raw("a", "enter", "fade", "with-previous"), 0, true)]), /corrupted/);
 });
 
 test("only targets whose first effect is enter start hidden", () => {
-  const effects = [
-    raw("a", "exit", "fade-out", "on-click"),
-    raw("a", "enter", "fade", "on-click"),
-    raw("b", "enter", "fade", "on-click"),
-    raw("b", "exit", "zoom-out", "on-click"),
-  ].map((r, i) => validateEffect(r, i, true));
+  const effects = [raw("a", "exit", "fade-out", "on-click"), raw("a", "enter", "fade", "on-click"), raw("b", "enter", "fade", "on-click"), raw("b", "exit", "zoom-out", "on-click")].map((r, i) =>
+    validateEffect(r, i, true),
+  );
   assert.deepEqual(enterTargets(effects), ["b"]);
 });
 

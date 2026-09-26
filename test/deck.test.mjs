@@ -55,10 +55,12 @@ function zip(entries) {
 
 test("opens a legacy ZIP deck (formatVersion 4)", async () => {
   const project = JSON.stringify({ formatVersion: 4, name: "Legacy", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] });
-  const deck = await openDeck(zip([
-    ["project.json", project, false],
-    ["slides/001.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text>legacy ZIP deck</text></svg>', true],
-  ]));
+  const deck = await openDeck(
+    zip([
+      ["project.json", project, false],
+      ["slides/001.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720"><text>legacy ZIP deck</text></svg>', true],
+    ]),
+  );
   assert.equal(deck.container, "zip");
   assert.equal(deck.project.formatVersion, 4);
   assert.match(deck.readText("slides/001.svg"), /legacy ZIP deck/);
@@ -82,7 +84,11 @@ test("rejects files that are neither container", async () => {
 });
 
 test("validates project.json", () => {
-  const entries = (json) => new Map([["project.json", new TextEncoder().encode(JSON.stringify(json))], ["slides/001.svg", new Uint8Array(1)]]);
+  const entries = (json) =>
+    new Map([
+      ["project.json", new TextEncoder().encode(JSON.stringify(json))],
+      ["slides/001.svg", new Uint8Array(1)],
+    ]);
   const good = { formatVersion: 5, name: "x", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] };
   assert.equal(readProject(entries(good), "sqlite").name, "x");
   assert.throws(() => readProject(entries({ ...good, formatVersion: 4 }), "sqlite"), /formatVersion 5/);

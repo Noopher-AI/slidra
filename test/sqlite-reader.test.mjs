@@ -15,8 +15,14 @@ test("readVarint decodes 1-, 2- and 9-byte values", () => {
 
 test("parseColumns finds names and the rowid alias", () => {
   const columns = parseColumns('CREATE TABLE content (\n  id INTEGER PRIMARY KEY,\n  "path" TEXT NOT NULL UNIQUE,\n  kind INTEGER NOT NULL, -- 0 = file\n  data BLOB\n)');
-  assert.deepEqual(columns.map((c) => c.name), ["id", "path", "kind", "data"]);
-  assert.deepEqual(columns.map((c) => c.rowidAlias), [true, false, false, false]);
+  assert.deepEqual(
+    columns.map((c) => c.name),
+    ["id", "path", "kind", "data"],
+  );
+  assert.deepEqual(
+    columns.map((c) => c.rowidAlias),
+    [true, false, false, false],
+  );
 });
 
 test("rejects bytes that are not SQLite", () => {
@@ -75,6 +81,10 @@ test("matches node:sqlite byte-for-byte, including overflow pages and deep b-tre
       assert.deepEqual(row.data, expected.get(row.path), `${row.path} at page size ${pageSize}`);
     }
     const ids = rows.map((row) => row.id);
-    assert.deepEqual(ids, [...ids].sort((a, b) => a - b), "rows come back in rowid order");
+    assert.deepEqual(
+      ids,
+      [...ids].sort((a, b) => a - b),
+      "rows come back in rowid order",
+    );
   }
 });
