@@ -729,3 +729,4 @@ button { font: inherit; }
   .print-handout-6 .print-page { grid-template-columns: 1fr 1fr; }
   .print-handout-6 .print-slide img { border: 1px solid #ccc; }
 }
+.print-actions { display: flex; flex-wrap: wrap; gap: 8px; }
