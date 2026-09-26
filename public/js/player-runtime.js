@@ -21,6 +21,7 @@
   var hiddenAtOpen = plan.hidden || [];
   var stageMedia = plan.stageMedia || {};
   var embedIds = plan.embedIds || [];
+  var linkIds = plan.linkIds || [];
   var has = Object.prototype.hasOwnProperty;
 
   // -1: no step applied yet — the slide's opening state.
@@ -479,9 +480,52 @@
     }
   }
 
+  // ── Links (spec §4.8) ────────────────────────────────────────────────
+  // The host parsed and vetted every link; this side only knows which
+  // element ids are linked and reports an activation by id.
+
+  var linked = Object.create(null);
+
+  function setUpLinks() {
+    for (var i = 0; i < linkIds.length; i++) {
+      var el = document.getElementById(linkIds[i]);
+      if (!el) continue;
+      linked[linkIds[i]] = true;
+      el.setAttribute("tabindex", "0");
+      if (el.getAttribute("role") !== "img") el.setAttribute("role", "link");
+      el.style.cursor = "pointer";
+    }
+    if (linkIds.length > 0) {
+      var style = document.createElement("style");
+      style.textContent = "[data-slidra-link]:focus{outline:none}[data-slidra-link]:focus-visible{outline:3px solid #2f6fed;outline-offset:4px}";
+      document.head.appendChild(style);
+    }
+  }
+
+  /** The linked element containing `node`, if any. */
+  function linkFor(node) {
+    for (var el = node; el && el.nodeType === 1; el = el.parentNode) {
+      var id = el.getAttribute("id");
+      if (id && linked[id]) return id;
+    }
+    return null;
+  }
+
+  function followLink(id) {
+    post({ event: "link", id: id });
+  }
+
   // ── Input ────────────────────────────────────────────────────────────
 
   document.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && document.activeElement) {
+      var focusedLink = linkFor(document.activeElement);
+      if (focusedLink) {
+        event.preventDefault();
+        followLink(focusedLink);
+        return;
+      }
+    }
     if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === " " || event.key === "PageDown" || event.key === "Enter") {
       event.preventDefault();
       advance();
@@ -515,6 +559,11 @@
       return;
     }
     var target = event.target;
+    var link = linkFor(target);
+    if (link) {
+      followLink(link);
+      return;
+    }
     if (target && target.closest && target.closest("button, video, audio, a")) return;
     advance();
   });
@@ -585,6 +634,7 @@
 
   resetHidden();
   buildStageMedia();
+  setUpLinks();
 
   // Arriving backwards lands on the slide's last step: replay up to it.
   var startStep = typeof plan.startStep === "number" ? plan.startStep : -1;
