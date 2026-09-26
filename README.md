@@ -76,6 +76,7 @@ app/                 Next.js App Router
   spec/[...path]/       the specs as plain text
 lib/decks.js         server-side deck discovery (SLIDRA_DECKS)
 lib/schema.js        compiles spec/schema/ with Ajv (Node only; tests and tools)
+lib/writer/          the reference writer: build, edit and convert decks (Node ≥ 22.5)
 lib/viewer/
   sqlite-reader.js      read-only SQLite file-format reader (b-trees, records, overflow pages)
   zip-reader.js         read-only ZIP reader for legacy decks
@@ -95,6 +96,24 @@ e2e/                 browser tests (Playwright)
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
 
 Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all.
+
+## Writing decks
+
+`lib/writer/` is the reference writer (Node ≥ 22.5, `node:sqlite`). It applies every rule the spec puts on writers: the RFC 0001 header, explicit directory rows, safe paths, `project.json` checked against the schema and serialised in its original key order, unknown fields and tables kept, and an atomic replace of the file.
+
+```js
+import { DeckWriter, editDeck, convertLegacyDeck, newElementId, newSlideId } from "./lib/writer/index.js";
+
+const deck = new DeckWriter({ name: "Q3 review", author: "Alice", lang: "en" });
+deck.addSlide(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-slidra-slide-id="${newSlideId()}">…</svg>`);
+deck.addFile("assets/photo.png", pngBytes);
+deck.write("q3.slidra");
+
+await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new Date().toISOString() })));
+await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5, in place
+```
+
+`tools/build-examples.mjs` builds `examples/` with it (`--out <dir>` writes somewhere else).
 
 ## Development
 
