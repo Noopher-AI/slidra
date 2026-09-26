@@ -20,7 +20,8 @@
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
     "test:e2e": "playwright test",
     "conformance": "node --no-warnings tools/build-conformance.mjs",
-    "validate": "node --no-warnings bin/slidra-validate.mjs"
+    "validate": "node --no-warnings bin/slidra-validate.mjs",
+    "fuzz": "FUZZ_ITERATIONS=${FUZZ_ITERATIONS:-50000} node --test --no-warnings test/fuzz.test.mjs"
   },
   "keywords": [
     "slidra",

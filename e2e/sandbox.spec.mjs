@@ -53,3 +53,47 @@ test("a corrupt effect list shows the slide statically and says why", async ({ p
   await expect(page.locator(".toast")).toContainText("no earlier step to join");
   expect(Number(await inSlide(page, () => getComputedStyle(document.getElementById("el-box000000000")).opacity))).toBe(1);
 });
+
+test("hostile containers end in a message, not a broken page (format §17)", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error));
+  const deck = makeDeck({ slides: [svg('<g id="el-a00000000000"><text x="10" y="50">a</text></g>')] });
+  const truncated = deck.subarray(0, 1500);
+  // A ZIP whose only entry claims 16 bytes but inflates to 4 MB.
+  const { deflateRawSync } = await import("node:zlib");
+  const body = deflateRawSync(Buffer.alloc(4 * 1024 * 1024));
+  const name = Buffer.from("project.json");
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(body.length, 18);
+  local.writeUInt32LE(16, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(body.length, 20);
+  central.writeUInt32LE(16, 24);
+  central.writeUInt16LE(name.length, 28);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(46 + name.length, 12);
+  end.writeUInt32LE(30 + name.length + body.length, 16);
+  const bomb = Buffer.concat([local, name, body, central, name, end]);
+
+  /** @type {[string, Uint8Array, RegExp][]} */
+  const cases = [
+    ["truncated", truncated, /cannot be read|not a \.slidra deck/],
+    ["bomb", bomb, /inflates beyond its declared size/],
+  ];
+  for (const [label, bytes, message] of cases) {
+    await page.goto("/");
+    await expect(page.locator("#home")).toBeVisible();
+    await page.locator("#file-input").setInputFiles({ name: `${label}.slidra`, mimeType: "application/vnd.slidra", buffer: Buffer.from(bytes) });
+    await expect(page.locator(".toast").first()).toContainText(message);
+    await expect(page.locator("#viewer")).toBeHidden();
+  }
+  expect(errors).toEqual([]);
+});
