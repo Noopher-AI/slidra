@@ -162,7 +162,10 @@ export default function ViewerShell() {
 
         <div id="overview" className="overview" hidden role="dialog" aria-modal="true" aria-label="Slide overview">
           <div className="overview-head">
-            <h2 id="overview-title">Overview</h2>
+            <div className="overview-title">
+              <h2 id="overview-title">Overview</h2>
+              <p id="overview-about" className="overview-about" hidden></p>
+            </div>
             <button id="overview-close" className="icon-button" type="button" aria-label="Close overview" title="Close (Esc)">
               <svg viewBox="0 0 20 20" aria-hidden="true">
                 <path d="M5 5l10 10M15 5 5 15" />

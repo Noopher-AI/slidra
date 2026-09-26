@@ -41,8 +41,13 @@ const valid = [
   { ...base, templates: ["templates/001.svg", { file: "templates/002.svg", name: "Title" }] },
 ];
 
-/** Rules only a writer is held to (§2.1 lists every FontEntry field; templates are not read during playback). Readers accept these. */
+/** Rules only a writer is held to (document metadata §2.1; every FontEntry field §2.2; templates are not read during playback). Readers accept these. */
 const writerOnly = [
+  { ...base, author: 42 },
+  { ...base, created: "yesterday" },
+  { ...base, keywords: "a, b" },
+  { ...base, cover: "../slides/001.svg" },
+
   { ...base, fonts: [{ file: "fonts/A.ttf", family: "A" }] },
   { ...base, templates: [{ name: "no file" }] },
 ];
