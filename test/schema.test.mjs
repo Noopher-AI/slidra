@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
 import { checkAttributes, checkProject, metadataSchema } from "../lib/schema.js";
 import { NAMESPACE, openDeck, readProject } from "../lib/viewer/deck.js";
+import { parseLink } from "../lib/viewer/links.js";
 import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, TRANSITION_EFFECTS, validateEffect, validateTransition } from "../lib/viewer/effects.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -43,6 +44,7 @@ const valid = [
 
 /** Rules only a writer is held to (document metadata §2.1; every FontEntry field §2.2; templates are not read during playback). Readers accept these. */
 const writerOnly = [
+  { ...base, lang: "not a language!" },
   { ...base, author: 42 },
   { ...base, created: "yesterday" },
   { ...base, keywords: "a, b" },
@@ -164,6 +166,26 @@ test("transitions: schema and viewer give the same verdict", () => {
   }
 });
 
+test("link values: the schema and the viewer's parser agree", () => {
+  for (const value of [
+    "https://slidra.app/spec",
+    "mailto:a@example.com",
+    "#s-Q2xpY2tNZTEy",
+    "#next",
+    "#previous",
+    "#first",
+    "#last",
+    "javascript:alert(1)",
+    "data:x",
+    "slides/002.svg",
+    "#s-short",
+    "#home",
+  ]) {
+    const schemaOk = checkAttributes("element", { id: "el-Ab3xK9mQ2pLw", "data-slidra-link": value }).length === 0;
+    assert.equal(schemaOk, parseLink(value) !== null, value);
+  }
+});
+
 test("other vocabulary definitions accept conforming markup and reject the rest", () => {
   assert.deepEqual(checkAttributes("comment", { id: "c-01", target: "page", created: "2026-09-01T00:00:00.000Z" }), []);
   assert.notDeepEqual(checkAttributes("comment", { id: "c-01", target: "page", created: "yesterday" }), []);
@@ -176,6 +198,8 @@ test("other vocabulary definitions accept conforming markup and reject the rest"
   assert.notDeepEqual(checkAttributes("element", { id: "el-short" }), []);
   assert.notDeepEqual(checkAttributes("element", { id: "el-Ab3xK9mQ2pLw", "data-slidra-role": "background" }), []);
   assert.deepEqual(checkAttributes("cell", { "data-slidra-cell": "0,1", "data-slidra-span": "1,2" }), []);
+  assert.deepEqual(checkAttributes("slide", { "data-slidra-slide-id": "s-Q2xpY2tNZTEy" }), []);
+  assert.notDeepEqual(checkAttributes("slide", { "data-slidra-slide-id": "slide-1" }), []);
   assert.notDeepEqual(checkAttributes("cell", { "data-slidra-cell": "0,1", "data-slidra-span": "0,2" }), []);
 });
 

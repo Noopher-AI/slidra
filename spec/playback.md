@@ -13,6 +13,8 @@ This document specifies how a conforming player presents a deck: what is on scre
 - Each slide has zero or more **steps** (format §6.3). *Advance* applies the next step; when none is left, it moves to the next slide. *Retreat* undoes the last applied step; when none is applied, it moves to the previous slide, landing on that slide's **last** step.
 - A slide's position is `-1` (opening state, no step applied) through `steps − 1`.
 
+A click on a linked element (format §4.8) follows the link and does not advance.
+
 Players SHOULD map advance to → ↓ Space PageDown Enter, a click on the slide, and a leftward swipe; retreat to ← ↑ PageUp Backspace and a rightward swipe; Home/End to the first slide / the last slide's last step.
 
 ## 2. Opening state

@@ -102,6 +102,8 @@
         "id": { "type": "string", "pattern": "^el-(?:[A-Za-z0-9_-]{12}|background)$" },
         "data-slidra-name": { "type": "string" },
         "data-slidra-lock": { "const": "true" },
+        "data-slidra-decorative": { "const": "true" },
+        "data-slidra-link": { "type": "string", "pattern": "^(?:https?://\\S+|mailto:\\S+|#s-[A-Za-z0-9_-]{12}|#(?:next|previous|first|last))$" },
         "data-slidra-role": { "const": "background" },
         "data-slidra-text-width": { "$ref": "#/$defs/positive" },
         "data-slidra-text-height": { "$ref": "#/$defs/number" },
@@ -117,6 +119,14 @@
         "data-slidra-theme": { "enum": ["dark", "light", "zebra"] }
       },
       "allOf": [{ "if": { "required": ["data-slidra-role"] }, "then": { "properties": { "id": { "const": "el-background" } } } }]
+    },
+    "slide": {
+      "description": "The Slidra attributes of a slide's root <svg> (§3).",
+      "type": "object",
+      "properties": {
+        "data-slidra-slide-id": { "type": "string", "pattern": "^s-[A-Za-z0-9_-]{12}$" },
+        "viewBox": { "type": "string" }
+      }
     },
     "cell": {
       "description": "A table cell group (§12).",
