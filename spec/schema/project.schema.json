@@ -6,32 +6,90 @@
   "type": "object",
   "required": ["formatVersion", "name", "canvas", "slides"],
   "properties": {
-    "formatVersion": { "type": "integer", "minimum": 1, "maximum": 5 },
-    "name": { "type": "string" },
+    "formatVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "name": {
+      "type": "string"
+    },
     "canvas": {
       "type": "object",
       "required": ["width", "height"],
       "properties": {
-        "width": { "type": "number", "exclusiveMinimum": 0 },
-        "height": { "type": "number", "exclusiveMinimum": 0 }
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
-    "slides": { "type": "array", "items": { "$ref": "#/$defs/entryPath" } },
-    "fonts": { "type": "array", "items": { "$ref": "#/$defs/fontEntry" } },
+    "slides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entryPath"
+      }
+    },
+    "fonts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fontEntry"
+      }
+    },
     "templates": {
       "type": "array",
       "items": {
         "oneOf": [
-          { "$ref": "#/$defs/entryPath" },
+          {
+            "$ref": "#/$defs/entryPath"
+          },
           {
             "type": "object",
             "required": ["file"],
-            "properties": { "file": { "$ref": "#/$defs/entryPath" }, "name": { "type": "string" } }
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/entryPath"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
           }
         ]
       }
     },
-    "transition": { "type": "string", "description": "Reserved; no effect." }
+    "transition": {
+      "type": "string",
+      "description": "Reserved; no effect."
+    },
+    "author": {
+      "type": "string"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "modified": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "description": {
+      "type": "string"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cover": {
+      "$ref": "#/$defs/entryPath",
+      "description": "One of `slides`; readers check membership."
+    }
   },
   "$defs": {
     "entryPath": {
@@ -43,11 +101,22 @@
       "type": "object",
       "required": ["file", "family", "license", "licenseFile", "source"],
       "properties": {
-        "file": { "$ref": "#/$defs/entryPath" },
-        "family": { "type": "string", "minLength": 1 },
-        "license": { "type": "string" },
-        "licenseFile": { "$ref": "#/$defs/entryPath" },
-        "source": { "type": "string" }
+        "file": {
+          "$ref": "#/$defs/entryPath"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string"
+        },
+        "licenseFile": {
+          "$ref": "#/$defs/entryPath"
+        },
+        "source": {
+          "type": "string"
+        }
       }
     }
   }
