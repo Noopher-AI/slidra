@@ -70,6 +70,8 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁面的檔案不會離開你的電腦。SQLite 讀取器是自己寫的唯讀實作（`lib/viewer/sqlite-reader.js`），不需要 WebAssembly。
 
+容器本身同樣不可信任：讀取器能承受截斷、損毀或惡意構造的檔案（`test/fuzz.test.mjs` 以變異方式 fuzz；`npm run fuzz` 會跑較長的一輪），並以錯誤訊息收場。超過 1 GB 的 deck、單一條目超過 256 MB、條目超過 50,000 個，以及解壓後超出宣告大小的 ZIP 條目，一律拒絕開啟。
+
 投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。
 
 ## 驗證 deck
