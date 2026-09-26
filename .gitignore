@@ -7,3 +7,5 @@ tools/.showcase-text.txt
 .vercel/
 next-env.d.ts
 .env*
+test-results/
+playwright-report/
