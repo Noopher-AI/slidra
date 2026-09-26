@@ -42,10 +42,21 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 |---|---|---|
 | `SLIDRA_DECKS` | `decks:examples` | 要列在首頁的目錄（往下找三層）或 `.slidra` 檔 |
 | `SLIDRA_ALLOW_REMOTE` | 未設定 | 設為 `1` 時，這台 server 列出的 deck 可以直接載入網路資源，不必先詢問（見下方說明） |
+| `SLIDRA_EMBED_ORIGINS` | `*` | 允許嵌入 `/embed` 的來源，以空白分隔 |
 | `--port`、`PORT` | `3000` | |
 | `--hostname` | 所有網路介面 | |
 
 也可以直接連到某份 deck：`http://localhost:3000/?deck=/decks/1/showcase.slidra#3` 會從第 3 張開始播範例。這樣的連結貼到聊天軟體或社群網站時，會顯示這份 deck 的名稱、描述和封面投影片（`/api/og` 在 server 端把封面轉成 1200×630 的 PNG，轉換前會先移除投影片裡所有外部參照）。
+
+## 嵌入其他網站
+
+這台 server 列出的任何 deck 都能嵌入其他網站：
+
+```html
+<iframe src="https://your-server/embed?deck=%2Fdecks%2F0%2Fshowcase.slidra" width="960" height="584" style="border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>
+```
+
+`/embed` 只有舞台和一條精簡的控制列（附 **Open in Slidra** 連結），也是唯一允許被其他網站嵌入的頁面（`Content-Security-Policy: frame-ancestors *`；可用 `SLIDRA_EMBED_ORIGINS` 以空白分隔列出允許的來源來收窄）。其他頁面一律送出 `X-Frame-Options: SAMEORIGIN`。deck 頁面會宣告 oEmbed 端點（`/api/oembed?url=<deck 連結>`），支援連結展開的工具可以自動嵌入。
 
 ## 播放操作
 

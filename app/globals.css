@@ -744,3 +744,13 @@ button { font: inherit; }
   white-space: nowrap;
   border: 0;
 }
+
+/* ─── Embeddable player (/embed) ─────────────────────────────────────── */
+
+.embed { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) 44px; background: #000; color: var(--stage-ink); }
+.embed-stage { position: relative; display: grid; place-items: center; min-height: 0; }
+.embed-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--stage-2); font-size: 13px; }
+.embed-counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: center; }
+.embed-open { margin-left: auto; color: var(--stage-muted); text-decoration: none; font-weight: 600; }
+.embed-open:hover { color: var(--stage-ink); }
+.embed-status { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 16px; text-align: center; background: rgba(8, 8, 10, .9); }

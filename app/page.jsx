@@ -24,6 +24,7 @@ export async function generateMetadata({ searchParams }) {
     title,
     description,
     openGraph: { title, description, type: "website", images: [image] },
+    alternates: { types: { "application/json+oembed": `/api/oembed?url=${encodeURIComponent(`${origin ?? ""}/?deck=${encodeURIComponent(deckUrl)}`)}` } },
     twitter: { card: "summary_large_image", title, description, images: [image.url] },
   };
 }

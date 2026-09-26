@@ -11,6 +11,8 @@ const nextConfig = {
     "/spec/**": ["./spec/**/*.md", "./spec/**/*.json"],
   },
   async headers() {
+    // /embed may be framed by other sites (SLIDRA_EMBED_ORIGINS narrows which, space-separated); every other page only by this one.
+    const embedAncestors = (process.env.SLIDRA_EMBED_ORIGINS ?? "").trim() || "*";
     return [
       {
         source: "/:path*",
@@ -18,8 +20,18 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "X-Frame-Options", value: "SAMEORIGIN" },
         ],
+      },
+      {
+        source: "/((?!embed$|embed/).*)",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+      {
+        source: "/embed",
+        headers: [{ key: "Content-Security-Policy", value: `frame-ancestors ${embedAncestors}` }],
       },
     ];
   },
