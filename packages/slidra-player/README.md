@@ -10,6 +10,26 @@
 
 The deck is fetched with `fetch()`, so it must be same-origin or served with CORS.
 
+## Deck sources
+
+Instead of a file, the element can play a **deck source**: an object that hands out `project.json`, one slide at a time, and a URL for each packaged file. The element then never downloads the whole deck; it asks only for the slides it shows and the next one.
+
+```js
+const player = document.querySelector("slidra-player");
+player.source = {
+  project: () => fetch("/api/decks/42/project.json").then((r) => r.json()), // parsed project.json
+  slide: (path) => fetch(`/api/decks/42/${path}`).then((r) => r.text()), // one slide's SVG markup
+  fileUrl: (path) => filesByPath[path] ?? null, // a URL for a font, image, video or audio file, or null
+  // Optional: slideIds() → each slide's data-slidra-slide-id (links to slides resolve without reading every slide)
+  // Optional: presenter() → a descriptor another window can open the same deck from
+};
+```
+
+- File URLs may be `https:` (or `http:`), `blob:` or `data:`. The slide frame's Content-Security-Policy admits each `http(s)` URL the source returned by origin and path, and nothing else from the network. Those files are the deck's own, so they load without `allow-remote`; what a slide itself references on the network still waits for it.
+- Fonts load in CORS mode from the frame's opaque origin, so font URLs need `Access-Control-Allow-Origin: *`.
+- Everything a source returns is treated as untrusted: `project.json` is validated again, and slides are prepared and sandboxed like any other.
+- A slide the source cannot serve fires `error` and the deck keeps playing. Setting `src` replaces the source; setting `source` to `null` goes back to `src`.
+
 ## Attributes
 
 | Attribute | |
@@ -31,6 +51,7 @@ await player.goTo(4); // 1-based
 player.slide; // current slide, 1-based
 player.step; // current step on the slide, -1 before the first
 player.slideCount;
+player.source = mySource; // play a deck source instead of src
 player.addEventListener("slidechange", (event) => console.log(event.detail)); // { slide, step, slideCount }
 player.addEventListener("error", (event) => console.warn(event.detail.message));
 ```
