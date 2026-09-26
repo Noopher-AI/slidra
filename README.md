@@ -13,7 +13,7 @@
 
 A `.slidra` file is one self-contained presentation: SVG slides, their animations and page transitions, speaker notes, media and fonts, stored as rows of a single SQLite database. This repository holds:
 
-- **The specification** — [`spec/slidra-format.md`](spec/slidra-format.md) (what a deck *is*), [`spec/playback.md`](spec/playback.md) (how a deck *plays*), and [`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md) (why the container is SQLite).
+- **The specification** — [`spec/slidra-format.md`](spec/slidra-format.md) (what a deck *is*), [`spec/playback.md`](spec/playback.md) (how a deck *plays*), [`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md) (why the container is SQLite), and JSON Schemas for `project.json` and the slide vocabulary under [`spec/schema/`](spec/schema/).
 - **A viewer** — open a `.slidra` file in your browser and present it, animations included. Built with Next.js; nothing is uploaded.
 
 Why open the format, and why SVG: [Why We Are Opening the `.slidra` Format](docs/why-open-the-slidra-format.md).
@@ -69,6 +69,7 @@ app/                 Next.js App Router
   decks/[...path]/      deck bytes
   spec/[...path]/       the specs as plain text
 lib/decks.js         server-side deck discovery (SLIDRA_DECKS)
+lib/schema.js        compiles spec/schema/ with Ajv (Node only; tests and tools)
 lib/viewer/
   sqlite-reader.js      read-only SQLite file-format reader (b-trees, records, overflow pages)
   zip-reader.js         read-only ZIP reader for legacy decks
@@ -79,7 +80,7 @@ lib/viewer/
   player.js             the host: page transitions, navigation, embeds
   app.js                home page and presenter UI
 public/js/player-runtime.js  runs inside each slide frame: steps, Web Animations, media
-spec/                the format and playback specifications
+spec/                the format and playback specifications; spec/schema/ holds their JSON Schemas
 examples/            example decks (tools/build-examples.mjs rebuilds them)
 test/                unit tests (node --test)
 e2e/                 browser tests (Playwright)
