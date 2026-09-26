@@ -195,6 +195,10 @@ The live demo at **https://slidra-demo.vercel.app/** runs on Vercel (project `sl
 - The example decks in `examples/` and the specs in `spec/` ship inside the route handlers (`outputFileTracingIncludes` in `next.config.mjs`), so the demo lists exactly what is in `examples/`.
 - Deploys are made from the CLI, not on push: `vercel link` once, then `vercel deploy --prod`.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, scripts and how format changes work (spec first). Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE). The example deck embeds a subset of Noto Sans TC under the SIL Open Font License 1.1 (its licence text travels inside the deck at `fonts/LICENSE-NotoSansTC.txt`).

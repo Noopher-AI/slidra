@@ -166,6 +166,10 @@ viewer 核心是純 ES modules（`lib/viewer/`），由 Next.js 打包；`npm ru
 - `examples/` 裡的範例 deck 和 `spec/` 的規格會一起打包進 route handler（見 `next.config.mjs` 的 `outputFileTracingIncludes`），所以 demo 列出的就是 `examples/` 的內容。
 - 用 CLI 手動佈署，push 不會自動觸發：先 `vercel link` 一次，之後 `vercel deploy --prod`。
 
+## 參與貢獻
+
+環境設定、可用指令，以及格式變更的流程（規格先行），請見 [CONTRIBUTING.md](CONTRIBUTING.md)。資安問題請依 [SECURITY.md](SECURITY.md) 的說明私下回報。歷次變更列在 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 授權
 
 MIT，見 [LICENSE](LICENSE)。範例 deck 內嵌了 Noto Sans TC 的子集，採 SIL Open Font License 1.1，授權全文就放在 deck 裡的 `fonts/LICENSE-NotoSansTC.txt`。
