@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slidra.app/schema/5/metadata.schema.json",
+  "title": ".slidra SVG vocabulary",
+  "description": "Attribute rules for the Slidra-specific parts of a slide SVG. XML attributes are strings, so an element is checked by reading its attributes into a JSON object of strings (absent attributes are absent keys) and validating that object against the definition named after the element: $defs/effect for <slidra:effect>, $defs/transition for <slidra:transition>, and so on. $defs/element applies to every element container (<g id=\"el-…\">). Structural rules (at most one <slidra:transition> per slide; the first effect starts on-click; a target names an element on the slide) are checked by readers, not by this schema.",
+  "$defs": {
+    "seconds": {
+      "description": "A finite, non-negative decimal number of seconds. An empty value is invalid, never 'the default'.",
+      "type": "string",
+      "pattern": "^\\s*(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*$"
+    },
+    "number": { "type": "string", "pattern": "^\\s*-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*$" },
+    "positive": { "type": "string", "pattern": "^\\s*(?=[^1-9]*[1-9])(?:\\d+(?:\\.\\d*)?|\\.\\d+)\\s*$" },
+    "numberList": { "type": "string", "pattern": "^\\s*-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:\\s*,\\s*-?(?:\\d+(?:\\.\\d*)?|\\.\\d+))*\\s*$" },
+    "spaceSeparatedLengths": { "type": "string", "pattern": "^\\s*(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:\\s+(?:\\d+(?:\\.\\d*)?|\\.\\d+))*\\s*$" },
+    "boolean": { "enum": ["true", "false"] },
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+
+    "effect": {
+      "type": "object",
+      "required": ["target", "family", "effect", "start"],
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "family": { "enum": ["enter", "emphasis", "exit", "path", "media"] },
+        "effect": { "type": "string", "minLength": 1 },
+        "start": { "enum": ["on-click", "with-previous", "after-previous"] },
+        "duration": { "$ref": "#/$defs/seconds" },
+        "delay": { "$ref": "#/$defs/seconds" },
+        "d": { "type": "string" }
+      },
+      "allOf": [
+        { "if": { "properties": { "family": { "const": "enter" } } }, "then": { "properties": { "effect": { "enum": ["appear", "fade", "fly-up", "fly-left", "zoom"] } } } },
+        { "if": { "properties": { "family": { "const": "emphasis" } } }, "then": { "properties": { "effect": { "enum": ["pulse", "spin", "grow"] } } } },
+        { "if": { "properties": { "family": { "const": "exit" } } }, "then": { "properties": { "effect": { "enum": ["disappear", "fade-out", "zoom-out"] } } } },
+        {
+          "if": { "properties": { "family": { "const": "path" } } },
+          "then": { "required": ["d"], "properties": { "effect": { "const": "path" }, "d": { "type": "string", "minLength": 1 } } }
+        },
+        { "if": { "properties": { "family": { "const": "media" } } }, "then": { "properties": { "effect": { "enum": ["play", "pause"] } } } }
+      ]
+    },
+
+    "transitionEffect": { "enum": ["none", "fade", "slide", "zoom"] },
+    "transition": {
+      "type": "object",
+      "properties": {
+        "enter": { "$ref": "#/$defs/transitionEffect" },
+        "enter-duration": { "$ref": "#/$defs/seconds" },
+        "exit": { "$ref": "#/$defs/transitionEffect" },
+        "exit-duration": { "$ref": "#/$defs/seconds" }
+      }
+    },
+
+    "notes": { "type": "object", "description": "No attributes; the text content is the notes." },
+
+    "comment": {
+      "type": "object",
+      "required": ["id", "target", "created"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "author": { "type": "string" },
+        "created": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "chart": {
+      "type": "object",
+      "required": ["type", "width", "height"],
+      "properties": {
+        "type": { "enum": ["bar", "hbar", "line", "area", "pie", "donut"] },
+        "width": { "$ref": "#/$defs/positive" },
+        "height": { "$ref": "#/$defs/positive" },
+        "stacked": { "$ref": "#/$defs/boolean" },
+        "axes": { "enum": ["single", "dual"] },
+        "palette": { "enum": ["brand", "cool", "warm"] },
+        "legend": { "enum": ["none", "bottom", "right"] },
+        "grid": { "$ref": "#/$defs/boolean" },
+        "labels": { "$ref": "#/$defs/boolean" },
+        "x-title": { "type": "string" },
+        "y-title": { "type": "string" }
+      },
+      "allOf": [{ "if": { "properties": { "stacked": { "const": "true" } }, "required": ["stacked"] }, "then": { "properties": { "type": { "enum": ["bar", "hbar", "area"] } } } }]
+    },
+    "series": {
+      "type": "object",
+      "required": ["name", "values"],
+      "properties": {
+        "name": { "type": "string" },
+        "values": { "$ref": "#/$defs/numberList" },
+        "axis": { "enum": ["left", "right"] },
+        "color": { "$ref": "#/$defs/color" }
+      }
+    },
+    "categories": { "type": "object", "required": ["values"], "properties": { "values": { "type": "string" } } },
+    "source": { "type": "object", "required": ["src"], "properties": { "src": { "type": "string", "minLength": 1 } } },
+
+    "element": {
+      "description": "The data-slidra-* attributes of an element container (§4, §11, §12). Unknown data-slidra-* attributes are allowed and MUST be preserved.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^el-(?:[A-Za-z0-9_-]{12}|background)$" },
+        "data-slidra-name": { "type": "string" },
+        "data-slidra-lock": { "const": "true" },
+        "data-slidra-role": { "const": "background" },
+        "data-slidra-text-width": { "$ref": "#/$defs/positive" },
+        "data-slidra-text-height": { "$ref": "#/$defs/number" },
+        "data-slidra-text-align": { "enum": ["left", "center", "right"] },
+        "data-slidra-list": { "enum": ["bullet", "number", "none"] },
+        "data-slidra-list-marker": { "type": "string" },
+        "data-slidra-media": { "type": "string", "minLength": 1 },
+        "data-slidra-type": { "enum": ["video", "audio", "chart", "table"] },
+        "data-slidra-embed": { "enum": ["youtube"] },
+        "data-slidra-cols": { "$ref": "#/$defs/spaceSeparatedLengths" },
+        "data-slidra-rows": { "$ref": "#/$defs/spaceSeparatedLengths" },
+        "data-slidra-header": { "enum": ["0", "1"] },
+        "data-slidra-theme": { "enum": ["dark", "light", "zebra"] }
+      },
+      "allOf": [{ "if": { "required": ["data-slidra-role"] }, "then": { "properties": { "id": { "const": "el-background" } } } }]
+    },
+    "cell": {
+      "description": "A table cell group (§12).",
+      "type": "object",
+      "required": ["data-slidra-cell"],
+      "properties": {
+        "data-slidra-cell": { "type": "string", "pattern": "^\\d+,\\d+$" },
+        "data-slidra-span": { "type": "string", "pattern": "^[1-9]\\d*,[1-9]\\d*$" },
+        "data-slidra-repeat": { "const": "row" },
+        "data-slidra-generated": { "const": "1" },
+        "data-slidra-align": { "enum": ["left", "center", "right"] }
+      }
+    },
+    "tspan": {
+      "description": "A <tspan> inside a text box (§4.4).",
+      "type": "object",
+      "properties": { "data-slidra-break": { "const": "true" } }
+    }
+  }
+}

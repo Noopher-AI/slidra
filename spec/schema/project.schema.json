@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://slidra.app/schema/5/project.schema.json",
+  "title": ".slidra project.json",
+  "description": "The deck's root metadata (slidra-format.md §2). Unknown fields are allowed and MUST be preserved by writers. Rules that need the container (every listed path names an existing file; formatVersion 5 only in a SQLite container, 1-4 only in a ZIP one) are checked by readers, not by this schema.",
+  "type": "object",
+  "required": ["formatVersion", "name", "canvas", "slides"],
+  "properties": {
+    "formatVersion": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "name": { "type": "string" },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "slides": { "type": "array", "items": { "$ref": "#/$defs/entryPath" } },
+    "fonts": { "type": "array", "items": { "$ref": "#/$defs/fontEntry" } },
+    "templates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/entryPath" },
+          {
+            "type": "object",
+            "required": ["file"],
+            "properties": { "file": { "$ref": "#/$defs/entryPath" }, "name": { "type": "string" } }
+          }
+        ]
+      }
+    },
+    "transition": { "type": "string", "description": "Reserved; no effect." }
+  },
+  "$defs": {
+    "entryPath": {
+      "description": "A container path (§1.4): relative, '/'-separated, no empty, '.' or '..' segment, no backslash or NUL.",
+      "type": "string",
+      "pattern": "^(?:(?!\\.\\.?/)[^/\\\\\\u0000]+/)*(?!\\.\\.?$)[^/\\\\\\u0000]+$"
+    },
+    "fontEntry": {
+      "type": "object",
+      "required": ["file", "family", "license", "licenseFile", "source"],
+      "properties": {
+        "file": { "$ref": "#/$defs/entryPath" },
+        "family": { "type": "string", "minLength": 1 },
+        "license": { "type": "string" },
+        "licenseFile": { "$ref": "#/$defs/entryPath" },
+        "source": { "type": "string" }
+      }
+    }
+  }
+}
