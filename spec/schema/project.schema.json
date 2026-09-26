@@ -86,6 +86,11 @@
         "type": "string"
       }
     },
+    "lang": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+      "description": "BCP 47 language tag (§4.7)."
+    },
     "cover": {
       "$ref": "#/$defs/entryPath",
       "description": "One of `slides`; readers check membership."
