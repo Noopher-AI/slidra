@@ -12,13 +12,14 @@ const attributesOf = (el) => Object.fromEntries(Array.from(el.attributes, (a) =>
 
 // ── project.json ──────────────────────────────────────────────────────
 
-const base = { formatVersion: 5, name: "Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] };
+const base = { formatVersion: 6, name: "Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] };
 const font = { file: "fonts/A.ttf", family: "A", license: "OFL-1.1", licenseFile: "fonts/OFL.txt", source: "https://example.com" };
 
 /** Projects a reader MUST reject (spec §1.4, §2). Schema and viewer agree on every one. */
 const readerRejects = [
-  { ...base, formatVersion: 6 },
-  { ...base, formatVersion: "5" },
+  { ...base, formatVersion: 7 },
+  { ...base, formatVersion: 0 },
+  { ...base, formatVersion: "6" },
   { ...base, name: 5 },
   { ...base, canvas: { width: 0, height: 720 } },
   { ...base, canvas: { width: 1280 } },

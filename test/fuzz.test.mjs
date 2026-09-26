@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { DeckError, openDeck } from "../lib/viewer/deck.js";
+import { makeLegacyDeck, svg, zip } from "./fixtures/make-deck.mjs";
 
 const ITERATIONS = Number(process.env.FUZZ_ITERATIONS ?? 400);
 const SEED = Number(process.env.FUZZ_SEED ?? 20260926);
@@ -14,8 +15,14 @@ const PER_CASE_MS = 2000;
 
 const conformance = new URL("../conformance/decks/", import.meta.url);
 const seeds = [
-  ...["accept-minimal", "accept-legacy-zip-v4", "effects-all-options", "links"].map((id) => new Uint8Array(readFileSync(new URL(`${id}.slidra`, conformance)))),
+  ...["accept-minimal", "effects-all-options", "links"].map((id) => new Uint8Array(readFileSync(new URL(`${id}.slidra`, conformance)))),
   new Uint8Array(readFileSync(new URL("../examples/minimal.slidra", import.meta.url))),
+  // Legacy decks, which this reader still opens (format §1.2) but the conformance suite leaves out.
+  makeLegacyDeck({ slides: [svg('<g id="el-AAAAAAAAAAAA"><text>five</text></g>')] }),
+  zip([
+    ["project.json", JSON.stringify({ formatVersion: 4, name: "Legacy", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg"] }), true],
+    ["slides/001.svg", svg('<g id="el-AAAAAAAAAAAA"><text>four</text></g>'), true],
+  ]),
 ];
 
 /** A small deterministic PRNG (mulberry32). */

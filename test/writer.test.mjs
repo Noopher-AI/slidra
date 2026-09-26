@@ -4,11 +4,10 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { deflateRawSync } from "node:zlib";
 import { DeckWriter, WriterError, convertLegacyDeck, editDeck, newElementId, newSlideId, serializeProject } from "../lib/writer/index.js";
 import { openDeck } from "../lib/viewer/deck.js";
 import { checkProject } from "../lib/schema.js";
-import { svg } from "./fixtures/make-deck.mjs";
+import { makeLegacyDeck, svg, zip } from "./fixtures/make-deck.mjs";
 
 const scratch = () => mkdtempSync(path.join(tmpdir(), "slidra-writer-"));
 const pragma = (file, name) => {
@@ -37,7 +36,7 @@ test("writes a deck the viewer opens, with the RFC 0001 header and explicit dire
   writer.write(file);
 
   assert.equal(pragma(file, "application_id"), 0x536c6472);
-  assert.equal(pragma(file, "user_version"), 5);
+  assert.equal(pragma(file, "user_version"), 6);
   assert.equal(pragma(file, "journal_mode"), "delete");
   const deck = await openDeck(new Uint8Array(readFileSync(file)));
   assert.deepEqual(deck.slides, ["slides/001.svg", "slides/002.svg"]);
@@ -59,9 +58,9 @@ test("project.json keeps key order, unknown fields, 2-space indentation and a tr
   writer.setProject({ description: "later" });
   writer.write(file);
   const text = (await openDeck(new Uint8Array(readFileSync(file)))).readText("project.json");
-  assert.equal(text, serializeProject({ formatVersion: 5, name: "D", canvas: { width: 1280, height: 720 }, slides: [], zeta: { kept: true }, alpha: 1, description: "later" }));
+  assert.equal(text, serializeProject({ formatVersion: 6, name: "D", canvas: { width: 1280, height: 720 }, slides: [], zeta: { kept: true }, alpha: 1, description: "later" }));
   assert.ok(text.endsWith("}\n"));
-  assert.match(text, /\n {2}"formatVersion": 5,/);
+  assert.match(text, /\n {2}"formatVersion": 6,/);
 });
 
 test("refuses unsafe paths and decks that break the writer rules, leaving the old file untouched", () => {
@@ -118,55 +117,83 @@ test("editDeck changes content in place and preserves tables and fields it does 
   assert.deepEqual(readdirSync(dir), ["e.slidra"]);
 });
 
-test("converts a legacy ZIP deck to formatVersion 5", async () => {
+test("converts a legacy ZIP deck to formatVersion 6", async () => {
   const dir = scratch();
   const file = path.join(dir, "old.slidra");
-  const entry = (name, text) => {
-    const nameBytes = Buffer.from(name);
-    const data = Buffer.from(text);
-    const body = deflateRawSync(data);
-    return { nameBytes, data, body };
-  };
-  const files = [
-    entry("project.json", JSON.stringify({ formatVersion: 4, name: "Old", canvas: { width: 800, height: 600 }, slides: ["slides/001.svg"], extra: true })),
-    entry("slides/001.svg", svg("<g/>", { width: 800, height: 600 })),
-  ];
-  const locals = [];
-  const centrals = [];
-  let offset = 0;
-  for (const f of files) {
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(8, 8);
-    local.writeUInt32LE(f.body.length, 18);
-    local.writeUInt32LE(f.data.length, 22);
-    local.writeUInt16LE(f.nameBytes.length, 26);
-    const central = Buffer.alloc(46);
-    central.writeUInt32LE(0x02014b50, 0);
-    central.writeUInt16LE(8, 10);
-    central.writeUInt32LE(f.body.length, 20);
-    central.writeUInt32LE(f.data.length, 24);
-    central.writeUInt16LE(f.nameBytes.length, 28);
-    central.writeUInt32LE(offset, 42);
-    locals.push(local, f.nameBytes, f.body);
-    centrals.push(central, f.nameBytes);
-    offset += 30 + f.nameBytes.length + f.body.length;
-  }
-  const size = centrals.reduce((n, b) => n + b.length, 0);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(files.length, 8);
-  end.writeUInt16LE(files.length, 10);
-  end.writeUInt32LE(size, 12);
-  end.writeUInt32LE(offset, 16);
-  writeFileSync(file, Buffer.concat([...locals, ...centrals, end]));
+  writeFileSync(
+    file,
+    zip([
+      ["project.json", JSON.stringify({ formatVersion: 4, name: "Old", canvas: { width: 800, height: 600 }, slides: ["slides/001.svg"], extra: true }), true],
+      ["slides/001.svg", svg("<g/>", { width: 800, height: 600 }), true],
+    ]),
+  );
 
   await convertLegacyDeck(file);
   const deck = await openDeck(new Uint8Array(readFileSync(file)));
   assert.equal(deck.container, "sqlite");
-  assert.equal(deck.project.formatVersion, 5);
+  assert.equal(deck.project.formatVersion, 6);
+  assert.equal(deck.legacy, false);
   assert.equal(deck.project.extra, true);
-  assert.equal(pragma(file, "user_version"), 5);
+  assert.equal(pragma(file, "user_version"), 6);
   for (const dir of ["slides", "assets", "fonts"]) assert.equal(deck.entries.get(dir), null);
-  await assert.rejects(convertLegacyDeck(file), /already a SQLite deck/);
+  await assert.rejects(convertLegacyDeck(file), /already formatVersion 6/);
+});
+
+/** A legacy formatVersion 5 deck on disk, with a vendor field and a table the writer does not know. */
+function legacyFile(dir) {
+  const file = path.join(dir, "five.slidra");
+  writeFileSync(file, makeLegacyDeck({ name: "Five", project: { lang: "en", vendor: { kept: true } }, slides: [svg("<g/>")] }));
+  const db = new DatabaseSync(file);
+  db.exec("CREATE TABLE undo_history (id INTEGER PRIMARY KEY, op TEXT)");
+  db.exec("INSERT INTO undo_history (op) VALUES ('typed')");
+  db.close();
+  return file;
+}
+
+test("editing a legacy formatVersion 5 deck upgrades it to 6 in the same transaction", async () => {
+  const dir = scratch();
+  const file = legacyFile(dir);
+  assert.equal(pragma(file, "user_version"), 5);
+  await editDeck(file, (deck) => deck.writeFile("assets/note.txt", "hi"));
+  assert.equal(pragma(file, "user_version"), 6);
+  const deck = await openDeck(new Uint8Array(readFileSync(file)));
+  assert.equal(deck.project.formatVersion, 6);
+  assert.equal(deck.legacy, false);
+  assert.equal(deck.readText("assets/note.txt"), "hi");
+  assert.deepEqual(Object.keys(deck.project), ["formatVersion", "name", "canvas", "slides", "lang", "vendor"], "key order is kept");
+  assert.deepEqual(deck.project.vendor, { kept: true });
+  const db = new DatabaseSync(file, { readOnly: true });
+  assert.equal(db.prepare("SELECT op FROM undo_history").get().op, "typed", "unknown tables survive");
+  db.close();
+  assert.deepEqual(readdirSync(dir), ["five.slidra"]);
+});
+
+test("a failed edit leaves a legacy deck at formatVersion 5", async () => {
+  const dir = scratch();
+  const file = legacyFile(dir);
+  const before = readFileSync(file);
+  await assert.rejects(
+    editDeck(file, () => {
+      throw new Error("nope");
+    }),
+    /nope/,
+  );
+  assert.deepEqual(readFileSync(file), before);
+  assert.equal(pragma(file, "user_version"), 5);
+});
+
+test("converts a legacy formatVersion 5 deck to 6", async () => {
+  const dir = scratch();
+  const file = legacyFile(dir);
+  const out = path.join(dir, "six.slidra");
+  await convertLegacyDeck(file, out);
+  assert.equal(pragma(file, "user_version"), 5, "the source is untouched when writing elsewhere");
+  assert.equal(pragma(out, "user_version"), 6);
+  const deck = await openDeck(new Uint8Array(readFileSync(out)));
+  assert.equal(deck.project.formatVersion, 6);
+  assert.deepEqual(deck.project.vendor, { kept: true });
+  await convertLegacyDeck(file);
+  assert.equal(pragma(file, "user_version"), 6, "in place");
+  await assert.rejects(convertLegacyDeck(file), /already formatVersion 6/);
+  assert.deepEqual(readdirSync(dir).sort(), ["five.slidra", "six.slidra"]);
 });

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deckInfo } from "../lib/viewer/deck.js";
 
-const base = { formatVersion: 5, name: "Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg", "slides/002.svg"] };
+const base = { formatVersion: 6, name: "Deck", canvas: { width: 1280, height: 720 }, slides: ["slides/001.svg", "slides/002.svg"] };
 
 test("reads every metadata field", () => {
   const info = deckInfo({

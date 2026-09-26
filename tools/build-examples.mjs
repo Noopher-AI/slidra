@@ -10,6 +10,7 @@
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { FORMAT_VERSION } from "../lib/viewer/deck.js";
 import { DeckWriter } from "../lib/writer/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -25,7 +26,7 @@ const mediaDir = argValue("--media");
 
 // ─── Container writers ─────────────────────────────────────────────────
 
-/** Writes a formatVersion 5 deck through the reference writer (lib/writer/). */
+/** Writes a formatVersion 6 deck through the reference writer (lib/writer/). */
 function writeSqliteDeck(file, entries) {
   const { slides, ...fields } = JSON.parse(String(entries.find(([entryPath]) => entryPath === "project.json")[1]));
   const deck = new DeckWriter(fields);
@@ -39,7 +40,7 @@ function writeSqliteDeck(file, entries) {
 }
 
 function project(name, slides, extra = {}) {
-  return JSON.stringify({ formatVersion: 5, name, canvas: { width: 1280, height: 720 }, slides, ...extra }, null, 2) + "\n";
+  return JSON.stringify({ formatVersion: FORMAT_VERSION, name, canvas: { width: 1280, height: 720 }, slides, ...extra }, null, 2) + "\n";
 }
 
 // ─── Slide helpers ─────────────────────────────────────────────────────
