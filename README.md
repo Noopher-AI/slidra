@@ -125,7 +125,8 @@ lib/viewer/
   app.js                home page and presenter UI
 public/js/player-runtime.js  runs inside each slide frame: steps, Web Animations, media
 spec/                the format and playback specifications; spec/schema/ holds their JSON Schemas
-examples/            example decks (tools/build-examples.mjs rebuilds them)
+examples/            example decks: showcase and minimal (tools/build-examples.mjs), and the feature tours
+                     motion and sharing (tools/build-feature-examples.mjs)
 conformance/         conformance decks + manifest (tools/build-conformance.mjs rebuilds them)
 test/                unit tests (node --test)
 e2e/                 browser tests (Playwright)
@@ -167,7 +168,12 @@ await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new
 await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5, in place
 ```
 
-`tools/build-examples.mjs` builds `examples/` with it (`--out <dir>` writes somewhere else).
+`tools/build-examples.mjs` builds `examples/` with it (`--out <dir>` writes somewhere else). So does `tools/build-feature-examples.mjs`, which writes the two feature tours:
+
+- **`motion.slidra`**: easing curves, fly directions, text builds by line, word and letter, repeats, a trigger quiz, a three-slide morph, and links.
+- **`sharing.slidra`**: document metadata and a cover, an agenda whose rows link to slides, alt text and decorative marks, a chart with its data, a slide in Traditional Chinese (`xml:lang`), the presenter view, the network-consent notice, and printing, images and embedding.
+
+Both embed Noto Sans TC subsets (Regular and Bold, OFL) made from `tools/.feature-text.txt`.
 
 ## Development
 

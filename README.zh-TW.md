@@ -138,7 +138,12 @@ await editDeck("q3.slidra", (d) => d.updateProject((p) => ({ ...p, modified: new
 await convertLegacyDeck("old-zip-deck.slidra"); // formatVersion 1–4 → 5，原地轉換
 ```
 
-`tools/build-examples.mjs` 也用它產生 `examples/`（加 `--out <dir>` 可輸出到別的目錄）。
+`tools/build-examples.mjs` 也用它產生 `examples/`（加 `--out <dir>` 可輸出到別的目錄）。`tools/build-feature-examples.mjs` 同樣用它產生兩份功能導覽 deck：
+
+- **`motion.slidra`**：easing 曲線、飛入方向、逐行／逐字／逐字元的文字動畫、重複播放、以觸發製作的測驗、三張投影片的 morph，以及連結。
+- **`sharing.slidra`**：文件資訊與封面、可點擊跳頁的議程、替代文字與裝飾標記、附資料的圖表、以 `xml:lang` 標示的繁體中文投影片、簡報者檢視、外部資源同意提示，以及列印、匯出圖片與嵌入。
+
+兩份都內嵌由 `tools/.feature-text.txt` 產生的 Noto Sans TC 子集字型（Regular 與 Bold，OFL 授權）。
 
 ## 開發
 

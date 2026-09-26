@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import { GET } from "../app/api/decks/route.js";
 
 test("/api/decks lists the served decks and says whether they may load network resources", async () => {
@@ -8,7 +9,11 @@ test("/api/decks lists the served decks and says whether they may load network r
     process.env.SLIDRA_DECKS = "examples";
     delete process.env.SLIDRA_ALLOW_REMOTE;
     const body = await (await GET()).json();
-    assert.deepEqual(body.decks.map((d) => d.name).sort(), ["minimal.slidra", "showcase.slidra"]);
+    const onDisk = readdirSync(new URL("../examples/", import.meta.url))
+      .filter((file) => file.endsWith(".slidra"))
+      .sort();
+    assert.deepEqual(body.decks.map((d) => d.name).sort(), onDisk);
+    assert.ok(onDisk.includes("motion.slidra") && onDisk.includes("sharing.slidra"));
     assert.equal(body.allowRemote, false);
     process.env.SLIDRA_ALLOW_REMOTE = "1";
     assert.equal((await (await GET()).json()).allowRemote, true);

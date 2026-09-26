@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { DOMParser } from "@xmldom/xmldom";
 import { checkAttributes, checkProject, metadataSchema } from "../lib/schema.js";
 import { NAMESPACE, openDeck, readProject } from "../lib/viewer/deck.js";
@@ -219,7 +219,7 @@ test("other vocabulary definitions accept conforming markup and reject the rest"
 
 // ── The example decks conform ─────────────────────────────────────────
 
-for (const name of ["showcase.slidra", "minimal.slidra"]) {
+for (const name of readdirSync(new URL("../examples/", import.meta.url)).filter((file) => file.endsWith(".slidra"))) {
   test(`examples/${name} conforms to both schemas`, async () => {
     const deck = await openDeck(new Uint8Array(readFileSync(new URL(`../examples/${name}`, import.meta.url))));
     assert.deepEqual(checkProject(deck.project), []);

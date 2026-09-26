@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -34,13 +34,18 @@ test("every corrupt slide in the conformance suite is an error", async () => {
 });
 
 test("the example decks are valid", async () => {
-  for (const name of ["showcase.slidra", "minimal.slidra"]) {
+  const names = readdirSync(new URL("../examples/", import.meta.url)).filter((file) => file.endsWith(".slidra"));
+  assert.ok(names.length >= 4);
+  for (const name of names) {
     const report = await validateDeck(new Uint8Array(readFileSync(new URL(`../examples/${name}`, import.meta.url))));
     assert.deepEqual(report.errors, [], name);
-    assert.ok(
-      report.warnings.every((w) => w.code.startsWith("a11y-")),
-      name,
-    );
+    // The sharing tour loads one image from the network on purpose, to show the consent notice.
+    const allowed = (w) => w.code.startsWith("a11y-") || (name === "sharing.slidra" && w.code === "reference-external");
+    assert.ok(report.warnings.every(allowed), `${name}: ${report.warnings.map((w) => w.code).join(", ")}`);
+  }
+  for (const name of ["motion.slidra", "sharing.slidra"]) {
+    const report = await validateDeck(new Uint8Array(readFileSync(new URL(`../examples/${name}`, import.meta.url))));
+    assert.ok(!report.warnings.some((w) => w.code.startsWith("a11y-")), `${name} names every image, chart and medium`);
   }
 });
 
