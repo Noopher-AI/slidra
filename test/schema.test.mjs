@@ -5,7 +5,7 @@ import { DOMParser } from "@xmldom/xmldom";
 import { checkAttributes, checkProject, metadataSchema } from "../lib/schema.js";
 import { NAMESPACE, openDeck, readProject } from "../lib/viewer/deck.js";
 import { parseLink } from "../lib/viewer/links.js";
-import { SUPPORTED_EFFECTS, SUPPORTED_STARTS, TRANSITION_EFFECTS, validateEffect, validateTransition } from "../lib/viewer/effects.js";
+import { ENTER_TRANSITION_EFFECTS, SUPPORTED_EFFECTS, SUPPORTED_STARTS, TRANSITION_EFFECTS, validateEffect, validateTransition } from "../lib/viewer/effects.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const attributesOf = (el) => Object.fromEntries(Array.from(el.attributes, (a) => [a.name, a.value]).filter(([name]) => !name.startsWith("xmlns")));
@@ -104,6 +104,7 @@ test("the schema's effect vocabulary is exactly the viewer's", () => {
     assert.deepEqual(effects, SUPPORTED_EFFECTS[family], family);
   }
   assert.deepEqual(metadataSchema.$defs.transitionEffect.enum, TRANSITION_EFFECTS);
+  assert.deepEqual(metadataSchema.$defs.enterTransitionEffect.enum, ENTER_TRANSITION_EFFECTS);
 });
 
 const effect = (extra) => ({ target: "el-a", family: "enter", effect: "fade", start: "on-click", ...extra });
@@ -160,6 +161,8 @@ const transitionCases = [
   [{}, true],
   [{ enter: "fade", "enter-duration": "0.3", exit: "slide", "exit-duration": "0" }, true],
   [{ enter: "spiral" }, false],
+  [{ enter: "morph", "enter-duration": "0.8" }, true],
+  [{ exit: "morph" }, false],
   [{ "exit-duration": "" }, false],
   [{ "enter-duration": "-0.1" }, false],
 ];

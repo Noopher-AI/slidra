@@ -627,6 +627,218 @@
    * correctly this way. A media step crossed backwards therefore restarts
    * from the beginning when reached again, rather than resuming.
    */
+  // ── Morph (spec/playback.md §5.1) ────────────────────────────────────
+  // The outgoing slide reports what it shows (snapshot); the incoming slide
+  // starts from that picture: paired elements are moved back to their old
+  // boxes and animated home, new ones fade in, and ghosts of the departed
+  // ones (built by the host) fade out.
+
+  var MORPH_EASING = "cubic-bezier(0.42, 0, 0.58, 1)";
+  var morphAnimations = [];
+  var morphLayer = null;
+
+  function slideRoot() {
+    return document.querySelector("body > svg");
+  }
+
+  function isContainer(el) {
+    return el && el.nodeType === 1 && el.localName === "g" && /^el-/.test(el.getAttribute("id") || "");
+  }
+
+  /** The transform from `el`'s user space to the slide root's. */
+  function matrixToRoot(el, root) {
+    var rootCtm = root.getScreenCTM();
+    var ctm = el === root ? rootCtm : el.getScreenCTM();
+    if (!rootCtm || !ctm) return new DOMMatrix();
+    return DOMMatrix.fromMatrix(rootCtm).inverse().multiply(DOMMatrix.fromMatrix(ctm));
+  }
+
+  /** `el`'s bounding box in slide-root coordinates. */
+  function boxInRoot(el, root) {
+    var b;
+    try {
+      b = el.getBBox();
+    } catch (err) {
+      return null;
+    }
+    var m = matrixToRoot(el, root);
+    var xs = [];
+    var ys = [];
+    var corners = [
+      [b.x, b.y],
+      [b.x + b.width, b.y],
+      [b.x, b.y + b.height],
+      [b.x + b.width, b.y + b.height],
+    ];
+    for (var i = 0; i < corners.length; i++) {
+      var p = new DOMPoint(corners[i][0], corners[i][1]).matrixTransform(m);
+      xs.push(p.x);
+      ys.push(p.y);
+    }
+    var x = Math.min.apply(null, xs);
+    var y = Math.min.apply(null, ys);
+    return { x: x, y: y, width: Math.max.apply(null, xs) - x, height: Math.max.apply(null, ys) - y };
+  }
+
+  /** `el`'s opacity as drawn: its own times every ancestor's; 0 when it or an ancestor is not displayed. */
+  function effectiveOpacity(el, root) {
+    var opacity = 1;
+    for (var node = el; node && node !== root.parentNode; node = node.parentNode) {
+      var style = getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden") return 0;
+      opacity *= Number(style.opacity);
+    }
+    return opacity;
+  }
+
+  function snapshot() {
+    var root = slideRoot();
+    var elements = Object.create(null);
+    if (!root) return { elements: elements, background: null };
+    var all = root.querySelectorAll("g[id]");
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (!isContainer(el)) continue;
+      var opacity = effectiveOpacity(el, root);
+      var box = boxInRoot(el, root);
+      if (opacity <= 0.001 || !box) continue;
+      var m = matrixToRoot(el, root);
+      elements[el.getAttribute("id")] = { box: box, matrix: [m.a, m.b, m.c, m.d, m.e, m.f], opacity: opacity };
+    }
+    return { elements: elements, background: getComputedStyle(root).backgroundColor || null };
+  }
+
+  function hasAncestorWhere(el, root, test) {
+    for (var node = el.parentNode; node && node !== root; node = node.parentNode) {
+      if (isContainer(node) && test(node.getAttribute("id"))) return true;
+    }
+    return false;
+  }
+
+  function track(animation) {
+    morphAnimations.push(animation);
+    return animation;
+  }
+
+  function startMorph(morph) {
+    var root = slideRoot();
+    if (!root) return;
+    var duration = Math.round((morph.duration || 0) * 1000);
+    var options = { duration: duration, easing: MORPH_EASING, fill: "backwards" };
+    var from = morph.from || {};
+    var paired = Object.create(null);
+    for (var fromId in from) {
+      if (!has.call(from, fromId)) continue;
+      var candidate = document.getElementById(fromId);
+      if (candidate && isContainer(candidate) && !hiddenNow[fromId]) paired[fromId] = true;
+    }
+
+    // Paired: from the old box to the new, outermost first (descendants ride along).
+    for (var id in paired) {
+      var el = document.getElementById(id);
+      if (
+        hasAncestorWhere(el, root, function (a) {
+          return !!paired[a];
+        })
+      )
+        continue;
+      var now = boxInRoot(el, root);
+      var then = from[id].box;
+      if (!now) continue;
+      var sx = now.width > 0.01 ? then.width / now.width : 1;
+      var sy = now.height > 0.01 ? then.height / now.height : 1;
+      var shift = new DOMMatrix().translate(then.x, then.y).scale(sx, sy).translate(-now.x, -now.y);
+      var parent = el.parentNode === root ? new DOMMatrix() : matrixToRoot(el.parentNode, root);
+      var start = parent.inverse().multiply(shift).multiply(matrixToRoot(el, root));
+      var own = Number(getComputedStyle(el).opacity);
+      var drawn = effectiveOpacity(el, root);
+      var ancestors = own > 0 ? drawn / own : 0;
+      var startOpacity = ancestors > 0 ? Math.min(1, from[id].opacity / ancestors) : own;
+      var base = baseTransform(el) || "none";
+      track(
+        el.animate(
+          [
+            { transform: start.toString(), opacity: startOpacity },
+            { transform: base, opacity: own },
+          ],
+          options,
+        ),
+      );
+    }
+
+    // New on this slide: fade in, outermost first; a container that holds a paired element is walked into instead.
+    var all = root.querySelectorAll("g[id]");
+    var faded = Object.create(null);
+    for (var i = 0; i < all.length; i++) {
+      var item = all[i];
+      var itemId = item.getAttribute("id");
+      if (!isContainer(item) || paired[itemId] || hiddenNow[itemId]) continue;
+      if (
+        hasAncestorWhere(item, root, function (a) {
+          return !!paired[a] || !!faded[a];
+        })
+      )
+        continue;
+      var holdsPaired = false;
+      for (var p in paired) {
+        if (has.call(paired, p) && item.contains(document.getElementById(p))) holdsPaired = true;
+      }
+      if (holdsPaired) continue;
+      faded[itemId] = true;
+      track(item.animate([{ opacity: 0 }, { opacity: Number(getComputedStyle(item).opacity) }], options));
+    }
+
+    // Departed: the host's ghosts, drawn where they were, fading out on top.
+    if (morph.ghosts) {
+      var parsed = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg">' + morph.ghosts + "</svg>", "image/svg+xml");
+      if (!parsed.getElementsByTagName("parsererror").length) {
+        morphLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        morphLayer.setAttribute("data-slidra-ghosts", "");
+        morphLayer.setAttribute("aria-hidden", "true");
+        morphLayer.style.pointerEvents = "none";
+        var source = parsed.documentElement;
+        while (source.firstChild) {
+          morphLayer.appendChild(document.importNode(source.firstChild, true));
+          source.removeChild(source.firstChild);
+        }
+        root.appendChild(morphLayer);
+        var ghosts = morphLayer.children;
+        for (var g = 0; g < ghosts.length; g++) {
+          track(ghosts[g].animate([{ opacity: Number(ghosts[g].getAttribute("opacity") || 1) }, { opacity: 0 }], { duration: duration, easing: MORPH_EASING, fill: "forwards" }));
+        }
+      }
+    }
+
+    if (morph.background) {
+      track(root.animate([{ backgroundColor: morph.background }, { backgroundColor: getComputedStyle(root).backgroundColor }], { duration: duration, easing: MORPH_EASING }));
+    }
+
+    var cleanup = setTimeout(finishMorph, duration + 50);
+    morphAnimations.cleanup = cleanup;
+  }
+
+  /** Ends a running morph at once (advancing or retreating does this first) and drops the ghosts. */
+  function finishMorph() {
+    if (morphAnimations.cleanup) clearTimeout(morphAnimations.cleanup);
+    var running = morphAnimations;
+    morphAnimations = [];
+    for (var i = 0; i < running.length; i++) {
+      try {
+        running[i].finish();
+      } catch (err) {
+        running[i].cancel();
+      }
+      running[i].cancel();
+    }
+    if (morphLayer && morphLayer.parentNode) morphLayer.parentNode.removeChild(morphLayer);
+    morphLayer = null;
+  }
+
+  function releaseMorphHold() {
+    var hold = document.getElementById("slidra-morph-hold");
+    if (hold && hold.parentNode) hold.parentNode.removeChild(hold);
+  }
+
   function resetToStep(target) {
     resetHidden();
     var animations = document.getAnimations();
@@ -656,6 +868,7 @@
   }
 
   function advance() {
+    finishMorph();
     if (currentStep + 1 < steps.length) {
       currentStep += 1;
       applyStep(steps[currentStep], false);
@@ -666,6 +879,7 @@
   }
 
   function retreat() {
+    finishMorph();
     if (currentStep >= 0) {
       currentStep -= 1;
       resetToStep(currentStep);
@@ -870,6 +1084,10 @@
     if (data.command === "focus") window.focus();
     else if (data.command === "advance") advance();
     else if (data.command === "retreat") retreat();
+    else if (data.command === "snapshot") {
+      var shot = snapshot();
+      post({ event: "snapshot", requestId: data.requestId, elements: shot.elements, background: shot.background });
+    }
   });
 
   // ── Boot ─────────────────────────────────────────────────────────────
@@ -889,6 +1107,17 @@
   reportEmbedBoxes();
 
   function ready() {
+    // A morph measures text, so it starts once the fonts apply; the hold
+    // style kept the slide undrawn until its first frame is the morph's.
+    if (plan.morph) {
+      try {
+        startMorph(plan.morph);
+      } catch (err) {
+        finishMorph();
+        post({ event: "error", message: "morph transition failed: " + errorMessage(err) });
+      }
+    }
+    releaseMorphHold();
     post({ event: "ready", step: currentStep, total: steps.length });
   }
   // Wait for this document's own fonts: each play document is its own
