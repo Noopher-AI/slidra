@@ -100,7 +100,7 @@ SVG 描述的是一張圖，簡報還需要多一點東西。這個格式只補�
 |---|---|
 | 投影片順序與畫布 | `project.json`：`name`、`canvas`、依序排列的 `slides` |
 | 可定址的物件 | 帶 `data-slidra-name` 的 `<g id="el-…">` 容器 |
-| 動畫 | 投影片 `<metadata>` 裡一串有順序的宣告式效果：五類共 14 種，時序用 `on-click`／`with-previous`／`after-previous` 安排 |
+| 動畫 | 投影片 `<metadata>` 裡一串有順序的宣告式效果：五類共 20 種，時序用 `on-click`／`with-previous`／`after-previous` 安排 |
 | 換頁轉場 | 每張各自設定：`fade`、`slide`、`zoom`，含時間長度 |
 | 講者備忘稿、註解 | `<metadata>` 裡的 `<slidra:notes>`、`<slidra:comments>` |
 | 圖表與表格 | 資料和畫好的 SVG 放在同一個容器 |

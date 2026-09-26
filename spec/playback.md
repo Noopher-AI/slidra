@@ -37,30 +37,49 @@ A step's effects share one clock, in list order:
 |---|---|
 | `on-click` | 0 (it opens the step) |
 | `with-previous` | the previous effect's start |
-| `after-previous` | the previous effect's end (its start + its `duration`) |
+| `after-previous` | the previous effect's end (its start + its length) |
 
-Each effect's own `delay` is added to that start. "Previous" is the effect immediately before it in the same step, whatever its family.
+Each effect's own `delay` is added to that start. "Previous" is the effect immediately before it in the same step, whatever its family. An effect's **length** is its `duration`, times `repeat` for emphasis, plus `(units − 1) × stagger` for a text build (§3.5).
 
 ### 3.2 Keyframes
 
-Every transform composes onto the element's existing transform (its container's `transform` attribute) — the effect moves the element *relative to where it is*, never to an absolute position. Scale and rotation happen about the element's local origin. Easing is `ease` unless stated.
+Every transform composes onto the element's existing transform (its container's `transform` attribute) — the effect moves the element *relative to where it is*, never to an absolute position. Scale and rotation happen about the element's local origin. Easing is the effect's `easing` (§3.2.1), `ease` unless stated.
 
 | Family / effect | Keyframes | Holds final state |
 |---|---|---|
 | enter `appear`, `fade` | opacity 0 → 1 | — (ends visible) |
 | enter `fly-up` | opacity 0 → 1, translateY(40px) → 0 | — |
+| enter `fly-down` | opacity 0 → 1, translateY(−40px) → 0 | — |
 | enter `fly-left` | opacity 0 → 1, translateX(40px) → 0 | — |
+| enter `fly-right` | opacity 0 → 1, translateX(−40px) → 0 | — |
 | enter `zoom` | opacity 0 → 1, scale(0.5) → 1 | — |
 | emphasis `pulse` | scale 1 → 1.15 → 1 | — |
 | emphasis `spin` | rotate 0 → 360deg | — |
 | emphasis `grow` | scale 1 → 1.3 → 1 | — |
 | exit `disappear`, `fade-out` | opacity 1 → 0 | yes (stays gone) |
+| exit `fly-out-up` | opacity 1 → 0, translateY(0) → −40px | yes |
+| exit `fly-out-down` | opacity 1 → 0, translateY(0) → 40px | yes |
+| exit `fly-out-left` | opacity 1 → 0, translateX(0) → −40px | yes |
+| exit `fly-out-right` | opacity 1 → 0, translateX(0) → 40px | yes |
 | exit `zoom-out` | opacity 1 → 0, scale 1 → 0.5 | yes |
 | path `path` | translate along `d`, relative to the path's first point, `linear` | yes (stays at the end) |
 
-An `enter` effect un-hides its element in the same frame its animation starts (the pre-hide must not win over the entrance, and the element must not flash at full opacity first). `appear` uses the effect's `duration` like `fade`; set `duration="0"` for an instant appearance.
+An `enter` effect un-hides its element in the same frame its animation starts (the pre-hide must not win over the entrance, and the element must not flash at full opacity first). While the effect waits out its start offset and `delay`, the element shows its first keyframe (opacity 0), not its resting state. `appear` uses the effect's `duration` like `fade`; set `duration="0"` for an instant appearance.
 
 Players MAY implement the path by sampling (the reference player samples 20 points with `getPointAtLength`).
+
+`repeat="n"` runs an emphasis effect's keyframes `n` times back to back.
+
+#### 3.2.1 Easing
+
+| `easing` | Timing function |
+|---|---|
+| `ease` | `cubic-bezier(0.25, 0.1, 0.25, 1)` |
+| `linear` | `linear` |
+| `ease-in` | `cubic-bezier(0.42, 0, 1, 1)` |
+| `ease-out` | `cubic-bezier(0, 0, 0.58, 1)` |
+| `ease-in-out` | `cubic-bezier(0.42, 0, 0.58, 1)` |
+| `overshoot` | `cubic-bezier(0.34, 1.56, 0.64, 1)` (passes the end and settles back) |
 
 ### 3.3 Media
 
@@ -76,6 +95,22 @@ Players MAY implement the path by sampling (the reference player samples 20 poin
 Retreat never inverts effects. It resets the slide to its opening state — cancelling every running or held animation, tearing down effect-driven media (posters return to their first frame), re-hiding pre-hidden elements — and then applies steps `0 … target` **instantly**: every effect with zero duration and delay, media effects skipped. Arriving at a slide backwards does the same with `target = steps − 1`.
 
 Consequence, by design: crossing a media step backwards and then forwards again restarts that media from the beginning.
+
+### 3.5 Text builds
+
+An `enter` or `exit` effect with `by` animates the target's text one unit at a time instead of the whole element:
+
+- `letter`: every character other than white space; `word`: every run of non-white-space characters; `line`: every line — a `<text>` element, or within one, each `<tspan>` that starts a line (`data-slidra-break`, or its own `x`).
+- Units are taken in document order across all `<text>` elements inside the target. Shapes inside the target that are not text take part as the whole element would without `by`: they appear with the first unit (enter) or go with the last (exit).
+- Unit *k* (from 0) starts `k × stagger` seconds after the effect starts and fades its fill and stroke opacity over `duration` (0 → 1 for enter, 1 → 0 for exit, easing as §3.2.1). The effect's motion (a fly's translate, a zoom's scale) is not applied per unit.
+- A target with no text builds as if `by` were absent.
+- Splitting text into units MUST NOT move any glyph: the static slide and the finished build look identical.
+
+### 3.6 Triggers
+
+A trigger element (format §6.3) is interactive: activating it runs its next step, on its own clock, as §3.1 describes; once its steps are used up, activating it does nothing. A trigger does not advance the slide, and a trigger element SHOULD be reachable with Tab and look interactive, like a link. An element whose first effect is a triggered `enter` starts hidden like any other (§2).
+
+Retreat (§3.4) resets triggered effects along with everything else: each trigger starts over from its first step, and the instant replay of steps `0 … target` never runs triggered effects.
 
 ## 4. Corrupt slides
 

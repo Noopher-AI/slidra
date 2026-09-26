@@ -127,13 +127,24 @@ const effectCases = [
   [effect({ family: "path", effect: "path" }), false],
   [effect({ family: "path", effect: "path", d: "" }), false],
   [effect({ target: "" }), false],
+  [effect({ effect: "fly-down", easing: "overshoot" }), true],
+  [effect({ family: "exit", effect: "fly-out-left", by: "word", stagger: "0.05" }), true],
+  [effect({ family: "emphasis", effect: "spin", repeat: "3", easing: "linear" }), true],
+  [effect({ trigger: "el-t" }), true],
+  [effect({ easing: "bouncy" }), false],
+  [effect({ family: "media", effect: "play", easing: "linear" }), false],
+  [effect({ repeat: "2" }), false],
+  [effect({ family: "emphasis", effect: "pulse", repeat: "0" }), false],
+  [effect({ family: "emphasis", effect: "pulse", by: "word" }), false],
+  [effect({ by: "sentence" }), false],
+  [effect({ stagger: "0.1" }), false],
   [(({ start: _start, ...rest }) => rest)(effect()), false],
 ];
 
 test("effects: schema and viewer give the same verdict", () => {
   for (const [attrs, ok] of effectCases) {
     assert.equal(checkAttributes("effect", attrs).length === 0, ok, `schema: ${JSON.stringify(attrs)}`);
-    const raw = { target: null, family: null, effect: null, start: null, duration: null, delay: null, d: null, ...attrs };
+    const raw = { target: null, family: null, effect: null, start: null, duration: null, delay: null, d: null, easing: null, repeat: null, by: null, stagger: null, trigger: null, ...attrs };
     let viewerOk = true;
     try {
       validateEffect(raw, 0, true);

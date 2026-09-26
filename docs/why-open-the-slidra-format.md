@@ -100,7 +100,7 @@ SVG describes a picture. A presentation needs a little more. The format adds exa
 |---|---|
 | Slide order and canvas | `project.json`: `name`, `canvas`, ordered `slides` |
 | Addressable objects | `<g id="el-…">` containers with `data-slidra-name` |
-| Animations | An ordered list of declarative effects in the slide's `<metadata>`: 14 effects in five families, with `on-click` / `with-previous` / `after-previous` timing |
+| Animations | An ordered list of declarative effects in the slide's `<metadata>`: 20 effects in five families, with `on-click` / `with-previous` / `after-previous` timing |
 | Page transitions | Per slide: `fade`, `slide`, `zoom`, with durations |
 | Speaker notes, comments | `<slidra:notes>`, `<slidra:comments>` in `<metadata>` |
 | Charts and tables | Their data plus the rendered SVG, in one container |
