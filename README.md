@@ -1,6 +1,11 @@
 <h1 align="center">Slidra</h1>
 
 <p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://slidra-demo.vercel.app/"><img alt="Deployed on Vercel" src="https://img.shields.io/badge/demo-Vercel-000000?logo=vercel&logoColor=white"></a>
+</p>
+
+<p align="center">
   <b>The open <code>.slidra</code> presentation format — and a viewer that plays it.</b><br>
   <a href="README.zh-TW.md">繁體中文</a>
 </p>
