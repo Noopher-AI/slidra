@@ -98,6 +98,8 @@ e2e/                 browser tests (Playwright)
 
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
 
+The container is untrusted as well: the readers survive truncated, corrupted and hostile files (mutation-fuzzed in `test/fuzz.test.mjs`; `npm run fuzz` runs a long campaign) and fail with a message. Decks over 1 GB, single entries over 256 MB, more than 50,000 entries, and ZIP entries that inflate beyond their declared size are refused.
+
 Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all.
 
 ## Validating decks
