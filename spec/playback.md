@@ -17,6 +17,17 @@ A click on a linked element (format §4.8) follows the link and does not advance
 
 Players SHOULD map advance to → ↓ Space PageDown Enter, a click on the slide, and a leftward swipe; retreat to ← ↑ PageUp Backspace and a rightward swipe; Home/End to the first slide / the last slide's last step.
 
+Players SHOULD also give the presenter these, as in other presentation software:
+
+| Key | Action |
+|---|---|
+| B or . | Black out the audience surface; the next key or click restores it without moving. |
+| W or , | The same with a white surface. |
+| a slide number, then Enter | Go to that slide (clamped to the deck), arriving at its opening state. |
+| ? | List the keys. |
+
+While the surface is blanked, a number is being typed or the key list is open, the navigation keys act on that state instead of the slides: they restore the surface, finish or cancel the number, or close the list.
+
 ## 2. Opening state
 
 **A slide's static SVG is its final look with all effects run.** When a slide opens:
