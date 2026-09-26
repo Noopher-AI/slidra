@@ -78,6 +78,7 @@ app/                 Next.js App Router
 lib/decks.js         server-side deck discovery (SLIDRA_DECKS)
 lib/schema.js        compiles spec/schema/ with Ajv (Node only; tests and tools)
 lib/writer/          the reference writer: build, edit and convert decks (Node ≥ 22.5)
+lib/validate.js      the checks behind bin/slidra-validate.mjs
 lib/viewer/
   sqlite-reader.js      read-only SQLite file-format reader (b-trees, records, overflow pages)
   zip-reader.js         read-only ZIP reader for legacy decks
@@ -98,6 +99,18 @@ e2e/                 browser tests (Playwright)
 The deck is parsed **entirely in the browser**: the server only hands out bytes, and a file you drop onto the page never leaves your machine.
 
 Slide content is treated as untrusted. Each slide renders in an `<iframe sandbox="allow-scripts">` with an opaque origin and a Content-Security-Policy that admits only the viewer's own runtime by nonce, so a slide's own scripts, event handlers and `javascript:` URLs never run, and it cannot reach the viewer page. Deck-local assets are inlined as `data:` URLs, so a self-contained deck makes no network requests at all.
+
+## Validating decks
+
+`slidra-validate` checks decks against the spec and names the rule behind every finding: what readers must refuse, what makes a slide corrupt, what writers must never produce (errors), and the spec's SHOULDs such as missing alt text or a deck that loads from the network (warnings).
+
+```bash
+npm run validate -- talk.slidra                # or: node bin/slidra-validate.mjs talk.slidra
+✓ talk.slidra (sqlite, formatVersion 5, 12 slides): 0 errors, 1 warning
+  warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
+```
+
+`--json` prints machine-readable reports, `--strict` fails on warnings, `--quiet` prints errors only. The exit status is 0 when every deck is valid, 1 when any has errors, 2 on a usage error. The same checks are available as `validateDeck(bytes)` from `lib/validate.js`.
 
 ## Writing decks
 

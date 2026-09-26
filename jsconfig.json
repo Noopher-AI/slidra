@@ -13,6 +13,6 @@
     "maxNodeModuleJsDepth": 0,
     "types": ["node"]
   },
-  "include": ["types/**/*.d.ts", "lib/**/*.js", "tools/**/*.mjs", "test/**/*.mjs", "e2e/**/*.mjs", "playwright.config.mjs", "app/**/*.js", "app/**/*.jsx"],
+  "include": ["types/**/*.d.ts", "bin/**/*.mjs", "lib/**/*.js", "tools/**/*.mjs", "test/**/*.mjs", "e2e/**/*.mjs", "playwright.config.mjs", "app/**/*.js", "app/**/*.jsx"],
   "exclude": ["node_modules", ".next"]
 }
