@@ -141,6 +141,12 @@ export default function ViewerShell() {
               <path d="M13 13.5l3 3" />
             </svg>
           </button>
+          <button id="presenter-button" className="icon-button" type="button" aria-label="Presenter view" title="Presenter view (P)" aria-pressed="false">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="2.5" y="4" width="10" height="7.5" rx="1.2" />
+              <path d="M14.5 6.5h3M14.5 9.5h3M14.5 12.5h3M5 15.5h5" />
+            </svg>
+          </button>
           <button id="fullscreen-button" className="icon-button" type="button" aria-label="Fullscreen" title="Fullscreen (F)">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M3.5 7.5v-4h4M16.5 7.5v-4h-4M3.5 12.5v4h4M16.5 12.5v4h-4" />

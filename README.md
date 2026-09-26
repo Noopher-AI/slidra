@@ -60,9 +60,12 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 | `B` or `.` / `W` or `,` | Black / white screen; any key or click brings the slide back |
 | A number, then `Enter` | Go to that slide |
 | `?` | List the keyboard shortcuts |
+| `P` | Presenter view in a second window |
 | `Esc` | Close overview → leave fullscreen → close the deck |
 
 What plays: all 20 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, six easing curves, repeats, text builds by line, word or letter, click triggers on any element, per-slide page transitions (fade, slide, zoom, and morph, which moves elements that share an id from one slide's layout to the next), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Both the current SQLite container (format 5) and legacy ZIP decks (format 1–4) open.
+
+**Presenter view.** Press `P` (or the presenter button) to open a second window for yourself: the current slide playing silently, the next step or slide, your notes, an elapsed timer with pause and reset, and the clock. This window stays the audience screen (drag it to the projector and press `F`), plays the sound, and stops showing notes while the presenter view is open. Keys and buttons in either window move both. The deck goes to the presenter window over a `BroadcastChannel`, so decks opened from a local file work too.
 
 Document metadata from `project.json` (author, dates, description, keywords, cover slide) shows up in the library, in the title bar and at the top of the overview.
 

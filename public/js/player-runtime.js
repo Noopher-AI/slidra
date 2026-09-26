@@ -22,6 +22,8 @@
   var stageMedia = plan.stageMedia || {};
   var embedIds = plan.embedIds || [];
   var linkIds = plan.linkIds || [];
+  // A presenter view's copy of the slide plays every medium silently (playback §6.1).
+  var muted = plan.muted === true;
   var triggers = plan.triggers || {};
   var triggerIds = plan.triggerIds || [];
   var has = Object.prototype.hasOwnProperty;
@@ -126,6 +128,7 @@
     var el = document.createElement(cue.kind === "video" ? "video" : "audio");
     el.src = mediaSource(cue, placeholder);
     el.preload = "metadata";
+    el.muted = muted;
     el.setAttribute("playsinline", "");
     document.body.appendChild(el);
 
@@ -227,10 +230,11 @@
     var poster = stageMediaElements[target];
     var el = poster ? poster.media : document.createElement(cue.kind === "video" ? "video" : "audio");
     if (poster) {
-      el.muted = false;
+      el.muted = muted;
       if (!el.isConnected) document.body.appendChild(el);
     } else {
       el.src = mediaSource(cue, placeholder);
+      el.muted = muted;
       el.setAttribute("playsinline", "");
       document.body.appendChild(el);
     }
