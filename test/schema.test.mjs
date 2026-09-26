@@ -212,6 +212,18 @@ test("other vocabulary definitions accept conforming markup and reject the rest"
   assert.deepEqual(checkAttributes("element", { id: "el-Ab3xK9mQ2pLw", "data-slidra-text-align": "center", "data-slidra-future": "kept" }), []);
   assert.notDeepEqual(checkAttributes("element", { id: "el-short" }), []);
   assert.notDeepEqual(checkAttributes("element", { id: "el-Ab3xK9mQ2pLw", "data-slidra-role": "background" }), []);
+  assert.deepEqual(checkAttributes("element", { id: "el-background", "data-slidra-role": "background", "data-slidra-lock": "true" }), []);
+});
+
+test("data-slidra-role takes a core layout role or a <prefix>:<name> extension (format §4.9)", () => {
+  const role = (value) => checkAttributes("element", { id: "el-Ab3xK9mQ2pLw", "data-slidra-role": value });
+  for (const value of ["field", "node", "spine", "edge", "label", "garnish", "pro:timeline", "a:b", "x1-y:z-2"]) assert.deepEqual(role(value), [], value);
+  for (const value of ["nodes", "Node", "pro:", ":timeline", "pro:Timeline", "Pro:timeline", "1x:y", "a:b:c", "pro timeline", ""]) {
+    assert.ok(
+      role(value).some((p) => p.path === "/data-slidra-role"),
+      value,
+    );
+  }
   assert.deepEqual(checkAttributes("cell", { "data-slidra-cell": "0,1", "data-slidra-span": "1,2" }), []);
   assert.deepEqual(checkAttributes("slide", { "data-slidra-slide-id": "s-Q2xpY2tNZTEy" }), []);
   assert.notDeepEqual(checkAttributes("slide", { "data-slidra-slide-id": "slide-1" }), []);

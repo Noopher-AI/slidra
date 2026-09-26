@@ -101,6 +101,37 @@ test("reports slide-level rule breaks with their location", async () => {
   assert.deepEqual([duplicate.path, duplicate.element], ["slides/001.svg", "el-AAAAAAAAAAAA"]);
 });
 
+test("layout roles: core and prefixed values pass, anything else is role-unknown (format §4.9)", async () => {
+  const roles = ["field", "node", "spine", "edge", "label", "garnish", "pro:timeline"];
+  const good = await validateDeck(
+    makeDeck({
+      project: { lang: "en" },
+      slides: [
+        svg(
+          box("el-background", ' data-slidra-lock="true" data-slidra-role="background"') + roles.map((role, i) => box(`el-ROLE${String(i).padStart(8, "0")}`, ` data-slidra-role="${role}"`)).join(""),
+        ),
+      ],
+    }),
+  );
+  assert.deepEqual([...good.errors, ...good.warnings], []);
+
+  const bad = await validateDeck(conformanceDeck("decks/roles-invalid.slidra"));
+  assert.deepEqual(
+    bad.errors.map((e) => [e.code, e.rule, e.element]),
+    [
+      ["role-unknown", "format §4.9", "el-AAAAAAAAAAAA"],
+      ["role-unknown", "format §4.9", "el-BBBBBBBBBBBB"],
+      ["role-unknown", "format §4.9", "el-CCCCCCCCCCCC"],
+    ],
+    "reported once each, not again as a schema problem",
+  );
+  assert.ok(!codes(bad).includes("slide-corrupt"), "an invalid role never makes the slide corrupt");
+  for (const id of ["roles-core", "roles-extension"]) {
+    const report = await validateDeck(conformanceDeck(`decks/${id}.slidra`));
+    assert.deepEqual(report.errors, [], id);
+  }
+});
+
 test("a legacy deck is a warning, not an error", async () => {
   const slides = [svg(box("el-AAAAAAAAAAAA"))];
   const five = await validateDeck(makeLegacyDeck({ project: { lang: "en" }, slides }));

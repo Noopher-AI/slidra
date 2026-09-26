@@ -640,6 +640,49 @@
           }
         ]
       }
+    },
+    {
+      "id": "roles-core",
+      "file": "decks/roles-core.slidra",
+      "rule": "format §4.6, §4.9",
+      "description": "Every core layout role on one slide: background, field, node, spine, edge, label, garnish.",
+      "expect": {
+        "open": "accept",
+        "slides": [
+          {
+            "status": "ok",
+            "steps": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "roles-extension",
+      "file": "decks/roles-extension.slidra",
+      "rule": "format §4.9",
+      "description": "A <prefix>:<name> extension role (pro:timeline): readers ignore it, and it is not an error.",
+      "expect": {
+        "open": "accept",
+        "slides": [
+          {
+            "status": "ok"
+          }
+        ]
+      }
+    },
+    {
+      "id": "roles-invalid",
+      "file": "decks/roles-invalid.slidra",
+      "rule": "format §4.9",
+      "description": "Invalid role values (nodes, Node, pro:): a checker reports them, but the slide is not corrupt and plays.",
+      "expect": {
+        "open": "accept",
+        "slides": [
+          {
+            "status": "ok"
+          }
+        ]
+      }
     }
   ]
 }

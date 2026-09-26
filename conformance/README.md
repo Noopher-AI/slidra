@@ -13,6 +13,8 @@ conformance/
 
 Every deck in the suite is a formatVersion 6 deck: the SQLite container of format §1.1 with `formatVersion` and `user_version` both `6`, or a file that a reader MUST refuse. A reader that implements formatVersion 6 and nothing else passes the whole suite, with no cases to skip.
 
+Findings that only a checker reports, and a reader does not act on, show up in a verdict only as far as they affect it. `roles-invalid`, for example, carries role values a checker reports as errors (format §4.9), and its expectation is that the slide is not corrupt.
+
 Legacy decks (formatVersion 5 in SQLite, 1–4 in ZIP; format §1.2) are outside the suite. Readers MAY open them, and how well they do so is not something this suite tests. This repository's own reader still opens them; its unit tests (`test/deck.test.mjs`, `test/writer.test.mjs`, `test/validate.test.mjs`) cover that.
 
 ## The manifest
