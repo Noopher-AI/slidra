@@ -365,6 +365,37 @@ export const CASES = [
       ],
     },
   },
+
+  // ── Layout roles (format §4.9): semantic only, never a corrupt slide ──
+  {
+    id: "roles-core",
+    rule: "format §4.6, §4.9",
+    description: "Every core layout role on one slide: background, field, node, spine, edge, label, garnish.",
+    build: () =>
+      deck({
+        slides: [
+          svg(
+            box("el-background", ' data-slidra-lock="true" data-slidra-role="background"') +
+              ["field", "node", "spine", "edge", "label", "garnish"].map((role, i) => box(`el-ROLE${String(i).padStart(8, "0")}`, ` data-slidra-role="${role}"`)).join(""),
+          ),
+        ],
+      }),
+    expect: { open: "accept", slides: [{ status: "ok", steps: 0 }] },
+  },
+  {
+    id: "roles-extension",
+    rule: "format §4.9",
+    description: "A <prefix>:<name> extension role (pro:timeline): readers ignore it, and it is not an error.",
+    build: () => deck({ slides: [svg(box(A, ' data-slidra-role="pro:timeline"'))] }),
+    expect: { open: "accept", slides: [{ status: "ok" }] },
+  },
+  {
+    id: "roles-invalid",
+    rule: "format §4.9",
+    description: "Invalid role values (nodes, Node, pro:): a checker reports them, but the slide is not corrupt and plays.",
+    build: () => deck({ slides: [svg(box(A, ' data-slidra-role="nodes"') + box(B, ' data-slidra-role="Node"') + box(C, ' data-slidra-role="pro:"'))], validate: false }),
+    expect: { open: "accept", slides: [{ status: "ok" }] },
+  },
 ];
 
 /** conformance/manifest.json: every case's file, rule, description and expected verdict. */

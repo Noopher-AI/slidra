@@ -14,7 +14,7 @@
 A `.slidra` file is one self-contained presentation: SVG slides, their animations and page transitions, speaker notes, media and fonts, stored as rows of a single SQLite database. This repository holds:
 
 - **The specification** — [`spec/slidra-format.md`](spec/slidra-format.md) (what a deck *is*), [`spec/playback.md`](spec/playback.md) (how a deck *plays*), [`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md) (why the container is SQLite), and JSON Schemas for `project.json` and the slide vocabulary under [`spec/schema/`](spec/schema/).
-- **A conformance suite** — [`conformance/`](conformance/): 48 small formatVersion 6 decks with the verdict a conforming reader must reach, for testing any implementation. Legacy decks are outside the suite.
+- **A conformance suite** — [`conformance/`](conformance/): 51 small formatVersion 6 decks with the verdict a conforming reader must reach, for testing any implementation. Legacy decks are outside the suite.
 - **A viewer** — open a `.slidra` file in your browser and present it, animations included. Built with Next.js; nothing is uploaded.
 
 Why open the format, and why SVG: [Why We Are Opening the `.slidra` Format](docs/why-open-the-slidra-format.md).
@@ -150,7 +150,7 @@ npm run validate -- talk.slidra                # or: node bin/slidra-validate.mj
   warning slides/004.svg el-Ab3xK9mQ2pLw: el-Ab3xK9mQ2pLw shows an image, media or a chart but has neither a <title> nor data-slidra-decorative="true". [a11y-unnamed, format §4.7]
 ```
 
-A legacy deck (formatVersion 1–5) is a `legacy-format-version` warning, not an error; any other version is an error. `--json` prints machine-readable reports, `--strict` fails on warnings, `--quiet` prints errors only. The exit status is 0 when every deck is valid, 1 when any has errors, 2 on a usage error. The same checks are available as `validateDeck(bytes)` from `lib/validate.js`.
+A `data-slidra-role` that is neither a layout role (`background`, `field`, `node`, `spine`, `edge`, `label`, `garnish`; format §4.9) nor a `<prefix>:<name>` extension such as `pro:timeline` is a `role-unknown` error; roles never affect playback. A legacy deck (formatVersion 1–5) is a `legacy-format-version` warning, not an error; any other version is an error. `--json` prints machine-readable reports, `--strict` fails on warnings, `--quiet` prints errors only. The exit status is 0 when every deck is valid, 1 when any has errors, 2 on a usage error. The same checks are available as `validateDeck(bytes)` from `lib/validate.js`.
 
 ## Writing decks
 

@@ -8,12 +8,12 @@ This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 6.0.0 — formatVersion 6
 
-formatVersion 6 freezes the format as it stands here: the SQLite container of 0.1.0, unchanged, plus everything under *Format and playback* below. A deck says so with `formatVersion` 6 in `project.json` and `PRAGMA user_version` 6.
+formatVersion 6 freezes the format as it stands here: the SQLite container of 0.1.0, unchanged, plus everything under *Format and playback* below, including the layout-role vocabulary. A deck says so with `formatVersion` 6 in `project.json` and `PRAGMA user_version` 6.
 
 ### Breaking
 
 - **formatVersion 6 is the current format; 5 is legacy** (format §1.2). Writers write 6. Readers may still open a formatVersion 5 (SQLite) or 1–4 (ZIP) deck read-only, and a writer that edits one converts it to 6 once, atomically. Any other version is rejected.
-- **The conformance suite covers formatVersion 6 only.** It no longer contains legacy decks: `accept-legacy-zip-v4` and `container-zip-claims-v5` are gone, every other case is rebuilt at formatVersion 6, and `project-format-version-6` (reject) became `project-format-version-7`. New: `project-format-version-0`. A reader that implements only formatVersion 6 passes the whole suite.
+- **The conformance suite covers formatVersion 6 only.** It no longer contains legacy decks: `accept-legacy-zip-v4` and `container-zip-claims-v5` are gone, every other case is rebuilt at formatVersion 6, and `project-format-version-6` (reject) became `project-format-version-7`. New: `project-format-version-0`, and `roles-core`, `roles-extension` and `roles-invalid` for layout roles. A reader that implements only formatVersion 6 passes the whole suite.
 - The JSON Schemas' `$id`s move from `https://slidra.app/schema/5/…` to `https://slidra.app/schema/6/…`.
 
 ### Format and playback
@@ -21,6 +21,7 @@ formatVersion 6 freezes the format as it stands here: the SQLite container of 0.
 - JSON Schemas for `project.json` and the slide vocabulary (`spec/schema/`). Durations are plain decimals (`1e3`, `0x10` and `Infinity` are invalid).
 - Document metadata in `project.json`: `author`, `created`, `modified`, `description`, `keywords`, `cover`.
 - Accessibility (format §4.7): `<title>`/`<desc>` names, `data-slidra-decorative`, `lang`/`xml:lang`, reading order, and what a reader derives for text, charts, tables and media.
+- Layout roles (format §4.9): `data-slidra-role` says what an element is for in the layout: `background` (§4.6, unchanged), `field`, `node`, `spine`, `edge`, `label`, `garnish`, or a `<prefix>:<name>` tool extension. Semantic only; readers may ignore roles and writers preserve them.
 - Stable slide ids (`data-slidra-slide-id`) and links (`data-slidra-link`: web pages, other slides, `#next`/`#previous`/`#first`/`#last`).
 - Effects: `easing`, `repeat`, text builds (`by`, `stagger`), `trigger`, and the `fly-down`, `fly-right` and four `fly-out-*` effects.
 - The `morph` page transition.
@@ -46,7 +47,7 @@ formatVersion 6 freezes the format as it stands here: the SQLite container of 0.
 
 - `slidra-validate`, a validator for decks.
 - `lib/writer/`, the reference writer: build formatVersion 6, edit in place (upgrading a formatVersion 5 deck to 6), and convert legacy decks.
-- `slidra-validate` reports a legacy deck (formatVersion 1–5) as a `legacy-format-version` warning.
+- `slidra-validate` reports a legacy deck (formatVersion 1–5) as a `legacy-format-version` warning, and an invalid layout role as a `role-unknown` error.
 
 ### Fixed
 
