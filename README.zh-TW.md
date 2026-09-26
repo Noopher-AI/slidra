@@ -8,7 +8,7 @@
 一個 `.slidra` 檔就是一份完整的簡報：SVG 投影片、動畫與換頁轉場、講者備忘稿、影音與字型，全部以列的形式存在同一個 SQLite 資料庫裡。這個 repository 包含：
 
 - **格式規格**：[`spec/slidra-format.md`](spec/slidra-format.md)（deck 是什麼）、[`spec/playback.md`](spec/playback.md)（deck 怎麼播放）、[`spec/rfcs/0001-sqlite-container-format.md`](spec/rfcs/0001-sqlite-container-format.md)（為什麼容器是 SQLite）。
-- **Viewer**：在瀏覽器打開 `.slidra` 就能播放，動畫照跑。不用 build、沒有相依套件，檔案也不會上傳。
+- **Viewer**：在瀏覽器打開 `.slidra` 就能播放，動畫照跑。以 Next.js 建置，檔案不會上傳。
 
 為什麼開放格式、為什麼選 SVG：請看〈[為什麼我們開放 `.slidra` 格式](docs/why-open-the-slidra-format_zh.md)〉。
 
@@ -16,27 +16,28 @@
 
 ## 快速開始
 
-需要 Node.js 18 以上，不必 `npm install`。
+viewer 是一個 Next.js 應用程式，需要 Node.js 20.9 以上。
 
 ```bash
-npm start            # 或：node server.js
+npm install
+npm run dev          # 或：npm run build && npm start
 ```
 
-打開 **http://localhost:8080/**，可以點範例 deck、按 **Choose a .slidra file**，或直接把檔案拖進頁面。
+打開 **http://localhost:3000/**，可以點範例 deck、按 **Choose a .slidra file**，或直接把檔案拖進頁面。
 
-要播放自己的 deck，把目錄或檔案路徑交給 server：
+要播放自己的 deck，把檔案放進 `decks/`，或用 `SLIDRA_DECKS` 列出目錄與檔案（以 `:` 分隔）：
 
 ```bash
-node server.js ~/Presentations talk.slidra --port 8080
+SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 ```
 
-| 選項 | 預設值 | |
+| 設定 | 預設值 | |
 |---|---|---|
-| `[路徑…]` | `./decks` 與 `./examples` | 要列在首頁的目錄（往下找三層）或 `.slidra` 檔 |
-| `--port`、`PORT` | `8080` | |
-| `--host`、`HOST` | `127.0.0.1` | 設成 `0.0.0.0` 就能分享給區網裡的其他裝置 |
+| `SLIDRA_DECKS` | `decks:examples` | 要列在首頁的目錄（往下找三層）或 `.slidra` 檔 |
+| `--port`、`PORT` | `3000` | |
+| `--hostname` | 所有網路介面 | |
 
-也可以直接連到某份 deck：`http://localhost:8080/?deck=/decks/1/showcase.slidra#3` 會從第 3 張開始播範例。
+也可以直接連到某份 deck：`http://localhost:3000/?deck=/decks/1/showcase.slidra#3` 會從第 3 張開始播範例。
 
 ## 播放操作
 
@@ -54,7 +55,7 @@ node server.js ~/Presentations talk.slidra --port 8080
 
 ## 運作方式
 
-deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁面的檔案不會離開你的電腦。SQLite 讀取器是自己寫的唯讀實作（`public/js/sqlite-reader.js`），不需要 WebAssembly。
+deck **完全在瀏覽器裡解析**。server 只負責提供檔案，拖進頁面的檔案不會離開你的電腦。SQLite 讀取器是自己寫的唯讀實作（`lib/viewer/sqlite-reader.js`），不需要 WebAssembly。
 
 投影片內容一律視為不可信任。每張投影片都放在 `<iframe sandbox="allow-scripts">` 裡渲染，屬於 opaque origin，Content-Security-Policy 只放行 viewer 自己帶 nonce 的 runtime。所以投影片裡的 script、事件處理器和 `javascript:` URL 一律不會執行，也碰不到 viewer 頁面。deck 內的資源都以 `data:` URL 內嵌，自成一體的 deck 播放時完全不會連網。
 
@@ -65,7 +66,15 @@ npm test                  # 單元測試：SQLite 讀取器（與 node:sqlite �
 npm run examples          # 重建 examples/（需要 Node 22.5 以上的 node:sqlite）
 ```
 
-程式碼是純 ES modules，沒有 build 流程，改完重新整理即可。
+viewer 核心是純 ES modules（`lib/viewer/`），由 Next.js 打包；`npm run dev` 會自動重新載入。
+
+## 部署
+
+線上 demo **https://slidra-demo.vercel.app/** 跑在 Vercel（專案 `slidra-demo`）。
+
+- `vercel.json` 指定 Next.js preset：先 `npm ci`，再 `next build`。
+- `examples/` 裡的範例 deck 和 `spec/` 的規格會一起打包進 route handler（見 `next.config.mjs` 的 `outputFileTracingIncludes`），所以 demo 列出的就是 `examples/` 的內容。
+- 用 CLI 手動佈署，push 不會自動觸發：先 `vercel link` 一次，之後 `vercel deploy --prod`。
 
 ## 授權
 
