@@ -102,6 +102,7 @@
         "id": { "type": "string", "pattern": "^el-(?:[A-Za-z0-9_-]{12}|background)$" },
         "data-slidra-name": { "type": "string" },
         "data-slidra-lock": { "const": "true" },
+        "data-slidra-decorative": { "const": "true" },
         "data-slidra-role": { "const": "background" },
         "data-slidra-text-width": { "$ref": "#/$defs/positive" },
         "data-slidra-text-height": { "$ref": "#/$defs/number" },
