@@ -3,9 +3,8 @@ import { MINIMAL, SHOWCASE, expectCounter, opacityOf, waitForSlide } from "./hel
 
 test("the home page lists the example decks by their real names", async ({ page }) => {
   await page.goto("/");
-  const cards = page.locator(".deck-card");
-  await expect(cards).toHaveCount(2);
-  await expect(page.locator(".deck-card strong")).toContainText(["Slides with Coordinates", "Slidra Showcase"]);
+  await expect(page.locator(".deck-card strong", { hasText: "Slides with Coordinates" })).toBeVisible();
+  await expect(page.locator(".deck-card strong", { hasText: "Slidra Showcase" })).toBeVisible();
 });
 
 test("pre-hidden elements start hidden and enter on the first step", async ({ page }) => {

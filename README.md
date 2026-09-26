@@ -59,6 +59,8 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 
 What plays: all 14 effects of the five effect families (enter, emphasis, exit, motion path, media) with `on-click` / `with-previous` / `after-previous` timing, per-slide page transitions (fade, slide, zoom), embedded fonts, video and audio, YouTube embeds, charts and tables, dynamic text (`{{ slide_number }}`, `{{ slide_total }}`, `{{ presentation_name }}`) and speaker notes. Both the current SQLite container (format 5) and legacy ZIP decks (format 1–4) open.
 
+Document metadata from `project.json` (author, dates, description, keywords, cover slide) shows up in the library, in the title bar and at the top of the overview.
+
 ## How it works
 
 ```
