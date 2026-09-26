@@ -182,3 +182,11 @@ The presenter view and the audience surface show the same slide at the same step
 ## 7. Fonts
 
 Every registered font (format §8) is made available to each slide under its `family` name before the slide is shown; a player SHOULD wait for the slide's fonts before revealing it.
+
+## 8. Printing and export
+
+A deck printed or exported to a page-based format (PDF, images) shows each slide as its static SVG: its final look with every effect run (§2), media as their placeholders or first frame, no transitions. Slides are never cropped or reflowed; each keeps the deck's canvas proportions.
+
+A player MAY also export a slide once per step, showing what the audience sees after that step. When it does, each page shows the pre-hidden elements that have entered by then and hides those that have left; emphasis and motion paths are shown at rest.
+
+Speaker notes (format §9) appear on printed pages only when the person printing asks for them. Comments (format §10) never do.
