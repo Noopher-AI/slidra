@@ -26,17 +26,42 @@
         "start": { "enum": ["on-click", "with-previous", "after-previous"] },
         "duration": { "$ref": "#/$defs/seconds" },
         "delay": { "$ref": "#/$defs/seconds" },
-        "d": { "type": "string" }
+        "d": { "type": "string" },
+        "easing": { "enum": ["ease", "linear", "ease-in", "ease-out", "ease-in-out", "overshoot"] },
+        "repeat": { "type": "string", "pattern": "^[1-9]\\d*$" },
+        "by": { "enum": ["line", "word", "letter"] },
+        "stagger": { "$ref": "#/$defs/seconds" },
+        "trigger": { "type": "string", "minLength": 1 }
       },
+      "dependentRequired": { "stagger": ["by"] },
       "allOf": [
-        { "if": { "properties": { "family": { "const": "enter" } } }, "then": { "properties": { "effect": { "enum": ["appear", "fade", "fly-up", "fly-left", "zoom"] } } } },
-        { "if": { "properties": { "family": { "const": "emphasis" } } }, "then": { "properties": { "effect": { "enum": ["pulse", "spin", "grow"] } } } },
-        { "if": { "properties": { "family": { "const": "exit" } } }, "then": { "properties": { "effect": { "enum": ["disappear", "fade-out", "zoom-out"] } } } },
+        {
+          "if": { "properties": { "family": { "const": "enter" } } },
+          "then": { "properties": { "effect": { "enum": ["appear", "fade", "fly-up", "fly-down", "fly-left", "fly-right", "zoom"] } }, "not": { "required": ["repeat"] } }
+        },
+        {
+          "if": { "properties": { "family": { "const": "emphasis" } } },
+          "then": { "properties": { "effect": { "enum": ["pulse", "spin", "grow"] } }, "not": { "required": ["by"] } }
+        },
+        {
+          "if": { "properties": { "family": { "const": "exit" } } },
+          "then": {
+            "properties": { "effect": { "enum": ["disappear", "fade-out", "fly-out-up", "fly-out-down", "fly-out-left", "fly-out-right", "zoom-out"] } },
+            "not": { "required": ["repeat"] }
+          }
+        },
         {
           "if": { "properties": { "family": { "const": "path" } } },
-          "then": { "required": ["d"], "properties": { "effect": { "const": "path" }, "d": { "type": "string", "minLength": 1 } } }
+          "then": {
+            "required": ["d"],
+            "properties": { "effect": { "const": "path" }, "d": { "type": "string", "minLength": 1 } },
+            "not": { "anyOf": [{ "required": ["repeat"] }, { "required": ["by"] }] }
+          }
         },
-        { "if": { "properties": { "family": { "const": "media" } } }, "then": { "properties": { "effect": { "enum": ["play", "pause"] } } } }
+        {
+          "if": { "properties": { "family": { "const": "media" } } },
+          "then": { "properties": { "effect": { "enum": ["play", "pause"] } }, "not": { "anyOf": [{ "required": ["repeat"] }, { "required": ["by"] }, { "required": ["easing"] }] } }
+        }
       ]
     },
 
