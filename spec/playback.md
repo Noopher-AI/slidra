@@ -24,6 +24,8 @@ Players SHOULD also give the presenter these, as in other presentation software:
 | B or . | Black out the audience surface; the next key or click restores it without moving. |
 | W or , | The same with a white surface. |
 | a slide number, then Enter | Go to that slide (clamped to the deck), arriving at its opening state. |
+| L | Laser pointer: a bright dot follows the presenter's pointer over the slide, on the audience surface too (moved from a presenter view, §6.1, it shows only on the audience surface); a click still advances. L again turns it off. |
+| Z | Magnify the slide 2× around the pointer (or the centre); Z again, Esc or a slide change restores it. |
 | ? | List the keys. |
 
 While the surface is blanked, a number is being typed or the key list is open, the navigation keys act on that state instead of the slides: they restore the surface, finish or cancel the number, or close the list.
