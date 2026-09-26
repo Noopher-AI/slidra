@@ -48,6 +48,17 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 
 也可以直接連到某份 deck：`http://localhost:3000/?deck=/decks/1/showcase.slidra#3` 會從第 3 張開始播範例。這樣的連結貼到聊天軟體或社群網站時，會顯示這份 deck 的名稱、描述和封面投影片（`/api/og` 在 server 端把封面轉成 1200×630 的 PNG，轉換前會先移除投影片裡所有外部參照）。
 
+## Web component
+
+`<slidra-player>` 可以把 deck 放進任何網頁，不需要框架，也不需要自己的 server。`npm run build:element` 會把它打包成單一 ES module，slide runtime 已經內含在裡面（位於 `packages/slidra-player/`，發布名稱為 `@slidra/player`）：
+
+```html
+<script type="module" src="slidra-player.js"></script>
+<slidra-player src="talk.slidra" controls slide="3"></slidra-player>
+```
+
+它提供 `next()`、`previous()`、`goTo(n)`、`slide`、`step`、`slideCount`，並會觸發 `slidechange`、`stepchange` 與 `error` 事件。投影片依然在沙箱 frame 裡渲染；除非元素加上 `allow-remote`，否則網路資源一律封鎖。`/embed` 就是用它做的。詳見 [`packages/slidra-player/README.md`](packages/slidra-player/README.md)。
+
 ## 嵌入其他網站
 
 這台 server 列出的任何 deck 都能嵌入其他網站：

@@ -6,7 +6,7 @@ import js from "@eslint/js";
 import globals from "globals";
 
 export default [
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "packages/*/dist/**", "test-results/**", "playwright-report/**"] },
   js.configs.recommended,
   {
     files: ["**/*.{js,mjs,jsx}"],

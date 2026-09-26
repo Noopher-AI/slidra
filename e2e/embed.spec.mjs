@@ -4,15 +4,13 @@ const DECK = "/decks/0/showcase.slidra";
 
 test("/embed plays a served deck with a small control bar", async ({ page }) => {
   await page.goto(`/embed?deck=${encodeURIComponent(DECK)}#2`);
-  await expect(page.locator("#e-counter")).toHaveText("2 / 7");
-  await page.locator("#e-next").click();
-  await page.locator("#e-next").click();
-  await page.locator("#e-next").click();
-  await page.locator("#e-next").click();
-  await page.locator("#e-next").click();
-  await expect(page.locator("#e-counter")).toHaveText("3 / 7");
+  const counter = page.locator("slidra-player .counter");
+  await expect(counter).toHaveText("2 / 7");
+  for (let i = 0; i < 5; i++) await page.locator("slidra-player .next").click();
+  await expect(counter).toHaveText("3 / 7");
+  await page.locator("slidra-player").focus();
   await page.keyboard.press("Home");
-  await expect(page.locator("#e-counter")).toHaveText("1 / 7");
+  await expect(counter).toHaveText("1 / 7");
   await expect(page.locator("#e-open")).toHaveAttribute("href", new RegExp(`/\\?deck=${encodeURIComponent(DECK)}#1$`));
 });
 
@@ -32,7 +30,7 @@ test("another site can embed the player; the full viewer refuses to be framed", 
   await page.evaluate((src) => {
     document.body.innerHTML = `<iframe id="player" src="${src}/embed?deck=%2Fdecks%2F0%2Fshowcase.slidra" width="960" height="584"></iframe><iframe id="viewer" src="${src}/" width="400" height="300"></iframe>`;
   }, baseURL);
-  await expect(page.frameLocator("#player").locator("#e-counter")).toHaveText("1 / 7");
+  await expect(page.frameLocator("#player").locator("slidra-player .counter")).toHaveText("1 / 7");
   // X-Frame-Options/frame-ancestors blocks the viewer: Chromium shows its error page in that frame instead.
   const viewer = await (await page.locator("#viewer").elementHandle()).contentFrame();
   await expect.poll(() => viewer.url()).toMatch(/^chrome-error:/);
@@ -55,4 +53,22 @@ test("oEmbed describes a deck link as an embeddable iframe, and pages advertise 
   expect((await request.get(`/api/oembed?url=${encodeURIComponent(link)}&format=xml`)).status()).toBe(501);
   const html = await (await request.get(`/?deck=${encodeURIComponent(DECK)}`)).text();
   expect(html).toMatch(/<link rel="alternate" type="application\/json\+oembed" href="[^"]*\/api\/oembed\?url=/);
+});
+
+test("moving through /embed never reloads the slide it is on", async ({ page }) => {
+  await page.goto(`/embed?deck=${encodeURIComponent(DECK)}`);
+  const counter = page.locator("slidra-player .counter");
+  await expect(counter).toHaveText("1 / 7");
+  const loads = await page.evaluate(() => {
+    const frame = document.querySelector("slidra-player").shadowRoot.querySelector("iframe.slide");
+    window["__loads"] = 0;
+    frame.addEventListener("load", () => (window["__loads"] += 1));
+    return 0;
+  });
+  await page.locator("slidra-player .next").click();
+  await page.locator("slidra-player .next").click();
+  await expect(counter).toHaveText("2 / 7");
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => window["__loads"])).toBe(loads + 1);
+  await expect(page.locator("#e-open")).toHaveAttribute("href", /#2$/);
 });

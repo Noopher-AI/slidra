@@ -6,7 +6,9 @@ import { makeDeck, svg } from "../test/fixtures/make-deck.mjs";
 
 export const GENERATED = new URL("./.generated/", import.meta.url);
 
-export default function globalSetup() {
+export default async function globalSetup() {
+  // The <slidra-player> bundle the element tests load (packages/slidra-player/dist/).
+  await import("../tools/build-element.mjs");
   rmSync(GENERATED, { recursive: true, force: true });
   mkdirSync(GENERATED, { recursive: true });
   const text = (id, words, fill = "#111") => `<g id="${id}"><text x="100" y="360" font-size="80" fill="${fill}">${words}</text></g>`;

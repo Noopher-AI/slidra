@@ -1,0 +1,30 @@
+{
+  "name": "@slidra/player",
+  "version": "0.1.0",
+  "description": "<slidra-player>: a web component that plays .slidra presentation decks, animations included, in a sandboxed frame.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/slidra-player.js",
+  "module": "./dist/slidra-player.js",
+  "exports": {
+    ".": "./dist/slidra-player.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "sideEffects": true,
+  "keywords": [
+    "slidra",
+    "presentation",
+    "slides",
+    "web-component",
+    "custom-element",
+    "svg"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Noopher-AI/slidra.git",
+    "directory": "packages/slidra-player"
+  }
+}

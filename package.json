@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "conformance": "node --no-warnings tools/build-conformance.mjs",
     "validate": "node --no-warnings bin/slidra-validate.mjs",
-    "fuzz": "FUZZ_ITERATIONS=${FUZZ_ITERATIONS:-50000} node --test --no-warnings test/fuzz.test.mjs"
+    "fuzz": "FUZZ_ITERATIONS=${FUZZ_ITERATIONS:-50000} node --test --no-warnings test/fuzz.test.mjs",
+    "build:element": "node tools/build-element.mjs"
   },
   "keywords": [
     "slidra",
@@ -46,6 +47,7 @@
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.3",
     "@types/react": "^19.3.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "globals": "^17.12.0",
     "prettier": "^3.9.9",

@@ -747,10 +747,8 @@ button { font: inherit; }
 
 /* ─── Embeddable player (/embed) ─────────────────────────────────────── */
 
-.embed { height: 100%; display: grid; grid-template-rows: minmax(0, 1fr) 44px; background: #000; color: var(--stage-ink); }
-.embed-stage { position: relative; display: grid; place-items: center; min-height: 0; }
-.embed-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--stage-2); font-size: 13px; }
-.embed-counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: center; }
-.embed-open { margin-left: auto; color: var(--stage-muted); text-decoration: none; font-weight: 600; }
-.embed-open:hover { color: var(--stage-ink); }
+.embed { position: relative; height: 100%; background: #000; color: var(--stage-ink); }
+.embed-player { width: 100%; height: 100%; aspect-ratio: auto; }
+.embed-open { position: absolute; top: 8px; right: 10px; z-index: 2; padding: 4px 10px; border-radius: 999px; background: rgba(20, 22, 26, .75); color: var(--stage-muted); font-size: 12px; font-weight: 600; text-decoration: none; }
+.embed-open:hover, .embed-open:focus-visible { color: var(--stage-ink); }
 .embed-status { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 16px; text-align: center; background: rgba(8, 8, 10, .9); }
