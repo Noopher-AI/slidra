@@ -165,6 +165,18 @@ The player captures the outgoing slide **as it is on screen** when the move star
 
 Speaker notes (format §9) are shown to the presenter only — never on the audience surface. Comments (format §10) are never shown during playback.
 
+### 6.1 Presenter view
+
+A player SHOULD offer a presenter view on a surface the audience does not see (a second window or screen), showing:
+
+- the current slide, as it plays, with its media silent (the audience surface plays the sound);
+- the next step's slide, or the next slide once the current one has no steps left;
+- the current slide's speaker notes;
+- the time since the presentation started, which the presenter can pause and reset, and the time of day;
+- where the talk is: slide *n* of *total*, and the step within the slide.
+
+The presenter view and the audience surface show the same slide at the same step at all times: every advance, retreat, jump or link followed on either one is applied to both, and each resynchronises to the other's position if they ever disagree. While a presenter view is open, the audience surface MUST NOT show speaker notes, even if the presenter had them open there.
+
 ## 7. Fonts
 
 Every registered font (format §8) is made available to each slide under its `family` name before the slide is shown; a player SHOULD wait for the slide's fonts before revealing it.
