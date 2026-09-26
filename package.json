@@ -22,7 +22,8 @@
     "conformance": "node --no-warnings tools/build-conformance.mjs",
     "validate": "node --no-warnings bin/slidra-validate.mjs",
     "fuzz": "FUZZ_ITERATIONS=${FUZZ_ITERATIONS:-50000} node --test --no-warnings test/fuzz.test.mjs",
-    "build:element": "node tools/build-element.mjs"
+    "build:element": "node tools/build-element.mjs",
+    "bundle": "node --no-warnings tools/build-bundle.mjs"
   },
   "keywords": [
     "slidra",
