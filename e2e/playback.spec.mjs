@@ -72,3 +72,13 @@ test("the specs and their JSON Schemas are served", async ({ request }) => {
   expect((await request.get("/spec/slidra-format.md")).ok()).toBe(true);
   expect((await request.get("/spec/schema/../../package.json")).status()).toBe(404);
 });
+
+test("a delayed entrance stays hidden until it starts", async ({ page }) => {
+  await page.goto(SHOWCASE + "#3");
+  await waitForSlide(page, 3, 7);
+  // Five entrances chained after-previous: the last one waits about 1.8 s.
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(150);
+  expect(await opacityOf(page, "el-en4000000000")).toBe(0);
+  await expect.poll(() => opacityOf(page, "el-en4000000000"), { timeout: 5000 }).toBe(1);
+});
