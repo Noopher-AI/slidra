@@ -110,3 +110,30 @@ test("a slide that is not well-formed becomes an error slide with the canvas siz
   assert.match(prepared.markup, /viewBox="0 0 800 600"/);
   assert.match(prepared.markup, /slides\/001\.svg is not well-formed SVG/);
 });
+
+test("prepareSlide lists the network URLs a slide wants (format §13)", async () => {
+  const deck = await openDeck(
+    makeDeck({
+      slides: [
+        svg(
+          [
+            "<style>.a{fill:url(https://cdn.example.com/pattern.svg)}</style>",
+            '<g id="el-AAAAAAAAAAAA"><image href="https://img.example.com/pixel.png"/><image xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="//cdn.example.com/x.png"/></g>',
+            '<g id="el-BBBBBBBBBBBB" style="background:url(\'http://old.example.com/y.png\')"><image href="../assets/local.png"/><image href="data:image/png;base64,AA"/></g>',
+            '<g id="el-TUBETUBETUBE" data-slidra-media="https://youtu.be/dQw4w9WgXcQ" data-slidra-embed="youtube"><rect width="10" height="10"/></g>',
+          ].join(""),
+        ),
+        svg('<g id="el-CCCCCCCCCCCC"><image href="../assets/local.png"/></g>'),
+      ],
+      files: { "assets/local.png": new Uint8Array([1]) },
+    }),
+  );
+  assert.deepEqual(prepareSlide(deck, 0).remote.sort(), [
+    "//cdn.example.com/x.png",
+    "http://old.example.com/y.png",
+    "https://cdn.example.com/pattern.svg",
+    "https://img.example.com/pixel.png",
+    "https://youtu.be/dQw4w9WgXcQ",
+  ]);
+  assert.deepEqual(prepareSlide(deck, 1).remote, []);
+});

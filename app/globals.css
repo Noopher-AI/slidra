@@ -546,3 +546,36 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ─── External content notice (format §13) ───────────────────────────── */
+
+.remote-notice {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(640px, calc(100% - 32px));
+  padding: 10px 12px 10px 16px;
+  border-radius: 12px;
+  background: rgba(20, 22, 26, .92);
+  color: var(--stage-ink);
+  box-shadow: var(--shadow-glass);
+  font-size: 13px;
+}
+.remote-notice p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.remote-allow {
+  flex: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 12px;
+  background: var(--red);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.remote-allow:hover { background: var(--red-hover); }
+.remote-allow:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
