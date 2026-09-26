@@ -151,6 +151,12 @@ export default function ViewerShell() {
               <path d="M14.5 6.5h3M14.5 9.5h3M14.5 12.5h3M5 15.5h5" />
             </svg>
           </button>
+          <button id="print-button" className="icon-button" type="button" aria-label="Print or save as PDF" title="Print or save as PDF (Ctrl+P)">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5.5 7.5V3.5h9v4M5.5 14.5h-2v-6a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v6h-2" />
+              <rect x="5.5" y="11.5" width="9" height="5.5" rx=".8" />
+            </svg>
+          </button>
           <button id="fullscreen-button" className="icon-button" type="button" aria-label="Fullscreen" title="Fullscreen (F)">
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M3.5 7.5v-4h4M16.5 7.5v-4h-4M3.5 12.5v4h4M16.5 12.5v4h-4" />
@@ -162,6 +168,47 @@ export default function ViewerShell() {
 
         <div id="goto" className="goto" role="status" hidden>
           Go to slide <b id="goto-number"></b> <kbd>Enter</kbd>
+        </div>
+
+        <div id="print-dialog" className="key-help" role="dialog" aria-modal="true" aria-labelledby="print-title" hidden>
+          <form id="print-form" className="key-help-card print-form">
+            <div className="key-help-head">
+              <h2 id="print-title">Print or save as PDF</h2>
+              <button id="print-cancel" className="icon-button" type="button" aria-label="Cancel" title="Cancel (Esc)">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5 5l10 10M15 5 5 15" />
+                </svg>
+              </button>
+            </div>
+            <fieldset>
+              <legend>Layout</legend>
+              <label>
+                <input type="radio" name="layout" value="slides" defaultChecked /> One slide per page
+              </label>
+              <label>
+                <input type="radio" name="layout" value="handout-2" /> Handout, 2 per page
+              </label>
+              <label>
+                <input type="radio" name="layout" value="handout-3" /> Handout, 3 per page
+              </label>
+              <label>
+                <input type="radio" name="layout" value="handout-6" /> Handout, 6 per page
+              </label>
+            </fieldset>
+            <fieldset>
+              <legend>Include</legend>
+              <label>
+                <input type="checkbox" name="notes" /> Speaker notes
+              </label>
+              <label>
+                <input type="checkbox" name="steps" /> Every animation step as its own slide
+              </label>
+            </fieldset>
+            <p className="print-hint">In the print dialog, choose “Save as PDF” as the destination to get a PDF.</p>
+            <button id="print-go" className="remote-allow" type="submit">
+              Print…
+            </button>
+          </form>
         </div>
 
         <div id="key-help" className="key-help" role="dialog" aria-modal="true" aria-labelledby="key-help-title" hidden>
@@ -211,6 +258,10 @@ export default function ViewerShell() {
                 <kbd>P</kbd>
               </dt>
               <dd>Presenter view in a second window</dd>
+              <dt>
+                <kbd>Ctrl</kbd> <kbd>P</kbd>
+              </dt>
+              <dd>Print or save as PDF</dd>
               <dt>
                 <kbd>L</kbd>
               </dt>

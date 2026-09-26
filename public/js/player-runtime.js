@@ -971,6 +971,12 @@
   var keysHeld = false;
 
   document.addEventListener("keydown", function (event) {
+    // Ctrl/Cmd+P prints the deck (the host's print layout), not this frame's page.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === "p" || event.key === "P")) {
+      event.preventDefault();
+      post({ event: "print" });
+      return;
+    }
     if (keysHeld && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       post({ event: "key", key: event.key });

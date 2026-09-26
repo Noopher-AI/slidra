@@ -698,3 +698,34 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .zoom { transition: none; } }
 .presenter-laser { font-size: 12px; font-weight: 700; color: #ff5a6c; letter-spacing: .06em; }
 .presenter-pointer-layer { position: absolute; inset: 0; z-index: 3; cursor: crosshair; }
+
+/* ─── Printing and PDF export (playback §8) ──────────────────────────── */
+
+.print-form fieldset { border: 0; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.print-form legend { margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--stage-muted); }
+.print-form label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.print-form input { accent-color: var(--red); }
+.print-hint { margin: 4px 0 14px; font-size: 12.5px; color: var(--stage-muted); }
+
+.print-root { display: none; }
+@media print {
+  html, body { height: auto !important; background: #fff !important; }
+  body > *:not(.print-root) { display: none !important; }
+  .print-root { display: block; color: #111; font-family: var(--font-ui); }
+  .print-page { break-after: page; display: grid; gap: 6mm; align-content: start; }
+  .print-page:last-child { break-after: auto; }
+  .print-slide { margin: 0; break-inside: avoid; display: grid; gap: 2mm; }
+  .print-slide img { width: 100%; height: auto; display: block; }
+  .print-slide figcaption { font-size: 9pt; color: #555; }
+  .print-notes { margin: 1mm 0 0; font-size: 10pt; line-height: 1.45; white-space: pre-wrap; }
+  .print-slides:not(.with-notes) .print-page { gap: 0; height: 100vh; }
+  .print-slides:not(.with-notes) .print-slide { gap: 0; height: 100vh; place-items: center; }
+  .print-slides:not(.with-notes) .print-slide img { width: 100vw; height: 100vh; object-fit: contain; }
+  .print-slides:not(.with-notes) figcaption { display: none; }
+  .print-slides.with-notes .print-slide img { border: 1px solid #ccc; }
+  .print-handout-2 .print-slide img { width: 86%; border: 1px solid #ccc; }
+  .print-handout-3 .print-slide img { width: 58%; border: 1px solid #ccc; }
+  .print-handout-3 .print-notes, .print-handout-6 .print-notes { font-size: 8.5pt; }
+  .print-handout-6 .print-page { grid-template-columns: 1fr 1fr; }
+  .print-handout-6 .print-slide img { border: 1px solid #ccc; }
+}
