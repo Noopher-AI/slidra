@@ -962,7 +962,16 @@
 
   // ── Input ────────────────────────────────────────────────────────────
 
+  // While the host holds the keys (a blanked screen, a slide number being
+  // typed, the key list), every key goes to the host instead of the slide.
+  var keysHeld = false;
+
   document.addEventListener("keydown", function (event) {
+    if (keysHeld && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      post({ event: "key", key: event.key });
+      return;
+    }
     if (event.key === "Enter" && document.activeElement) {
       var focusedLink = linkFor(document.activeElement);
       if (focusedLink) {
@@ -995,6 +1004,11 @@
     // Every other shortcut (Home/End, F, G, N, …) belongs to the host;
     // focus usually sits in this frame, so forward it.
     if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length <= 8) {
+      // A slide number, a blackout or the key list makes the host take the
+      // keys; hold them at once, so an Enter typed right after a digit
+      // cannot reach the slide before the host's hold-keys message does.
+      // The host answers every forwarded key with the state it is really in.
+      if (/^[0-9.,?bBwW]$/.test(event.key)) keysHeld = true;
       post({ event: "key", key: event.key });
     }
   });
@@ -1084,6 +1098,7 @@
     if (data.command === "focus") window.focus();
     else if (data.command === "advance") advance();
     else if (data.command === "retreat") retreat();
+    else if (data.command === "hold-keys") keysHeld = data.hold === true;
     else if (data.command === "snapshot") {
       var shot = snapshot();
       post({ event: "snapshot", requestId: data.requestId, elements: shot.elements, background: shot.background });
