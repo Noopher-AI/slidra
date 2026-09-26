@@ -66,10 +66,11 @@
     },
 
     "transitionEffect": { "enum": ["none", "fade", "slide", "zoom"] },
+    "enterTransitionEffect": { "enum": ["none", "fade", "slide", "zoom", "morph"] },
     "transition": {
       "type": "object",
       "properties": {
-        "enter": { "$ref": "#/$defs/transitionEffect" },
+        "enter": { "$ref": "#/$defs/enterTransitionEffect" },
         "enter-duration": { "$ref": "#/$defs/seconds" },
         "exit": { "$ref": "#/$defs/transitionEffect" },
         "exit-duration": { "$ref": "#/$defs/seconds" }
