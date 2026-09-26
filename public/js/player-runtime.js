@@ -1075,13 +1075,14 @@
   );
 
   // Pointer movement is reported (throttled) so the host can reveal its
-  // auto-hiding controls while the pointer is over this frame.
+  // auto-hiding controls, and knows where to magnify (playback §1: Z), as a
+  // fraction of the slide.
   var lastPointerReport = 0;
-  document.addEventListener("mousemove", function () {
+  document.addEventListener("mousemove", function (event) {
     var now = Date.now();
-    if (now - lastPointerReport < 250) return;
+    if (now - lastPointerReport < 100) return;
     lastPointerReport = now;
-    post({ event: "pointer" });
+    post({ event: "pointer", x: event.clientX / Math.max(1, window.innerWidth), y: event.clientY / Math.max(1, window.innerHeight) });
   });
 
   window.addEventListener("resize", function () {

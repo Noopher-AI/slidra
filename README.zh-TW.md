@@ -61,6 +61,8 @@ SLIDRA_DECKS=~/Presentations:talk.slidra npm run dev -- --port 8080
 | 輸入數字再按 `Enter` | 跳到該張投影片 |
 | `?` | 列出所有快捷鍵 |
 | `P` | 在第二個視窗開啟簡報者檢視 |
+| `L` | 雷射筆（在簡報者檢視中也可以用：指著你那份預覽，紅點會出現在觀眾畫面上） |
+| `Z` | 以游標為中心放大 2 倍，再按 `Z` 或 `Esc` 還原 |
 | `Esc` | 依序：關閉總覽、離開全螢幕、關閉 deck |
 
 支援範圍：五類共 20 種效果（進場、強調、離場、路徑動畫、媒體），可用 `on-click`、`with-previous`、`after-previous` 安排時序，並支援六種 easing 曲線、重複播放、逐行／逐字／逐字元的文字動畫，以及點擊任一元素觸發的動畫；每張投影片各自的換頁轉場（fade、slide、zoom，以及 morph：id 相同的元素會從上一張的位置平滑移動到下一張）；內嵌字型、影片與音訊、YouTube 嵌入、圖表與表格、動態文字（`{{ slide_number }}`、`{{ slide_total }}`、`{{ presentation_name }}`），以及講者備忘稿。現行的 SQLite 容器（format 5）和舊版 ZIP deck（format 1–4）都能開。

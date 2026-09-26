@@ -18,6 +18,9 @@ export default function PresenterShell() {
             Presenter view
           </span>
           <span id="p-counter" className="presenter-counter" aria-live="polite"></span>
+          <span id="p-laser" className="presenter-laser" hidden>
+            LASER ON (L)
+          </span>
         </div>
         <div className="presenter-timer" role="group" aria-label="Timer">
           <span id="p-elapsed" className="presenter-elapsed" aria-label="Elapsed time">
@@ -38,6 +41,7 @@ export default function PresenterShell() {
           <div id="p-surface" className="surface">
             <iframe id="p-frame" className="slide-frame" title="Current slide" sandbox="allow-scripts" tabIndex={-1}></iframe>
             <div id="p-embeds" className="embed-layer"></div>
+            <div id="p-pointer" className="presenter-pointer-layer" hidden></div>
           </div>
         </div>
       </section>

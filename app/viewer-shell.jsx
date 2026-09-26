@@ -94,8 +94,12 @@ export default function ViewerShell() {
       <section id="viewer" className="viewer" hidden aria-label="Presentation">
         <div id="stage" className="stage">
           <div id="surface" className="surface">
-            <iframe id="slide-frame" className="slide-frame" title="Slide" sandbox="allow-scripts" allow="autoplay; fullscreen"></iframe>
-            <div id="embed-layer" className="embed-layer"></div>
+            <div id="zoom" className="zoom">
+              <iframe id="slide-frame" className="slide-frame" title="Slide" sandbox="allow-scripts" allow="autoplay; fullscreen"></iframe>
+              <div id="embed-layer" className="embed-layer"></div>
+              <div id="laser-layer" className="laser-layer" hidden></div>
+              <div id="laser-dot" className="laser-dot" hidden aria-hidden="true"></div>
+            </div>
           </div>
         </div>
 
@@ -203,6 +207,18 @@ export default function ViewerShell() {
                 <kbd>N</kbd>
               </dt>
               <dd>Speaker notes</dd>
+              <dt>
+                <kbd>P</kbd>
+              </dt>
+              <dd>Presenter view in a second window</dd>
+              <dt>
+                <kbd>L</kbd>
+              </dt>
+              <dd>Laser pointer</dd>
+              <dt>
+                <kbd>Z</kbd>
+              </dt>
+              <dd>Magnify around the pointer</dd>
               <dt>
                 <kbd>F</kbd>
               </dt>
