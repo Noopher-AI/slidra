@@ -60,6 +60,7 @@ A deck can be linked directly: `http://localhost:3000/?deck=/decks/1/showcase.sl
 | `B` or `.` / `W` or `,` | Black / white screen; any key or click brings the slide back |
 | A number, then `Enter` | Go to that slide |
 | `?` | List the keyboard shortcuts |
+| `Ctrl`/`⌘` + `P` | Print, or save as PDF: one slide per page, notes pages or handouts (2, 3 or 6 per page), optionally one page per animation step |
 | `P` | Presenter view in a second window |
 | `L` | Laser pointer (from the presenter view too: point at your copy, the dot shows on the audience screen) |
 | `Z` | Magnify 2× around the pointer; `Z` or `Esc` again restores |
